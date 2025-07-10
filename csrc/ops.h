@@ -97,6 +97,15 @@ void rms_norm_dynamic_per_token_quant(torch::Tensor& out,
                                       std::optional<torch::Tensor> scale_ub,
                                       std::optional<torch::Tensor> residual);
 
+void rms_norm_dynamic_per_token_quant_custom(torch::Tensor& out,
+                                             torch::Tensor& out_bf16,
+                                             torch::Tensor const& input,
+                                             torch::Tensor const& weight,
+                                             torch::Tensor& scales,
+                                             double const epsilon,
+                                             std::optional<torch::Tensor> scale_ub,
+                                             std::optional<torch::Tensor> residual);
+
 void rotary_embedding(torch::Tensor& positions, torch::Tensor& query,
                       torch::Tensor& key, int64_t head_size,
                       torch::Tensor& cos_sin_cache, bool is_neox);
@@ -252,6 +261,19 @@ void static_scaled_int8_quant(torch::Tensor& out, torch::Tensor const& input,
 void dynamic_scaled_int8_quant(torch::Tensor& out, torch::Tensor const& input,
                                torch::Tensor& scales,
                                std::optional<torch::Tensor> const& azp);
+
+void fused_silu_mul_dq_mask_quant_pack(
+    torch::Tensor& out,
+    torch::Tensor const& input,
+    torch::Tensor const &mask);
+
+void dynamic_scaled_int8_mask_quant( torch::Tensor& out,  torch::Tensor const& input, torch::Tensor const &mask,
+    torch::Tensor& scales, c10::optional<torch::Tensor> const& azp);
+
+void fused_silu_mul_dq_quant_interface(
+    torch::Tensor& out,
+    torch::Tensor& scale,
+    torch::Tensor const& input);
 
 torch::Tensor gptq_gemm(torch::Tensor a, torch::Tensor b_q_weight,
                         torch::Tensor b_gptq_qzeros,

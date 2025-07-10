@@ -21,6 +21,12 @@ metax_env: dict[str, Callable[[], Any]] = {
     # if set, enable page attention backend
     "MACA_VLLM_PG_OPT":
     lambda: os.environ.get("MACA_VLLM_PG_OPT", "0") == "1",
+
+    # Metax Modification (override the default value of VLLM_USE_FLASHINFER_SAMPLER)
+    # FIXME: some models hang, change VLLM_USE_FLASHINFER_SAMPLER default to False, V1 does not use flashinfo top-k top-p sampling.
+    "VLLM_USE_FLASHINFER_SAMPLER":
+    lambda: bool(int(os.environ["VLLM_USE_FLASHINFER_SAMPLER"]))
+    if "VLLM_USE_FLASHINFER_SAMPLER" in os.environ else False,
 }
 
 vllm.envs.environment_variables = environment_variables | metax_env

@@ -3711,6 +3711,8 @@ class VllmConfig:
         from vllm import __version__
         vllm_factors.append(__version__)
         vllm_factors.append(envs.VLLM_USE_V1)
+        vllm_factors.append(envs.MACA_VLLM_USE_TN_2_NN)
+
         if self.model_config:
             vllm_factors.append(self.model_config.compute_hash())
         else:
@@ -4034,7 +4036,7 @@ class VllmConfig:
             if self.model_config is not None and \
                 not self.model_config.enforce_eager:
                 batch_size_capture_list = [1, 2, 4
-                                           ] + [i for i in range(8, 513, 8)]
+                                           ] + [i for i in range(8, 257, 8)]
                 if self.parallel_config.tensor_parallel_size > 1 and \
                     self.compilation_config.pass_config.enable_sequence_parallelism:
                     batch_size_capture_list = \

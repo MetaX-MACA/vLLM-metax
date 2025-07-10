@@ -199,17 +199,17 @@ __global__ void moe_align_block_size_global_mem_kernel(
 
 
 
-__device__ __forceinline__ int32_t ScanWarp2(int32_t val) {
+__device__ __forceinline__ int32_t ScanWarp2(int32_t val, int32_t mask = 8) {
   int32_t lane = threadIdx.x & 31;
-  int32_t tmp = __shfl_up_sync(0xffffffff, val, 1, 8);
+  int32_t tmp = __shfl_up_sync(0xffffffff, val, 1, mask);
   if (lane >= 1) {
     val += tmp;
   }
-  tmp = __shfl_up_sync(0xffffffff, val, 2, 8);
+  tmp = __shfl_up_sync(0xffffffff, val, 2, mask);
   if (lane >= 2) {
     val += tmp;
   }
-  tmp = __shfl_up_sync(0xffffffff, val, 4, 8);
+  tmp = __shfl_up_sync(0xffffffff, val, 4, mask);
   if (lane >= 4) {
     val += tmp;
   }
@@ -524,6 +524,81 @@ __global__ void moe_sum_kernel(
   }
 }
 
+template<typename scalar_t, typename token_cnts_t, int32_t NUM_EXPS, int32_t BLOCK_DIM>
+__global__ void moe_align_block_size_kernel_opt(scalar_t* __restrict__ topk_ids,
+                            int32_t* sorted_token_ids,
+                            int32_t* expert_ids,
+                            int32_t* total_tokens_post_pad,
+                            int32_t num_experts,
+                            int32_t block_size, size_t numel) {
+  __shared__ int32_t shared_counts[32][4];
+  __shared__ int32_t cumsum[NUM_EXPS + 1];
+  __shared__ int32_t blocksum[BLOCK_DIM / WARP_SIZE + 1];
+
+  const size_t tokens_per_thread = CEILDIV(numel, BLOCK_DIM);
+  const size_t start_idx = threadIdx.x * tokens_per_thread;
+  static constexpr int32_t experts_per_warp = 4;
+
+  const int32_t warp_id = threadIdx.x / 32;
+  const int32_t lane_id = threadIdx.x % 32;
+  const int32_t my_expert_start = warp_id * experts_per_warp;
+
+  if (threadIdx.x < NUM_EXPS) {
+    shared_counts[threadIdx.x / experts_per_warp][threadIdx.x % experts_per_warp] = 0;
+    cumsum[0] = 0;
+    blocksum[0] = 0;
+  }
+  __syncthreads();
+
+  for (int32_t i = start_idx; i < numel && i < start_idx + tokens_per_thread; ++i) {
+    int32_t expert_id = topk_ids[i];
+    int32_t warp_idx = expert_id / experts_per_warp;
+    int32_t expert_offset = expert_id % experts_per_warp;
+    atomicAdd(&shared_counts[warp_idx][expert_offset], 1);
+  }
+  __syncthreads();
+
+  int32_t val = 0;
+  if (threadIdx.x < NUM_EXPS) {
+    int32_t row = threadIdx.x / experts_per_warp;
+    int32_t line = threadIdx.x % experts_per_warp;
+    val = CEILDIV(shared_counts[row][line], block_size) * block_size;
+    val = ScanWarp(val);
+    if(lane_id == 31) {
+      blocksum[warp_id + 1] = val;
+    }
+  }
+  __syncthreads();
+
+  if(threadIdx.x < BLOCK_DIM / WARP_SIZE) {
+    int32_t res = blocksum[lane_id + 1];
+    blocksum[lane_id + 1] = ScanWarp2(res, BLOCK_DIM / WARP_SIZE);
+  }
+  __syncthreads();
+
+  if (threadIdx.x < NUM_EXPS) {
+    val += blocksum[warp_id];
+    cumsum[threadIdx.x + 1] = val;
+  }
+  __syncthreads();
+
+  if (threadIdx.x < NUM_EXPS) {
+    for (int32_t i = cumsum[threadIdx.x]; i < cumsum[threadIdx.x + 1]; i += block_size) {
+      expert_ids[i / block_size] = threadIdx.x;
+    }
+    if (threadIdx.x == 0) {
+      *total_tokens_post_pad = cumsum[NUM_EXPS];
+    }
+  }
+  __syncthreads();
+
+  for (int32_t i = start_idx; i < numel && i < start_idx + tokens_per_thread; ++i) {
+    int32_t expert_id = topk_ids[i];
+    int32_t rank_post_pad = atomicAdd(&cumsum[expert_id], 1);
+    sorted_token_ids[rank_post_pad] = i;
+  }
+}
+
 }  // namespace moe
 }  // namespace vllm
 
@@ -585,7 +660,24 @@ void moe_align_block_size(torch::Tensor topk_ids, int64_t num_experts,
               cumsum_buffer.data_ptr<int32_t>());
         });
   } else if (use_i16) {
-    VLLM_DISPATCH_INTEGRAL_TYPES(
+    if (num_experts == 128){
+      VLLM_DISPATCH_INTEGRAL_TYPES(
+        topk_ids.scalar_type(), "moe_align_block_size_kernel_opt", [&] {
+          // set dynamic shared mem
+          constexpr int32_t tids = 512;
+          auto kernel =
+              vllm::moe::moe_align_block_size_kernel_opt<scalar_t, uint16_t, 128, tids>;
+          // AT_CUDA_CHECK(VLLM_DevFuncAttribute_SET_MaxDynamicSharedMemorySize(
+          //     (void*)kernel, shared_mem_i16));
+          kernel<<<1, tids, 0, stream>>>(
+              topk_ids.data_ptr<scalar_t>(),
+              sorted_token_ids.data_ptr<int32_t>(),
+              experts_ids.data_ptr<int32_t>(),
+              num_tokens_post_pad.data_ptr<int32_t>(), num_experts, block_size,
+              topk_ids.numel());
+        });
+    } else {
+      VLLM_DISPATCH_INTEGRAL_TYPES(
         topk_ids.scalar_type(), "moe_align_block_size_kernel", [&] {
           // set dynamic shared mem
           auto kernel =
@@ -599,6 +691,7 @@ void moe_align_block_size(torch::Tensor topk_ids, int64_t num_experts,
               num_tokens_post_pad.data_ptr<int32_t>(), num_experts, block_size,
               topk_ids.numel());
         });
+    }
   } else {
     VLLM_DISPATCH_INTEGRAL_TYPES(
         topk_ids.scalar_type(), "moe_align_block_size_kernel", [&] {

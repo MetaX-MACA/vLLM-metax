@@ -1,0 +1,13 @@
+import vllm
+from vllm_metax_plugin.patch.hook_registry import register_patch
+from vllm.logger import init_logger
+
+logger = init_logger(__name__)
+
+from vllm_metax_plugin.model_executor.layers.quantization.compressed_tensors.compressed_tensors_moe import MetaxCompressedTensorsMoEMethod
+
+from vllm.model_executor.layers.quantization.compressed_tensors import compressed_tensors_moe
+
+compressed_tensors_moe.CompressedTensorsMoEMethod = MetaxCompressedTensorsMoEMethod
+
+register_patch("vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors_moe", "CompressedTensorsMoEMethod", MetaxCompressedTensorsMoEMethod)

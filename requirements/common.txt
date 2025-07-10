@@ -1,12 +1,12 @@
 cachetools
 psutil
 sentencepiece  # Required for LLaMA tokenizer.
-numpy
+numpy < 2.0
 requests >= 2.26.0
 tqdm
 blake3
 py-cpuinfo
-transformers >= 4.51.1
+transformers == 4.51.3
 huggingface-hub[hf_xet] >= 0.30.0  # Required for Xet downloads.
 tokenizers >= 0.21.1  # Required for fast incremental detokenization.
 protobuf # Required by LlamaTokenizer.

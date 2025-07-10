@@ -53,3 +53,6 @@ htmlcov/
 
 # Release info
 */_release_info.txt
+
+# Metax
+core

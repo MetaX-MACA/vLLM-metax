@@ -119,10 +119,12 @@ class MetaXPlatformBase(Platform):
         scheduler_config = vllm_config.scheduler_config
         compilation_config = vllm_config.compilation_config
         model_config = vllm_config.model_config
-        from vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors import CompressedTensorsConfig
-        from vllm_metax_plugin.model_executor.layers.quantization.compressed_tensors.compressed_tensors import MetaxCompressedTensorsConfig
-        if isinstance(vllm_config.quant_config, CompressedTensorsConfig):
-            vllm_config.quant_config = MetaxCompressedTensorsConfig.from_config_instance(vllm_config.quant_config)
+
+        # TODO: checking if this gonna raise problems
+        # from vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors import CompressedTensorsConfig
+        # from vllm_metax_plugin.model_executor.layers.quantization.compressed_tensors.compressed_tensors import MetaxCompressedTensorsConfig
+        # if isinstance(vllm_config.quant_config, CompressedTensorsConfig):
+        #     vllm_config.quant_config = MetaxCompressedTensorsConfig.from_config_instance(vllm_config.quant_config)
 
         if parallel_config.worker_cls == "auto":
             if scheduler_config.is_multi_step:
@@ -162,7 +164,7 @@ class MetaXPlatformBase(Platform):
             # here
             use_flashmla = (envs.VLLM_ATTENTION_BACKEND is None \
                 or envs.VLLM_ATTENTION_BACKEND == "FLASHMLA")
-            from vllm.attention.ops.flashmla import is_flashmla_supported
+            from vllm_metax_plugin.attention.ops.flashmla import is_flashmla_supported
             if use_flashmla and is_flashmla_supported()[0] \
                 and cache_config.block_size != 64:
                 cache_config.block_size = 64
@@ -176,6 +178,13 @@ class MetaXPlatformBase(Platform):
                 "currently not supported with CUDA Graphs.")
             vllm_config.model_config.enforce_eager = True
             compilation_config.use_cudagraph = False
+
+        if vllm_config.model_config is not None and \
+            not vllm_config.model_config.enforce_eager and \
+            compilation_config.cudagraph_capture_sizes is not None:
+            batch_size_capture_list = [size for size in compilation_config.cudagraph_capture_sizes if size < 257]
+            compilation_config.cudagraph_capture_sizes = None
+            compilation_config.init_with_cudagraph_sizes(batch_size_capture_list)
 
     @classmethod
     def get_current_memory_usage(cls,
@@ -199,7 +208,7 @@ class MetaXPlatformBase(Platform):
                     logger.info("Using Metax Triton MLA backend.")
                     return "vllm_metax_plugin.attention.backends.triton_mla.MetaxTritonMLABackend"
             else:
-                from vllm.attention.backends.flashmla import (
+                from vllm_metax_plugin.attention.backends.flashmla import (
                     is_flashmla_supported)
                 if not is_flashmla_supported()[0]:
                     logger.warning(
@@ -233,7 +242,7 @@ class MetaXPlatformBase(Platform):
                 return ("vllm_metax_plugin.v1.attention.backends.flash_attn.MetaxFlashAttentionBackend")
         if selected_backend == _Backend.FLASHINFER:
             logger.info("Using FlashInfer backend.")
-            return "vllm.attention.backends.flashinfer.FlashInferBackend"
+            return "vllm_metax_plugin.attention.backends.flashinfer.MetaxFlashInferImpl"
         elif selected_backend == _Backend.XFORMERS:
             logger.info("Using XFormers backend.")
             return "vllm.attention.backends.xformers.XFormersBackend"
@@ -265,13 +274,8 @@ class MetaXPlatformBase(Platform):
         if target_backend == _Backend.FLASH_ATTN:
             try:
                 import flash_attn  # noqa: F401
-                # Support page attention backend
-                if envs.MACA_VLLM_PG_OPT:
-                    from vllm_metax_plugin.attention.backends.flash_attn_pg import (  # noqa: F401
-                        FlashAttentionBackend, flash_attn_supports_fp8)
-                else:
-                    from vllm.attention.backends.flash_attn import (  # noqa: F401
-                        FlashAttentionBackend, flash_attn_supports_fp8)
+                from vllm_metax_plugin.attention.backends.flash_attn import (  # noqa: F401
+                    FlashAttentionBackend, flash_attn_supports_fp8)
                     
                 supported_sizes = \
                     FlashAttentionBackend.get_supported_head_sizes()
@@ -304,13 +308,8 @@ class MetaXPlatformBase(Platform):
 
         logger.info("Using Flash Attention backend.")
 
-        # Support page attention backend
-        if envs.MACA_VLLM_PG_OPT:
-            logger.info_once("Using Metax Flash Attention PG backend on V0 engine.")
-            return "vllm_metax_plugin.attention.backends.flash_attn_pg.FlashAttentionBackend"
-        else:
-            logger.info_once("Using Metax Flash Attention backend on V0 engine.")
-            return "vllm_metax_plugin.attention.backends.flash_attn.FlashAttentionBackend"
+        logger.info_once("Using Metax Flash Attention backend on V0 engine.")
+        return "vllm_metax_plugin.attention.backends.flash_attn.MetaxFlashAttentionBackend"
 
     @classmethod
     def get_punica_wrapper(cls) -> str:

@@ -1012,12 +1012,12 @@ torch::Tensor awq_dequantize(torch::Tensor _kernel,
     auto de_kernel = reinterpret_cast<half*>(_de_kernel.data_ptr<at::Half>());
     auto scaling_factors =
         reinterpret_cast<half*>(_scaling_factors.data_ptr<at::Half>());
-    vllm::awq::dequantize_weights_opt<__half><<<gridsize, blocksize>>>(kernel, scaling_factors, zeros, de_kernel, G, qout_c, blocksize, num_elems, vllm::awq::DivModFast(qout_c));
+    vllm::awq::dequantize_weights_opt<__half><<<gridsize, blocksize, 0 , stream>>>(kernel, scaling_factors, zeros, de_kernel, G, qout_c, blocksize, num_elems, vllm::awq::DivModFast(qout_c));
   } else if(_scaling_factors.dtype() == at::ScalarType::BFloat16) {
     auto de_kernel = reinterpret_cast<maca_bfloat16*>(_de_kernel.data_ptr<at::BFloat16>());
     auto scaling_factors =
         reinterpret_cast<maca_bfloat16*>(_scaling_factors.data_ptr<at::BFloat16>());
-    vllm::awq::dequantize_weights_opt<maca_bfloat16><<<gridsize, blocksize>>>(kernel, scaling_factors, zeros, de_kernel, G, qout_c, blocksize, num_elems, vllm::awq::DivModFast(qout_c));
+    vllm::awq::dequantize_weights_opt<maca_bfloat16><<<gridsize, blocksize, 0, stream>>>(kernel, scaling_factors, zeros, de_kernel, G, qout_c, blocksize, num_elems, vllm::awq::DivModFast(qout_c));
   } else {
     printf("not support this type\n");
     assert(0);

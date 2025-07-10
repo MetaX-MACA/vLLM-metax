@@ -16,6 +16,8 @@ from vllm.logger import init_logger
 
 from vllm.v1.attention.backends.flash_attn import (FlashAttentionBackend,
                                                    FlashAttentionMetadata,
+                                                   FlashAttentionImpl,
+                                                   FlashAttentionMetadataBuilder,
                                                    use_cascade_attention,
                                                    make_local_attention_virtual_batches)
 
@@ -82,19 +84,11 @@ def _get_sliding_window_configs(
         sliding_window_configs.add(layer.impl.sliding_window)
     return sliding_window_configs
 
-class MetaxFlashAttentionMetadataBuilder:
+class MetaxFlashAttentionMetadataBuilder(FlashAttentionMetadataBuilder):
 
     def __init__(self, runner: "GPUModelRunner"):
-        model_config = runner.model_config
-
-        self.runner = runner
-        self.aot_schedule = (get_flash_attn_version() == 3)
-        self.num_heads_q = model_config.get_num_attention_heads(
-            runner.parallel_config)
-        self.num_heads_kv = model_config.get_num_kv_heads(
-            runner.parallel_config)
-        self.headdim = model_config.get_head_size()
-        self.page_size = self.runner.block_size
+        super().__init__(runner)
+        self.aot_schedule = False
 
         # Sliding window size to be used with the AOT scheduler will be
         # populated on first build() call.
@@ -351,7 +345,7 @@ class MetaxFlashAttentionMetadataBuilder:
     def use_cascade_attention(self, *args, **kwargs) -> bool:
         return use_cascade_attention(*args, **kwargs)
 
-class MetaxFlashAttentionImpl():
+class MetaxFlashAttentionImpl(FlashAttentionImpl):
 
     def __init__(
         self,
@@ -367,6 +361,12 @@ class MetaxFlashAttentionImpl():
         attn_type: AttentionType = AttentionType.DECODER,
         use_irope: bool = False,
     ) -> None:
+        # super().__init__(num_heads=num_heads, head_size=head_size, scale=scale,
+        #                  num_kv_heads=num_kv_heads, alibi_slopes=alibi_slopes,
+        #                  sliding_window=sliding_window, kv_cache_dtype=kv_cache_dtype,
+        #                  blocksparse_params=blocksparse_params,logits_soft_cap=logits_soft_cap,
+        #                  attn_type=attn_type, use_irope=use_irope)
+
         if blocksparse_params is not None:
             raise ValueError(
                 "FlashAttention does not support block-sparse attention.")

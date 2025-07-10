@@ -18,7 +18,9 @@ from typing import Optional
 from vllm import envs
 from torch.nn.parameter import Parameter, UninitializedParameter
 from vllm.model_executor.layers.utils import dispatch_unquantized_gemm
-from vllm.model_executor.layers.linear import LinearMethodBase, adjust_marlin_shard, adjust_bitblas_shard, adjust_bitsandbytes_4bit_shard
+from vllm.model_executor.layers.linear import (LinearMethodBase,
+    UnquantizedLinearMethod, adjust_marlin_shard,
+    adjust_bitblas_shard, adjust_bitsandbytes_4bit_shard)
 from vllm.model_executor.utils import set_weight_attrs
 
 def adjust_scalar_to_fused_array(param, loaded_weight, shard_id):
@@ -47,38 +49,36 @@ def adjust_scalar_to_fused_array(param, loaded_weight, shard_id):
     else:
         return param[shard_id], loaded_weight
     
-class UnquantizedLinearMethod(LinearMethodBase):
-    """Linear method without quantization."""
 
-    def create_weights(self, layer: torch.nn.Module,
-                       input_size_per_partition: int,
-                       output_partition_sizes: list[int], input_size: int,
-                       output_size: int, params_dtype: torch.dtype,
-                       **extra_weight_attrs):
-        # Support gemm_tn->gemm_nn here
-        if envs.MACA_VLLM_USE_TN_2_NN:
-            weight = Parameter(torch.empty(input_size_per_partition,
-                                       sum(output_partition_sizes),
-                                       dtype=params_dtype),
-                           requires_grad=False)
-        else:
-            weight = Parameter(torch.empty(sum(output_partition_sizes),
-                                           input_size_per_partition,
-                                           dtype=params_dtype),
-                           requires_grad=False)
-        set_weight_attrs(weight, {"input_dim": 1, "output_dim": 0})
-        layer.register_parameter("weight", weight)
-        set_weight_attrs(weight, extra_weight_attrs)
+def UnquantizedLinearMethod_create_weights(self, layer: torch.nn.Module,
+                    input_size_per_partition: int,
+                    output_partition_sizes: list[int], input_size: int,
+                    output_size: int, params_dtype: torch.dtype,
+                    **extra_weight_attrs):
+    # Support gemm_tn->gemm_nn here
+    if envs.MACA_VLLM_USE_TN_2_NN:
+        weight = Parameter(torch.empty(input_size_per_partition,
+                                    sum(output_partition_sizes),
+                                    dtype=params_dtype),
+                        requires_grad=False)
+    else:
+        weight = Parameter(torch.empty(sum(output_partition_sizes),
+                                        input_size_per_partition,
+                                        dtype=params_dtype),
+                        requires_grad=False)
+    set_weight_attrs(weight, {"input_dim": 1, "output_dim": 0})
+    layer.register_parameter("weight", weight)
+    set_weight_attrs(weight, extra_weight_attrs)
 
-    def apply(self,
-              layer: torch.nn.Module,
-              x: torch.Tensor,
-              bias: Optional[torch.Tensor] = None) -> torch.Tensor:
-        # Support gemm_tn->gemm_nn here
-        if envs.MACA_VLLM_USE_TN_2_NN and x.shape[-1] == layer.weight.shape[0]:
-            return dispatch_unquantized_gemm()(x, layer.weight.t(), bias)
-        else:
-            return dispatch_unquantized_gemm()(x, layer.weight, bias)
+def UnquantizedLinearMethod_apply(self,
+            layer: torch.nn.Module,
+            x: torch.Tensor,
+            bias: Optional[torch.Tensor] = None) -> torch.Tensor:
+    # Support gemm_tn->gemm_nn here
+    if envs.MACA_VLLM_USE_TN_2_NN and x.shape[-1] == layer.weight.shape[0]:
+        return dispatch_unquantized_gemm()(x, layer.weight.t(), bias)
+    else:
+        return dispatch_unquantized_gemm()(x, layer.weight, bias)
         
 def ReplicatedLinear_weight_loader(self, param: Parameter, loaded_weight: torch.Tensor):
     # If the weight on disk does not have a shape, give it one
@@ -568,7 +568,8 @@ def RowParallelLinear_weight_loader(self, param: Parameter, loaded_weight: torch
     param_data.copy_(loaded_weight)
     
 vllm.model_executor.layers.linear.adjust_scalar_to_fused_array = adjust_scalar_to_fused_array
-vllm.model_executor.layers.linear.UnquantizedLinearMethod = UnquantizedLinearMethod
+vllm.model_executor.layers.linear.UnquantizedLinearMethod.create_weights = UnquantizedLinearMethod_create_weights
+vllm.model_executor.layers.linear.UnquantizedLinearMethod.apply = UnquantizedLinearMethod_apply
 vllm.model_executor.layers.linear.ReplicatedLinear.weight_loader = ReplicatedLinear_weight_loader
 vllm.model_executor.layers.linear.ColumnParallelLinear.weight_loader = ColumnParallelLinear_weight_loader
 vllm.model_executor.layers.linear.MergedColumnParallelLinear.weight_loader = MergedColumnParallelLinear_weight_loader
@@ -576,11 +577,12 @@ vllm.model_executor.layers.linear.QKVParallelLinear.weight_loader = QKVParallelL
 vllm.model_executor.layers.linear.RowParallelLinear.weight_loader = RowParallelLinear_weight_loader
 
 register_patch("vllm.model_executor.layers.linear", "adjust_scalar_to_fused_array", adjust_scalar_to_fused_array)
+register_patch("vllm.model_executor.layers.linear", "UnquantizedLinearMethod.create_weights", UnquantizedLinearMethod_create_weights)
+register_patch("vllm.model_executor.layers.linear", "UnquantizedLinearMethod.apply", UnquantizedLinearMethod_apply)
 register_patch("vllm.model_executor.layers.linear", "ReplicatedLinear.weight_loader", ReplicatedLinear_weight_loader)
 register_patch("vllm.model_executor.layers.linear", "ColumnParallelLinear.weight_loader", ColumnParallelLinear_weight_loader)
 register_patch("vllm.model_executor.layers.linear", "MergedColumnParallelLinear.weight_loader", MergedColumnParallelLinear_weight_loader)
 register_patch("vllm.model_executor.layers.linear", "QKVParallelLinear.weight_loader", QKVParallelLinear_weight_loader)
 register_patch("vllm.model_executor.layers.linear", "RowParallelLinear.weight_loader", RowParallelLinear_weight_loader)
-register_patch("vllm.model_executor.layers.linear", "UnquantizedLinearMethod", UnquantizedLinearMethod)
 
 

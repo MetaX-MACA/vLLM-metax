@@ -251,6 +251,24 @@ def rms_norm_dynamic_per_token_quant(
                                                   residual)
     return output, scales
 
+def rms_norm_dynamic_per_token_quant_custom(
+    input: torch.Tensor,
+    weight: torch.Tensor,
+    epsilon: float,
+    quant_dtype: torch.dtype,
+    scale_ub: Optional[torch.Tensor] = None,
+    residual: Optional[torch.Tensor] = None
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    output = torch.empty_like(input, dtype=quant_dtype)
+    output_bf16 = torch.zeros_like(input, dtype=input.dtype)
+    scales = torch.empty((input.numel() // input.shape[-1], 1),
+                         device=input.device,
+                         dtype=torch.float32)
+
+    torch.ops._C.rms_norm_dynamic_per_token_quant_custom(output, output_bf16, input, weight,
+                                                  scales, epsilon, scale_ub,
+                                                  residual)
+    return output, output_bf16, scales
 
 # quantization ops
 # awq
@@ -1138,6 +1156,76 @@ def scaled_int8_quant(
                                            input_azp)
     return output, input_scales, input_azp
 
+def scaled_int8_quant_mask(
+    input: torch.Tensor,
+    mask:  torch.Tensor,
+    scale: Optional[torch.Tensor] = None,
+    azp: Optional[torch.Tensor] = None,
+    symmetric: bool = True
+) -> tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+    """
+    Quantize the input tensor to int8 and return the quantized tensor and scale, and maybe azp.
+
+    Args:
+        input: The input tensor to be quantized to int8.
+        scale: Optional scaling factor for the int8 quantization.
+            When not provided, we invoke dynamic-per-token quantization.
+        azp: Optional zero-point for the int8 quantization.
+            Must be provided for asymmetric quantization if `scale` is provided.
+        mask: mask
+        symmetric: Whether to use symmetric quantization (scale only, azp ignored).
+
+    Returns:
+      Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]] : Output int8 tensor, scales, and optionally azp.
+    """
+    output = torch.empty_like(input, dtype=torch.int8)
+    if scale is not None:
+        # static-per-tensor quantization.
+        assert symmetric == (
+            azp
+            is None), "azp must only be provided for asymmetric quantization."
+        torch.ops._C.static_scaled_int8_quant(output, input, scale, azp)
+        return output, scale, azp
+
+    # dynamic-per-token quantization.
+    input_scales = torch.empty((input.numel() // input.shape[-1], 1),
+                               device=input.device,
+                               dtype=torch.float32)
+    input_azp = None if symmetric else torch.empty_like(input_scales,
+                                                        dtype=torch.int32)
+    torch.ops._C.dynamic_scaled_int8_mask_quant(output, input, mask, input_scales,
+                                           input_azp)
+    return output, input_scales, input_azp
+
+def fused_silu_mul_dq_mask_quant(
+    input: torch.Tensor,
+    mask:  torch.Tensor
+) -> torch.Tensor:
+    """
+    input shape [expert_num, token_num_padded, hidden_dim]
+    output shape [expert_num, token_num_padded, hidden_dim // 2], dtype bf16
+    masked_m shape [expert_num], indicates valid tokens per expert
+
+    implement silu_and_mul + quant + package
+    """
+    out_stride = (input.shape[-1] // 4 + 257) // 256 * 256
+    output = torch.empty((input.shape[0], input.shape[1], out_stride), device=input.device, dtype=input.dtype)
+    torch.ops._C.fused_silu_mul_dq_mask_quant_pack(output, input, mask)
+    return output
+
+def fused_silu_mul_dq_quant(
+    input: torch.Tensor,
+) -> torch.Tensor:
+    """
+    input shape [token_num, hidden_dim]
+    output shape [token_num, hidden_dim // 2], dtype bf16
+    scale [toekn_nm] , dtype float
+    implement silu_and_mul + quant
+    """
+    output = torch.empty((input.shape[0], input.shape[1] // 2), device=input.device, dtype=torch.int8)
+    scale = torch.empty((input.shape[0],1), device=input.device, dtype=torch.float32)
+    torch.ops._C.fused_silu_mul_dq_quant_interface(output, scale, input)
+    return output, scale
 
 # qqq ops
 def marlin_qqq_gemm(a: torch.Tensor, b_q_weight: torch.Tensor,

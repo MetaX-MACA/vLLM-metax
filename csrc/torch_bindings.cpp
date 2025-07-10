@@ -185,6 +185,14 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
   ops.impl("rms_norm_dynamic_per_token_quant", torch::kCUDA,
            &rms_norm_dynamic_per_token_quant);
 
+  // Compared with rms_norm_dynamic_per_token_quant, this function add a bf16 out
+  ops.def(
+      "rms_norm_dynamic_per_token_quant_custom(Tensor! result, Tensor! result_bf16, Tensor input, "
+      "Tensor weight, Tensor! scale, float epsilon, "
+      "Tensor? scale_ub, Tensor!? residual) -> ()");
+  ops.impl("rms_norm_dynamic_per_token_quant_custom", torch::kCUDA,
+           &rms_norm_dynamic_per_token_quant_custom);
+
   // Rotary embedding
   // Apply GPT-NeoX or GPT-J style rotary embedding to query and key.
   ops.def(
@@ -570,6 +578,23 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
       "Tensor!? azp) -> ()");
   ops.impl("dynamic_scaled_int8_quant", torch::kCUDA,
            &dynamic_scaled_int8_quant);
+
+  ops.def(
+      "dynamic_scaled_int8_mask_quant(Tensor! result, Tensor input, Tensor mask, Tensor! scale, "
+      "Tensor!? azp) -> ()");
+  ops.impl("dynamic_scaled_int8_mask_quant", torch::kCUDA,
+           &dynamic_scaled_int8_mask_quant);
+
+  ops.def(
+    "fused_silu_mul_dq_mask_quant_pack(Tensor! out, "
+    "Tensor input,"
+    "Tensor mask) -> ()");
+  ops.impl("fused_silu_mul_dq_mask_quant_pack", torch::kCUDA, &fused_silu_mul_dq_mask_quant_pack);
+
+  ops.def(
+    "fused_silu_mul_dq_quant_interface(Tensor! out, Tensor! scale,"
+    "Tensor input) -> ()");
+  ops.impl("fused_silu_mul_dq_quant_interface", torch::kCUDA, &fused_silu_mul_dq_quant_interface);
 
 #ifndef USE_ROCM
   // reorder weight for AllSpark Ampere W8A16 Fused Gemm kernel

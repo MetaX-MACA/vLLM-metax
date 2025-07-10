@@ -25,6 +25,7 @@ from . import device_allocator
 from . import attention
 from . import model_executor
 from . import worker
+from . import engine
 from . import after_all
 
 from .hooks import install_hooks

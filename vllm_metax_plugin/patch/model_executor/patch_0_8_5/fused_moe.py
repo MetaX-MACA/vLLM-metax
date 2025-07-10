@@ -356,17 +356,17 @@ def fused_moe_kernel_gptq_awq(
 
 @triton.heuristics(
     {
-        "UPGRADE": lambda args: math.ceil((args["EM"] * args["N"]) / (args["BLOCK_SIZE_M"] * args["BLOCK_SIZE_N"])).bit_length() > 32,
+        "UPGRADE": lambda args: math.ceil((args["EM"] * args["N"]) / (args["BLOCK_SIZE_M"] * args["BLOCK_SIZE_N"])).bit_length() > 31,
     }
 )
 @triton.heuristics(
     {
-        "UPGRADE_A_OFFS": lambda args: (args["num_valid_tokens"] // args["top_k"] * args["stride_am"] + args["BLOCK_SIZE_K"] * args["stride_ak"]).bit_length() > 32,
+        "UPGRADE_A_OFFS": lambda args: (args["num_valid_tokens"] // args["top_k"] * args["stride_am"] + args["BLOCK_SIZE_K"] * args["stride_ak"]).bit_length() > 31,
     }
 )
 @triton.heuristics(
     {
-        "UPGRADE_B_OFFS": lambda args: (args["experts_num"] * args["stride_be"] + args["BLOCK_SIZE_K"] * args["stride_bk"] + args["N"] * args["stride_bn"]).bit_length() > 32,
+        "UPGRADE_B_OFFS": lambda args: ((args["E"]-1) * args["stride_be"] + (args["N"]-1) * args["stride_bn"]+(args["K"]-1) * args["stride_bk"]).bit_length() > 31,
     }
 )
 @triton.jit
@@ -382,6 +382,7 @@ def fused_moe_kernel(
         expert_ids_ptr,
         num_tokens_post_padded_ptr,
         # Matrix dimensions
+        E,          # B.shape[0]
         N,
         K,
         EM,
@@ -414,7 +415,6 @@ def fused_moe_kernel(
         ACCF32: tl.constexpr,
         MUL_ROUTED_WEIGHT: tl.constexpr,
         top_k: tl.constexpr,
-        experts_num: tl.constexpr,
         compute_type: tl.constexpr,
         use_fp8_w8a8: tl.constexpr,
         use_int8_w8a8: tl.constexpr,
@@ -422,7 +422,8 @@ def fused_moe_kernel(
         per_channel_quant: tl.constexpr,
         UPGRADE: tl.constexpr,
         UPGRADE_A_OFFS: tl.constexpr,
-        UPGRADE_B_OFFS: tl.constexpr
+        UPGRADE_B_OFFS: tl.constexpr,
+        FAST_F32_TO_BF16: tl.constexpr
 ):
     """
     Implements the fused computation for a Mixture of Experts (MOE) using
@@ -603,7 +604,10 @@ def fused_moe_kernel(
         accumulator = accumulator.to(tl.float32)
         accumulator = (accumulator * a_scale * b_scale)
         if not ACCF32:
-            accumulator = accumulator.to(compute_type)
+            if FAST_F32_TO_BF16:
+                accumulator = accumulator.to(compute_type, "rtne_no_nan")
+            else:
+                accumulator = accumulator.to(compute_type)
     elif use_fp8_w8a8:
         if group_k > 0 and group_n > 0:
             accumulator = accumulator.to(compute_type)
@@ -749,6 +753,7 @@ def invoke_fused_moe_kernel(A: torch.Tensor,
             sorted_token_ids,
             expert_ids,
             num_tokens_post_padded,
+            B.shape[0],
             B.shape[1],
             B.shape[2],
             EM,
@@ -769,13 +774,13 @@ def invoke_fused_moe_kernel(A: torch.Tensor,
             0 if block_shape is None else block_shape[1],
             MUL_ROUTED_WEIGHT=mul_routed_weight,
             top_k=top_k,
-            experts_num=expert_ids.shape[0],
             compute_type=compute_type,
             use_fp8_w8a8=use_fp8_w8a8,
             use_int8_w8a8=use_int8_w8a8,
             use_int8_w8a16=use_int8_w8a16,
             per_channel_quant=per_channel_quant,
             BLOCK_SIZE_K=BLOCK_SIZE_K,
+            FAST_F32_TO_BF16 = True,
             **config,
         )
     if config["ACCF32"]:
@@ -916,7 +921,7 @@ def fused_experts_impl(hidden_states: torch.Tensor,
     if 'SPLIT_K' not in stage1_config:
         stage1_config['SPLIT_K'] = 1
     if 'SPLIT_K' not in stage2_config:
-        stage2_config['SPLIT_K'] = 1    
+        stage2_config['SPLIT_K'] = 1
 
     if stage1_config['ACCF32']:
        acc_type1 = torch.float32
@@ -1051,6 +1056,10 @@ def fused_experts_impl(hidden_states: torch.Tensor,
                                 curr_topk_weights, curr_topk_ids, sorted_token_ids,
                                 expert_ids, num_tokens_post_padded, True, 1, 0)
         else:
+            if stage2_config['BLOCK_SIZE_M'] != stage1_config['BLOCK_SIZE_M']:
+                sorted_token_ids, expert_ids, num_tokens_post_padded = (
+                moe_align_block_size(curr_topk_ids, stage2_config['BLOCK_SIZE_M'], global_num_experts, expert_map))
+
             qintermediate_cache2, qa2_scale = moe_kernel_prepare_input(
                                     A=intermediate_cache2,
                                     B=w2,

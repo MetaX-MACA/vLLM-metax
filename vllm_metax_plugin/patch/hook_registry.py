@@ -144,6 +144,7 @@ def _apply_single_patch(module: types.ModuleType, module_name: str,
         logger.debug(f"Applied patch: {module_name}.{path} -> {replacement}")
     except AttributeError as e:
         logger.error(f"Patch application failed: {e}")
+        logger.error(f"{module}.{path} -> {replacement}")
         
 
 def apply_patches_to_module(module: types.ModuleType, module_name: str):

@@ -267,6 +267,7 @@ set(VLLM_EXT_SRC
   "csrc/quantization/compressed_tensors/int8_quant_kernels.cu"
   "csrc/quantization/fp8/common.cu"
   "csrc/quantization/fused_kernels/fused_layernorm_dynamic_per_token_quant.cu"
+  "csrc/quantization/fused_kernels/fused_layernorm_dynamic_per_token_quant_custom.cu"
   "csrc/quantization/gguf/gguf_kernel.cu"
   "csrc/cuda_utils_kernels.cu"
   "csrc/prepare_inputs/advance_step.cu"
@@ -343,7 +344,13 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
     PROPERTIES
     COMPILE_FLAGS " -mllvm -metaxgpu-igroup=true -mllvm -metaxgpu-igroup-config=B8 -maxmregcount=128"
   )
-    
+
+  # support opt of cutlass w8a8 scale mm
+  set_source_files_properties(
+    "csrc/quantization/cutlass_w8a8/scaled_mm_entry.cu"
+    PROPERTIES
+    COMPILE_FLAGS " -mllvm -metaxgpu-igroup=true -mllvm -misched-postra=true"
+  )
 
   # Only build Marlin kernels if we are building for at least some compatible archs.
   # Keep building Marlin for 9.0 as there are some group sizes and shapes that
@@ -462,6 +469,13 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
       CUDA_ARCHS "${SCALED_MM_2X_ARCHS}")
     list(APPEND VLLM_EXT_SRC "${SRCS}")
     list(APPEND VLLM_GPU_FLAGS "-DENABLE_SCALED_MM_C2X=1")
+
+    # support opt of cutlass w8a8 scale mm
+    set_source_files_properties(
+      "csrc/quantization/cutlass_w8a8/scaled_mm_c2x.cu"
+      PROPERTIES
+      COMPILE_FLAGS " -mllvm -metaxgpu-igroup=true -mllvm -misched-postra=true"
+    )
     message(STATUS "Building scaled_mm_c2x for archs: ${SCALED_MM_2X_ARCHS}")
   else()
     if (SCALED_MM_3X_ARCHS)
