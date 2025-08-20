@@ -1,4 +1,3 @@
-// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
 #pragma once
 
 #include <cuda.h>
@@ -162,21 +161,21 @@ DINLINE O downcast(array_t<float, O::size> val) {
 #if !defined(USE_ROCM)
 
 static DINLINE void st_flag_release(FlagType* flag_addr, FlagType flag) {
-#ifndef USE_MACA
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
+  #ifndef USE_MACA
+  #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
   asm volatile("st.release.sys.global.u32 [%1], %0;" ::"r"(flag),
                "l"(flag_addr));
   #else
   asm volatile("membar.sys; st.volatile.global.u32 [%1], %0;" ::"r"(flag),
                "l"(flag_addr));
-#endif
-#endif // USE_MACA 
+  #endif
+  #endif // USE_MACA
 }
 
 static DINLINE FlagType ld_flag_acquire(FlagType* flag_addr) {
   FlagType flag;
-#ifndef USE_MACA
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
+  #ifndef USE_MACA
+  #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
   asm volatile("ld.acquire.sys.global.u32 %0, [%1];"
                : "=r"(flag)
                : "l"(flag_addr));
@@ -184,8 +183,8 @@ static DINLINE FlagType ld_flag_acquire(FlagType* flag_addr) {
   asm volatile("ld.volatile.global.u32 %0, [%1]; membar.gl;"
                : "=r"(flag)
                : "l"(flag_addr));
-#endif
-#endif // USE_MACA
+  #endif
+  #endif // USE_MACA
   return flag;
 }
 

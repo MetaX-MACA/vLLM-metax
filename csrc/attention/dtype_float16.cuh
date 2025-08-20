@@ -1,6 +1,4 @@
 /*
- * 2024 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
- *
  * Adapted from
  * https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/kernels/decoder_masked_multihead_attention/decoder_masked_multihead_attention_template.hpp
  * and
@@ -25,6 +23,7 @@
 #include "attention_generic.cuh"
 #include "dtype_float32.cuh"
 #include "cuda_fp16.h"
+
 #ifdef USE_ROCM
   #include <hip/hip_fp16.h>
 #endif

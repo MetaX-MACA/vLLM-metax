@@ -28,7 +28,7 @@ namespace vllm {
 
 // Q*K^T operation.
 template <int THREAD_GROUP_SIZE, typename Vec, int N>
-__forceinline__ __device__ float qk_dot_(const Vec (&q)[N], const Vec (&k)[N]) {
+inline __device__ float qk_dot_(const Vec (&q)[N], const Vec (&k)[N]) {
   using A_vec = typename FloatVec<Vec>::Type;
   // Compute the parallel products for Q*K^T (treat vector lanes separately).
   A_vec qk_vec = mul<A_vec, Vec, Vec>(q[0], k[0]);
@@ -49,7 +49,7 @@ __forceinline__ __device__ float qk_dot_(const Vec (&q)[N], const Vec (&k)[N]) {
 template <typename T, int THREAD_GROUP_SIZE>
 struct Qk_dot {
   template <typename Vec, int N>
-  static __forceinline__ __device__ float dot(const Vec (&q)[N], const Vec (&k)[N]) {
+  static inline __device__ float dot(const Vec (&q)[N], const Vec (&k)[N]) {
     return qk_dot_<THREAD_GROUP_SIZE>(q, k);
   }
 };

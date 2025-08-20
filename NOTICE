@@ -1,7 +1,7 @@
 The vLLM-metax project is modified from vLLM(https://github.com/vllm-project/vllm).
 Please see the LICENSE for the license for this project.
 
-The vllm_metax_plugin/third_party/pymcml.py is modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. ("MetaX"),
+The vllm_metax/third_party/pymcml.py is modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. ("MetaX"),
 based on vllm/third_party/pynvml.py. 
 We have retained the original BSD license and copyright notice, as well as the Apache license of vLLM at the top of the file.
 

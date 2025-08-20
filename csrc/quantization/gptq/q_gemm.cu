@@ -1,4 +1,3 @@
-// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
 /*
 Adapted from https://github.com/turboderp/exllamav2 and
 https://github.com/qwopqwop200/GPTQ-for-LLaMa

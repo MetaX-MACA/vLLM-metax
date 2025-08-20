@@ -229,6 +229,9 @@ __device__ __forceinline__ T gelu_tanh_kernel(const T& x) {
   } else {                                                                                  \
   dim3 grid(num_tokens);                                                 \
   dim3 block(std::min(d, 1024));                                         \
+  if (num_tokens == 0) {                                                 \
+    return;                                                              \
+  }                                                                      \
   const at::cuda::OptionalCUDAGuard device_guard(device_of(input));      \
   const cudaStream_t stream = at::cuda::getCurrentCUDAStream();          \
   VLLM_DISPATCH_FLOATING_TYPES(                                          \

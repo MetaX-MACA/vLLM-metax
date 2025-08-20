@@ -52,7 +52,7 @@ htmlcov/
 *.local 
 
 # Release info
-*/_release_info.txt
+*/_version.py
 
 # Metax
 core

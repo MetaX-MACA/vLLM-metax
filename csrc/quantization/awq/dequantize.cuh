@@ -1,4 +1,3 @@
-// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
 /*
 Adapted from https://github.com/mit-han-lab/llm-awq
 Modified from NVIDIA FasterTransformer:
@@ -41,7 +40,7 @@ __device__ uint4 dequantize_s4_to_fp16x2(uint32_t const& source) {
   // Shift right by 8 to now consider elt_45 and elt_67. Issue first to hide RAW
   // dependency if we issue immediately before required.
   const uint32_t top_i4s = i4s >> 8;
-  #ifndef USE_MACA
+#ifndef USE_MACA
   // Extract elt_01 - (i4s & 0x000f000f) | 0x64006400
   asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
                : "=r"(h[0])
@@ -137,7 +136,7 @@ if((immLut)&0x80)(h[3])|= (top_i4s)& (TOP_MASK)& (I4s_TO_F16s_MAGIC_NUM);
 
   // Finally, we construct the output numbers.
   // Convert elt_01
-  #ifndef USE_MACA
+#ifndef USE_MACA
   asm volatile("sub.f16x2 %0, %1, %2;\n"
                : "=r"(h[0])
                : "r"(h[0]), "r"(FP16_TOP_MAGIC_NUM));

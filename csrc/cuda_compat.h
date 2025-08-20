@@ -47,16 +47,3 @@
   #define VLLM_DevFuncAttribute_SET_MaxDynamicSharedMemorySize(FUNC, VAL) \
     hipFuncSetAttribute(FUNC, hipFuncAttributeMaxDynamicSharedMemorySize, VAL)
 #endif
-
-#define MXWARP_SIZE 64
-#ifndef USE_ROCM
-  #define MXVLLM_SHFL_SYNC(var, src_lane) __shfl_sync(uint64_t(-1), var, src_lane)
-#else
-  #define MXVLLM_SHFL_SYNC(var, src_lane) __shfl(var, src_lane)
-#endif
-
-#ifndef USE_ROCM
-  #define MXVLLM_SHFL_XOR_SYNC(var, lane_mask) __shfl_xor_sync(uint64_t(-1), var, lane_mask)
-#else
-  #define MXVLLM_SHFL_XOR_SYNC(var, lane_mask) __shfl_xor(var, lane_mask)
-#endif

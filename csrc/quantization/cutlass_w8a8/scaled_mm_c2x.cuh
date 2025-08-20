@@ -1,4 +1,3 @@
-// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
 #pragma once
 #include <stddef.h>
 #include <torch/all.h>
@@ -31,7 +30,6 @@
 #include "mctlass/util/command_line.h"
 #endif // USE_MACA
 
-
 #include "core/math.hpp"
 #include "cutlass_extensions/common.hpp"
 // clang-format on
@@ -63,7 +61,9 @@ struct enable_sm75_to_sm80 : Kernel {
 #endif
   }
 };
+#endif // USE_MACA
 
+#ifndef USE_MACA
 template <typename Kernel>
 struct enable_sm80_to_sm89 : Kernel {
   template <typename... Args>
@@ -83,9 +83,6 @@ struct enable_sm89_to_sm90 : Kernel {
 #endif
   }
 };
-#endif // USE_MACA
-
-#ifndef USE_MACA
 template <typename Arch, template <typename> typename ArchGuard,
           typename ElementAB_, typename ElementD_,
           template <typename, typename> typename Epilogue_, typename TileShape,

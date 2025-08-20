@@ -184,7 +184,7 @@ __global__ void __launch_bounds__(64)
       // - zero and * scale
       // TODO (Haotian): can save 4 assembly instructions if sormulate as deq =
       // q * scale - zero * scale.
-#ifdef MX_MACA
+#ifndef USE_MACA
       asm volatile("sub.f16x2 %0, %1, %2;\n"
                    : "=r"(B_loaded_fp16.x)
                    : "r"(B_loaded_fp16.x), "r"(B_loaded_zero.x));
@@ -226,7 +226,7 @@ __global__ void __launch_bounds__(64)
     for (int k_0_1 = 0; k_0_1 < 2; ++k_0_1) {
       {
         unsigned int addr;
-#ifdef MX_MACA
+#ifndef USE_MACA
         __asm__ __volatile__(
             "{ .reg .u64 addr; cvta.to.shared.u64 addr, %1; cvt.u32.u64 %0, "
             "addr; }\n"
@@ -249,7 +249,7 @@ __global__ void __launch_bounds__(64)
       for (int ax1_0 = 0; ax1_0 < N / 32; ++ax1_0) {
         {
           unsigned int addr;
-#ifdef MX_MACA
+#ifndef USE_MACA
           __asm__ __volatile__(
               "{ .reg .u64 addr; cvta.to.shared.u64 addr, %1; cvt.u32.u64 %0, "
               "addr; }\n"
@@ -271,7 +271,7 @@ __global__ void __launch_bounds__(64)
         }
       }
       for (int j_0_4 = 0; j_0_4 < N / 32; ++j_0_4) {
-#ifdef MX_MACA
+#ifndef USE_MACA
   #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 750
         {
           __asm__ __volatile__(
@@ -436,7 +436,7 @@ __global__ void __launch_bounds__(64)
 #else
   uint4 B_loaded_zero = dequantize_s4_to_fp16x2<VT>(zeros_loaded);
   uint4 B_loaded_fp16 = dequantize_s4_to_fp16x2<VT>(B_loaded);
-#ifdef MX_MACA
+#ifndef USE_MACA
   asm volatile("sub.f16x2 %0, %1, %2;\n"
                : "=r"(B_loaded_fp16.x)
                : "r"(B_loaded_fp16.x), "r"(B_loaded_zero.x));
@@ -462,7 +462,7 @@ __global__ void __launch_bounds__(64)
                : "=r"(B_loaded_fp16.w)
                : "r"(B_loaded_fp16.w), "r"(B_loaded_scale.w), "r"(ZERO));
 #else
-     // >>>> PTX2CPP Success <<<<
+// >>>> PTX2CPP Success <<<<
 {
 {
 unsigned int __a=(B_loaded_fp16.x);
@@ -544,10 +544,11 @@ VT __d=__hfma2(*(VT*)&__a,*(VT*)&__b,*(VT*)&__c);
 (B_loaded_fp16.w)=*(unsigned int*)&__d;
 }
 }
-*(uint4*)B_shared_ptr2 = B_loaded_fp16;
+
 #endif
+  *(uint4*)B_shared_ptr2 = B_loaded_fp16;
 #endif
-  
+
   for (int i = 0; i < 8; ++i) {
     *(C_ptr2 + i) = B_shared[i];
   }
@@ -578,157 +579,6 @@ __global__ void dequantize_weights_opt(int* __restrict__ B, T* __restrict__ scal
     hgemm_marlin_gptq::awq_dequant_4bits<T>(B_loaded,B_shared, B_loaded_scale, zeros_loaded);
     *(float4*)(ptr_C) = *(float4*)(B_shared);
 }
-
-
-#if 0
-template <typename dstT, typename srcT, typename scalarT>
-__global__ void blasMemcpy(dstT *dst, const srcT *src, size_t cnt, scalarT beta) {
-    size_t threads = gridDim.x * blockDim.x;
-    size_t itemsPerThread = (cnt + threads - 1) / threads;
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    for (size_t loop = 0; loop < itemsPerThread && loop * threads + tid < cnt; ++loop) {
-        dst[loop * threads + tid] =
-            static_cast<double>(beta) * static_cast<double>(src[loop * threads + tid]);
-    }
-}
-
-#define SWITCH_CASE_BATCH(BlockDimX, SplitK, BATCH) \
-    case BATCH: {                                   \
-        CALL_GEMM(BlockDimX, SplitK, BATCH)         \
-        break;                                      \
-    }
-
-#define APPLY_HGEMM_BATCH(BlockDimX, SplitK, BATCH) \
-    switch(BATCH) {                                 \
-        SWITCH_CASE_BATCH(BlockDimX, SplitK, 1)           \
-        SWITCH_CASE_BATCH(BlockDimX, SplitK, 2)           \
-        SWITCH_CASE_BATCH(BlockDimX, SplitK, 3)           \
-        SWITCH_CASE_BATCH(BlockDimX, SplitK, 4)           \
-        default: {                                          \
-            launched = false;                               \
-            printf("ERROR: Unsupported BATCH %d\n", BATCH); \
-            break;                                          \
-        }                                                   \
-    }
-
-#define SWITCH_CASE_BlockDimX(BlockDimX, SplitK, BATCH) \
-    case BlockDimX: {                                   \
-        APPLY_HGEMM_BATCH(BlockDimX, SplitK, BATCH)    \
-        break;                                          \
-    }
-
-#define APPLY_HGEMM(BlockDimX, SplitK, BATCH)           \
-    switch (BlockDimX) {                                \
-        SWITCH_CASE_BlockDimX(16, SplitK, BATCH)        \
-        SWITCH_CASE_BlockDimX(32, SplitK, BATCH)        \
-        SWITCH_CASE_BlockDimX(64, SplitK, BATCH)        \
-        SWITCH_CASE_BlockDimX(128, SplitK, BATCH)       \
-        SWITCH_CASE_BlockDimX(256, SplitK, BATCH)       \
-        default: {                                                  \
-            launched = false;                                       \
-            printf("ERROR: Unsupported BlockDimX %d\n", BlockDimX); \
-            break;                                                  \
-        }                                                           \
-    }
-
-bool call_kernel(const half *srcB,
-    const quant_packed_type *srcA,
-    quant_packed_type *zeros, half *scales,
-    half* dst_D,
-    int m, int n, int k, int srcStride, int dstStride,
-    int block_x, int split_k,
-    const int* b_perm_D = nullptr) {
-    //constexpr int PACK_RATIO = 8;
-    constexpr int ThreadBlock = 256;
-    const dim3 threadBlock = {static_cast<unsigned int>(ThreadBlock)};
-    const dim3 gridBlock = {static_cast<unsigned int>((m + 8*block_x-1) / 8 / block_x), static_cast<unsigned int>(split_k)};
-    const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-    if (split_k * QUANT_GROUP > k || k % QUANT_GROUP != 0) return false;
-    if (block_x < 16 || n > 4) return false;
-    bool launched = true;
-    #define CALL_GEMM(BX, SK, N) \
-        if (SK * 128 == k) {   \
-            hgemv_nn_splitk_awq_kb128<BX, N><<<gridBlock, threadBlock, 0, stream>>>( \
-                srcB, srcA, zeros, scales, dst_D, m, n, k, srcStride, dstStride, k/SK, b_perm_D); \
-        } else { \
-            hgemv_nn_splitk_awq<256, BX, N><<<gridBlock, threadBlock, 0, stream>>>( \
-                srcB, srcA, zeros, scales, dst_D, m, n, k, srcStride, dstStride, k/SK, b_perm_D); \
-        }
-    APPLY_HGEMM(block_x, split_k, n);
-    return launched;
-}
-
-void launch_gemm_awq(Operation_t trans_a,
-                      Operation_t trans_b,
-                      int m,
-                      int n,
-                      int k,
-                      const float alpha,
-                      const float beta,
-                      const uint32_t* dA,
-                      int lda,
-                      const half* dB,
-                      int ldb,
-                      half* dC,
-                      int ldc,
-                      uint32_t* d_zeros,
-                      half* d_scales,
-                      float* space_mid,
-                      cudaStream_t stream,
-                      int splitk_iters = 1) {
-    if (n <= 4) {
-            constexpr int thread_block = 256;
-            constexpr int m_per_thread = 8;
-            auto kernel_testing = [&](int bx, int sk) -> bool {
-                return call_kernel(dB, dA, d_zeros, d_scales, dC, m, n, k, m, m, bx, sk);
-            };
-            //Select parameters when warmup
-            auto& sl_warmup = hgemv_selector::GemvSelectorHolder<QUANT_GROUP,8,m_per_thread>::selector(m, n, k, true);
-            if (sl_warmup.valid()) {
-                sl_warmup.run(kernel_testing);
-            }
-    }
-    else {
-            const int threads_n = 256;
-            const int tileM = 128;
-            const int tileN = 32;
-            const int tileK = 128;
-
-            bool isSplitk = splitk_iters > 1;
-
-            uint32_t gridx = (m - 1) / tileM + 1;
-            uint32_t gridy = (n - 1) / tileN + 1;
-            uint32_t gridz = splitk_iters;
-
-            dim3 dimBlock(threads_n, 1, 1);
-            dim3 dimGrid(gridx, gridy, gridz);
-            bool isBetaZero = (beta == 0.0);
-
-            if (trans_a == OP_N && trans_b == OP_N && m % 8 == 0 && k % 8 == 0) {
-                if (!isSplitk) {
-                    if (isBetaZero)
-                        Hgemm_nn_128x32x128_8m1n8k_awq_4bit<OP_N, OP_N, true, tileM, tileN, tileK>
-                            <<<dimGrid, dimBlock, 0, stream>>>(m, n, k, alpha, beta, dA, lda, dB, ldb, dC,
-                                                               dC, ldc, d_zeros, d_scales);
-                    else
-                        Hgemm_nn_128x32x128_8m1n8k_awq_4bit<OP_N, OP_N, false, tileM, tileN, tileK>
-                            <<<dimGrid, dimBlock, 0, stream>>>(m, n, k, alpha, beta, dA, lda, dB, ldb, dC,
-                                                               dC, ldc, d_zeros, d_scales);
-                } else {
-                    if (!isBetaZero)
-                        blasMemcpy<<<104, 512, 0, stream>>>(space_mid, dC, m * n, beta);
-                    Hgemm_nn_128x32x128_8m1n8k_awq_4bit<OP_N, OP_N, true, tileM, tileN, tileK, true>
-                        <<<dimGrid, dimBlock, 0, stream>>>(m, n, k, alpha, beta, dA, lda, dB, ldb, dC, dC,
-                                                           ldc, d_zeros, d_scales, splitk_iters, space_mid);
-                    blasMemcpy<<<104, 512, 0, stream>>>(dC, space_mid, m * n, 1);
-                }
-            } else {
-                printf("Parameters not supported!\n");
-                return;
-            }
-    }
-}
-#endif
 
 template <int BLOCK_SIZE>
 __global__ void awq_to_gptq_4bit(uint32_t *output, const uint32_t *input, int k, int n) {
@@ -933,8 +783,6 @@ bool launch_gemm(int quant_group,
     return ret;
 }
 
-
-
 }  // namespace awq
 }  // namespace vllm
 
@@ -975,32 +823,14 @@ torch::Tensor awq_dequantize(torch::Tensor _kernel,
   int qout_c = _kernel.size(1);
   int out_c = qout_c * 8;
   int G = in_c / _scaling_factors.size(0);
-#if 0
-  int x_thread = thx;
-  int y_thread = thy;
 
-  int x_blocks = 1;
-  int y_blocks = 1;
-  if (thx == 0) {
-    x_thread = qout_c;
-  }
-  if (thy == 0) {
-    y_thread = in_c;
-  }
-  if (thx == 0 && thy == 0) {
-    x_thread = 8;
-    y_thread = 8;
-    x_blocks = (int)(qout_c / 8);
-    y_blocks = (int)(in_c / 8);
-  }
-#endif
   const at::cuda::OptionalCUDAGuard device_guard(device_of(_scaling_factors));
 
   auto options = torch::TensorOptions()
                      .dtype(_scaling_factors.dtype())
                      .device(_scaling_factors.device());
   at::Tensor _de_kernel = torch::empty({in_c, out_c}, options);
-  
+
   const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
   auto kernel = reinterpret_cast<int*>(_kernel.data_ptr<int>());
   auto zeros = reinterpret_cast<int*>(_zeros.data_ptr<int>());
@@ -1080,18 +910,6 @@ torch::Tensor awq_gemm(torch::Tensor _in_feats, torch::Tensor _kernel,
   auto temp_space = reinterpret_cast<float*>(_temp_space.data_ptr<float>());
   int group_size = num_in_channels / _scaling_factors.size(0);
 
-#if 0
-  int lda = num_out_channels;
-  int ldb = num_in_channels;
-  int ldc = num_out_channels;
-
-  float alpha = 1.0, beta = 0.0;
-  const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-  vllm::awq::launch_gemm_awq(Operation_t(0), Operation_t(0), num_out_channels, num_in_feats, num_in_channels, alpha, beta, (const uint32_t*)kernel, lda,
-                             (const half*)in_feats, ldb,
-                             (half*)out_feats, ldc, (uint32_t*)zeros, (half*)scaling_factors, space_mid, stream, 3);
-#endif
-
   int lda = num_in_channels;
   int ldb = num_out_channels;
   int ldc = num_out_channels;
@@ -1109,7 +927,6 @@ torch::Tensor awq_gemm(torch::Tensor _in_feats, torch::Tensor _kernel,
                                      (const half*)in_feats, lda, (const uint32_t*)kernel, ldb, (half*)out_feats, nullptr, ldc,
                                      (uint32_t*)zeros, (half*)scaling_factors, stream);
   }
-
 
   return _out_feats;
 }

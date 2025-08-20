@@ -1,21 +1,22 @@
 [build-system]
 # Should be mirrored in requirements/build.txt
 requires = [
-    "cmake>=3.26",
+    "cmake>=3.26.1",
     "ninja",
-    "packaging",
-    "setuptools>=61",
+    "packaging>=24.2",
+    "setuptools>=77.0.3,<80.0.0",
     "setuptools-scm>=8.0",
-    #"torch == 2.6.0",
+    "torch == 2.6.0",
     "wheel",
     "jinja2",
 ]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "vllm_metax_plugin"
+name = "vllm_metax"
 authors = [{name = "Metax Team"}]
-license = { "file"= "LICENSE" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 readme = "README.md"
 description = "vLLM Metax backend plugin"
 classifiers = [
@@ -32,18 +33,21 @@ classifiers = [
 requires-python = ">=3.9,<3.13"
 dynamic = [ "version", "dependencies", "optional-dependencies"]
 
+[project.urls]
+Homepage="https://github.com/MetaX-MACA/vLLM-metax"
+
 [project.entry-points."vllm.platform_plugins"]
-metax = "vllm_metax_plugin:register"
+metax = "vllm_metax:register"
 
 [project.entry-points."vllm.general_plugins"]
-metax_enhanced_model = "vllm_metax_plugin:register_model"
+metax_enhanced_model = "vllm_metax:register_model"
 
 [project.entry-points."console_scripts"]
-vllm_metax_init = "vllm_metax_plugin:post_installation"
+vllm_metax_init = "vllm_metax:post_installation"
 
 [tool.setuptools_scm]
 # no extra settings needed, presence enables setuptools-scm
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["vllm_metax_plugin*"]
+include = ["vllm_metax*"]

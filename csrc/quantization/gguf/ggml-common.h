@@ -1,5 +1,4 @@
 // copied from https://github.com/ggerganov/llama.cpp/blob/b2899/ggml-common.h
-// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
 #define QK_K 256
 #define K_QUANTS_PER_ITERATION 2
 #define WARP_SIZE_GGUF 32

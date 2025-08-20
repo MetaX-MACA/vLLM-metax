@@ -1,6 +1,5 @@
 // clang-format off
 // adapted from https://github.com/state-spaces/mamba/blob/main/csrc/selective_scan/selective_scan_fwd_kernel.cuh
-// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
 #include <torch/all.h>
 #include <ATen/cuda/CUDAContext.h>
 #include <c10/cuda/CUDAGuard.h>
@@ -322,14 +321,14 @@ void selective_scan_fwd_launch(SSMParamsBase &params, cudaStream_t stream) {
             auto kernel = &selective_scan_fwd_kernel<Ktraits>;
             if (kSmemSize >= 48 * 1024) {
                 C10_CUDA_CHECK(cudaFuncSetAttribute(
-                    kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, kSmemSize));
+                    (void *) kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, kSmemSize));
             }
             kernel<<<grid, Ktraits::kNThreads, kSmemSize, stream>>>(params);
             C10_CUDA_KERNEL_LAUNCH_CHECK();
         });
     });
 }
-#define USE_MACA
+
 template<typename input_t, typename weight_t>
 void selective_scan_fwd_cuda(SSMParamsBase &params, cudaStream_t stream) {
     #ifdef USE_MACA

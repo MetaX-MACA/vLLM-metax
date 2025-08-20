@@ -23,7 +23,7 @@ We will have n*k/TILE_N/TILE_K tiles in b, and these TILES are diveded into ITER
 for a proper shape.
 Of course some small shapes will nerver have chance to use all the PEUS
 
-Parallism is not suitable for MetaX device 4000 as parallism will dequant b more than once, that is not acceptable
+Parallism is not suitable for C500 as parallism will dequant b more than once, that is not acceptable
 */
 #include <iostream>
 #include <algorithm>
@@ -193,7 +193,7 @@ constexpr static int PAD_SLICE_K = 40;
 constexpr static int SLOT    = 16;
 constexpr static int WAVE    = 64;
 constexpr static int WAVE_SLOTS = 4;
-constexpr static int PEUS = 13*8*4; //For MetaX device 4000, There are 8 DPC and each DPC have 13 APs, each AP have 4 PEUs
+constexpr static int PEUS = 13*8*4; //For C500, There are 8 DPC and each DPC have 13 APs, each AP have 4 PEUs
 constexpr static int MAX_BLOCKS_M = 4;
 constexpr static uint32_t seil = 0x03020706u;
 
@@ -363,7 +363,6 @@ k00n48 k00n49 k00n50 k00n51 ... k00n63
 ...
 k03n48 k03n49 k03n50 k03n51 ... k03n63
 */
-
 template<class scalar_t>
 __device__ __forceinline__ void awq_dequant_4bits(const uint32_t& p, scalar_t (&out)[8], scalar_t (&scale)[8], const uint32_t& scale_zero) {
     if constexpr(std::is_same_v<scalar_t, __maca_bfloat16>) {
@@ -600,7 +599,7 @@ struct LoadingManager {
     #else
     //Directly use half as the final atomic type:
     //1. Half precision and data range satisfies need of deepseek gemm
-    //2. MetaX device 4000 has no atomic instructions for bfloat16, we cannot atomic a bfloat16 memory
+    //2. C500 has no atomic instructions for bfloat16, we cannot atomic a bfloat16 memory
     //3. The perfect precision type of atomic should be fp32, but the cost is too high to allocate a temp memory for float atomic
     using atomic_type = half;
     using FragC = atomic_type;
@@ -1255,7 +1254,7 @@ struct LoadingManager {
     #else
     //Directly use half as the final atomic type:
     //1. Half precision and data range satisfies need of deepseek gemm
-    //2. Metax device 4000 has no atomic instructions for bfloat16, we cannot atomic a bfloat16 memory
+    //2. C500 has no atomic instructions for bfloat16, we cannot atomic a bfloat16 memory
     //3. The perfect precision type of atomic should be fp32, but the cost is too high to allocate a temp memory for float atomic
     using atomic_type = half;
     using FragC = atomic_type;
@@ -2001,7 +2000,6 @@ bool launch_gemm_gptq_kernel(const PackTypeInt4* A,
         size_t clean_blocks = std::max(size_t(1), (num_elem + clean_kernel_thread_num * clean_kernel_pack_num - 1)/ (clean_kernel_thread_num * clean_kernel_pack_num));
         clean_zero<clean_kernel_thread_num, clean_kernel_pack_num><<<clean_blocks, clean_kernel_thread_num, 0, stream>>>((float*)C_temp, num_elem);
     }
-
 
     //It is better to do perm before launch kernel
     if constexpr(BLOCKS_K % 2 == 1) {

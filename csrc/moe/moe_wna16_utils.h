@@ -1,4 +1,4 @@
-// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
+
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
 
@@ -112,11 +112,11 @@ __device__ inline void dequant<half2, 4>(int q, half2* res) {
   const int MUL = 0x2c002c00;
   const int ADD = 0xd400d400;
 
-  int lo0 = lop3 < (0xf0 & 0xcc) | 0xaa > (q, LO, EX);
-  int hi0 = lop3 < (0xf0 & 0xcc) | 0xaa > (q, HI, EX);
+  int lo0 = lop3<(0xf0 & 0xcc) | 0xaa>(q, LO, EX);
+  int hi0 = lop3<(0xf0 & 0xcc) | 0xaa>(q, HI, EX);
   q >>= 8;
-  int lo1 = lop3 < (0xf0 & 0xcc) | 0xaa > (q, LO, EX);
-  int hi1 = lop3 < (0xf0 & 0xcc) | 0xaa > (q, HI, EX);
+  int lo1 = lop3<(0xf0 & 0xcc) | 0xaa>(q, LO, EX);
+  int hi1 = lop3<(0xf0 & 0xcc) | 0xaa>(q, HI, EX);
 
   res[0] = __hsub2(*reinterpret_cast<half2*>(&lo0),
                    *reinterpret_cast<const half2*>(&SUB));
@@ -153,13 +153,13 @@ __device__ inline void dequant<nv_bfloat162, 4>(int q, nv_bfloat162* res) {
   static constexpr uint32_t MASK = 0x000f000f;
   static constexpr uint32_t EX = 0x43004300;
 
-  int lo0 = lop3 < (0xf0 & 0xcc) | 0xaa > (q, MASK, EX);
+  int lo0 = lop3<(0xf0 & 0xcc) | 0xaa>(q, MASK, EX);
   q >>= 4;
-  int hi0 = lop3 < (0xf0 & 0xcc) | 0xaa > (q, MASK, EX);
+  int hi0 = lop3<(0xf0 & 0xcc) | 0xaa>(q, MASK, EX);
   q >>= 4;
-  int lo1 = lop3 < (0xf0 & 0xcc) | 0xaa > (q, MASK, EX);
+  int lo1 = lop3<(0xf0 & 0xcc) | 0xaa>(q, MASK, EX);
   q >>= 4;
-  int hi1 = lop3 < (0xf0 & 0xcc) | 0xaa > (q, MASK, EX);
+  int hi1 = lop3<(0xf0 & 0xcc) | 0xaa>(q, MASK, EX);
 
   static constexpr uint32_t MUL = 0x3F803F80;
   static constexpr uint32_t ADD = 0xC300C300;

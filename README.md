@@ -8,7 +8,7 @@ Currently we only support build from source:
 
 ### install vllm
 ```bash
-pip install vllm==0.8.5 --no-deps
+pip install vllm==0.9.1 --no-deps
 ```
 
 ### install vllm-metax
@@ -27,7 +27,7 @@ There are two ways to build the plugin, you could *build and install* the plugin
 
 ```bash
 pip install -r requirements/build.txt
-# since we use our local pytorch, add the --no-build-isolation flag
+# since we use our local pytorch, add the --no-build-isolation flag 
 # to avoid the conflict with the official pytorch
 pip install . -v --no-build-isolation
 ```

@@ -1,24 +1,24 @@
 # SPDX-License-Identifier: Apache-2.0
 
+import ctypes
 import importlib.util
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 from shutil import which
 
 import torch
+import shutil
 from packaging.version import Version, parse
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 from setuptools.command.install import install
-# from setuptools_scm import get_version
+from setuptools_scm import get_version
 from torch.utils.cpp_extension import CUDA_HOME
-import shutil
-import importlib.metadata
-import importlib.util
 
 USE_MACA = True
 CMAKE_EXECUTABLE = 'cmake' if not USE_MACA else 'cmake_maca'
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 # cannot import envs directly because it depends on vllm,
 #  which is not installed yet
-envs = load_module_from_path('envs', os.path.join(ROOT_DIR, 'vllm_metax_plugin', 'envs.py'))
+envs = load_module_from_path('envs', os.path.join(ROOT_DIR, 'vllm_metax', 'envs.py'))
 
 try:
     vllm_dist_path = importlib.metadata.distribution("vllm").locate_file("vllm")
@@ -50,26 +50,13 @@ except Exception:
 
 VLLM_TARGET_DEVICE = envs.VLLM_TARGET_DEVICE
 
-if sys.platform.startswith("darwin") and VLLM_TARGET_DEVICE != "cpu":
-    logger.warning(
-        "VLLM_TARGET_DEVICE automatically set to `cpu` due to macOS")
-    VLLM_TARGET_DEVICE = "cpu"
-elif not (sys.platform.startswith("linux")
-          or sys.platform.startswith("darwin")):
-    logger.warning(
-        "vLLM only supports Linux platform (including WSL) and MacOS."
-        "Building on %s, "
-        "so vLLM may not be able to run correctly", sys.platform)
-    VLLM_TARGET_DEVICE = "empty"
-elif (sys.platform.startswith("linux") and torch.version.cuda is None
-      and os.getenv("VLLM_TARGET_DEVICE") is None
-      and torch.version.hip is None):
+if not (sys.platform.startswith("linux") or torch.version.cuda is None
+      or os.getenv("VLLM_TARGET_DEVICE") != "cuda"):
     # if cuda or hip is not available and VLLM_TARGET_DEVICE is not set,
     # fallback to cpu
-    VLLM_TARGET_DEVICE = "cpu"
-
-MAIN_CUDA_VERSION = "12.4"
-
+    assert False, "Plugin only support cuda on linux platform. "
+    
+MAIN_CUDA_VERSION = "12.8"
 
 def is_sccache_available() -> bool:
     return which("sccache") is not None
@@ -157,7 +144,7 @@ class cmake_build_ext(build_ext):
         # Note: optimization level + debug info are set by the build type
         default_cfg = "Debug" if self.debug else "RelWithDebInfo"
         cfg = envs.CMAKE_BUILD_TYPE or default_cfg
-        
+
         maca_version = get_maca_version_list()
 
         cmake_args = [
@@ -225,7 +212,6 @@ class cmake_build_ext(build_ext):
             # Default build tool to whatever cmake picks.
             build_tool = []
             
-        #qzy debug
         logger.info(f"\nCMake configuration arguments:"
                      f"\nCMake executable: {which('cmake')}"
                      f"\nBuild directory: {ext.cmake_lists_dir}"
@@ -235,8 +221,10 @@ class cmake_build_ext(build_ext):
             logger.info(f"  {arg}")
         if build_tool:
             logger.info(f"Build tool: {build_tool}")
-        #####
 
+        # Make sure we use the nvcc from CUDA_HOME
+        # if _is_cuda():
+        #     cmake_args += [f'-DCMAKE_CUDA_COMPILER={CUDA_HOME}/bin/nvcc']
         subprocess.check_call(
             [CMAKE_EXECUTABLE, ext.cmake_lists_dir, *build_tool, *cmake_args],
             cwd=self.build_temp)
@@ -255,7 +243,7 @@ class cmake_build_ext(build_ext):
         targets = []
 
         def target_name(s: str) -> str:
-            return s.removeprefix("vllm_metax_plugin.").removeprefix("vllm_flash_attn.")
+            return s.removeprefix("vllm_metax.").removeprefix("vllm_flash_attn.")
 
         # Build all the extensions
         for ext in self.extensions:
@@ -284,11 +272,8 @@ class cmake_build_ext(build_ext):
 
             # CMake appends the extension prefix to the install path,
             # and outdir already contains that prefix, so we need to remove it.
-            # We assume only the final component of extension prefix is added by
-            # CMake, this is currently true for current extensions but may not
-            # always be the case.
             prefix = outdir
-            if '.' in ext.name:
+            for _ in range(ext.name.count('.')):
                 prefix = prefix.parent
 
             # prefix here should actually be the same for all components
@@ -355,18 +340,47 @@ class repackage_wheel(build_ext):
         ), "VLLM_USE_PRECOMPILED is only supported for CUDA builds"
 
         wheel_location = os.getenv("VLLM_PRECOMPILED_WHEEL_LOCATION", None)
+        if wheel_location is None:
+            base_commit = self.get_base_commit_in_main_branch()
+            wheel_location = f"https://wheels.vllm.ai/{base_commit}/vllm-1.0.0.dev-cp38-abi3-manylinux1_x86_64.whl"
+            # Fallback to nightly wheel if latest commit wheel is unavailable,
+            # in this rare case, the nightly release CI hasn't finished on main.
+            if not is_url_available(wheel_location):
+                wheel_location = "https://wheels.vllm.ai/nightly/vllm-1.0.0.dev-cp38-abi3-manylinux1_x86_64.whl"
 
         import zipfile
 
         if os.path.isfile(wheel_location):
             wheel_path = wheel_location
             print(f"Using existing wheel={wheel_path}")
+        else:
+            # Download the wheel from a given URL, assume
+            # the filename is the last part of the URL
+            wheel_filename = wheel_location.split("/")[-1]
+
+            import tempfile
+
+            # create a temporary directory to store the wheel
+            temp_dir = tempfile.mkdtemp(prefix="vllm-wheels")
+            wheel_path = os.path.join(temp_dir, wheel_filename)
+
+            print(f"Downloading wheel from {wheel_location} to {wheel_path}")
+
+            from urllib.request import urlretrieve
+
+            try:
+                urlretrieve(wheel_location, filename=wheel_path)
+            except Exception as e:
+                from setuptools.errors import SetupError
+
+                raise SetupError(
+                    f"Failed to get vLLM wheel from {wheel_location}") from e
 
         with zipfile.ZipFile(wheel_path) as wheel:
             files_to_copy = [
-                "vllm_metax_plugin/_C.abi3.so",
-                "vllm_metax_plugin/_moe_C.abi3.so",
-                "vllm_metax_plugin/cumem_allocator.abi3.so",
+                "vllm_metax/_C.abi3.so",
+                "vllm_metax/_moe_C.abi3.so",
+                "vllm_metax/cumem_allocator.abi3.so",
                 # "vllm/_version.py", # not available in nightly wheels yet
             ]
 
@@ -376,7 +390,6 @@ class repackage_wheel(build_ext):
             # vllm_flash_attn python code:
             # Regex from
             #  `glob.translate('vllm/vllm_flash_attn/**/*.py', recursive=True)`
-            import re
             compiled_regex = re.compile(
                 r"vllm/vllm_flash_attn/(?:[^/.][^/]*/)*(?!\.)[^/]*\.py")
             file_members += list(
@@ -399,8 +412,6 @@ class repackage_wheel(build_ext):
 
                 package_data[package_name].append(file_name)
 
-def _no_device() -> bool:
-    return VLLM_TARGET_DEVICE == "empty"
 
 def _is_cuda() -> bool:
     has_cuda = torch.version.cuda is not None
@@ -426,10 +437,7 @@ def get_maca_version():
     """
     Returns the MACA SDK Version
     """
-    maca_path = str(os.getenv('MACA_PATH'))
-    if not os.path.exists(maca_path):
-        return None
-    file_full_path = os.path.join(maca_path, 'Version.txt')
+    file_full_path = os.path.join(os.getenv('MACA_PATH'), 'Version.txt')
     if not os.path.isfile(file_full_path):
         return None
     
@@ -443,52 +451,19 @@ def get_maca_version_list():
     version_list.extend([0] * (4 - len(version_list)))
     return version_list
     
-def get_git_commit():
-    curdir = os.path.dirname(__file__)
-    default_gitdir = os.path.normpath(os.path.join(curdir, ".git"))
-    logger.debug(default_gitdir)
-    try:
-        subprocess.check_output(["git", "--git-dir", default_gitdir, "config", "--global", "--add", "safe.directory", '*'])
-        commit_id = subprocess.check_output(["git", "--git-dir", default_gitdir, "rev-parse", "HEAD"]).decode("utf-8").strip()
-        return commit_id
-    except Exception as e:
-        logger.debug(f"Error: {e}")
-        return "git error"
-
-def write_to_file(file_path, content):
-    try:
-        with open(file_path, "w") as file:
-            file.write(content)
-        logger.debug(f"Content written to {file_path} successfully.")
-    except Exception as e:
-        logger.debug(f"Error writing to file: {e}")
-
 def get_vllm_version() -> str:
-    # version = get_version(write_to="vllm/_version.py")
-    commit_id = get_git_commit()
-    write_to_file("vllm_metax_plugin/_release_info.txt", commit_id)
-    version = "0.8.5"
+    from version_tools import fixed_version_scheme
+    version = get_version(version_scheme=fixed_version_scheme, write_to="vllm_metax/_version.py")
     sep = "+" if "+" not in version else "."  # dev versions might contain +
 
-    if _no_device():
-        if envs.VLLM_TARGET_DEVICE == "empty":
-            version += f"{sep}empty"
-    elif _is_cuda():
+    if _is_cuda():
         if envs.VLLM_USE_PRECOMPILED:
             version += f"{sep}precompiled"
         else:
-            if not USE_MACA:
-                cuda_version = str(get_nvcc_cuda_version())
-                if cuda_version != MAIN_CUDA_VERSION:
-                    cuda_version_str = cuda_version.replace(".", "")[:3]
-                    # skip this for source tarball, required for pypi
-                    if "sdist" not in sys.argv:
-                        version += f"{sep}cu{cuda_version_str}"
-            else:
-                maca_version_str = get_maca_version()
-                torch_version = torch.__version__
-                major_minor_version = ".".join(torch_version.split(".")[:2])
-                version += f"{sep}maca{maca_version_str}torch{major_minor_version}"
+            maca_version_str = get_maca_version()
+            torch_version = torch.__version__
+            major_minor_version = ".".join(torch_version.split(".")[:2])
+            version += f"{sep}maca{maca_version_str}{sep}torch{major_minor_version}"
     else:
         raise RuntimeError("Unknown runtime environment")
 
@@ -510,9 +485,7 @@ def get_requirements() -> list[str]:
                 resolved_requirements.append(line)
         return resolved_requirements
 
-    if _no_device():
-        requirements = _read_requirements("common.txt")
-    elif _is_cuda():
+    if _is_cuda():
         requirements = _read_requirements("cuda.txt")
         cuda_major, cuda_minor = torch.version.cuda.split(".")
         modified_requirements = []
@@ -532,26 +505,23 @@ def get_requirements() -> list[str]:
 ext_modules = []
 
 if _is_cuda():
-    ext_modules.append(CMakeExtension(name="vllm_metax_plugin._moe_C"))
-
-if _is_cuda():
-    ext_modules.append(CMakeExtension(name="vllm_metax_plugin.cumem_allocator"))
+    ext_modules.append(CMakeExtension(name="vllm_metax._moe_C"))
+    ext_modules.append(CMakeExtension(name="vllm_metax.cumem_allocator"))
 
 if _build_custom_ops() or True:
-    ext_modules.append(CMakeExtension(name="vllm_metax_plugin._C"))
+    ext_modules.append(CMakeExtension(name="vllm_metax._C"))
 
 package_data = {
-    "vllm_metax_plugin": [
+    "vllm_metax": [
         "py.typed",
         "model_executor/layers/fused_moe/configs/*.json",
         "model_executor/layers/quantization/utils/configs/*.json",
         "attention/backends/configs/*.json",
-        "_release_info.txt",
     ]
 }
 
 class custom_install(install):        
-    def _copy_with_backup(self, src_path, dest_path):
+    def _copy_with_backup(self, src_path: Path, dest_path: Path):
         """
         Copy a file or directory from src_path to dest_path.
         - If dest_path is an existing directory, copy src_path into that directory.
@@ -562,13 +532,13 @@ class custom_install(install):
 
         # If dest_path is an existing directory, copy into it
         if os.path.isdir(dest_path):
-            dest_full_path = os.path.join(dest_path, os.path.basename(src_path))
+            dest_full_path = dest_path / os.path.basename(src_path)
         else:
             dest_full_path = dest_path
 
         # Backup if target path already exists (file or dir)
         if os.path.exists(dest_full_path):
-            backup_path = dest_full_path + ".bak"
+            backup_path = dest_full_path.parent / (dest_full_path.name + ".bak")
             logger.debug(f"{dest_full_path} exists, backing it up to {backup_path}")
             if os.path.exists(backup_path):
                 logger.debug(f"Backup path {backup_path} already exists, removing it.")
@@ -586,9 +556,9 @@ class custom_install(install):
 
         logger.info(f"Copied {src_path} to {dest_full_path}")
         
-    def _copy_files_to_vllm(self, source_path: Path):
+    def _copy_files_to_vllm(self, src_path: Path, dest_path: Path):
         try:
-            self._copy_with_backup(source_path, vllm_dist_path)
+            self._copy_with_backup(src_path, dest_path)
         except Exception as e:
             logger.error(f"Error copying files: {e}")
 
@@ -598,18 +568,29 @@ class custom_install(install):
         if not vllm_dist_path:
             return
 
-        files_to_copy = [
-            "vllm_metax_plugin/_C.abi3.so",
-            "vllm_metax_plugin/_moe_C.abi3.so",
-            "vllm_metax_plugin/cumem_allocator.abi3.so",
-        ]
+        files_to_copy = {
+            "vllm_metax/_C.abi3.so" : vllm_dist_path,
+            "vllm_metax/_moe_C.abi3.so" : vllm_dist_path,
+            "vllm_metax/cumem_allocator.abi3.so" : vllm_dist_path,
+            # TODO: workaround for torch 2.7 inferscheme, remove when torch >= 2.7
+            "vllm_metax/patch/vllm_substitution/fp8_utils.py" : vllm_dist_path / "model_executor/layers/quantization/utils/fp8_utils.py",
+            "vllm_metax/patch/vllm_substitution/fused_moe.py" : vllm_dist_path / "model_executor/layers/fused_moe/fused_moe.py",
+            # TODO: below's are merged from vllm 0.9.2, remove them when updated
+            "vllm_metax/patch/vllm_substitution/rejection_sampler.py" : vllm_dist_path / "v1/sample/rejection_sampler.py",
+            "vllm_metax/patch/vllm_substitution/eagle.py" : vllm_dist_path / "v1/spec_decode/eagle.py",
+            "vllm_metax/patch/vllm_substitution/gpu_model_runner.py" : vllm_dist_path / "v1/worker/gpu_model_runner.py",
+            "vllm_metax/patch/vllm_substitution/cuda_piecewise_backend.py" : vllm_dist_path / "compilation/cuda_piecewise_backend.py",
+            "vllm_metax/patch/vllm_substitution/forward_context.py" : vllm_dist_path / "forward_context.py",
+            "vllm_metax/patch/vllm_substitution/flash_attn.py" : vllm_dist_path / "v1/attention/backends/flash_attn.py",
+            "vllm_metax/patch/vllm_substitution/flashinfer.py" : vllm_dist_path / "v1/attention/backends/flashinfer.py",
+            "vllm_metax/patch/vllm_substitution/common.py" : vllm_dist_path / "v1/attention/backends/mla/common.py",
+            "vllm_metax/patch/vllm_substitution/flashmla.py" : vllm_dist_path / "v1/attention/backends/mla/flashmla.py",
+        }
         
-        for file_name in files_to_copy:
-            source_file =Path(self.build_lib) /  file_name
-            self._copy_files_to_vllm(source_file)
+        for src_path, dest_path in files_to_copy.items():
+            source_file =Path(self.build_lib) /  src_path
+            self._copy_files_to_vllm(source_file, dest_path)
 
-if _no_device():
-    ext_modules = []
 
 if not ext_modules:
     cmdclass = {}
@@ -621,11 +602,11 @@ else:
 
 setup(
     # static metadata should rather go in pyproject.toml
-    name="vllm_metax_plugin",
     version=get_vllm_version(),
     ext_modules=ext_modules,
     install_requires=get_requirements(),
     extras_require={
+        "bench": ["pandas", "datasets"],
         "tensorizer": ["tensorizer>=2.9.0"],
         "fastsafetensors": ["fastsafetensors >= 0.1.10"],
         "runai": ["runai-model-streamer", "runai-model-streamer-s3", "boto3"],
@@ -634,8 +615,4 @@ setup(
     },
     cmdclass=cmdclass,
     package_data=package_data,
-    # entry_points={
-    #     "vllm.platform_plugins": ["metax = vllm_metax_plugin:register"],
-    #     "vllm.general_plugins": ["metax_enhanced_model = vllm_metax_plugin:register_model"]
-    # },
 )
