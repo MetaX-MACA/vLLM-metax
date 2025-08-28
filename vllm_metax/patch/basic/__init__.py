@@ -3,5 +3,5 @@
 from vllm_metax.utils import vllm_version
 from packaging.version import parse
 
-from vllm_metax.patch.after_all import patch_0_9_1
+from vllm_metax.patch.basic import patch
 

@@ -7,7 +7,7 @@ from vllm import envs
 from vllm_metax import envs as mx_envs
 
 from vllm.config import logger
-from vllm_metax.patch.model_executor.patch_0_9_1.layers.quantization.quantization_init import (QUANTIZATION_METHODS, 
+from vllm_metax.patch.model_executor.patch.layers.quantization.quantization_init import (QUANTIZATION_METHODS, 
                                                                              get_quantization_config,
                                                                              QuantizationMethods)
 

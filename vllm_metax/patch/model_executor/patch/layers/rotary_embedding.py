@@ -22,6 +22,7 @@ def _apply_rotary_emb(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor,
     return apply_rotary_emb(x.unsqueeze(0), cos, sin,
                             not is_neox_style).squeeze(0)
 
+import vllm.model_executor.layers.rotary_embedding
 vllm.model_executor.layers.rotary_embedding._apply_rotary_emb = _apply_rotary_emb
 
 
