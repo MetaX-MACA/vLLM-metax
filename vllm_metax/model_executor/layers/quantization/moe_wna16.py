@@ -297,7 +297,8 @@ class MoeWNA16Method(FusedMoEMethodBase):
         apply_router_weight_on_input: bool = False,
         activation: str = "silu",
     ) -> torch.Tensor:
-        from vllm.model_executor.layers.fused_moe import fused_experts
+        from vllm_metax.model_executor.layers.fused_moe.fused_moe import metax_fused_experts
+
         assert activation == "silu", "Only SiLU activation is supported."
         topk_weights, topk_ids = FusedMoE.select_experts(
             hidden_states=x,
@@ -314,7 +315,7 @@ class MoeWNA16Method(FusedMoEMethodBase):
         weight_bits = self.quant_config.weight_bits
         has_zp = self.quant_config.has_zp
 
-        return fused_experts(
+        return metax_fused_experts(
             x,
             layer.w13_qweight,
             layer.w2_qweight,
