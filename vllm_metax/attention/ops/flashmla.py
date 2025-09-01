@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 # adapted from: https://github.com/deepseek-ai/FlashMLA/blob/main/flash_mla/flash_mla_interface.py
 from typing import Optional, Tuple
 
@@ -9,19 +10,15 @@ from vllm.platforms import current_platform
 
 logger = init_logger(__name__)
 
-# if current_platform.is_cuda():
-#     try:
-#         import vllm._flashmla_C  # noqa: F401
-#         _flashmla_C_AVAILABLE = True
-#     except ImportError:
-#         _flashmla_C_AVAILABLE = False
-# else:
-#     _flashmla_C_AVAILABLE = False
-try :
-    import flash_mla
-    _flashmla_AVAILABLE = True
-except ImportError as e:
-    logger.warning("Failed to import from flash_mla with %r on MACA Platform", e)
+if current_platform.is_cuda():
+    try:
+        # /------------------------  Metax Modification -------------------------\
+        import flash_mla  # noqa: F401
+        # \------------------------  Metax Modification -------------------------/
+        _flashmla_AVAILABLE = True
+    except ImportError:
+        _flashmla_AVAILABLE = False
+else :
     _flashmla_AVAILABLE = False
 
 
@@ -29,15 +26,6 @@ def is_flashmla_supported() -> Tuple[bool, Optional[str]]:
     """
     Return: is_supported_flag, unsupported_reason (optional).
     """
-    # if not current_platform.is_cuda():
-    #     return False, "FlashMLA is only supported on CUDA devices."
-    # if current_platform.get_device_capability()[0] != 9:
-    #     return False, "FlashMLA is only supported on Hopper devices."
-    # if not _flashmla_C_AVAILABLE:
-    #     return False, "vllm._flashmla_C is not available, likely was not "\
-    #         "compiled due to insufficient nvcc version or a supported arch "\
-    #         "(only sm90a currently) was not in the list of target arches to "\
-    #         "compile for."
     if not _flashmla_AVAILABLE:
         return False, "flash_mla is not available"
     return True, None
@@ -59,13 +47,11 @@ def get_mla_metadata(
                                  dtype torch.int32.
         num_splits: (batch_size + 1), dtype torch.int32.
     """
-    # return torch.ops._flashmla_C.get_mla_metadata(cache_seqlens,
-    #                                               num_heads_per_head_k,
-    #                                               num_heads_k)
+    # /------------------------  Metax Modification -------------------------\
     return flash_mla.flash_mla_interface.get_mla_metadata(cache_seqlens,
-                                                  num_heads_per_head_k,
-                                                  num_heads_k)
-
+                                                          num_heads_per_head_k,
+                                                          num_heads_k)
+    # \------------------------- Metax Modification -------------------------/
 
 def flash_mla_with_kvcache(
     q: torch.Tensor,
@@ -96,20 +82,7 @@ def flash_mla_with_kvcache(
         out: (batch_size, seq_len_q, num_heads_q, head_dim_v).
         softmax_lse: (batch_size, num_heads_q, seq_len_q), torch.float32.
     """
-    # if softmax_scale is None:
-    #     softmax_scale = q.shape[-1]**(-0.5)
-    # out, softmax_lse = torch.ops._flashmla_C.fwd_kvcache_mla(
-    #     q,
-    #     k_cache,
-    #     None,
-    #     head_dim_v,
-    #     cache_seqlens,
-    #     block_table,
-    #     softmax_scale,
-    #     causal,
-    #     tile_scheduler_metadata,
-    #     num_splits,
-    # )
+    # /------------------------  Metax Modification -------------------------\
     out, softmax_lse = flash_mla.flash_mla_interface.flash_mla_with_kvcache(
         q,
         k_cache,
@@ -121,6 +94,7 @@ def flash_mla_with_kvcache(
         softmax_scale,
         causal,
     )
+    # \------------------------- Metax Modification -------------------------/
     return out, softmax_lse
 
 

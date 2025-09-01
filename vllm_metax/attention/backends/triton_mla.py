@@ -15,10 +15,6 @@ from vllm.attention.ops.triton_decode_attention import decode_attention_fwd
 import json
 import os
 
-# TODO: Configure environment variables temporarily. New versions do not need to be configured
-os.environ['TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP'] = '1'
-os.environ['TRITON_ENABLE_MACA_CHAIN_DOT_OPT'] = '1'
-
 def load_config():
     # Load JSON data from the file
     json_path = config_file_path = os.path.join(
