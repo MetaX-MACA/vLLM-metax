@@ -1,35 +1,54 @@
 # SPDX-License-Identifier: Apache-2.0
+"""Fused MoE kernel."""
+import functools
+import json
+import os
+# torch.compile needs typing.List. It will fail torch.library.infer_schema
+# otherwise
+from typing import List  # noqa: UP035
+from typing import Any, Callable, Optional
 
-import vllm
+import torch
+import torch.nn.functional as F
 
+import vllm.envs as envs
+import vllm.model_executor.layers.fused_moe.modular_kernel as mk
+from vllm import _custom_ops as ops
 from vllm.logger import init_logger
+# yapf: disable
+from vllm.model_executor.layers.fused_moe.config import (
+    FusedMoEQuantConfig, get_config_quant_dtype)
+from vllm.model_executor.layers.fused_moe.cutlass_moe import (
+    _valid_cutlass_block_scaled_grouped_gemm,
+    run_cutlass_block_scaled_fused_experts)
+# yapf: enable
+from vllm.model_executor.layers.fused_moe.deep_gemm_moe import (
+    _valid_deep_gemm, deep_gemm_moe_fp8)
+from vllm.model_executor.layers.fused_moe.moe_align_block_size import (
+    moe_align_block_size)
+from vllm.model_executor.layers.fused_moe.prepare_finalize import (
+    MoEPrepareAndFinalizeNoEP)
+from vllm.model_executor.layers.fused_moe.topk_weight_and_reduce import (
+    TopKWeightAndReduceNoOP)
+from vllm.model_executor.layers.fused_moe.utils import (
+    _resize_cache, moe_kernel_quantize_input, per_token_group_quant_fp8)
+from vllm.model_executor.layers.quantization.utils.flashinfer_utils import (
+    calculate_tile_tokens_dim)
+from vllm.model_executor.layers.quantization.utils.mxfp4_utils import (
+    dequant_mxfp4)
+from vllm.platforms import current_platform
+from vllm.triton_utils import tl, triton
+from vllm.utils import direct_register_custom_op, is_torch_equal_or_newer
+from vllm.utils.deep_gemm import is_blackwell_deep_gemm_e8m0_used
+
 
 logger = init_logger(__name__)
 
-import torch
-import triton
-import triton.language as tl
-import functools
-import math
-from typing import Any, List, Optional, Tuple
-
-import vllm.envs as envs
-from vllm import _custom_ops as ops
-from vllm.logger import init_logger
-from vllm.model_executor.layers.fused_moe.fused_moe import (write_zeros_to_output,
-                                                            should_moe_wna16_use_cuda,
-                                                            fused_moe_kernel_gptq_awq,
-                                                            get_config_qtype)
-
-from vllm.model_executor.layers.quantization.utils.int8_utils import per_token_group_quant_int8
-from vllm.model_executor.layers.quantization.utils.fp8_utils  import per_token_group_quant_fp8
-from vllm.model_executor.layers.fused_moe.utils import moe_kernel_quantize_input
-from vllm.model_executor.layers.fused_moe.moe_align_block_size import (moe_align_block_size)
-from vllm.utils import direct_register_custom_op
 
 from vllm_metax.model_executor.layers.fused_moe.fused_moe import (get_moe_configs)
 from vllm_metax import _custom_ops as ops
-
+from vllm.model_executor.layers.fused_moe.fused_moe import (should_moe_wna16_use_cuda, 
+                                                            write_zeros_to_output)
 
 
 def get_default_config(
@@ -100,7 +119,6 @@ def try_get_optimal_moe_config(
     top_k: int,
     dtype: Optional[str],
     M: int,
-    is_marlin: bool = False,
     block_shape: Optional[list[int]] = None,
 # ┌------------------------  Metax Modification -------------------------┐
     H: int = 0,
@@ -131,7 +149,7 @@ def try_get_optimal_moe_config(
         else:
             # Else use the default config
             config = get_default_config(M, E, N, w1_shape[2], top_k, dtype,
-                                        is_marlin, block_shape)
+                                        block_shape)
     return config
 
 def get_config_dtype_str(
@@ -394,6 +412,7 @@ def fused_moe_kernel(
     a_ptr,
     b_ptr,
     c_ptr,
+    b_bias_ptr,
     a_scale_ptr,
     b_scale_ptr,
     topk_weights_ptr,
@@ -424,6 +443,8 @@ def fused_moe_kernel(
     stride_bse,
     stride_bsk,
     stride_bsn,
+    stride_bbe,  # bias expert stride
+    stride_bbn,  # bias N stride
     # Block size for block-wise quantization
     group_n: tl.constexpr,
     group_k: tl.constexpr,
@@ -443,6 +464,7 @@ def fused_moe_kernel(
     use_int8_w8a8: tl.constexpr,
     use_int8_w8a16: tl.constexpr,
     per_channel_quant: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
     # ┌------------------------  Metax Modification -------------------------┐
     UPGRADE: tl.constexpr,
     UPGRADE_A_OFFS: tl.constexpr,
@@ -580,7 +602,10 @@ def fused_moe_kernel(
         else:
             a_scale = tl.load(a_scale_ptr)
             b_scale = tl.load(b_scale_ptr + off_experts)
-
+    if HAS_BIAS:
+        # bias shape: [num_experts, N]
+        bias_ptrs = b_bias_ptr + off_experts * stride_bbe + offs_bn * stride_bbn
+        bias = tl.load(bias_ptrs, mask=(offs_bn < N), other=0.0)
     # -----------------------------------------------------------
     # Iterate to compute a block of the C matrix.
     # We accumulate into a `[BLOCK_SIZE_M, BLOCK_SIZE_N]` block
@@ -692,7 +717,8 @@ def invoke_fused_moe_kernel(A: torch.Tensor,
                             orig_acc_dtype: torch.dtype,
 # └------------------------- Metax Modification -------------------------┘
                             per_channel_quant: bool,
-                            block_shape: Optional[list[int]] = None) -> None:
+                            block_shape: Optional[list[int]] = None,
+                            B_bias: Optional[torch.Tensor] = None) -> None:
     assert topk_weights is not None or not mul_routed_weight
     assert topk_weights is None or topk_weights.stride(1) == 1
     assert sorted_token_ids.stride(0) == 1
@@ -726,7 +752,7 @@ def invoke_fused_moe_kernel(A: torch.Tensor,
 # ┌------------------------  Metax Modification -------------------------┐
         B.shape[1], META['BLOCK_SIZE_N']), META['SPLIT_K'])
 # └------------------------- Metax Modification -------------------------┘
-
+    HAS_BIAS = B_bias is not None
     if (use_int8_w8a16 or use_int4_w4a16) and \
             block_shape is not None and block_shape[1] > 0:
         assert B_scale is not None and B_scale.ndim == 3
@@ -810,6 +836,7 @@ def invoke_fused_moe_kernel(A: torch.Tensor,
             A,
             B,
             C,
+            B_bias,
             A_scale,
             B_scale,
             topk_weights,
@@ -840,6 +867,8 @@ def invoke_fused_moe_kernel(A: torch.Tensor,
             if B_scale is not None and B_scale.ndim == 3 else 0,
             B_scale.stride(1)
             if B_scale is not None and B_scale.ndim >= 2 else 0,
+            B_bias.stride(0) if B_bias is not None else 0,
+            B_bias.stride(1) if B_bias is not None else 0,
             0 if block_shape is None else block_shape[0],
             0 if block_shape is None else block_shape[1],
             MUL_ROUTED_WEIGHT=mul_routed_weight,
@@ -849,68 +878,17 @@ def invoke_fused_moe_kernel(A: torch.Tensor,
             use_int8_w8a8=use_int8_w8a8,
             use_int8_w8a16=use_int8_w8a16,
             per_channel_quant=per_channel_quant,
+            HAS_BIAS=HAS_BIAS,
             BLOCK_SIZE_K=BLOCK_SIZE_K,
 # ┌------------------------  Metax Modification -------------------------┐
             FAST_F32_TO_BF16 = True,
 # └------------------------- Metax Modification -------------------------┘
             **config,
         )
- # ┌------------------------  Metax Modification -------------------------┐
+# ┌------------------------  Metax Modification -------------------------┐
     if config["ACCF32"]:
        C = C.to(orig_acc_dtype)
 # └------------------------- Metax Modification -------------------------┘
-
-def moe_kernel_prepare_input(
-    A: torch.Tensor,
-    B: torch.Tensor,
-    A_scale: Optional[torch.Tensor],
-    B_scale: Optional[torch.Tensor],
-    use_fp8_w8a8: bool,
-    use_int8_w8a8: bool,
-    use_int8_w8a16: bool,
-    use_int4_w4a16: bool,
-    per_channel_quant: bool,
-    block_shape: Optional[List[int]] = None,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-    if use_fp8_w8a8:
-        assert B_scale is not None
-        if block_shape is None:
-            # If weights are per-channel (per_channel_quant=True), then
-            # activations apply per-token quantization. Otherwise, assume
-            # activation tensor-wise fp8 quantization, dynamic or static
-            A, A_scale = ops.scaled_fp8_quant(
-                A, A_scale, use_per_token_if_dynamic=per_channel_quant)
-        else:
-            # activation block-wise fp8 quantization
-            assert len(block_shape) == 2
-            _, block_k = block_shape[0], block_shape[1]
-            A, A_scale = per_token_group_quant_fp8(A, block_k)
-            assert triton.cdiv(A.shape[-1], block_k) == A_scale.shape[-1]
-            # assert triton.cdiv(B.shape[-2], block_n) == B_scale.shape[-2]
-            # assert triton.cdiv(B.shape[-1], block_k) == B_scale.shape[-1]
-    elif use_int8_w8a8:
-        assert B_scale is not None
-        if block_shape is None:
-            # activation channel-wise int8 quantization
-            assert (per_channel_quant
-                    ), "int8 quantization only supports block or channel-wise"
-            A, A_scale, _= ops.scaled_int8_quant(A, A_scale)
-        else:
-            # activation block-wise int8 quantization
-            assert len(block_shape) == 2
-            _, block_k = block_shape[0], block_shape[1]
-            A, A_scale = per_token_group_quant_int8(A, block_k)
-            assert triton.cdiv(A.shape[-1], block_k) == A_scale.shape[-1]
-            # assert triton.cdiv(B.shape[-2], block_n) == B_scale.shape[-2]
-            # assert triton.cdiv(B.shape[-1], block_k) == B_scale.shape[-1]
-    elif use_int8_w8a16 or use_int4_w4a16:
-        assert B_scale is not None
-        assert block_shape is None or block_shape[0] == 0
-    else:
-        assert A_scale is None
-        assert B_scale is None
-
-    return A, A_scale
 
 def fused_experts_impl(
     hidden_states: torch.Tensor,
@@ -920,6 +898,7 @@ def fused_experts_impl(
     topk_ids: torch.Tensor,
     inplace: bool = False,
     activation: str = "silu",
+    is_act_and_mul: bool = True,
     apply_router_weight_on_input: bool = False,
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
@@ -935,7 +914,8 @@ def fused_experts_impl(
     a1_scale: Optional[torch.Tensor] = None,
     a2_scale: Optional[torch.Tensor] = None,
     block_shape: Optional[list[int]] = None,
-) -> torch.Tensor:
+    w1_bias: Optional[torch.Tensor] = None,
+    w2_bias: Optional[torch.Tensor] = None) -> torch.Tensor:
     # Check constraints.
     if use_int4_w4a16:
         assert hidden_states.shape[1] // 2 == w1.shape[
@@ -972,10 +952,10 @@ def fused_experts_impl(
                                         use_int4_w4a16=use_int4_w4a16,
                                         dtype=hidden_states.dtype)
 
-    qtype = get_config_qtype(use_fp8_w8a8=use_fp8_w8a8,
-                             use_int8_w8a8=use_int8_w8a8,
-                             use_int8_w8a16=use_int8_w8a16,
-                             use_int4_w4a16=use_int4_w4a16)
+    qtype = get_config_quant_dtype(use_fp8_w8a8=use_fp8_w8a8,
+                                    use_int8_w8a8=use_int8_w8a8,
+                                    use_int8_w8a16=use_int8_w8a16,
+                                    use_int4_w4a16=use_int4_w4a16)
 
     get_config_func = functools.partial(
         try_get_optimal_moe_config,
@@ -1077,6 +1057,12 @@ def fused_experts_impl(
 
         curr_topk_ids = topk_ids[begin_chunk_idx:end_chunk_idx]
         curr_topk_weights = topk_weights[begin_chunk_idx:end_chunk_idx]
+        qcurr_hidden_states, a1q_scale = moe_kernel_quantize_input(
+            A=curr_hidden_states,
+            A_scale=a1_scale,
+            quant_dtype=qtype,
+            per_act_token_quant=per_channel_quant,
+            block_shape=block_shape)
 
         sorted_token_ids, expert_ids, num_tokens_post_padded = (
             moe_align_block_size(curr_topk_ids, stage1_config['BLOCK_SIZE_M'],
@@ -1121,16 +1107,31 @@ def fused_experts_impl(
                                 use_int4_w4a16=use_int4_w4a16,
                                 orig_acc_dtype=hidden_states.dtype,
                                 per_channel_quant=per_channel_quant,
-                                block_shape=block_shape)
-        # └------------------------- Metax Modification -------------------------┘ 
-        if activation == "silu":
+                                block_shape=block_shape,
+                                B_bias=w1_bias)
+        # └------------------------- Metax Modification -------------------------┘
+
+        # Activation function with multiplication
+        if activation == "silu" and is_act_and_mul:
             torch.ops._C.silu_and_mul(intermediate_cache2,
                                       intermediate_cache1.view(-1, N))
-        elif activation == "gelu":
+        elif activation == "gelu" and is_act_and_mul:
             torch.ops._C.gelu_and_mul(intermediate_cache2,
                                       intermediate_cache1.view(-1, N))
+        elif activation == "swigluoai" and is_act_and_mul:
+            # alpha = 1.702, limit = 7.0
+            torch.ops._C.swigluoai_and_mul(intermediate_cache2,
+                                           intermediate_cache1.view(-1, N))
+        # Activation function without multiplication
+        elif activation == "silu":
+            intermediate_cache2 = F.silu(intermediate_cache1.view(-1, N))
+        elif activation == "gelu":
+            intermediate_cache2 = F.gelu(intermediate_cache1.view(-1, N))
+
         else:
-            raise ValueError(f"Unsupported FusedMoe activation: {activation}")
+            raise ValueError(f"Unsupported FusedMoe activation: {activation}, "
+                             f"with is_act_and_mul={is_act_and_mul}.")
+
 
         # ┌------------------------  Metax Modification -------------------------┐
         if (stage2_config['BLOCK_SIZE_M'] == 128 and use_int8_w8a8==False and w2.shape[1] % 4 == 0 and w2.shape[2] % 8 == 0 and
@@ -1145,6 +1146,11 @@ def fused_experts_impl(
                 qtype=qtype,
                 per_channel_quant=per_channel_quant,
                 block_shape=block_shape)
+            
+            if stage2_config['BLOCK_SIZE_M'] != stage1_config['BLOCK_SIZE_M']:
+                    sorted_token_ids, expert_ids, num_tokens_post_padded = (
+                    moe_align_block_size(curr_topk_ids, stage2_config['BLOCK_SIZE_M'], 
+                                         global_num_experts, expert_map))
 
             invoke_fused_moe_kernel(qintermediate_cache2,
                                 w2,
@@ -1166,7 +1172,8 @@ def fused_experts_impl(
                                 use_int4_w4a16=use_int4_w4a16,
                                 orig_acc_dtype=hidden_states.dtype,
                                 per_channel_quant=per_channel_quant,
-                                block_shape=block_shape)
+                                block_shape=block_shape,
+                                B_bias=w2_bias)
         # └------------------------- Metax Modification -------------------------┘
         ops.moe_sum(intermediate_cache3.view(*intermediate_cache3.shape),
                     out_hidden_states[begin_chunk_idx:end_chunk_idx])
@@ -1174,6 +1181,7 @@ def fused_experts_impl(
     return out_hidden_states
 
 # TODO: remove the functions that are unnessessary to export 
+import vllm.model_executor.layers.fused_moe
 vllm.model_executor.layers.fused_moe.fused_moe.get_moe_configs = get_moe_configs
 vllm.model_executor.layers.fused_moe.fused_moe.get_default_config = get_default_config
 vllm.model_executor.layers.fused_moe.fused_moe.try_get_optimal_moe_config = try_get_optimal_moe_config
@@ -1182,7 +1190,6 @@ vllm.model_executor.layers.fused_moe.fused_moe.get_config_dtype_str = get_config
 vllm.model_executor.layers.fused_moe.fused_moe.fused_moe_kernel_gptq_awq = fused_moe_kernel_gptq_awq
 vllm.model_executor.layers.fused_moe.fused_moe.fused_moe_kernel = fused_moe_kernel
 vllm.model_executor.layers.fused_moe.fused_moe.invoke_fused_moe_kernel = invoke_fused_moe_kernel
-vllm.model_executor.layers.fused_moe.fused_moe.moe_kernel_prepare_input = moe_kernel_prepare_input
 vllm.model_executor.layers.fused_moe.fused_moe.fused_experts_impl = fused_experts_impl
 
 
