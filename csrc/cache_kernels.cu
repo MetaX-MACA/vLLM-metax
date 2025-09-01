@@ -6,21 +6,13 @@
 #include "cuda_compat.h"
 #include "dispatch_utils.h"
 
-#ifdef USE_ROCM
-  #include "quantization/fp8/amd/quant_utils.cuh"
-#else
-  #include "quantization/fp8/nvidia/quant_utils.cuh"
-#endif
+#include "quantization/fp8/quant_utils.cuh"
 
 #include <algorithm>
 #include <cassert>
 #include <map>
 #include <vector>
 
-#ifdef USE_ROCM
-  #include <hip/hip_bf16.h>
-typedef __hip_bfloat16 __nv_bfloat16;
-#endif
 
 void swap_blocks(torch::Tensor& src, torch::Tensor& dst,
                  const torch::Tensor& block_mapping) {
@@ -498,81 +490,6 @@ void concat_and_cache_mla(
 
   DISPATCH_BY_KV_CACHE_DTYPE(kv_c.dtype(), kv_cache_dtype,
                              CALL_CONCAT_AND_CACHE_MLA);
-}
-
-namespace vllm {
-
-template <typename Tout, typename Tin, Fp8KVCacheDataType kv_dt>
-__global__ void convert_fp8_kernel(const Tin* __restrict__ src_cache,
-                                   Tout* __restrict__ dst_cache,
-                                   const float scale,
-                                   const int64_t block_stride) {
-  const int64_t block_idx = blockIdx.x;
-  for (int i = threadIdx.x; i < block_stride; i += blockDim.x) {
-    int64_t idx = block_idx * block_stride + i;
-    dst_cache[idx] =
-        fp8::scaled_convert<Tout, Tin, kv_dt>(src_cache[idx], scale);
-  }
-}
-
-}  // namespace vllm
-
-#define CALL_CONVERT_FP8(Tout, Tin, KV_DTYPE)                                \
-  vllm::convert_fp8_kernel<Tout, Tin, KV_DTYPE><<<grid, block, 0, stream>>>( \
-      reinterpret_cast<Tin*>(src_cache.data_ptr()),                          \
-      reinterpret_cast<Tout*>(dst_cache.data_ptr()), scale, block_stride);
-
-// Only for testing.
-void convert_fp8(torch::Tensor& dst_cache, torch::Tensor& src_cache,
-                 const double scale, const std::string& kv_cache_dtype) {
-  torch::Device src_device = src_cache.device();
-  torch::Device dst_device = dst_cache.device();
-  TORCH_CHECK(src_device.is_cuda(), "src must be on a GPU")
-  TORCH_CHECK(dst_device.is_cuda(), "dst must be on a GPU")
-  TORCH_CHECK(src_device.index() == dst_device.index(),
-              "src and dst must be on the same GPU");
-  at::cuda::OptionalCUDAGuard device_guard(src_device);
-
-  int64_t num_blocks = src_cache.size(0);
-  int64_t block_stride = src_cache.stride(0);
-
-  dim3 grid(num_blocks);
-  dim3 block(std::min(block_stride, int64_t(512)));
-  const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-
-  if (kv_cache_dtype == "auto") {
-    if (src_cache.dtype() == at::ScalarType::Float) {
-      CALL_CONVERT_FP8(uint8_t, float, vllm::Fp8KVCacheDataType::kAuto);
-    } else if (src_cache.dtype() == at::ScalarType::Half) {
-      CALL_CONVERT_FP8(uint8_t, uint16_t, vllm::Fp8KVCacheDataType::kAuto);
-    } else if (src_cache.dtype() == at::ScalarType::BFloat16) {
-      CALL_CONVERT_FP8(uint8_t, __nv_bfloat16, vllm::Fp8KVCacheDataType::kAuto);
-    } else if (dst_cache.dtype() == at::ScalarType::Float) {
-      CALL_CONVERT_FP8(float, uint8_t, vllm::Fp8KVCacheDataType::kAuto);
-    } else if (dst_cache.dtype() == at::ScalarType::Half) {
-      CALL_CONVERT_FP8(uint16_t, uint8_t, vllm::Fp8KVCacheDataType::kAuto);
-    } else if (dst_cache.dtype() == at::ScalarType::BFloat16) {
-      CALL_CONVERT_FP8(__nv_bfloat16, uint8_t, vllm::Fp8KVCacheDataType::kAuto);
-    }
-  } else if (kv_cache_dtype == "fp8" || kv_cache_dtype == "fp8_e4m3") {
-    if (src_cache.dtype() == at::ScalarType::Float) {
-      CALL_CONVERT_FP8(uint8_t, float, vllm::Fp8KVCacheDataType::kFp8E4M3);
-    } else if (src_cache.dtype() == at::ScalarType::Half) {
-      CALL_CONVERT_FP8(uint8_t, uint16_t, vllm::Fp8KVCacheDataType::kFp8E4M3);
-    } else if (src_cache.dtype() == at::ScalarType::BFloat16) {
-      CALL_CONVERT_FP8(uint8_t, __nv_bfloat16,
-                       vllm::Fp8KVCacheDataType::kFp8E4M3);
-    } else if (dst_cache.dtype() == at::ScalarType::Float) {
-      CALL_CONVERT_FP8(float, uint8_t, vllm::Fp8KVCacheDataType::kFp8E4M3);
-    } else if (dst_cache.dtype() == at::ScalarType::Half) {
-      CALL_CONVERT_FP8(uint16_t, uint8_t, vllm::Fp8KVCacheDataType::kFp8E4M3);
-    } else if (dst_cache.dtype() == at::ScalarType::BFloat16) {
-      CALL_CONVERT_FP8(__nv_bfloat16, uint8_t,
-                       vllm::Fp8KVCacheDataType::kFp8E4M3);
-    }
-  } else {
-    TORCH_CHECK(false, "Unsupported data type: ", kv_cache_dtype);
-  }
 }
 
 namespace vllm {

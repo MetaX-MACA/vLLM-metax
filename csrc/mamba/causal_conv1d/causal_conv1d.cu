@@ -13,10 +13,6 @@
 #include <cub/block/block_load.cuh>
 #include <cub/block/block_store.cuh>
 
-#ifdef USE_ROCM
-    namespace cub = hipcub;
-#endif
-
 #include "static_switch.h"
 
 

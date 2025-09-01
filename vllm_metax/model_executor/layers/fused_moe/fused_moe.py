@@ -629,15 +629,15 @@ def metax_invoke_fused_moe_kernel(A: torch.Tensor,
         #                                real_top_k=top_k,
         #                                block_size_m=config["BLOCK_SIZE_M"]))
 
-        if False and use_moe_wna16_cuda:
-            bit = 4 if use_int4_w4a16 else 8
-            ops.moe_wna16_gemm(A, C, B, B_scale, B_zp,
-                               topk_weights if mul_routed_weight else None,
-                               sorted_token_ids, expert_ids,
-                               num_tokens_post_padded, top_k,
-                               config["BLOCK_SIZE_M"], config["BLOCK_SIZE_N"],
-                               config["BLOCK_SIZE_K"] * config["SPLIT_K"], bit)
-            return
+        # if use_moe_wna16_cuda:
+        #     bit = 4 if use_int4_w4a16 else 8
+        #     ops.moe_wna16_gemm(A, C, B, B_scale, B_zp,
+        #                        topk_weights if mul_routed_weight else None,
+        #                        sorted_token_ids, expert_ids,
+        #                        num_tokens_post_padded, top_k,
+        #                        config["BLOCK_SIZE_M"], config["BLOCK_SIZE_N"],
+        #                        config["BLOCK_SIZE_K"] * config["SPLIT_K"], bit)
+        #     return
 # └-------------------------------- Metax Modification --------------------------------┘
         metax_fused_moe_kernel_gptq_awq[grid](
             A,

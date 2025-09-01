@@ -25,19 +25,8 @@
 #include "attention_dtypes.h"
 #include "attention_utils.cuh"
 
-#ifdef USE_ROCM
-  #include <hip/hip_bf16.h>
-  #include "../quantization/fp8/amd/quant_utils.cuh"
-typedef __hip_bfloat16 __nv_bfloat16;
-#else
-  #include "../quantization/fp8/nvidia/quant_utils.cuh"
-#endif
-
-#ifndef USE_ROCM
-  #define WARP_SIZE 32
-#else
-  #define WARP_SIZE warpSize
-#endif
+#include "../quantization/fp8/quant_utils.cuh"
+#define WARP_SIZE 32
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))

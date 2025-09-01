@@ -40,28 +40,6 @@ __device__ uint4 dequantize_s4_to_fp16x2(uint32_t const& source) {
   // Shift right by 8 to now consider elt_45 and elt_67. Issue first to hide RAW
   // dependency if we issue immediately before required.
   const uint32_t top_i4s = i4s >> 8;
-#ifndef USE_MACA
-  // Extract elt_01 - (i4s & 0x000f000f) | 0x64006400
-  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-               : "=r"(h[0])
-               : "r"(i4s), "n"(BOTTOM_MASK), "n"(I4s_TO_F16s_MAGIC_NUM),
-                 "n"(immLut));
-  // Extract elt_23 (i4s & 0x00f000f0) | 0x64006400
-  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-               : "=r"(h[1])
-               : "r"(i4s), "n"(TOP_MASK), "n"(I4s_TO_F16s_MAGIC_NUM),
-                 "n"(immLut));
-  // Extract elt_45 (top_i4s & 0x000f000f) | 0x64006400
-  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-               : "=r"(h[2])
-               : "r"(top_i4s), "n"(BOTTOM_MASK), "n"(I4s_TO_F16s_MAGIC_NUM),
-                 "n"(immLut));
-  // Extract elt_67 (top_i4s & 0x00f000f0) | 0x64006400
-  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-               : "=r"(h[3])
-               : "r"(top_i4s), "n"(TOP_MASK), "n"(I4s_TO_F16s_MAGIC_NUM),
-                 "n"(immLut));
-#else
       // >>>> PTX2CPP Success <<<<
 {
 (h[0])=0;
@@ -117,8 +95,6 @@ if((immLut)&0x80)(h[3])|= (top_i4s)& (TOP_MASK)& (I4s_TO_F16s_MAGIC_NUM);
 }
 
 
-#endif //USE_MACA
-
   // I use inline PTX below because I am not sure if the compiler will emit
   // float2half instructions if I use the half2 ctor. In this case, I chose
   // performance reliability over code readability.
@@ -136,23 +112,6 @@ if((immLut)&0x80)(h[3])|= (top_i4s)& (TOP_MASK)& (I4s_TO_F16s_MAGIC_NUM);
 
   // Finally, we construct the output numbers.
   // Convert elt_01
-#ifndef USE_MACA
-  asm volatile("sub.f16x2 %0, %1, %2;\n"
-               : "=r"(h[0])
-               : "r"(h[0]), "r"(FP16_TOP_MAGIC_NUM));
-  // Convert elt_23
-  asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n"
-               : "=r"(h[1])
-               : "r"(h[1]), "r"(ONE_SIXTEENTH), "r"(NEG_64));
-  // Convert elt_45
-  asm volatile("sub.f16x2 %0, %1, %2;\n"
-               : "=r"(h[2])
-               : "r"(h[2]), "r"(FP16_TOP_MAGIC_NUM));
-  // Convert elt_67
-  asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n"
-               : "=r"(h[3])
-               : "r"(h[3]), "r"(ONE_SIXTEENTH), "r"(NEG_64));
-#else
     // >>>> PTX2CPP Success <<<<
 {
 {
@@ -199,7 +158,6 @@ VT __d=__hfma2(*(VT*)&__a,*(VT*)&__b,*(VT*)&__c);
 }
 }
 
-#endif // USE_MACA
   return result;
 #endif
   __builtin_unreachable();  // Suppress missing return statement warning

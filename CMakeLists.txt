@@ -266,7 +266,6 @@ set(VLLM_EXT_SRC
   "csrc/quantization/activation_kernels.cu"
   "csrc/cuda_utils_kernels.cu"
   "csrc/prepare_inputs/advance_step.cu"
-  "csrc/custom_all_reduce.cu"
   "csrc/torch_bindings.cpp")
 
 # support opt of gptq-marlin
@@ -726,7 +725,7 @@ if (USE_MACA AND ENABLE_BLAS_API)
   set(MCBLAS_LIB $ENV{MACA_PATH}/lib/libmcblas.so)
 endif()
 
-if(VLLM_GPU_LANG STREQUAL "CUDA")
+if(VLLM_GPU_LANG STREQUAL "CUDA"  AND NOT USE_MACA)
   list(APPEND VLLM_MOE_EXT_SRC "csrc/moe/moe_wna16.cu")
 endif()
 
@@ -734,7 +733,7 @@ set_gencode_flags_for_srcs(
   SRCS "${VLLM_MOE_EXT_SRC}"
   CUDA_ARCHS "${CUDA_ARCHS}")
 
-if(VLLM_GPU_LANG STREQUAL "CUDA")
+if(VLLM_GPU_LANG STREQUAL "CUDA" AND NOT USE_MACA)
   set(VLLM_MOE_WNA16_SRC
     "csrc/moe/moe_wna16.cu")
 
@@ -801,7 +800,6 @@ endif()
 
 if(VLLM_GPU_LANG STREQUAL "CUDA")
   set(MOE_PERMUTE_SRC
-      "csrc/moe/permute_unpermute_kernels/moe_permute_unpermute_kernel.cu"
       "csrc/moe/moe_permute_unpermute_op.cu")
 
   set_gencode_flags_for_srcs(

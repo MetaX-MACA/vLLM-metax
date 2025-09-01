@@ -8,11 +8,7 @@
 #include "quantization/utils.cuh"
 #include "quant_conversions.cuh"
 
-#ifndef USE_ROCM
-  #include <cub/cub.cuh>
-#else
-  #include <hipcub/hipcub.hpp>
-#endif
+#include <cub/cub.cuh>
 
 namespace vllm {
 

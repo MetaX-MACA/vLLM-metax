@@ -305,9 +305,6 @@ void fused_silu_mul_dq_mask_quant_pack(
     torch::Tensor const& input, 
     torch::Tensor const &mask);
 
-void dynamic_scaled_int8_mask_quant( torch::Tensor& out,  torch::Tensor const& input, torch::Tensor const &mask, 
-    torch::Tensor& scales, c10::optional<torch::Tensor> const& azp);
-
 torch::Tensor gptq_gemm(torch::Tensor a, torch::Tensor b_q_weight,
                         torch::Tensor b_gptq_qzeros,
                         torch::Tensor b_gptq_scales, torch::Tensor b_g_idx,
