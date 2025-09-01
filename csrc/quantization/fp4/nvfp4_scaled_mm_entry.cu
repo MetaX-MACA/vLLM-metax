@@ -38,7 +38,5 @@ void cutlass_scaled_fp4_mm(torch::Tensor& D, torch::Tensor const& A,
 }
 
 bool cutlass_scaled_mm_supports_fp4(int64_t cuda_device_capability) {
-  int runtimeVersion;
-  cudaRuntimeGetVersion(&runtimeVersion);
-  return cuda_device_capability >= 100 && runtimeVersion >= 12080;
+  return false;
 }
