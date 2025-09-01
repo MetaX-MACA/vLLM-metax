@@ -409,7 +409,7 @@ class VocabParallelEmbedding(torch.nn.Module):
             if padding_needed:
                 loaded_weight = torch.nn.functional.pad(loaded_weight, (0, padding_needed), value=0)
 
-        if current_platform.is_hpu():
+        if current_platform.is_tpu():
             # FIXME(kzawora): Weight copy with slicing bugs out on Gaudi here,
             # so we're using a workaround. Remove this when fixed in
             # HPU PT bridge.

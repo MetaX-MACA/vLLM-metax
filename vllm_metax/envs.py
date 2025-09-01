@@ -77,7 +77,7 @@ environment_variables: dict[str, Callable[[], Any]] = {
 
     # if set, enable loading weight by transpose
     "MACA_VLLM_USE_TN_2_NN":
-    lambda: os.environ.get("MACA_VLLM_USE_TN_2_NN", "1") == "1",
+    lambda: os.environ.get("MACA_VLLM_USE_TN_2_NN", "0") == "1",
 }
 
 # end-env-vars-definition

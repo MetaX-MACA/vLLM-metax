@@ -16,7 +16,8 @@ from vllm.logger import init_logger
 from vllm_metax import envs as mx_envs
 
 logger = init_logger(__name__)
-def import_pymcml():
+
+def import_pymxml():
     """
     Historical comments:
 
@@ -43,12 +44,10 @@ def import_pymcml():
     After all the troubles, we decide to copy the official `pynvml`
     module to our codebase, and use it directly.
     """
-    import vllm_metax.third_party.pymcml as pymcml
-    return pymcml
+    import vllm_metax.third_party.pymxml as pymxml
+    return pymxml
 
-def find_nccl_library() -> str:
-    logger.info(f"[Plugin] Hooked find_nccl_library -> {find_nccl_library}")
-
+def find_mccl_library() -> str:
     """
     We either use the library file specified by the `VLLM_NCCL_SO_PATH`
     environment variable, or we find the library file brought by PyTorch.

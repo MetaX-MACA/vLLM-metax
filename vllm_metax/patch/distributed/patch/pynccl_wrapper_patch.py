@@ -18,7 +18,7 @@ from vllm.distributed.device_communicators.pynccl_wrapper import (Function,
                                                                   NCCLLibrary,
                                                                   )
 import ctypes
-from vllm_metax.patch.before_all.patch_0_9_1.utils_patch import find_nccl_library
+from vllm_metax.utils import find_mccl_library
 from typing import Optional, Dict, Any
 
 logger = init_logger(__name__)
@@ -117,7 +117,7 @@ class NCCLLibrary:
 
     def __init__(self, so_file: Optional[str] = None):
 
-        so_file = so_file or find_nccl_library()
+        so_file = so_file or find_mccl_library()
 
         try:
             if so_file not in NCCLLibrary.path_to_dict_mapping:

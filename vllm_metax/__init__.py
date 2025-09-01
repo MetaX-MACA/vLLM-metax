@@ -64,17 +64,6 @@ def post_installation():
         # TODO: workaround for torch 2.7 inferscheme, remove when torch >= 2.7
         "patch/vllm_substitution/fp8_utils.py" : vllm_dist_path / "model_executor/layers/quantization/utils/fp8_utils.py",
         "patch/vllm_substitution/fused_moe.py" : vllm_dist_path / "model_executor/layers/fused_moe/fused_moe.py",
-        # TODO: below's are merged from vllm 0.9.2, remove them when updated
-        "patch/vllm_substitution/rejection_sampler.py" : vllm_dist_path / "v1/sample/rejection_sampler.py",
-        "patch/vllm_substitution/eagle.py" : vllm_dist_path / "v1/spec_decode/eagle.py",
-        "patch/vllm_substitution/gpu_model_runner.py" : vllm_dist_path / "v1/worker/gpu_model_runner.py",
-        "patch/vllm_substitution/cuda_piecewise_backend.py" : vllm_dist_path / "compilation/cuda_piecewise_backend.py",
-        "patch/vllm_substitution/forward_context.py" : vllm_dist_path / "forward_context.py",
-        "patch/vllm_substitution/flash_attn.py" : vllm_dist_path / "v1/attention/backends/flash_attn.py",
-        "patch/vllm_substitution/flashinfer.py" : vllm_dist_path / "v1/attention/backends/flashinfer.py",
-        "patch/vllm_substitution/common.py" : vllm_dist_path / "v1/attention/backends/mla/common.py",
-        "patch/vllm_substitution/flashmla.py" : vllm_dist_path / "v1/attention/backends/mla/flashmla.py",
-        "patch/vllm_substitution/utils.py" : vllm_dist_path / "v1/attention/backends/utils.py",
     }
 
     for src_path, dest_path in files_to_copy.items():
@@ -91,10 +80,11 @@ def post_installation():
 
 def register():
     """Register the METAX platform."""
-    return "vllm_metax.platform.MetaXPlatform"
+    return "vllm_metax.platform.MacaPlatform"
 
 
 def register_model():
+    
     import vllm_metax.patch
     from .models import register_model
     register_model()

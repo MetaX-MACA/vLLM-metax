@@ -15,7 +15,7 @@ from vllm.scalar_type import ScalarType
 
 logger = init_logger(__name__)
 
-if not current_platform.is_tpu() and not current_platform.is_hpu():
+if not current_platform.is_tpu() and not current_platform.is_xpu():
     try:
         import vllm._C
     except ImportError as e:
@@ -673,13 +673,13 @@ def cutlass_scaled_fp4_mm(a: torch.Tensor, b: torch.Tensor,
 
 def cutlass_scaled_mm_supports_fp8(cuda_device_capability: int) -> bool:
     # return torch.ops._C.cutlass_scaled_mm_supports_fp8(cuda_device_capability)
-    return True
+    return False
 
 
 def cutlass_scaled_mm_supports_block_fp8(cuda_device_capability: int) -> bool:
     # return torch.ops._C.cutlass_scaled_mm_supports_block_fp8(
     #     cuda_device_capability)
-    return True
+    return False
 
 # Batch gemm in vllm, support w8a8 int8 quantization
 def cutlass_scaled_batch_mm(a: torch.Tensor, b: torch.Tensor,
@@ -1596,16 +1596,6 @@ def moe_align_block_size(topk_ids: torch.Tensor, num_experts: int,
     torch.ops._moe_C.moe_align_block_size(topk_ids, num_experts, block_size,
                                           sorted_token_ids, experts_ids,
                                           num_tokens_post_pad)
-
-
-def sgl_moe_align_block_size(topk_ids: torch.Tensor, num_experts: int,
-                             block_size: int, sorted_token_ids: torch.Tensor,
-                             experts_ids: torch.Tensor,
-                             num_tokens_post_pad: torch.Tensor) -> None:
-    torch.ops._moe_C.sgl_moe_align_block_size(topk_ids, num_experts,
-                                              block_size, sorted_token_ids,
-                                              experts_ids, num_tokens_post_pad)
-
 
 def moe_wna16_gemm(input: torch.Tensor, output: torch.Tensor,
                    b_qweight: torch.Tensor, b_scales: torch.Tensor,

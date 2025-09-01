@@ -18,7 +18,8 @@ from typing_extensions import ParamSpec
 import vllm._C  # noqa
 import vllm.envs as envs
 from vllm.logger import init_logger
-from vllm_metax.utils import import_pymcml
+from vllm_metax.utils import import_pymxml
+from vllm.utils import cuda_device_count_stateless
 
 from vllm.platforms.interface import DeviceCapability, Platform, PlatformEnum, _Backend, FlexibleArgumentParser
 
@@ -30,7 +31,7 @@ logger = init_logger(__name__)
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
-pymcml = import_pymcml()
+pymxml = import_pymxml()
 
 # pytorch 2.5 uses cudnn sdpa by default, which will cause crash on some models
 # see https://github.com/huggingface/diffusers/issues/9704 for details
@@ -41,22 +42,38 @@ def with_mcml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
 
     @wraps(fn)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
-        pymcml.nvmlInit()
+        pymxml.nvmlInit()
         try:
             return fn(*args, **kwargs)
         finally:
-            pymcml.nvmlShutdown()
+            pymxml.nvmlShutdown()
 
     return wrapper
 
 
-class MetaXPlatformBase(Platform):
+class MacaPlatformBase(Platform):
     _enum = PlatformEnum.CUDA
     device_name: str = "Metax"
     device_type: str = "cuda"
     dispatch_key: str = "CUDA"
     ray_device_key: str = "GPU"
     device_control_env_var: str = "CUDA_VISIBLE_DEVICES"
+
+    supported_quantization:list[str] = [
+        "awq", "gptq", "compressed-tensors", "compressed_tensors",
+        "moe_wna16", "gguf"
+    ]
+
+    @classmethod
+    def set_device(cls, device: torch.device) -> None:
+        """
+        Set the device for the current platform.
+        """
+        torch.cuda.set_device(device)
+        # With this trick we can force the device to be set eagerly
+        # see https://github.com/pytorch/pytorch/issues/155668
+        # for why and when it is needed
+        _ = torch.zeros(1, device=device)
 
     @classmethod
     def get_device_capability(cls,
@@ -82,7 +99,7 @@ class MetaXPlatformBase(Platform):
 
     @classmethod
     def is_async_output_supported(cls, enforce_eager: Optional[bool]) -> bool:
-        if enforce_eager:
+        if enforce_eager and not envs.VLLM_USE_V1:
             logger.warning(
                 "To see benefits of async output processing, enable CUDA "
                 "graph. Since, enforce-eager is enabled, async output "
@@ -105,33 +122,19 @@ class MetaXPlatformBase(Platform):
 
         # Config Override
         parallel_config = vllm_config.parallel_config
-        scheduler_config = vllm_config.scheduler_config
         compilation_config = vllm_config.compilation_config
         model_config = vllm_config.model_config
 
         if parallel_config.worker_cls == "auto":
-            if scheduler_config.is_multi_step:
-                if envs.VLLM_USE_V1:
+            if vllm_config.speculative_config:
+                if not envs.VLLM_USE_V1:
                     raise NotImplementedError(
-                        "Multi-step scheduling is not supported (and not "
-                        "needed) on vLLM V1. Please launch without "
-                        "--num-scheduler-steps.")
-                else:
-                    parallel_config.worker_cls = \
-                        "vllm.worker.multi_step_worker.MultiStepWorker"
-            elif vllm_config.speculative_config:
-                if envs.VLLM_USE_V1:
-                    parallel_config.worker_cls = \
-                            "vllm.v1.worker.gpu_worker.Worker"
-                else:
-                    parallel_config.worker_cls = \
-                        "vllm.spec_decode.spec_decode_worker.create_spec_worker"
-                    parallel_config.sd_worker_cls = \
-                        "vllm.worker.worker.Worker"
+                        "Speculative decoding is not supported on vLLM V0.")
+                parallel_config.worker_cls = "vllm.v1.worker.gpu_worker.Worker"
             else:
                 if envs.VLLM_USE_V1:
                     parallel_config.worker_cls = \
-                            "vllm.v1.worker.gpu_worker.Worker"
+                        "vllm.v1.worker.gpu_worker.Worker"
                 else:
                     parallel_config.worker_cls = "vllm.worker.worker.Worker"
 
@@ -142,32 +145,59 @@ class MetaXPlatformBase(Platform):
         # TODO(lucas): handle this more gracefully
         # Note: model_config may be None during testing
         if model_config is not None and model_config.use_mla:
-            # if `VLLM_ATTENTION_BACKEND` is not set and we are using MLA, then
-            # we default to FlashMLA backend, so we need to force the blocksize
-            # here
-            use_flashmla = (envs.VLLM_ATTENTION_BACKEND is None \
-                or envs.VLLM_ATTENTION_BACKEND == "FLASHMLA")
-            from vllm_metax.attention.ops.flashmla import is_flashmla_supported
+            # If `VLLM_ATTENTION_BACKEND` is not set and we are using MLA,
+            # then we default to FlashMLA backend for non-blackwell GPUs,
+            # else we default to CutlassMLA. For each case, we force the
+            # required block_size.
+            use_flashmla = False
+            use_cutlass_mla = False
+
+            if envs.VLLM_ATTENTION_BACKEND is None:
+                # Default case
+                if cls.is_device_capability(100):
+                    # Blackwell => Force CutlassMLA.
+                    use_cutlass_mla = True
+                    # TODO: This does not work, because the
+                    # global_force_attn_backend_context_manager is not set.
+                    # See vllm/attention/selector.py:_cached_get_attn_backend
+                    envs.VLLM_ATTENTION_BACKEND = "CUTLASS_MLA"
+                else:
+                    # Not Blackwell
+                    use_flashmla = True
+            else:
+                # Forced case
+                use_flashmla = (envs.VLLM_ATTENTION_BACKEND == "FLASHMLA")
+                use_cutlass_mla = (
+                    envs.VLLM_ATTENTION_BACKEND == "CUTLASS_MLA")
+
+            from vllm.attention.ops.flashmla import is_flashmla_supported
             if use_flashmla and is_flashmla_supported()[0] \
                 and cache_config.block_size != 64:
                 cache_config.block_size = 64
                 logger.info(
                     "Forcing kv cache block size to 64 for FlashMLA backend.")
-                
+
+            if use_cutlass_mla and cache_config.block_size != 128:
+                cache_config.block_size = 128
+                logger.info("Forcing kv cache block size to 128 for "
+                            "CUTLASS_MLA backend.")
+
+        # lazy import to avoid circular import
+        from vllm.config import CUDAGraphMode
+
+        compilation_config = vllm_config.compilation_config
         if (envs.VLLM_ALL2ALL_BACKEND == "deepep_high_throughput"
                 and parallel_config.data_parallel_size > 1
-                and vllm_config.compilation_config.use_cudagraph):
+                and compilation_config.cudagraph_mode != CUDAGraphMode.NONE):
             logger.info(
-                "Data Parallel: Forcing enforce eager to be True since DP "
+                "Data Parallel: disabling cudagraphs since DP "
                 "with DeepEP high-throughput kernels are not CUDA Graph "
                 "compatible. The DeepEP low-latency kernels are CUDA Graph "
                 "compatible. Set the all_to_all backend to deepep_low_latency "
                 "to use those kernels instead.")
-            vllm_config.compilation_config.use_cudagraph = False
-            vllm_config.model_config.enforce_eager = True
-            # TODO (varun): Turning this ON gives incorrect results for the
-            # Deepseek-V2-lite model.
-            vllm_config.compilation_config.use_inductor = False
+            compilation_config.cudagraph_mode = CUDAGraphMode.NONE
+            if model_config is not None:
+                model_config.enforce_eager = True
 
         if vllm_config.model_config is not None and \
             not vllm_config.model_config.enforce_eager and \
@@ -189,26 +219,26 @@ class MetaXPlatformBase(Platform):
 
     @classmethod
     def get_attn_backend_cls(cls, selected_backend, head_size, dtype,
-                             kv_cache_dtype, block_size, use_v1,
-                             use_mla) -> str:
+                             kv_cache_dtype, block_size, use_v1, use_mla,
+                             has_sink) -> str:
         if use_mla:
-            if selected_backend == _Backend.CUTLASS_MLA_VLLM_V1:
-                if use_v1:
-                    logger.info_once("Using Cutlass MLA backend on V1 engine.")
-                    return ("vllm.v1.attention.backends.mla."
-                            "cutlass_mla.CutlassMLABackend")
-                else:
-                    logger.warning(
-                        "Cutlass MLA backend is only supported on V1 engine")
-            # TODO(lucas): refactor to  be more concise
+            TRITON_MLA_V1 = "vllm_metax.v1.attention.backends.mla.triton_mla." \
+                            "MacaTritonMLABackend"  # noqa: E501
+            FLASHMLA_V1 = "vllm_metax.v1.attention.backends.mla.flashmla." \
+                            "MacaFlashMLABackend"  # noqa: E501
+            # TODO(lucas): refactor to be more concise
             #  we should probably consider factoring out V1 here
+            if selected_backend == _Backend.CUTLASS_MLA or (
+                    cls.is_device_capability(100) and selected_backend is None
+                    and block_size == 128):
+                logger.warning(
+                    "Cutlass MLA backend is not supported on Maca")
             if selected_backend == _Backend.TRITON_MLA or block_size != 64:
                 if use_v1:
-                    logger.info_once("Using Metax Triton MLA backend on V1 engine.")
-                    return ("vllm_metax.v1.attention.backends.mla.triton_mla.MetaxTritonMLABackend")
+                    logger.info_once("Using Triton MLA backend on V1 engine.")
+                    return TRITON_MLA_V1
                 else:
-                    logger.info("Using Metax Triton MLA backend.")
-                    return "vllm_metax.attention.backends.triton_mla.MetaxTritonMLABackend"
+                    logger.warning("Triton MLA backend is only supported on V1 engine")
             else:
                 from vllm_metax.attention.backends.flashmla import (
                     is_flashmla_supported)
@@ -225,117 +255,63 @@ class MetaXPlatformBase(Platform):
                     if use_v1:
                         logger.info_once(
                             "Using FlashMLA backend on V1 engine.")
-                        return ("vllm_metax.v1.attention.backends.mla."
-                                "flashmla.MetaxFlashMLABackend")
+                        return FLASHMLA_V1
                     else:
-                        logger.info("Using FlashMLA backend.")
-                        return ("vllm_metax.attention.backends."
-                                "flashmla.MetaxFlashMLABackend")
+                        logger.warning("FlashMLA backend is only supported on V1 engine")
         if use_v1:
+            FLASHINFER_V1 = "vllm_metax.v1.attention.backends.flashinfer.MacaFlashInferBackend"  # noqa: E501
+            FLASH_ATTN_V1 = "vllm_metax.v1.attention.backends.flash_attn.MacaFlashAttentionBackend"  # noqa: E501
+    
             if selected_backend == _Backend.FLASHINFER:
-                logger.info_once("Using Metax FlashInfer backend on V1 engine.")
-                return "vllm_metax.v1.attention.backends.flashinfer.MetaxFlashInferBackend"
-            if selected_backend == _Backend.FLEX_ATTENTION:
-                logger.info("Using FlexAttenion backend on V1 engine.")
-                return "vllm.v1.attention.backends.flex_attention.FlexAttentionBackend"  # noqa: E501
-            if selected_backend == _Backend.TRITON_ATTN_VLLM_V1:
-                logger.info_once("Using Triton backend on V1 engine.")
-                return ("vllm.v1.attention.backends."
-                        "triton_attn.TritonAttentionBackend")
+                logger.info_once("Using FlashInfer backend on V1 engine.")
+                if cls.has_device_capability(100):
+                    from vllm.v1.attention.backends.utils import (
+                        set_kv_cache_layout)
+                    set_kv_cache_layout("HND")
+                return FLASHINFER_V1
+            elif selected_backend == _Backend.FLASH_ATTN:
+                logger.info_once("Using Flash Attention backend on V1 engine.")
+                return FLASH_ATTN_V1
+
+            from vllm.attention.selector import is_attn_backend_supported
+
+            # Default backends for V1 engine
+            # Prefer FlashInfer for Blackwell GPUs if installed
             if cls.is_device_capability(100):
-                # Prefer FlashInfer for V1 on Blackwell GPUs if installed
-                try:
-                    import flashinfer  # noqa: F401
+                if is_default_backend_supported := is_attn_backend_supported(
+                        FLASHINFER_V1, head_size, dtype):
+                    from vllm.v1.attention.backends.utils import (
+                        set_kv_cache_layout)
+
                     logger.info_once(
-                        "Using FlashInfer backend on V1 engine by default for "
-                        "Blackwell (SM 10.0) GPUs.")
-                    return ("vllm_metax.v1.attention.backends."
-                            "flashinfer.MetaxFlashInferBackend")
-                except ImportError:
-                    logger.info_once(
+                        "Using FlashInfer backend with HND KV cache layout on "
+                        "V1 engine by default for Blackwell (SM 10.0) GPUs.")
+                    set_kv_cache_layout("HND")
+
+                    return FLASHINFER_V1
+
+                if not is_default_backend_supported.can_import:
+                    logger.warning_once(
                         "FlashInfer failed to import for V1 engine on "
                         "Blackwell (SM 10.0) GPUs; it is recommended to "
                         "install FlashInfer for better performance.")
-                    pass
+
+            # FlashAttention is the default for SM 8.0+ GPUs
             if cls.has_device_capability(80):
-                logger.info_once("Using Metax Flash Attention backend on V1 engine.")
-                return ("vllm_metax.v1.attention.backends.flash_attn.MetaxFlashAttentionBackend")
-        if selected_backend == _Backend.FLASHINFER:
-            logger.info("Using FlashInfer backend.")
-            return "vllm_metax.attention.backends.flashinfer.MetaxFlashInferImpl"
-        elif selected_backend == _Backend.XFORMERS:
-            logger.info("Using XFormers backend.")
-            return "vllm.attention.backends.xformers.XFormersBackend"
-        elif selected_backend == _Backend.DUAL_CHUNK_FLASH_ATTN:
-            logger.info("Using DualChunkFlashAttention backend.")
-            return ("vllm.attention.backends.dual_chunk_flash_attn."
-                    "DualChunkFlashAttentionBackend")
-        elif selected_backend == _Backend.FLASH_ATTN:
-            pass
-        elif selected_backend:
-            raise ValueError(
-                f"Invalid attention backend for {cls.device_name}, "
-                f"with use_v1: {use_v1} use_mla: {use_mla}")
+                if is_default_backend_supported := is_attn_backend_supported(
+                        FLASH_ATTN_V1, head_size, dtype,
+                        allow_import_error=False):
+                    logger.info_once("Using Flash Attention backend on "
+                                     "V1 engine.")
+                    return FLASH_ATTN_V1
 
-        target_backend = _Backend.FLASH_ATTN
-        if not cls.has_device_capability(80):
-            # Volta and Turing NVIDIA GPUs.
-            logger.info(
-                "Cannot use FlashAttention-2 backend for Volta and Turing "
-                "GPUs.")
-            target_backend = _Backend.XFORMERS
-        elif dtype not in (torch.float16, torch.bfloat16):
-            logger.info(
-                "Cannot use FlashAttention-2 backend for dtype other than "
-                "torch.float16 or torch.bfloat16.")
-            target_backend = _Backend.XFORMERS
-        elif block_size % 16 != 0:
-            logger.info(
-                "Cannot use FlashAttention-2 backend for block size not "
-                "divisible by 16.")
-            target_backend = _Backend.XFORMERS
+            assert not is_default_backend_supported
 
-        # FlashAttn is valid for the model, checking if the package is
-        # installed.
-        if target_backend == _Backend.FLASH_ATTN:
-            try:
-                import flash_attn  # noqa: F401
-                from vllm_metax.attention.backends.flash_attn import (  # noqa: F401
-                    FlashAttentionBackend, flash_attn_supports_fp8)
-                    
-                supported_sizes = \
-                    FlashAttentionBackend.get_supported_head_sizes()
-                if head_size not in supported_sizes:
-                    logger.info(
-                        "Cannot use FlashAttention-2 backend for head size %d.",
-                        head_size)
-                    target_backend = _Backend.XFORMERS
-                fp8_kv_cache = (kv_cache_dtype is not None
-                                and kv_cache_dtype.startswith("fp8"))
-                if (fp8_kv_cache and not flash_attn_supports_fp8()):
-                    logger.info(
-                        "Cannot use FlashAttention backend for FP8 KV cache.")
-                    logger.warning(
-                        "Please use FlashInfer backend with FP8 KV Cache for "
-                        "better performance by setting environment variable "
-                        "VLLM_ATTENTION_BACKEND=FLASHINFER")
-                    target_backend = _Backend.XFORMERS
-            except ImportError:
-                logger.info(
-                    "Cannot use FlashAttention-2 backend because the "
-                    "vllm.vllm_flash_attn package is not found. "
-                    "Make sure that vllm_flash_attn was built and installed "
-                    "(on by default).")
-                target_backend = _Backend.XFORMERS
+            return FLASH_ATTN_V1
 
-        if target_backend == _Backend.XFORMERS:
-            logger.info("Using XFormers backend.")
-            return "vllm.attention.backends.xformers.XFormersBackend"
-
-        logger.info("Using Flash Attention backend.")
-
-        logger.info_once("Using Metax Flash Attention backend on V0 engine.")
-        return "vllm_metax.attention.backends.flash_attn.MetaxFlashAttentionBackend"
+        # Backends for V0 engine
+        else:
+            logger.warning_once("V0 engine is deprecated on Maca. Please switch to V1.")
 
     @classmethod
     def get_punica_wrapper(cls) -> str:
@@ -347,7 +323,7 @@ class MetaXPlatformBase(Platform):
 
     @classmethod
     def supports_fp8(cls) -> bool:
-        return cls.has_device_capability(89)
+        return False
 
     @classmethod
     def supports_v1(cls, model_config: "ModelConfig") -> bool:
@@ -390,7 +366,24 @@ class MetaXPlatformBase(Platform):
 
         pg._register_backend(device, backend_type, backend_class)
         return pg
-    
+
+    @classmethod
+    def device_count(cls) -> int:
+        return cuda_device_count_stateless()
+
+    @classmethod
+    def is_kv_cache_dtype_supported(cls, kv_cache_dtype: str) -> bool:
+        fp8_attention = kv_cache_dtype.startswith("fp8")
+        will_use_fa = (not envs.is_set("VLLM_ATTENTION_BACKEND")
+                       ) or envs.VLLM_ATTENTION_BACKEND == "FLASH_ATTN_VLLM_V1"
+        supported = False
+        if cls.is_device_capability(100):
+            supported = True
+        elif fp8_attention and will_use_fa:
+            from vllm.attention.utils.fa_utils import flash_attn_supports_fp8
+            supported = flash_attn_supports_fp8()
+        return supported
+
     @classmethod
     def pre_register_and_update(cls,
                                 parser: Optional[FlexibleArgumentParser] = None
@@ -403,7 +396,7 @@ class MetaXPlatformBase(Platform):
 # Note that NVML is not affected by `CUDA_VISIBLE_DEVICES`,
 # all the related functions work on real physical device ids.
 # the major benefit of using NVML is that it will not initialize CUDA
-class McmlMetaxPlatform(MetaXPlatformBase):
+class MxmlPlatform(MacaPlatformBase):
 
     @classmethod
     @with_mcml_context
@@ -412,8 +405,8 @@ class McmlMetaxPlatform(MetaXPlatformBase):
                               ) -> Optional[DeviceCapability]:
         try:
             physical_device_id = cls.device_id_to_physical_device_id(device_id)
-            handle = pymcml.nvmlDeviceGetHandleByIndex(physical_device_id)
-            major, minor = pymcml.nvmlDeviceGetCudaComputeCapability(handle)
+            handle = pymxml.nvmlDeviceGetHandleByIndex(physical_device_id)
+            major, minor = pymxml.nvmlDeviceGetCudaComputeCapability(handle)
             return DeviceCapability(major=major, minor=minor)
         except RuntimeError:
             return None
@@ -441,15 +434,15 @@ class McmlMetaxPlatform(MetaXPlatformBase):
     @with_mcml_context
     def get_device_uuid(cls, device_id: int = 0) -> str:
         physical_device_id = cls.device_id_to_physical_device_id(device_id)
-        handle = pymcml.nvmlDeviceGetHandleByIndex(physical_device_id)
-        return pymcml.nvmlDeviceGetUUID(handle)
+        handle = pymxml.nvmlDeviceGetHandleByIndex(physical_device_id)
+        return pymxml.nvmlDeviceGetUUID(handle)
 
     @classmethod
     @with_mcml_context
     def get_device_total_memory(cls, device_id: int = 0) -> int:
         physical_device_id = cls.device_id_to_physical_device_id(device_id)
-        handle = pymcml.nvmlDeviceGetHandleByIndex(physical_device_id)
-        return int(pymcml.nvmlDeviceGetMemoryInfo(handle).total)
+        handle = pymxml.nvmlDeviceGetHandleByIndex(physical_device_id)
+        return int(pymxml.nvmlDeviceGetMemoryInfo(handle).total)
 
     @classmethod
     @with_mcml_context
@@ -458,20 +451,20 @@ class McmlMetaxPlatform(MetaXPlatformBase):
         query if the set of gpus are fully connected by nvlink (1 hop)
         """
         handles = [
-            pymcml.nvmlDeviceGetHandleByIndex(i) for i in physical_device_ids
+            pymxml.nvmlDeviceGetHandleByIndex(i) for i in physical_device_ids
         ]
         for i, handle in enumerate(handles):
             for j, peer_handle in enumerate(handles):
                 if i < j:
                     try:
-                        p2p_status = pymcml.nvmlDeviceGetP2PStatus(
+                        p2p_status = pymxml.nvmlDeviceGetP2PStatus(
                             handle,
                             peer_handle,
-                            pymcml.NVML_P2P_CAPS_INDEX_NVLINK,
+                            pymxml.NVML_P2P_CAPS_INDEX_NVLINK,
                         )
-                        if p2p_status != pymcml.NVML_P2P_STATUS_OK:
+                        if p2p_status != pymxml.NVML_P2P_STATUS_OK:
                             return False
-                    except pymcml.NVMLError:
+                    except pymxml.NVMLError:
                         logger.exception(
                             "NVLink detection failed. This is normal if"
                             " your machine has no NVLink equipped.")
@@ -480,13 +473,13 @@ class McmlMetaxPlatform(MetaXPlatformBase):
 
     @classmethod
     def _get_physical_device_name(cls, device_id: int = 0) -> str:
-        handle = pymcml.nvmlDeviceGetHandleByIndex(device_id)
-        return pymcml.nvmlDeviceGetName(handle)
+        handle = pymxml.nvmlDeviceGetHandleByIndex(device_id)
+        return pymxml.nvmlDeviceGetName(handle)
 
     @classmethod
     @with_mcml_context
     def log_warnings(cls):
-        device_ids: int = pymcml.nvmlDeviceGetCount()
+        device_ids: int = pymxml.nvmlDeviceGetCount()
         if device_ids > 1:
             device_names = [
                 cls._get_physical_device_name(i) for i in range(device_ids)
@@ -501,7 +494,7 @@ class McmlMetaxPlatform(MetaXPlatformBase):
                 )
 
 
-class NonMcmlMetaxPlatform(MetaXPlatformBase):
+class NonMxmlMetaxPlatform(MacaPlatformBase):
 
     @classmethod
     def get_device_capability(cls, device_id: int = 0) -> DeviceCapability:
@@ -527,16 +520,16 @@ class NonMcmlMetaxPlatform(MetaXPlatformBase):
 
 # Autodetect either NVML-enabled or non-NVML platform
 # based on whether NVML is available.
-nvml_available = False
+mxml_available = False
 try:
     try:
-        pymcml.nvmlInit()
-        nvml_available = True
+        pymxml.nvmlInit()
+        mxml_available = True
     except Exception:
         # On Jetson, NVML is not supported.
-        nvml_available = False
+        mxml_available = False
 finally:
-    if nvml_available:
-        pymcml.nvmlShutdown()
+    if mxml_available:
+        pymxml.nvmlShutdown()
 
-MetaXPlatform = McmlMetaxPlatform if nvml_available else NonMcmlMetaxPlatform
+MacaPlatform = MxmlPlatform if mxml_available else NonMxmlMetaxPlatform

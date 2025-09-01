@@ -486,7 +486,7 @@ def get_requirements() -> list[str]:
         return resolved_requirements
 
     if _is_cuda():
-        requirements = _read_requirements("cuda.txt")
+        requirements = _read_requirements("maca.txt")
         cuda_major, cuda_minor = torch.version.cuda.split(".")
         modified_requirements = []
         for req in requirements:
@@ -575,16 +575,6 @@ class custom_install(install):
             # TODO: workaround for torch 2.7 inferscheme, remove when torch >= 2.7
             "vllm_metax/patch/vllm_substitution/fp8_utils.py" : vllm_dist_path / "model_executor/layers/quantization/utils/fp8_utils.py",
             "vllm_metax/patch/vllm_substitution/fused_moe.py" : vllm_dist_path / "model_executor/layers/fused_moe/fused_moe.py",
-            # TODO: below's are merged from vllm 0.9.2, remove them when updated
-            "vllm_metax/patch/vllm_substitution/rejection_sampler.py" : vllm_dist_path / "v1/sample/rejection_sampler.py",
-            "vllm_metax/patch/vllm_substitution/eagle.py" : vllm_dist_path / "v1/spec_decode/eagle.py",
-            "vllm_metax/patch/vllm_substitution/gpu_model_runner.py" : vllm_dist_path / "v1/worker/gpu_model_runner.py",
-            "vllm_metax/patch/vllm_substitution/cuda_piecewise_backend.py" : vllm_dist_path / "compilation/cuda_piecewise_backend.py",
-            "vllm_metax/patch/vllm_substitution/forward_context.py" : vllm_dist_path / "forward_context.py",
-            "vllm_metax/patch/vllm_substitution/flash_attn.py" : vllm_dist_path / "v1/attention/backends/flash_attn.py",
-            "vllm_metax/patch/vllm_substitution/flashinfer.py" : vllm_dist_path / "v1/attention/backends/flashinfer.py",
-            "vllm_metax/patch/vllm_substitution/common.py" : vllm_dist_path / "v1/attention/backends/mla/common.py",
-            "vllm_metax/patch/vllm_substitution/flashmla.py" : vllm_dist_path / "v1/attention/backends/mla/flashmla.py",
         }
         
         for src_path, dest_path in files_to_copy.items():
