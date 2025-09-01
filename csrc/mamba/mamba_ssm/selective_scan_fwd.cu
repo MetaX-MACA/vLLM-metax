@@ -9,14 +9,9 @@
 #include <c10/util/Half.h>
 #include <c10/cuda/CUDAException.h>  // For C10_CUDA_CHECK and C10_CUDA_KERNEL_LAUNCH_CHECK
 
-#ifndef USE_ROCM
-    #include <cub/block/block_load.cuh>
-    #include <cub/block/block_store.cuh>
-    #include <cub/block/block_scan.cuh>
-#else
-    #include <hipcub/hipcub.hpp>
-    namespace cub = hipcub;
-#endif
+#include <cub/block/block_load.cuh>
+#include <cub/block/block_store.cuh>
+#include <cub/block/block_scan.cuh>
 
 #include "selective_scan.h"
 #include "static_switch.h"
@@ -331,41 +326,15 @@ void selective_scan_fwd_launch(SSMParamsBase &params, cudaStream_t stream) {
 
 template<typename input_t, typename weight_t>
 void selective_scan_fwd_cuda(SSMParamsBase &params, cudaStream_t stream) {
-    #ifdef USE_MACA
-        if (params.seqlen <= 256) {
-            selective_scan_fwd_launch<64, 4, input_t, weight_t>(params, stream);
-        } else if (params.seqlen <= 512) {
-            selective_scan_fwd_launch<64, 8, input_t, weight_t>(params, stream);
-        } else if (params.seqlen <= 1024) {
-            selective_scan_fwd_launch<64, 16, input_t, weight_t>(params, stream);
-        } else {
-            selective_scan_fwd_launch<128, 16, input_t, weight_t>(params, stream);
-        }
-    #else
-    #ifndef USE_ROCM
-        if (params.seqlen <= 128) {           
-            selective_scan_fwd_launch<32, 4, input_t, weight_t>(params, stream);
-        } else if (params.seqlen <= 256) {
-            selective_scan_fwd_launch<32, 8, input_t, weight_t>(params, stream);
-        } else if (params.seqlen <= 512) {
-            selective_scan_fwd_launch<32, 16, input_t, weight_t>(params, stream);
-        } else if (params.seqlen <= 1024) {
-            selective_scan_fwd_launch<64, 16, input_t, weight_t>(params, stream);
-        } else {
-            selective_scan_fwd_launch<128, 16, input_t, weight_t>(params, stream);
-        }
-    #else
-        if (params.seqlen <= 256) {
-            selective_scan_fwd_launch<64, 4, input_t, weight_t>(params, stream);
-        } else if (params.seqlen <= 512) {
-            selective_scan_fwd_launch<64, 8, input_t, weight_t>(params, stream);
-        } else if (params.seqlen <= 1024) {
-            selective_scan_fwd_launch<64, 16, input_t, weight_t>(params, stream);
-        } else {
-            selective_scan_fwd_launch<128, 16, input_t, weight_t>(params, stream);
-        }
-    #endif
-    #endif // USE_MACA
+    if (params.seqlen <= 256) {
+        selective_scan_fwd_launch<64, 4, input_t, weight_t>(params, stream);
+    } else if (params.seqlen <= 512) {
+        selective_scan_fwd_launch<64, 8, input_t, weight_t>(params, stream);
+    } else if (params.seqlen <= 1024) {
+        selective_scan_fwd_launch<64, 16, input_t, weight_t>(params, stream);
+    } else {
+        selective_scan_fwd_launch<128, 16, input_t, weight_t>(params, stream);
+    }
 }
 
 template void selective_scan_fwd_cuda<at::BFloat16, float>(SSMParamsBase &params, cudaStream_t stream);

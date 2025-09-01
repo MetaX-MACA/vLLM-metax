@@ -19,11 +19,7 @@
 
 #include "attention_kernels.cuh"
 
-#ifndef USE_ROCM
-  #define WARP_SIZE 32
-#else
-  #define WARP_SIZE warpSize
-#endif
+#define WARP_SIZE 32
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))

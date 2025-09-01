@@ -2,16 +2,8 @@
 
 #include <torch/all.h>
 
-#ifndef USE_ROCM
-  #include <cuda_bf16.h>
-  #include <cuda_fp16.h>
-#else
-  #include <hip/hip_bf16.h>
-  #include <hip/hip_fp16.h>
-
-using __nv_bfloat16 = __hip_bfloat16;
-using __nv_bfloat162 = __hip_bfloat162;
-#endif
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 
 namespace vllm {
 /* Converter structs for the conversion from torch types to HIP/CUDA types,
@@ -28,52 +20,6 @@ template <typename torch_type>
 struct _typeConvert {
   static constexpr bool exists = false;
 };
-
-#if defined(USE_ROCM) || (defined(CUDA_VERSION) && (CUDA_VERSION >= 12000))
-// CUDA < 12.0 runs into issues with packed type conversion
-template <>
-struct _typeConvert<c10::Half> {
-  static constexpr bool exists = true;
-  using hip_type = __half;
-  using packed_hip_type = __half2;
-
-  __device__ static inline float convert(hip_type x) { return __half2float(x); }
-  __device__ static inline float2 convert(packed_hip_type x) {
-    return __half22float2(x);
-  }
-  __device__ static inline hip_type convert(float x) {
-    return __float2half_rn(x);
-  }
-  __device__ static inline packed_hip_type convert(float2 x) {
-    return __float22half2_rn(x);
-  }
-};
-
-  #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-// CUDA_ARCH < 800 does not have BF16 support
-// TODO: Add in ROCm support once public headers handle bf16 maturely
-template <>
-struct _typeConvert<c10::BFloat16> {
-  static constexpr bool exists = true;
-  using hip_type = __nv_bfloat16;
-  using packed_hip_type = __nv_bfloat162;
-
-  __device__ static inline float convert(hip_type x) {
-    return __bfloat162float(x);
-  }
-  __device__ static inline float2 convert(packed_hip_type x) {
-    return __bfloat1622float2(x);
-  }
-  __device__ static inline hip_type convert(float x) {
-    return __float2bfloat16(x);
-  }
-  __device__ static inline packed_hip_type convert(float2 x) {
-    return __float22bfloat162_rn(x);
-  }
-};
-  #endif  // defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-#endif    // defined(USE_ROCM) || (defined(CUDA_VERSION) && (CUDA_VERSION >=
-          // 12000))
 
 /* Vector POD struct to generate vectorized and packed FP16/BF16 ops
    for appropriate specializations of fused_add_rms_norm_kernel.

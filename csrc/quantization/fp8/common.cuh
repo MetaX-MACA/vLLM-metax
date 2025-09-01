@@ -5,22 +5,11 @@
 
 #include <cmath>
 
-#ifdef USE_ROCM
-  #include "amd/quant_utils.cuh"
-#endif
-
 // Determines the preferred FP8 type for the current platform.
 // Note that for CUDA this just returns true,
 // but on ROCm it will check device props.
 static bool is_fp8_ocp() {
-#ifndef USE_ROCM
   return true;
-#else
-  auto dprops = at::cuda::getCurrentDeviceProperties();
-  std::string device_arch = dprops->gcnArchName;
-  size_t substring = device_arch.find("gfx94");
-  return substring == std::string::npos;
-#endif
 }
 
 namespace vllm {
@@ -47,12 +36,7 @@ __device__ __forceinline__ fp8_type scaled_fp8_conversion(float const val,
 
   float r =
       fmaxf(-quant_type_max_v<fp8_type>, fminf(x, quant_type_max_v<fp8_type>));
-#ifndef USE_ROCM
   return static_cast<fp8_type>(r);
-#else
-  // Use hardware cvt instruction for fp8 on rocm
-  return fp8::cvt_c10<fp8_type>(r);
-#endif
 }
 
 // Compute the absolute maximum m of the input tensor and store

@@ -66,41 +66,22 @@ struct ConvParamsBase {
 };
 
 
-#ifndef USE_ROCM
-    #include <cuda_bf16.h>
+#include <cuda_bf16.h>
 
-    template<typename T>
-    __device__ inline T shuffle_xor(T val, int offset) {
-        return __shfl_xor_sync(uint32_t(-1), val, offset);
-    }
+template<typename T>
+__device__ inline T shuffle_xor(T val, int offset) {
+    return __shfl_xor_sync(uint32_t(-1), val, offset);
+}
 
-    constexpr size_t custom_max(std::initializer_list<size_t> ilist) 
-    {
-        return std::max(ilist);
-    }
+constexpr size_t custom_max(std::initializer_list<size_t> ilist) 
+{
+    return std::max(ilist);
+}
 
-    template<typename T>
-    constexpr T constexpr_min(T a, T b) {
-        return std::min(a, b);
-    }
-
-#else
-    #include <hip/hip_bf16.h>
-
-    template<typename T>
-    __device__ inline T shuffle_xor(T val, int offset) {
-        return __shfl_xor(val, offset);
-    }
-    constexpr size_t custom_max(std::initializer_list<size_t> ilist) 
-    {
-        return *std::max_element(ilist.begin(), ilist.end());
-    }
-
-    template<typename T>
-    constexpr T constexpr_min(T a, T b) {
-        return a < b ? a : b;
-    }
-#endif
+template<typename T>
+constexpr T constexpr_min(T a, T b) {
+    return std::min(a, b);
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

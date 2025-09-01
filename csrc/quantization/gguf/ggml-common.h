@@ -1095,59 +1095,6 @@ __device__ __forceinline__ float convert_from_half<float>(half val) {
     return __half2float(val);
 }
 
-#if defined(USE_ROCM)
-
-#ifndef __has_builtin
-    #define __has_builtin(x) 0
-#endif
-
-typedef int8_t int8x4_t __attribute__((ext_vector_type(4)));
-static __device__ __forceinline__ int __vsubss4(const int a, const int b) {
-    const int8x4_t va = reinterpret_cast<const int8x4_t&>(a);
-    const int8x4_t vb = reinterpret_cast<const int8x4_t&>(b);
-#if __has_builtin(__builtin_elementwise_sub_sat)
-    const int8x4_t c = __builtin_elementwise_sub_sat(va, vb);
-    return reinterpret_cast<const int &>(c);
-#else
-    int8x4_t c;
-    int16_t tmp;
-#pragma unroll
-    for (int i = 0; i < 4; i++) {
-        tmp = va[i] - vb[i];
-        if(tmp > std::numeric_limits<int8_t>::max()) tmp = std::numeric_limits<int8_t>::max();
-        if(tmp < std::numeric_limits<int8_t>::min()) tmp = std::numeric_limits<int8_t>::min();
-        c[i] = tmp;
-    }
-    return reinterpret_cast<int &>(c);
-#endif // __has_builtin(__builtin_elementwise_sub_sat)
-}
-
-static __device__ __forceinline__ int __dp4a(const int a, const int b, int c) {
-#if __has_builtin(__builtin_amdgcn_sdot4)
-    c = __builtin_amdgcn_sdot4(a, b, c, false);
-#else
-    const int8x4_t va = reinterpret_cast<const int8x4_t&>(a);
-    const int8x4_t vb = reinterpret_cast<const int8x4_t&>(b);
-    c += va[0] * vb[0] + va[1] * vb[1] + va[2] * vb[2] + va[3] * vb[3];
-#endif
-    return c;
-}
-
-static __device__ __forceinline__ uint32_t __vcmpeq4(const uint32_t a, const uint32_t b) {
-    uint32_t neq = a^b;
-    return !(neq & 0xff000000) * 0xff000000 |
-           !(neq & 0x00ff0000) * 0x00ff0000 |
-           !(neq & 0x0000ff00) * 0x0000ff00 |
-           !(neq & 0x000000ff) * 0x000000ff;
-}
-
-static __device__ __forceinline__ uint32_t __vsub4(const uint32_t a, const uint32_t b) {
-    return (static_cast<uint8_t>(((a & 0xff000000) >> 24) - ((b & 0xff000000) >> 24)) << 24) +
-           (static_cast<uint8_t>(((a & 0x00ff0000) >> 16) - ((b & 0x00ff0000) >> 16)) << 16) +
-           (static_cast<uint8_t>(((a & 0x0000ff00) >>  8) - ((b & 0x0000ff00) >>  8)) <<  8) +
-           (static_cast<uint8_t>(((a & 0x000000ff) >>  0) - ((b & 0x000000ff) >>  0)) <<  0);
-}
-#elif defined(USE_MACA)
 typedef int8_t int8x4_t __attribute__((ext_vector_type(4)));
 static __device__ __forceinline__ int __dp4a(const int a, const int b, int c) {
     const int8x4_t va = reinterpret_cast<const int8x4_t&>(a);
@@ -1155,4 +1102,3 @@ static __device__ __forceinline__ int __dp4a(const int a, const int b, int c) {
     c += va[0] * vb[0] + va[1] * vb[1] + va[2] * vb[2] + va[3] * vb[3];
     return c;
 }
-#endif // defined(USE_ROCM)

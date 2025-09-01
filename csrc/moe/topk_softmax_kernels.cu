@@ -21,13 +21,8 @@
 #include <c10/cuda/CUDAGuard.h>
 #include "../cuda_compat.h"
 
-#ifndef USE_ROCM
-    #include <cub/util_type.cuh>
-    #include <cub/cub.cuh>
-#else
-    #include <hipcub/util_type.hpp>
-    #include <hipcub/hipcub.hpp>
-#endif
+#include <cub/util_type.cuh>
+#include <cub/cub.cuh>
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))

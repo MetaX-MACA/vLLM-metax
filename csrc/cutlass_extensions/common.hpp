@@ -1,10 +1,6 @@
 #pragma once
 
-#ifndef USE_MACA
-#include "cutlass/cutlass.h"
-#else
 #include "mctlass/mctlass.h"
-#endif // USE_MACA
 #include <climits>
 #include "cuda_runtime.h"
 #include <iostream>
@@ -12,21 +8,12 @@
 /**
  * Helper function for checking CUTLASS errors
  */
-#ifndef USE_MACA
-#define CUTLASS_CHECK(status)                       \
-  {                                                 \
-    cutlass::Status error = status;                 \
-    TORCH_CHECK(error == cutlass::Status::kSuccess, \
-                cutlassGetStatusString(error));     \
-  }
-#else
 #define CUTLASS_CHECK(status)                       \
   {                                                 \
     mctlass::Status error = status;                 \
     TORCH_CHECK(error == mctlass::Status::kSuccess, \
                 mctlassGetStatusString(error));     \
   }
-#endif // USE_MACA
 
 inline int get_cuda_max_shared_memory_per_block_opt_in(int const device) {
   int max_shared_mem_per_block_opt_in = 0;
@@ -47,11 +34,7 @@ int32_t get_sm_version_num();
 template <typename Kernel>
 struct enable_sm90_or_later : Kernel {
   template <typename... Args>
-#ifndef USE_MACA
-  CUTLASS_DEVICE void operator()(Args&&... args) {
-#else
   MCTLASS_DEVICE void operator()(Args&&... args) {
-#endif // USE_MACA
 #if defined __CUDA_ARCH__ && __CUDA_ARCH__ >= 900
     Kernel::operator()(std::forward<Args>(args)...);
 #endif
@@ -61,11 +44,7 @@ struct enable_sm90_or_later : Kernel {
 template <typename Kernel>
 struct enable_sm90_only : Kernel {
   template <typename... Args>
-#ifndef USE_MACA
-  CUTLASS_DEVICE void operator()(Args&&... args) {
-#else
   MCTLASS_DEVICE void operator()(Args&&... args) {
-#endif // USE_MACA
 #if defined __CUDA_ARCH__ && __CUDA_ARCH__ == 900
     Kernel::operator()(std::forward<Args>(args)...);
 #endif
@@ -75,11 +54,7 @@ struct enable_sm90_only : Kernel {
 template <typename Kernel>
 struct enable_sm100_only : Kernel {
   template <typename... Args>
-#ifndef USE_MACA
-  CUTLASS_DEVICE void operator()(Args&&... args) {
-#else
   MCTLASS_DEVICE void operator()(Args&&... args) {
-#endif // USE_MACA
 #if defined __CUDA_ARCH__ && __CUDA_ARCH__ == 1000
     Kernel::operator()(std::forward<Args>(args)...);
 #endif
