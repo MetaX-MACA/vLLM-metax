@@ -85,7 +85,7 @@ from transformers.activations import ACT2FN
 from vllm.attention import Attention, AttentionMetadata
 
 from vllm.config import CacheConfig, LoRAConfig, VllmConfig
-from vllm.model_executor.layers.fused_moe import fused_moe
+from vllm_metax.model_executor.layers.fused_moe.fused_moe import metax_fused_moe
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.linear import (LinearMethodBase,
                                                ColumnParallelLinear,
@@ -237,7 +237,7 @@ class MixtralMLP(nn.Module):
         num_tokens, hidden_size = hidden_states.shape
         hidden_states = hidden_states.view(-1, self.hidden_size)
         router_logits, _ = self.router(hidden_states)
-        final_hidden_states = fused_moe(hidden_states,
+        final_hidden_states = metax_fused_moe(hidden_states,
                                         self.ws,
                                         self.w2s,
                                         router_logits,

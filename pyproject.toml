@@ -41,6 +41,7 @@ metax = "vllm_metax:register"
 
 [project.entry-points."vllm.general_plugins"]
 metax_enhanced_model = "vllm_metax:register_model"
+metax_custom_ops = "vllm_metax:register_ops"
 
 [project.entry-points."console_scripts"]
 vllm_metax_init = "vllm_metax:post_installation"

@@ -88,3 +88,6 @@ def register_model():
     import vllm_metax.patch
     from .models import register_model
     register_model()
+
+def register_ops():
+    import vllm_metax.ops  # noqa: F401
