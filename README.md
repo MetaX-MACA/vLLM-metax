@@ -1,6 +1,36 @@
 # vLLM-MetaX
 
-The vLLM-MetaX backend plugin for vLLM.
+The MXMACA backend plugin for vLLM.
+
+## Building Environments
+
+vllm-metax plugin needs to be built with corresponding **Maca Toolkits**.
+
+### Maunually
+
+Checking and install all the vLLM environment requirements [here](https://developer.metax-tech.com/softnova/category?package_kind=AI&dimension=metax&chip_name=%E6%9B%A6%E4%BA%91C500%E7%B3%BB%E5%88%97&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85&ai_frame=vllm&ai_label=vLLM):
+
+You could update *Maca Toolkits* separately by:
+
+- *MetaX Driver*: [*online*](https://developer.metax-tech.com/softnova/download?package_kind=Driver&dimension=metax&chip_name=%E6%9B%A6%E4%BA%91C500%E7%B3%BB%E5%88%97&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85) or [*offline*](https://developer.metax-tech.com/softnova/download?package_kind=Driver&dimension=metax&chip_name=%E6%9B%A6%E4%BA%91C500%E7%B3%BB%E5%88%97&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85)
+
+- *Maca SDK*: [*online*](https://developer.metax-tech.com/softnova/download?package_kind=SDK&dimension=metax&chip_name=%E6%9B%A6%E4%BA%91C500%E7%B3%BB%E5%88%97&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85) or [*offline*](https://developer.metax-tech.com/softnova/download?package_kind=SDK&dimension=metax&chip_name=%E6%9B%A6%E4%BA%91C500%E7%B3%BB%E5%88%97&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85)
+
+### Or... docker images
+
+Directly using docker images released on [*MetaX Develop Community*](https://developer.metax-tech.com/softnova/docker).
+
+> Note: You may need to search docker images for `vllm` distribution.
+
+***Belows is version mapping to released plugin and maca***:
+
+| plugin version | maca version | docker distribution tag |
+|:--------------:|:------------:|:-----------------------:|
+|v0.8.5          |maca2.33.1.13 | vllm:maca.ai2.33.1.13-torch2.6-py310-ubuntu22.04-amd64 |
+|v0.9.1          |maca3.0.0.5   | vllm:maca.ai3.0.0.5-torch2.6-py310-ubuntu22.04-amd64 |
+|v0.10.1.1 (dev only)|maca3.0.0.5(dev only)| vllm:maca.ai3.0.0.5-torch2.6-py310-ubuntu22.04-amd64 (dev only)|
+
+> Note: All the vllm tests are based on the related maca version. Using incorresponding version of maca for vllm may cause unexpected bugs or errors. This is not garanteed.
 
 ## Installation
 
@@ -8,42 +38,72 @@ Currently we only support build from source:
 
 ### install vllm
 ```bash
-pip install vllm==0.9.1 --no-deps
+pip install vllm==0.10.1.1 --no-deps
 ```
 
 ### install vllm-metax
 
-preparations for vllm-metax initialization:
+**clone repository**:
 ```bash
 # clone vllm-metax
-git clone  --depth 1 --branch [branch-name] [vllm-metax-repo-url]
-cd vllm-metax
-
-# setup env
-source env.sh
+git clone  --depth 1 --branch [branch-name] [vllm-metax-repo-url] && cd vllm-metax
 ```
 
-There are two ways to build the plugin, you could *build and install* the plugin, use pip as:
+**install cuda toolkit**:
 
 ```bash
+# build vllm on maca needs cuda 11.6
+wget https://developer.download.nvidia.com/compute/cuda/11.6.0/local_installers/cuda_11.6.0_510.39.01_linux.run && \
+    sh cuda_11.6.0_510.39.01_linux.run --silent --toolkit && \
+    rm cuda_11.6.0_510.39.01_linux.run
+```
+
+**prepare environments**:
+
+```
+# setup MACA path
+DEFAULT_DIR="/opt/maca"
+export MACA_PATH=${1:-$DEFAULT_DIR}
+
+# setup CUDA && cu-bridge
+export CUDA_PATH=/usr/local/cuda
+export CUCC_PATH=${MACA_PATH}/tools/cu-bridge
+
+# update PATH
+export PATH=${CUDA_PATH}/bin:${MACA_PATH}/mxgpu_llvm/bin:${MACA_PATH}/bin:${CUCC_PATH}/tools:${CUCC_PATH}/bin:${PATH}
+export LD_LIBRARY_PATH=${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu_llvm/lib:${LD_LIBRARY_PATH}
+
+export VLLM_INSTALL_PUNICA_KERNELS=1
+```
+
+There are two ways to build the plugin:
+
+- if you want to build the binary distribution :
+
+```bash
+# install requirements for building
+pip install -r requirements/build.txt
+# build wheels
+python setup.py bdist_wheel
+# install wheels
+pip install dist/*.whl
+```
+
+- Or, you could *build and install* the plugin via `pip`:
+
+```bash
+# install requirements for building
 pip install -r requirements/build.txt
 # since we use our local pytorch, add the --no-build-isolation flag 
 # to avoid the conflict with the official pytorch
 pip install . -v --no-build-isolation
 ```
 
-Or, if you want to build the binary distribution `.whl`:
-
-```bash
-python setup.py bdist_wheel
-pip install dist/*.whl
-```
-
 > ***Note***: plugin would copy the `.so` files to the vllm_dist_path, which is the `vllm` under `pip show vllm | grep Location` by default.
 >
 > If you :
 >
-> - ***Skipped the build step*** and installed the binary distribution `.whl` from somewhere else(e.g. pypi).
+> - ***Skipped the building step*** and installed the binary distribution `.whl` from somewhere else(e.g. pypi).
 >
 > - Or ***reinstalled*** the official vllm
 >
