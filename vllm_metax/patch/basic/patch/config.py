@@ -13,98 +13,6 @@ from vllm_metax.patch.model_executor.patch.layers.quantization.quantization_init
 
 from typing import Any, cast
 
-def metax_compute_hash(self) -> str:
-    """
-    WARNING: Whenever a new field is added to this config,
-    ensure that it is included in the factors list if
-    it affects the computation graph.
-
-    Provide a hash that uniquely identifies all the configs
-    that affect the structure of the computation
-    graph from input ids/embeddings to the final hidden states,
-    excluding anything before input ids/embeddings and after
-    the final hidden states.
-    """
-    factors: list[Any] = []
-
-    # summarize vllm config
-    vllm_factors: list[Any] = []
-    from vllm import __version__
-    vllm_factors.append(__version__)
-    vllm_factors.append(envs.VLLM_USE_V1)
-    vllm_factors.append(mx_envs.MACA_VLLM_USE_TN_2_NN)
-
-    logger.info(f"[Plugin] Hooked compute_hash -> {metax_compute_hash}")
-    
-    if self.model_config:
-        vllm_factors.append(self.model_config.compute_hash())
-    else:
-        vllm_factors.append("None")
-    if self.cache_config:
-        vllm_factors.append(self.cache_config.compute_hash())
-    else:
-        vllm_factors.append("None")
-    if self.parallel_config:
-        vllm_factors.append(self.parallel_config.compute_hash())
-    else:
-        vllm_factors.append("None")
-    if self.scheduler_config:
-        vllm_factors.append(self.scheduler_config.compute_hash())
-    else:
-        vllm_factors.append("None")
-    if self.device_config:
-        vllm_factors.append(self.device_config.compute_hash())
-    else:
-        vllm_factors.append("None")
-    if self.load_config:
-        vllm_factors.append(self.load_config.compute_hash())
-    else:
-        vllm_factors.append("None")
-    if self.lora_config:
-        vllm_factors.append(self.lora_config.compute_hash())
-        # LoRA creates static buffers based on max_num_batched_tokens.
-        # The tensor sizes and strides get captured in the torch.compile
-        # graph explicitly.
-        vllm_factors.append(
-            str(self.scheduler_config.max_num_batched_tokens))
-    else:
-        vllm_factors.append("None")
-    if self.speculative_config:
-        vllm_factors.append(self.speculative_config.compute_hash())
-    else:
-        vllm_factors.append("None")
-    if self.decoding_config:
-        vllm_factors.append(self.decoding_config.compute_hash())
-    else:
-        vllm_factors.append("None")
-    if self.observability_config:
-        vllm_factors.append(self.observability_config.compute_hash())
-    else:
-        vllm_factors.append("None")
-    if self.prompt_adapter_config:
-        vllm_factors.append(self.prompt_adapter_config.compute_hash())
-    else:
-        vllm_factors.append("None")
-    if self.quant_config:
-        pass  # should be captured by model_config.quantization
-    if self.compilation_config:
-        vllm_factors.append(self.compilation_config.compute_hash())
-    else:
-        vllm_factors.append("None")
-    if self.kv_transfer_config:
-        vllm_factors.append(self.kv_transfer_config.compute_hash())
-    else:
-        vllm_factors.append("None")
-    if self.additional_config:
-        vllm_factors.append(self.additional_config.compute_hash())
-    else:
-        vllm_factors.append("None")
-    factors.append(vllm_factors)
-
-    hash_str = hashlib.md5(str(factors).encode(),
-                            usedforsecurity=False).hexdigest()[:10]
-    return hash_str
-
 def _verify_quantization(self) -> None:
     supported_quantization = QUANTIZATION_METHODS
     optimized_quantization_methods = [
@@ -195,7 +103,6 @@ vllm.config.QUANTIZATION_METHODS = QUANTIZATION_METHODS
 vllm.config.QuantizationMethods = QuantizationMethods
 vllm.config.get_quantization_config = get_quantization_config
 
-vllm.config.VllmConfig.compute_hash = metax_compute_hash
 vllm.config.ModelConfig._verify_quantization = _verify_quantization
 
 

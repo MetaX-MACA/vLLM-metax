@@ -526,13 +526,13 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
   ops.def("cutlass_scaled_mm_supports_fp4(int cuda_device_capability) -> bool");
   ops.impl("cutlass_scaled_mm_supports_fp4", &cutlass_scaled_mm_supports_fp4);
 
-#ifndef USE_MACA
   // Compute NVFP4 block quantized tensor.
   ops.def(
       "scaled_fp4_quant(Tensor! output, Tensor input,"
       "                 Tensor! output_scale, Tensor input_scale) -> ()");
   ops.impl("scaled_fp4_quant", torch::kCUDA, &scaled_fp4_quant);
 
+#ifndef USE_MACA
   // Compute NVFP4 experts quantization.
   ops.def(
       "scaled_fp4_experts_quant(Tensor! output, Tensor! output_scale,"
