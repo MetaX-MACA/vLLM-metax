@@ -8,8 +8,9 @@ logger = init_logger(__name__)
 
 import torch
 
-def _apply_rotary_emb(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor,
-                      is_neox_style: bool) -> torch.Tensor:
+def apply_rotary_emb_dispatch(x: torch.Tensor, cos: torch.Tensor,
+                              sin: torch.Tensor,
+                              is_neox_style: bool) -> torch.Tensor:
     """
     Args:
         x: [num_tokens, num_heads, head_size]
@@ -22,7 +23,7 @@ def _apply_rotary_emb(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor,
     return apply_rotary_emb(x.unsqueeze(0), cos, sin,
                             not is_neox_style).squeeze(0)
 
-import vllm.model_executor.layers.rotary_embedding
-vllm.model_executor.layers.rotary_embedding._apply_rotary_emb = _apply_rotary_emb
+import vllm.model_executor.layers.rotary_embedding.common
+vllm.model_executor.layers.rotary_embedding.common.apply_rotary_emb_dispatch = apply_rotary_emb_dispatch
 
 

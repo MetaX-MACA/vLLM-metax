@@ -17,7 +17,7 @@ from typing_extensions import ParamSpec
 # import custom ops, trigger op registration
 import vllm._C  # noqa
 import vllm.envs as envs
-from vllm.logger import init_logger
+from vllm.logger import logger
 from vllm_metax.utils import import_pymxml
 from vllm.utils import cuda_device_count_stateless
 
@@ -25,8 +25,6 @@ from vllm.platforms.interface import DeviceCapability, Platform, PlatformEnum, _
 
 if TYPE_CHECKING:
     from vllm.config import ModelConfig, VllmConfig
-
-logger = init_logger(__name__)
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")

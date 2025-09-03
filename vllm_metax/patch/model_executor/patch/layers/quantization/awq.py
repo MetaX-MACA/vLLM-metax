@@ -104,11 +104,9 @@ def apply(self,
                                     bias, pack_factor, group_size)
 # └------------------------- Metax Modification -------------------------┘
     
-from vllm.model_executor.layers.quantization import awq
+import vllm.model_executor.layers.quantization.awq
 
 vllm.model_executor.layers.quantization.awq.AWQConfig.get_supported_act_dtypes = get_supported_act_dtypes
-vllm.model_executor.layers.quantization.awq._apply_awq_fake = _apply_awq_fake
-vllm.model_executor.layers.quantization.awq._apply_awq = _apply_awq
 vllm.model_executor.layers.quantization.awq.AWQLinearMethod.process_weights_after_loading = process_weights_after_loading
 vllm.model_executor.layers.quantization.awq.AWQLinearMethod.apply = apply
 

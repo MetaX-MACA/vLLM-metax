@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 from vllm_metax.model_executor.layers.fused_moe.fused_moe import metax_fused_experts
 from vllm.model_executor.layers.fused_moe.layer import UnquantizedFusedMoEMethod
 
