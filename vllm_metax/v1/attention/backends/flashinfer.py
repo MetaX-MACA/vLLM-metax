@@ -648,15 +648,15 @@ class FlashInferImpl(AttentionImpl):
                                       "are not implemented for "
                                       "FlashInferImpl")
 
-        self.sinks: Optional[torch.Tensor] = None
-        if sinks is not None:
-            if sinks.shape[0] != num_heads:
-                raise ValueError(
-                    "Sinks must have the same number of heads as the number of "
-                    f"heads in the layer. Expected {num_heads}, but got "
-                    f"{sinks.shape[0]}."
-                )
-            self.sinks = sinks
+        # self.sinks: Optional[torch.Tensor] = None
+        # if sinks is not None:
+        #     if sinks.shape[0] != num_heads:
+        #         raise ValueError(
+        #             "Sinks must have the same number of heads as the number of "
+        #             f"heads in the layer. Expected {num_heads}, but got "
+        #             f"{sinks.shape[0]}."
+        #         )
+        #     self.sinks = sinks
 
     def forward(
         self,
