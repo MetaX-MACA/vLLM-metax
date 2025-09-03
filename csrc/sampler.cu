@@ -3,11 +3,7 @@
 #include <torch/cuda.h>
 #include <c10/cuda/CUDAGuard.h>
 
-#ifndef USE_ROCM
-  #include <cub/cub.cuh>
-#else
-  #include <hipcub/hipcub.hpp>
-#endif
+#include <cub/cub.cuh>
 
 namespace vllm {
 
@@ -58,6 +54,8 @@ void apply_repetition_penalties_(
 
   int vocab_size = logits.size(-1);
   int num_seqs = logits.size(0);
+
+  if (num_seqs == 0) return;
 
   // Get number of SMs on the current device
   int sms = 0;

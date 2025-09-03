@@ -13,7 +13,6 @@ void moe_align_block_size(torch::Tensor topk_ids, int64_t num_experts,
                           torch::Tensor experts_ids,
                           torch::Tensor num_tokens_post_pad);
 
-#ifndef USE_ROCM
 torch::Tensor moe_wna16_gemm(torch::Tensor input, torch::Tensor output,
                              torch::Tensor b_qweight, torch::Tensor b_scales,
                              std::optional<torch::Tensor> b_qzeros,
@@ -23,16 +22,11 @@ torch::Tensor moe_wna16_gemm(torch::Tensor input, torch::Tensor output,
                              torch::Tensor num_tokens_post_pad, int64_t top_k,
                              int64_t BLOCK_SIZE_M, int64_t BLOCK_SIZE_N,
                              int64_t BLOCK_SIZE_K, int64_t bit);
-#endif
-
-#ifdef USE_MACA
 
 void fused_moe_kernel(const torch::Tensor& A, const torch::Tensor& B, const torch::Tensor& C,
                     const torch::Tensor& topk_weights, const torch::Tensor& topk_ids,
                     const torch::Tensor& sorted_token_ids, const torch::Tensor& expert_ids,
                     const torch::Tensor& num_tokens_post_padded, bool mul_routed_weight, int64_t top_k, int64_t tileConfig);
-
-#endif
 
 bool moe_permute_unpermute_supported();
 

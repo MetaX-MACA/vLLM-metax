@@ -12,14 +12,12 @@ https://github.com/qwopqwop200/GPTQ-for-LLaMa
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 
-#include "compat.cuh"
 #include "matrix_view.cuh"
 #include "qdq_2.cuh"
 #include "qdq_3.cuh"
 #include "qdq_4.cuh"
 #include "qdq_8.cuh"
 
-#ifdef USE_MACA
 #include "hgemm_gptq.h"
 #include "scalar_type.hpp"
 
@@ -28,7 +26,6 @@ https://github.com/qwopqwop200/GPTQ-for-LLaMa
 #include "hgemv_selector.hpp"
 #include "Hgemm_nn_128x32x128_8m1n8k_gptq-4bits.hpp"
 #include "Hgemm_nn_128x32x128_8m1n8k_gptq-8bits.hpp"
-#endif // USE_MACA
 
 namespace vllm {
 namespace gptq {
@@ -43,27 +40,6 @@ namespace gptq {
 #define THREADS_Y 32
 #define DIVIDE(x, size) (((x) + (size) - 1) / (size))
 #define QUANT_GROUP 128
-
-#if defined(USE_ROCM)
-  #include <hipblas/hipblas.h>
-__host__ __forceinline__ hipblasStatus_t __compat_hipblasHgemm(
-    hipblasHandle_t handle, hipblasOperation_t transA,
-    hipblasOperation_t transB, int m, int n, int k, const half* alpha,
-    const half* AP, int lda, const half* BP, int ldb, const half* beta,
-    half* CP, int ldc) {
-  return hipblasHgemm(handle, transA, transB, m, n, k,
-                      reinterpret_cast<const hipblasHalf*>(alpha),
-                      reinterpret_cast<const hipblasHalf*>(AP), lda,
-                      reinterpret_cast<const hipblasHalf*>(BP), ldb,
-                      reinterpret_cast<const hipblasHalf*>(beta),
-                      reinterpret_cast<hipblasHalf*>(CP), ldc);
-}
-  #define hipblasHgemm __compat_hipblasHgemm
-
-  // Previous version of PyTorch were converting to rocBLAS instead of hipBLAS.
-  #define rocblas_operation_none HIPBLAS_OP_N
-  #define rocblas_hgemm __compat_hipblasHgemm
-#endif
 
 __forceinline__ __device__ half2 dot22_8(half2 (&dq)[4], const half* a_ptr,
                                          const half2 g_result) {
@@ -218,8 +194,6 @@ __global__ void gemm_half_q_half_gptq_4bit_kernel(
   auto offset_m = blockIdx.y * m_count;
   auto offset_k = blockIdx.z * BLOCK_KN_SIZE;
 
-  [[maybe_unused]] int end_n = min(offset_n + BLOCK_KN_SIZE * 4, size_n);
-  [[maybe_unused]] int end_m = min(offset_m + m_count, size_m);
   int end_k = min(offset_k + BLOCK_KN_SIZE, size_k);
 
   int n = offset_n + t * 4;
@@ -356,8 +330,6 @@ __global__ void gemm_half_q_half_gptq_2bit_kernel(
   auto offset_m = blockIdx.y * m_count;
   auto offset_k = blockIdx.z * BLOCK_KN_SIZE;
 
-  [[maybe_unused]] int end_n = min(offset_n + BLOCK_KN_SIZE * 4, size_n);
-  [[maybe_unused]] int end_m = min(offset_m + m_count, size_m);
   int end_k = min(offset_k + BLOCK_KN_SIZE, size_k);
 
   int n = offset_n + t * 4;
@@ -477,8 +449,6 @@ __global__ void gemm_half_q_half_gptq_3bit_kernel(
   auto offset_m = blockIdx.y * m_count;
   auto offset_k = blockIdx.z * BLOCK_KN_SIZE;
 
-  [[maybe_unused]] int end_n = min(offset_n + BLOCK_KN_SIZE * 4, size_n);
-  [[maybe_unused]] int end_m = min(offset_m + m_count, size_m);
   int end_k = min(offset_k + BLOCK_KN_SIZE, size_k);
 
   int n = offset_n + t * 4;
@@ -605,8 +575,6 @@ __global__ void gemm_half_q_half_gptq_8bit_kernel(
   auto offset_m = blockIdx.y * m_count;
   auto offset_k = blockIdx.z * BLOCK_KN_SIZE;
 
-  [[maybe_unused]] int end_n = min(offset_n + BLOCK_KN_SIZE * 4, size_n);
-  [[maybe_unused]] int end_m = min(offset_m + m_count, size_m);
   int end_k = min(offset_k + BLOCK_KN_SIZE, size_k);
 
   int n = offset_n + t * 4;
@@ -1534,12 +1502,7 @@ __global__ void gemm_half_q_half_alt_4bit_kernel(
       zeros_tmp[tmp_k] = zero;
     }
     for (int m = 0; m < b_end; m++) {
-#ifndef USE_ROCM
       res2 = {};
-#else
-      res2.x = __half_as_ushort(__float2half(0));
-      res2.y = __half_as_ushort(__float2half(0));
-#endif
       res2 = __hfma2(
           __hfma2(deq2[(tmp >> 0) & 0xff][off], scales_tmp[0], zeros_tmp[0]),
           blockvec[m][k + 0], res2);
@@ -1552,12 +1515,7 @@ __global__ void gemm_half_q_half_alt_4bit_kernel(
       res2 = __hfma2(
           __hfma2(deq2[(tmp >> 24) & 0xff][off], scales_tmp[3], zeros_tmp[3]),
           blockvec[m][k + 3], res2);
-#ifndef USE_ROCM
       res[m] = __hadd(res[m], __hadd(res2.x, res2.y));
-#else
-      res[m] = __hadd(
-          res[m], __hadd(__ushort_as_half(res2.x), __ushort_as_half(res2.y)));
-#endif
     }
     i += width;
     k += 4;
@@ -1625,12 +1583,7 @@ __global__ void gemm_half_q_half_alt_8bit_kernel(
       zeros_tmp[tmp_k] = zero;
     }
     for (int m = 0; m < b_end; m++) {
-#ifndef USE_ROCM
       res2 = {};
-#else
-      res2.x = __half_as_ushort(__float2half(0));
-      res2.y = __half_as_ushort(__float2half(0));
-#endif
       half2 v12 = __halves2half2(__int2half_rn(tmp & 0xFF),
                                  __int2half_rn((tmp >> 8) & 0xFF));
       res2 = __hfma2(__hfma2(v12, scales_tmp[0], zeros_tmp[0]),
@@ -1639,12 +1592,7 @@ __global__ void gemm_half_q_half_alt_8bit_kernel(
                                  __int2half_rn((tmp >> 24) & 0xFF));
       res2 = __hfma2(__hfma2(v34, scales_tmp[1], zeros_tmp[1]),
                      blockvec[m][k + 1], res2);
-#ifndef USE_ROCM
       res[m] = __hadd(res[m], __hadd(res2.x, res2.y));
-#else
-      res[m] = __hadd(
-          res[m], __hadd(__ushort_as_half(res2.x), __ushort_as_half(res2.y)));
-#endif
     }
     i += width;
     k += 2;

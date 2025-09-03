@@ -246,7 +246,6 @@ endif()
 
 set(VLLM_EXT_SRC
   "csrc/mamba/mamba_ssm/selective_scan_fwd.cu"
-  "csrc/mamba/causal_conv1d/causal_conv1d.cu"
   "csrc/cache_kernels.cu"
   "csrc/attention/paged_attention_v1.cu"
   "csrc/attention/paged_attention_v2.cu"
@@ -265,8 +264,6 @@ set(VLLM_EXT_SRC
   "csrc/quantization/gguf/gguf_kernel.cu"
   "csrc/quantization/activation_kernels.cu"
   "csrc/cuda_utils_kernels.cu"
-  "csrc/prepare_inputs/advance_step.cu"
-  "csrc/custom_all_reduce.cu"
   "csrc/torch_bindings.cpp")
 
 # support opt of gptq-marlin
@@ -316,13 +313,11 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
   # FetchContent_MakeAvailable(cutlass)
 
   list(APPEND VLLM_EXT_SRC
-    # "csrc/quantization/aqlm/gemm_kernels.cu"
     "csrc/quantization/awq/gemm_kernels.cu"
     "csrc/permute_cols.cu"
     "csrc/quantization/cutlass_w8a8/scaled_mm_entry.cu"
     "csrc/quantization/fp4/nvfp4_quant_entry.cu"
     "csrc/quantization/fp4/nvfp4_scaled_mm_entry.cu"
-    # "csrc/quantization/fp4/nvfp4_blockwise_moe_kernel.cu"
     "csrc/sparse/cutlass/sparse_scaled_mm_entry.cu"
     "csrc/cutlass_extensions/common.cpp"
     "csrc/attention/mla/cutlass_mla_entry.cu")
@@ -726,7 +721,7 @@ if (USE_MACA AND ENABLE_BLAS_API)
   set(MCBLAS_LIB $ENV{MACA_PATH}/lib/libmcblas.so)
 endif()
 
-if(VLLM_GPU_LANG STREQUAL "CUDA")
+if(VLLM_GPU_LANG STREQUAL "CUDA"  AND NOT USE_MACA)
   list(APPEND VLLM_MOE_EXT_SRC "csrc/moe/moe_wna16.cu")
 endif()
 
@@ -734,7 +729,7 @@ set_gencode_flags_for_srcs(
   SRCS "${VLLM_MOE_EXT_SRC}"
   CUDA_ARCHS "${CUDA_ARCHS}")
 
-if(VLLM_GPU_LANG STREQUAL "CUDA")
+if(VLLM_GPU_LANG STREQUAL "CUDA" AND NOT USE_MACA)
   set(VLLM_MOE_WNA16_SRC
     "csrc/moe/moe_wna16.cu")
 
@@ -801,7 +796,6 @@ endif()
 
 if(VLLM_GPU_LANG STREQUAL "CUDA")
   set(MOE_PERMUTE_SRC
-      "csrc/moe/permute_unpermute_kernels/moe_permute_unpermute_kernel.cu"
       "csrc/moe/moe_permute_unpermute_op.cu")
 
   set_gencode_flags_for_srcs(

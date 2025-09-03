@@ -1,49 +1,18 @@
 #pragma once
 
-#ifdef USE_ROCM
-  #include <hip/hip_runtime.h>
-#endif
+#define WARP_SIZE 32
 
-#ifndef USE_ROCM
-  #define WARP_SIZE 32
-#else
-  #define WARP_SIZE warpSize
-#endif
+#define VLLM_LDG(arg) __ldg(arg)
 
-#ifndef USE_ROCM
-  #define VLLM_LDG(arg) __ldg(arg)
-#else
-  #define VLLM_LDG(arg) *(arg)
-#endif
+#define VLLM_SHFL_XOR_SYNC(var, lane_mask) \
+  __shfl_xor_sync(uint32_t(-1), var, lane_mask)
+#define VLLM_SHFL_XOR_SYNC_WIDTH(var, lane_mask, width) \
+  __shfl_xor_sync(uint32_t(-1), var, lane_mask, width)
 
-#ifndef USE_ROCM
-  #define VLLM_SHFL_XOR_SYNC(var, lane_mask) \
-    __shfl_xor_sync(uint32_t(-1), var, lane_mask)
-  #define VLLM_SHFL_XOR_SYNC_WIDTH(var, lane_mask, width) \
-    __shfl_xor_sync(uint32_t(-1), var, lane_mask, width)
-#else
-  #define VLLM_SHFL_XOR_SYNC(var, lane_mask) __shfl_xor(var, lane_mask)
-  #define VLLM_SHFL_XOR_SYNC_WIDTH(var, lane_mask, width) \
-    __shfl_xor(var, lane_mask, width)
-#endif
+#define VLLM_SHFL_SYNC(var, src_lane) __shfl_sync(uint32_t(-1), var, src_lane)
 
-#ifndef USE_ROCM
-  #define VLLM_SHFL_SYNC(var, src_lane) __shfl_sync(uint32_t(-1), var, src_lane)
-#else
-  #define VLLM_SHFL_SYNC(var, src_lane) __shfl(var, src_lane)
-#endif
+#define VLLM_SHFL_DOWN_SYNC(var, lane_delta) \
+  __shfl_down_sync(uint32_t(-1), var, lane_delta)
 
-#ifndef USE_ROCM
-  #define VLLM_SHFL_DOWN_SYNC(var, lane_delta) \
-    __shfl_down_sync(uint32_t(-1), var, lane_delta)
-#else
-  #define VLLM_SHFL_DOWN_SYNC(var, lane_delta) __shfl_down(var, lane_delta)
-#endif
-
-#ifndef USE_ROCM
-  #define VLLM_DevFuncAttribute_SET_MaxDynamicSharedMemorySize(FUNC, VAL) \
-    cudaFuncSetAttribute(FUNC, cudaFuncAttributeMaxDynamicSharedMemorySize, VAL)
-#else
-  #define VLLM_DevFuncAttribute_SET_MaxDynamicSharedMemorySize(FUNC, VAL) \
-    hipFuncSetAttribute(FUNC, hipFuncAttributeMaxDynamicSharedMemorySize, VAL)
-#endif
+#define VLLM_DevFuncAttribute_SET_MaxDynamicSharedMemorySize(FUNC, VAL) \
+  cudaFuncSetAttribute(FUNC, cudaFuncAttributeMaxDynamicSharedMemorySize, VAL)

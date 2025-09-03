@@ -9,16 +9,8 @@
 #include <cmath>
 #include <torch/types.h>
 
-#ifndef USE_ROCM
-  #include <c10/util/Float8_e4m3fn.h>
-  #define MAYBE_HOST_DEVICE C10_HOST_DEVICE
-#else
-  #include <ATen/hip/HIPContext.h>
-  #include <c10/util/Float8_e4m3fn.h>
-  #include <c10/util/Float8_e4m3fnuz.h>
-  // ROCm doesn't seem to need C10_HOST_DEVICE for static constexpr
-  #define MAYBE_HOST_DEVICE
-#endif
+#include <c10/util/Float8_e4m3fn.h>
+#define MAYBE_HOST_DEVICE C10_HOST_DEVICE
 
 template <typename T,
           typename = std::enable_if_t<std::is_same_v<T, c10::Float8_e4m3fn> ||

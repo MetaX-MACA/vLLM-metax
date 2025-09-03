@@ -23,52 +23,18 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, m) {
   m.impl("moe_align_block_size", torch::kCUDA, &moe_align_block_size);
 
 
-#ifndef USE_ROCM
   m.def(
-      "moe_wna16_gemm(Tensor input, Tensor! output, Tensor b_qweight, "
-      "Tensor b_scales, Tensor? b_qzeros, "
-      "Tensor? topk_weights, Tensor sorted_token_ids, "
-      "Tensor expert_ids, Tensor num_tokens_post_pad, "
-      "int top_k, int BLOCK_SIZE_M, int BLOCK_SIZE_N, int BLOCK_SIZE_K, "
-      "int bit) -> Tensor");
-
-  m.impl("moe_wna16_gemm", torch::kCUDA, &moe_wna16_gemm);
-
-  m.def(
-      "moe_wna16_marlin_gemm(Tensor! a, Tensor? c_or_none,"
-      "Tensor! b_q_weight, Tensor! b_scales, Tensor? global_scale, Tensor? "
-      "b_zeros_or_none,"
-      "Tensor? g_idx_or_none, Tensor? perm_or_none, Tensor! workspace,"
-      "Tensor sorted_token_ids,"
-      "Tensor! expert_ids, Tensor! num_tokens_past_padded,"
-      "Tensor! topk_weights, int moe_block_size, int top_k, "
-      "bool mul_topk_weights, bool is_ep, int b_q_type_id,"
-      "int size_m, int size_n, int size_k,"
-      "bool is_full_k, bool use_atomic_add,"
-      "bool use_fp32_reduce, bool is_zp_float) -> Tensor");
-  m.def(
-      "marlin_gemm_moe(Tensor! a, Tensor! b_q_weights, Tensor! sorted_ids, "
-      "Tensor! topk_weights, Tensor! topk_ids, Tensor! b_scales, Tensor! "
-      "b_zeros, Tensor! g_idx, Tensor! perm, Tensor! workspace, "
-      "int b_q_type, SymInt size_m, "
-      "SymInt size_n, SymInt size_k, bool is_k_full, int num_experts, int "
-      "topk, "
-      "int moe_block_size, bool replicate_input, bool apply_weights)"
-      " -> Tensor");
-
-  m.def(
-      "moe_permute(Tensor input, Tensor topk_weight, Tensor! topk_ids,"
-      "Tensor token_expert_indicies, Tensor? expert_map, int n_expert,"
+      "moe_permute(Tensor input, Tensor topk_ids,"
+      "Tensor token_expert_indices, Tensor? expert_map, int n_expert,"
       "int n_local_expert,"
       "int topk, int? align_block_size,Tensor! permuted_input, Tensor! "
-      "expert_first_token_offset, Tensor! src_row_id2dst_row_id_map, Tensor! "
-      "m_indices)->()");
+      "expert_first_token_offset, Tensor! inv_permuted_idx, Tensor! "
+      "permuted_idx, Tensor! m_indices)->()");
 
   m.def(
       "moe_unpermute(Tensor permuted_hidden_states, Tensor topk_weights,"
-      "Tensor topk_ids,Tensor src_row_id2dst_row_id_map, Tensor "
-      "expert_first_token_offset, int n_expert, int n_local_expert,int "
-      "topk, Tensor! hidden_states)->()");
+      "Tensor inv_permuted_idx, Tensor? expert_first_token_offset, "
+      "int topk, Tensor! hidden_states)->()");
 
   m.def("moe_permute_unpermute_supported() -> bool");
   m.impl("moe_permute_unpermute_supported", &moe_permute_unpermute_supported);
@@ -79,9 +45,7 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, m) {
       "output_tensor) -> ()");
   m.impl("shuffle_rows", torch::kCUDA, &shuffle_rows);
 
-#endif
 
-#ifdef USE_MACA
 // Fused moe in mcblas
   m.def(
       "fused_moe_kernel(Tensor! A, Tensor! B, Tensor! C,"
@@ -89,7 +53,6 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, m) {
       "Tensor! sorted_token_ids, Tensor! expert_ids,"
       "Tensor! num_tokens_post_padded, bool mul_routed_weight, int top_k, int tileConfig) -> ()");
   m.impl("fused_moe_kernel", torch::kCUDA, &fused_moe_kernel);
-#endif
 }
 
 REGISTER_EXTENSION(TORCH_EXTENSION_NAME)

@@ -6,11 +6,7 @@
 
 #pragma once
 
-#ifndef USE_ROCM
-    #include <cuda_bf16.h>
-#else
-    #include <hip/hip_bf16.h>
-#endif
+#include <cuda_bf16.h>
 #include <cuda_fp16.h>
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -45,6 +41,9 @@ struct SSMParamsBase {
     index_t out_d_stride;
     index_t out_z_batch_stride;
     index_t out_z_d_stride;
+    index_t ssm_states_batch_stride;
+    index_t ssm_states_dim_stride;  
+    index_t ssm_states_dstate_stride;
 
     // Common data pointers.
     void *__restrict__ A_ptr;
@@ -66,31 +65,15 @@ struct SSMParamsBase {
 };
 
 
+constexpr size_t custom_max(std::initializer_list<size_t> ilist) 
+{
+    return std::max(ilist);
+}
 
-
-#ifndef USE_ROCM
-
-    constexpr size_t custom_max(std::initializer_list<size_t> ilist) 
-    {
-        return std::max(ilist);
-    }
-
-    template<typename T>
-    constexpr T constexpr_min(T a, T b) {
-        return std::min(a, b);
-    }
-
-#else
-    constexpr size_t custom_max(std::initializer_list<size_t> ilist) 
-    {
-        return *std::max_element(ilist.begin(), ilist.end());
-    }
-
-    template<typename T>
-    constexpr T constexpr_min(T a, T b) {
-        return a < b ? a : b;
-    }
-#endif
+template<typename T>
+constexpr T constexpr_min(T a, T b) {
+    return std::min(a, b);
+}
 
 
 #define MAX_DSTATE 256
@@ -212,10 +195,6 @@ inline __device__ void load_input(typename Ktraits::input_t *u,
         typename Ktraits::BlockLoadVecT(smem_load_vec).Load(
             reinterpret_cast<vec_t*>(u),
             reinterpret_cast<vec_t(&)[Ktraits::kNLoads]>(u_vals)
-            #ifdef USE_ROCM
-                , Ktraits::kNThreads * Ktraits::kNLoads
-            #endif
-            
        );
     } else {
         typename Ktraits::BlockLoadT(smem_load).Load(u, u_vals, seqlen, 0.f);

@@ -8,4 +8,4 @@ from vllm_metax import _custom_ops as _metax_custom_ops
 
 logger = init_logger(__name__)
 
-vllm._custom_ops = _metax_custom_ops;
+vllm._custom_ops = _metax_custom_ops

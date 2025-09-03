@@ -112,15 +112,6 @@ __forceinline__ __device__ void dequant_4bit_8_gptq(const uint32_t q_0,
     dq[2] = __hfma2(q2.as_half2, y1y16[0], z1z16[0]);
     dq[3] = __hfma2(q3.as_half2, y1y16[1], z1z16[1]);
   } else {
-#ifndef USE_MACA
-    dq[0] = __hadd2(q0.as_half2, z1z16[0]);  // half2( q[0] - z, q[1] - z )
-    dq[1] = __hfma2(q1.as_half2, y1y16[1],
-                    z1z16[1]);               // half2( q[2] - z, q[3] - z )
-    dq[2] = __hadd2(q2.as_half2, z1z16[0]);  // half2( q[4] - z, q[5] - z )
-    dq[3] = __hfma2(q3.as_half2, y1y16[1],
-                    z1z16[1]);  // half2( q[6] - z, q[7] - z )
-#endif // USE_MACA
-#if 1
     dq[0] = __hadd2(q0.as_half2, z1z16[0]);
     dq[2] = __hadd2(q2.as_half2, z1z16[0]);
     v2f q1_float2, q3_float2, y1y16_1_float2, z1z16_1_float2;
@@ -140,22 +131,6 @@ __forceinline__ __device__ void dequant_4bit_8_gptq(const uint32_t q_0,
     result3 = __builtin_mxc_pk_fma_f32(q3_float2, y1y16_1_float2, z1z16_1_float2);
     dq[1] = __floats2half2_rn(result1[0], result1[1]);
     dq[3] = __floats2half2_rn(result3[0], result3[1]);
-#else
-    dq[0] = __hadd2(q0.as_half2, z1z16[0]);
-    dq[2] = __hadd2(q2.as_half2, z1z16[0]);
-
-    v2f q1_float2, q3_float2, y1y16_1_float2, z1z16_1_float2;
-    q1_float2 = __builtin_mxc_cvt_pk_f16tof32(*reinterpret_cast<const float*>(&q1.as_half2));
-    q3_float2 = __builtin_mxc_cvt_pk_f16tof32(*reinterpret_cast<const float*>(&q3.as_half2));
-    y1y16_1_float2 = __builtin_mxc_cvt_pk_f16tof32(*reinterpret_cast<const float*>(&y1y16[1]));
-    z1z16_1_float2 = __builtin_mxc_cvt_pk_f16tof32(*reinterpret_cast<const float*>(&z1z16[1]));
-
-    v2f result1 = __builtin_mxc_pk_fma_f32(q1_float2, y1y16_1_float2, z1z16_1_float2);
-    v2f result3 = __builtin_mxc_pk_fma_f32(q3_float2, y1y16_1_float2, z1z16_1_float2);
-
-    dq[1] = __floats2half2_rn(result1[0], result1[1]);
-    dq[3] = __floats2half2_rn(result3[0], result3[1]);
-#endif
   }
 }
 }  // namespace gptq

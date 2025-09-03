@@ -5,22 +5,15 @@
 #include "cuda_utils.h"
 #include "cuda_compat.h"
 #include "dispatch_utils.h"
+#include "quantization/vectorization_utils.cuh"
 
-#ifdef USE_ROCM
-  #include "quantization/fp8/amd/quant_utils.cuh"
-#else
-  #include "quantization/fp8/nvidia/quant_utils.cuh"
-#endif
+#include "quantization/fp8/quant_utils.cuh"
 
 #include <algorithm>
 #include <cassert>
 #include <map>
 #include <vector>
 
-#ifdef USE_ROCM
-  #include <hip/hip_bf16.h>
-typedef __hip_bfloat16 __nv_bfloat16;
-#endif
 
 void swap_blocks(torch::Tensor& src, torch::Tensor& dst,
                  const torch::Tensor& block_mapping) {
@@ -261,14 +254,26 @@ __global__ void reshape_and_cache_kernel(
   }
 }
 
+// Used by vectorization_utils to copy/convert one element
+template <typename OutT, typename InT, Fp8KVCacheDataType kv_dt>
+struct CopyWithScaleOp {
+  float scale;
+
+  __device__ __forceinline__ void operator()(OutT& dst, const InT src) const {
+    if constexpr (kv_dt == Fp8KVCacheDataType::kAuto) {
+      dst = static_cast<OutT>(src);
+    } else {
+      dst = fp8::scaled_convert<OutT, InT, kv_dt>(src, scale);
+    }
+  }
+};
+
 template <typename scalar_t, typename cache_t, Fp8KVCacheDataType kv_dt>
 __global__ void reshape_and_cache_flash_kernel(
     const scalar_t* __restrict__ key,    // [num_tokens, num_heads, head_size]
     const scalar_t* __restrict__ value,  // [num_tokens, num_heads, head_size]
-    cache_t* __restrict__ key_cache,     // [num_blocks, block_size, num_heads,
-                                         // head_size]
-    cache_t* __restrict__ value_cache,   // [num_blocks, block_size, num_heads,
-                                         // head_size]
+    cache_t* __restrict__ key_cache,     // NHD or HND, shape see comments below
+    cache_t* __restrict__ value_cache,   // same above
     const int64_t* __restrict__ slot_mapping,  // [num_tokens]
     const int64_t block_stride, const int64_t page_stride,
     const int64_t head_stride, const int64_t key_stride,
@@ -282,25 +287,57 @@ __global__ void reshape_and_cache_flash_kernel(
   }
   const int64_t block_idx = slot_idx / block_size;
   const int64_t block_offset = slot_idx % block_size;
-  const int n = num_heads * head_size;
-  for (int i = threadIdx.x; i < n; i += blockDim.x) {
-    const int64_t src_key_idx = token_idx * key_stride + i;
-    const int64_t src_value_idx = token_idx * value_stride + i;
-    const int head_idx = i / head_size;
-    const int head_offset = i % head_size;
-    const int64_t tgt_key_value_idx = block_idx * block_stride +
-                                      block_offset * page_stride +
-                                      head_idx * head_stride + head_offset;
-    scalar_t tgt_key = key[src_key_idx];
-    scalar_t tgt_value = value[src_value_idx];
-    if constexpr (kv_dt == Fp8KVCacheDataType::kAuto) {
-      key_cache[tgt_key_value_idx] = tgt_key;
-      value_cache[tgt_key_value_idx] = tgt_value;
+  const int n_elems = num_heads * head_size;
+
+  // pointers to the beginning of the source row for this token.
+  const scalar_t* __restrict__ key_src = key + token_idx * key_stride;
+  const scalar_t* __restrict__ value_src = value + token_idx * value_stride;
+
+  // find the start position inside the kv-cache for this token.
+  cache_t* __restrict__ key_dst =
+      key_cache + block_idx * block_stride + block_offset * page_stride;
+  cache_t* __restrict__ value_dst =
+      value_cache + block_idx * block_stride + block_offset * page_stride;
+
+  // this is true for the NHD layout where `head_stride == head_size`
+  const bool is_contiguous_heads = (head_stride == head_size);
+
+  float k_scale_val = (kv_dt == Fp8KVCacheDataType::kAuto) ? 0.f : *k_scale;
+  float v_scale_val = (kv_dt == Fp8KVCacheDataType::kAuto) ? 0.f : *v_scale;
+  constexpr int VEC_SIZE = (sizeof(scalar_t) == 2) ? 8 : 4;
+  CopyWithScaleOp<cache_t, scalar_t, kv_dt> k_op{k_scale_val};
+  CopyWithScaleOp<cache_t, scalar_t, kv_dt> v_op{v_scale_val};
+  if (is_contiguous_heads) {
+    // NHD layout
+    // kv cache: [num_blocks, block_size, num_heads, head_size]
+    vectorize_with_alignment<VEC_SIZE>(key_src, key_dst, n_elems, threadIdx.x,
+                                       blockDim.x, k_op);
+
+    vectorize_with_alignment<VEC_SIZE>(value_src, value_dst, n_elems,
+                                       threadIdx.x, blockDim.x, v_op);
     } else {
-      key_cache[tgt_key_value_idx] =
-          fp8::scaled_convert<cache_t, scalar_t, kv_dt>(tgt_key, *k_scale);
-      value_cache[tgt_key_value_idx] =
-          fp8::scaled_convert<cache_t, scalar_t, kv_dt>(tgt_value, *v_scale);
+    // HND layout: heads are strided, but each head_size segment is contiguous
+    // kv cache: [num_blocks, num_heads, block_size, head_size]
+    const int lane = threadIdx.x & 31;     // 0..31 within warp
+    const int warp_id = threadIdx.x >> 5;  // warp index within block
+    const int warps_per_block = blockDim.x >> 5;
+
+    for (int head = warp_id; head < num_heads; head += warps_per_block) {
+      const scalar_t* __restrict__ k_src_h = key_src + head * head_size;
+      const scalar_t* __restrict__ v_src_h = value_src + head * head_size;
+
+      cache_t* __restrict__ k_dst_h =
+          key_dst + static_cast<int64_t>(head) * head_stride;
+      cache_t* __restrict__ v_dst_h =
+          value_dst + static_cast<int64_t>(head) * head_stride;
+
+      // within each head, let the 32 threads of the warp perform the vector
+      // copy
+      vectorize_with_alignment<VEC_SIZE>(k_src_h, k_dst_h, head_size, lane, 32,
+                                         k_op);
+
+      vectorize_with_alignment<VEC_SIZE>(v_src_h, v_dst_h, head_size, lane, 32,
+                                         v_op);
     }
   }
 }
@@ -498,81 +535,6 @@ void concat_and_cache_mla(
 
   DISPATCH_BY_KV_CACHE_DTYPE(kv_c.dtype(), kv_cache_dtype,
                              CALL_CONCAT_AND_CACHE_MLA);
-}
-
-namespace vllm {
-
-template <typename Tout, typename Tin, Fp8KVCacheDataType kv_dt>
-__global__ void convert_fp8_kernel(const Tin* __restrict__ src_cache,
-                                   Tout* __restrict__ dst_cache,
-                                   const float scale,
-                                   const int64_t block_stride) {
-  const int64_t block_idx = blockIdx.x;
-  for (int i = threadIdx.x; i < block_stride; i += blockDim.x) {
-    int64_t idx = block_idx * block_stride + i;
-    dst_cache[idx] =
-        fp8::scaled_convert<Tout, Tin, kv_dt>(src_cache[idx], scale);
-  }
-}
-
-}  // namespace vllm
-
-#define CALL_CONVERT_FP8(Tout, Tin, KV_DTYPE)                                \
-  vllm::convert_fp8_kernel<Tout, Tin, KV_DTYPE><<<grid, block, 0, stream>>>( \
-      reinterpret_cast<Tin*>(src_cache.data_ptr()),                          \
-      reinterpret_cast<Tout*>(dst_cache.data_ptr()), scale, block_stride);
-
-// Only for testing.
-void convert_fp8(torch::Tensor& dst_cache, torch::Tensor& src_cache,
-                 const double scale, const std::string& kv_cache_dtype) {
-  torch::Device src_device = src_cache.device();
-  torch::Device dst_device = dst_cache.device();
-  TORCH_CHECK(src_device.is_cuda(), "src must be on a GPU")
-  TORCH_CHECK(dst_device.is_cuda(), "dst must be on a GPU")
-  TORCH_CHECK(src_device.index() == dst_device.index(),
-              "src and dst must be on the same GPU");
-  at::cuda::OptionalCUDAGuard device_guard(src_device);
-
-  int64_t num_blocks = src_cache.size(0);
-  int64_t block_stride = src_cache.stride(0);
-
-  dim3 grid(num_blocks);
-  dim3 block(std::min(block_stride, int64_t(512)));
-  const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-
-  if (kv_cache_dtype == "auto") {
-    if (src_cache.dtype() == at::ScalarType::Float) {
-      CALL_CONVERT_FP8(uint8_t, float, vllm::Fp8KVCacheDataType::kAuto);
-    } else if (src_cache.dtype() == at::ScalarType::Half) {
-      CALL_CONVERT_FP8(uint8_t, uint16_t, vllm::Fp8KVCacheDataType::kAuto);
-    } else if (src_cache.dtype() == at::ScalarType::BFloat16) {
-      CALL_CONVERT_FP8(uint8_t, __nv_bfloat16, vllm::Fp8KVCacheDataType::kAuto);
-    } else if (dst_cache.dtype() == at::ScalarType::Float) {
-      CALL_CONVERT_FP8(float, uint8_t, vllm::Fp8KVCacheDataType::kAuto);
-    } else if (dst_cache.dtype() == at::ScalarType::Half) {
-      CALL_CONVERT_FP8(uint16_t, uint8_t, vllm::Fp8KVCacheDataType::kAuto);
-    } else if (dst_cache.dtype() == at::ScalarType::BFloat16) {
-      CALL_CONVERT_FP8(__nv_bfloat16, uint8_t, vllm::Fp8KVCacheDataType::kAuto);
-    }
-  } else if (kv_cache_dtype == "fp8" || kv_cache_dtype == "fp8_e4m3") {
-    if (src_cache.dtype() == at::ScalarType::Float) {
-      CALL_CONVERT_FP8(uint8_t, float, vllm::Fp8KVCacheDataType::kFp8E4M3);
-    } else if (src_cache.dtype() == at::ScalarType::Half) {
-      CALL_CONVERT_FP8(uint8_t, uint16_t, vllm::Fp8KVCacheDataType::kFp8E4M3);
-    } else if (src_cache.dtype() == at::ScalarType::BFloat16) {
-      CALL_CONVERT_FP8(uint8_t, __nv_bfloat16,
-                       vllm::Fp8KVCacheDataType::kFp8E4M3);
-    } else if (dst_cache.dtype() == at::ScalarType::Float) {
-      CALL_CONVERT_FP8(float, uint8_t, vllm::Fp8KVCacheDataType::kFp8E4M3);
-    } else if (dst_cache.dtype() == at::ScalarType::Half) {
-      CALL_CONVERT_FP8(uint16_t, uint8_t, vllm::Fp8KVCacheDataType::kFp8E4M3);
-    } else if (dst_cache.dtype() == at::ScalarType::BFloat16) {
-      CALL_CONVERT_FP8(__nv_bfloat16, uint8_t,
-                       vllm::Fp8KVCacheDataType::kFp8E4M3);
-    }
-  } else {
-    TORCH_CHECK(false, "Unsupported data type: ", kv_cache_dtype);
-  }
 }
 
 namespace vllm {

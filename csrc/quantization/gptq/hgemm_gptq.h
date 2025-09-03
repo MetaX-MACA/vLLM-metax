@@ -98,25 +98,6 @@ __device__ __forceinline__ void mma_16x16x16<__maca_bfloat16>(PackTypeInt2& a, P
     mma_16x16x16bf16(a, b, c);
 }
 
-#if 0
-#ifdef BF16_HIGH_PRECISION
-__global__ void vectorized_elementwise_fp32tobf16(float* input, __maca_bfloat16* output, int N) {
-    uint64_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-    if (tid < N) {
-        // printf("tid = %d, input = %f, output = %f\n", tid, input[tid], (float)(__maca_bfloat16)input[tid]);
-        *(__maca_bfloat16*)(output+tid) = (__maca_bfloat16)input[tid];
-    }
-}
-#else
-__global__ void vectorized_elementwise_fp16tobf16(__maca_bfloat16* input, int N) {
-    uint64_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-    if (tid < N) {
-        input[tid] = (float)(*(half*)(input+tid));
-    }
-}
-#endif
-#endif
-
 template<
     const int THREADS, // number of threads in a threadblock
     const int PACK_NUM
