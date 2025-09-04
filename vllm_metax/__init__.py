@@ -86,6 +86,12 @@ def register():
 def register_model():
     
     import vllm_metax.patch
+    from vllm_metax.patch.model_executor.patch.layers.quantization.awq_marlin \
+        import MacaAWQMarlinConfig  # noqa: F401
+    # HOTFIX: https://github.com/vllm-project/vllm/pull/22797
+    from vllm_metax.patch.model_executor.patch.layers.quantization.moe_wna16 \
+        import PatchedMoeWNA16Config  # noqa: F401
+    
     from .models import register_model
     register_model()
 
