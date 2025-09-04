@@ -29,15 +29,12 @@ def copy_with_backup(src_path: Path, dest_path: Path):
                 shutil.rmtree(backup_path)
             else:
                 os.remove(backup_path)
-        print("Backup created: ", backup_path)
         os.rename(dest_full_path, backup_path)
 
     # Perform the copy
     if os.path.isdir(src_path):
-        print(f"Copying directory {src_path} to {dest_full_path}")
         shutil.copytree(src_path, dest_full_path)
     else:
-        print(f"Copying file {src_path} to {dest_full_path}")
         shutil.copy2(src_path, dest_full_path)
 
 
@@ -83,15 +80,21 @@ def register():
     return "vllm_metax.platform.MacaPlatform"
 
 
-def register_model():
-    
-    import vllm_metax.patch
-    from vllm_metax.patch.model_executor.patch.layers.quantization.awq_marlin \
+def register_quant_configs():
+    from vllm_metax.quant_config.awq_marlin \
         import MacaAWQMarlinConfig  # noqa: F401
+    from vllm_metax.quant_config.awq \
+        import MacaAWQConfig  # noqa: F401
     # HOTFIX: https://github.com/vllm-project/vllm/pull/22797
-    from vllm_metax.patch.model_executor.patch.layers.quantization.moe_wna16 \
-        import PatchedMoeWNA16Config  # noqa: F401
-    
+    from vllm_metax.quant_config.moe_wna16 \
+        import MacaMoeWNA16Config  # noqa: F401
+
+
+def register_model():
+    import vllm_metax.patch
+
+    register_quant_configs()
+
     from .models import register_model
     register_model()
 

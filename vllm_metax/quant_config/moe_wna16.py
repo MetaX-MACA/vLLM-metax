@@ -13,31 +13,34 @@ from vllm.model_executor.layers.linear import (LinearBase,
 from vllm.model_executor.layers.quantization.base_config import QuantizeMethodBase
 from vllm.model_executor.utils import set_weight_attrs
 
-from .hook_register import register_quantization_config
 from vllm.model_executor.layers.quantization.moe_wna16 import (MoeWNA16Config,
                                                                is_layer_skipped_quant)
+from vllm_metax.patch.model_executor.patch.layers.quantization.hook_register import (
+    register_quantization_config)
 
+
+# Remove configs of marlin
 @register_quantization_config("moe_wna16")
-class PatchedMoeWNA16Config(MoeWNA16Config):
+class MacaMoeWNA16Config(MoeWNA16Config):
     """Config class for MOE WNA16 (W8A16/W4A16) quantization."""
-
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.use_marlin = False
+    
     def get_quant_method(self, layer: torch.nn.Module,
                          prefix: str) -> Optional["QuantizeMethodBase"]:
         if is_layer_skipped_quant(prefix, self.modules_to_not_convert):
             return UnquantizedLinearMethod()
         elif isinstance(layer, LinearBase):
             # Avoid circular import
+            from vllm_metax.quant_config.awq import MacaAWQConfig
             from vllm.model_executor.layers.quantization.awq import AWQConfig
-            from vllm.model_executor.layers.quantization.awq_marlin import (
-                AWQMarlinConfig)
-            from vllm.model_executor.layers.quantization.gptq import GPTQConfig
-            from vllm.model_executor.layers.quantization.gptq_marlin import (
-                GPTQMarlinConfig)
+            from vllm_metax.quant_config.gptq import MacaGPTQConfig
             if self.linear_quant_method == "gptq":
-                return GPTQConfig.from_config(
+                return MacaGPTQConfig.from_config(
                     self.full_config).get_quant_method(layer, prefix)
             elif self.linear_quant_method == "awq":
-                return AWQConfig.from_config(
+                return MacaAWQConfig.from_config(
                     self.full_config).get_quant_method(layer, prefix)
             else:
                 raise ValueError("moe_wna16 only support gptq and awq.")
@@ -45,7 +48,8 @@ class PatchedMoeWNA16Config(MoeWNA16Config):
             return MoeWNA16Method(self, layer.moe_config)
         return None
 
-
+# HOTFIX: https://github.com/vllm-project/vllm/pull/22797
+# TODO: remove when pr merged
 class MoeWNA16Method(FusedMoEMethodBase):
     """Linear method for MOE WNA16 (W8A16/W4A16) quantization.
 
@@ -192,7 +196,7 @@ class MoeWNA16Method(FusedMoEMethodBase):
             raise NotImplementedError(
                 "EPLB not supported for `MoeWNA16Method` yet.")
 
-        from vllm.model_executor.layers.fused_moe import fused_experts
+        from vllm_metax.model_executor.layers.fused_moe.fused_moe import fused_experts
         assert activation == "silu", "Only SiLU activation is supported."
         topk_weights, topk_ids = FusedMoE.select_experts(
             hidden_states=x,

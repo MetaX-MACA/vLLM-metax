@@ -43,7 +43,7 @@ from vllm_metax import _custom_ops as ops
 logger = init_logger(__name__)
 
 @triton.jit
-def metax_fused_moe_kernel_gptq_awq(
+def fused_moe_kernel_gptq_awq(
         # Pointers to matrices
         a_ptr,
         b_ptr,
@@ -273,7 +273,7 @@ def metax_fused_moe_kernel_gptq_awq(
 )
 # └------------------------- Metax Modification -------------------------┘
 @triton.jit
-def metax_fused_moe_kernel(
+def fused_moe_kernel(
     # Pointers to matrices
     a_ptr,
     b_ptr,
@@ -561,7 +561,7 @@ def metax_fused_moe_kernel(
         tl.atomic_add(c_ptrs, accumulator, mask=c_mask)
 # └------------------------- Metax Modification -------------------------┘
 
-def metax_invoke_fused_moe_kernel(A: torch.Tensor,
+def invoke_fused_moe_kernel(A: torch.Tensor,
                             B: torch.Tensor,
                             C: torch.Tensor,
                             A_scale: Optional[torch.Tensor],
@@ -653,7 +653,7 @@ def metax_invoke_fused_moe_kernel(A: torch.Tensor,
         #                        config["BLOCK_SIZE_K"] * config["SPLIT_K"], bit)
         #     return
 # └-------------------------------- Metax Modification --------------------------------┘
-        metax_fused_moe_kernel_gptq_awq[grid](
+        fused_moe_kernel_gptq_awq[grid](
             A,
             B,
             C,
@@ -698,7 +698,7 @@ def metax_invoke_fused_moe_kernel(A: torch.Tensor,
         if block_shape is not None:
             BLOCK_SIZE_K = min(BLOCK_SIZE_K, min(block_shape[0],
                                                  block_shape[1]))
-        metax_fused_moe_kernel[grid](
+        fused_moe_kernel[grid](
             A,
             B,
             C,
@@ -758,7 +758,7 @@ def metax_invoke_fused_moe_kernel(A: torch.Tensor,
 
 # Adapted from: https://github.com/sgl-project/sglang/pull/2628
 @functools.lru_cache
-def metax_get_moe_configs(
+def get_moe_configs(
     E: int,
     N: int,
     dtype: Optional[str],
@@ -810,7 +810,7 @@ def metax_get_moe_configs(
     return None
 
 
-def metax_get_default_config(
+def get_default_config(
     M: int,
     E: int,
     N: int,
@@ -851,11 +851,6 @@ def metax_get_default_config(
     #     else:
     #         config = {"BLOCK_SIZE_M": 64, "GROUP_SIZE_M": 1}
     # └------------------------- Metax Modification -------------------------┘
-    elif is_marlin:
-        for block_size_m in [8, 16, 32, 48, 64]:
-            if M * topk / E / block_size_m < 0.9:
-                break
-        return {"BLOCK_SIZE_M": block_size_m}
     elif M <= E:
         config = {
             "BLOCK_SIZE_M": 16,
@@ -873,7 +868,7 @@ def metax_get_default_config(
     return config
 
 
-def metax_try_get_optimal_moe_config(
+def try_get_optimal_moe_config(
     w1_shape: tuple[int, ...],
     w2_shape: tuple[int, ...],
     top_k: int,
@@ -891,16 +886,11 @@ def metax_try_get_optimal_moe_config(
     else:
         # First try to load optimal config from the file
         E, _, N = w2_shape
-# ┌------------------------  Metax Modification -------------------------┐
-        # TODO: why we need N * 2
-        # if dtype == "int4_w4a16":
-        #     N = N * 2
-# └------------------------- Metax Modification -------------------------┘
+        if dtype == "int4_w4a16":
+            N = N * 2
         block_n = block_shape[0] if block_shape else 0
         block_k = block_shape[1] if block_shape else 0
-# ┌------------------------  Metax Modification -------------------------┐
-        configs = metax_get_moe_configs(E, N, dtype, block_n, block_k, H)
-# └------------------------- Metax Modification -------------------------┘
+        configs = get_moe_configs(E, N, dtype, block_n, block_k, H)
 
         if configs:
             # If an optimal configuration map has been found, look up the
@@ -908,12 +898,12 @@ def metax_try_get_optimal_moe_config(
             config = configs[min(configs.keys(), key=lambda x: abs(x - M))]
         else:
             # Else use the default config
-            config = metax_get_default_config(M, E, N, w1_shape[2], top_k, dtype,
+            config = get_default_config(M, E, N, w1_shape[2], top_k, dtype,
                                         block_shape)
     return config
 
 
-def metax_get_config_dtype_str(
+def get_config_dtype_str(
         dtype: torch.dtype,
         use_int4_w4a16: Optional[bool] = False,
         # ┌------------------------  Metax Modification -------------------------┐
@@ -941,7 +931,7 @@ def metax_get_config_dtype_str(
     return None
 
 
-def metax_inplace_fused_experts(
+def inplace_fused_experts(
         hidden_states: torch.Tensor,
         w1: torch.Tensor,
         w2: torch.Tensor,
@@ -967,7 +957,7 @@ def metax_inplace_fused_experts(
         block_shape: Optional[List[int]] = None,  #noqa: UP006
         w1_bias: Optional[torch.Tensor] = None,
         w2_bias: Optional[torch.Tensor] = None) -> None:
-    metax_fused_experts_impl(hidden_states, w1, w2, topk_weights, topk_ids, True,
+    fused_experts_impl(hidden_states, w1, w2, topk_weights, topk_ids, True,
                        activation, is_act_and_mul,
                        apply_router_weight_on_input, use_fp8_w8a8,
                        use_int8_w8a8, use_int8_w8a16, use_int4_w4a16,
@@ -976,7 +966,7 @@ def metax_inplace_fused_experts(
                        a2_scale, block_shape, w1_bias, w2_bias)
 
 
-def metax_inplace_fused_experts_fake(
+def inplace_fused_experts_fake(
         hidden_states: torch.Tensor,
         w1: torch.Tensor,
         w2: torch.Tensor,
@@ -1006,16 +996,16 @@ def metax_inplace_fused_experts_fake(
 
 
 direct_register_custom_op(
-    op_name="metax_inplace_fused_experts",
-    op_func=metax_inplace_fused_experts,
+    op_name="maca_inplace_fused_experts",
+    op_func=inplace_fused_experts,
     mutates_args=["hidden_states"],
-    fake_impl=metax_inplace_fused_experts_fake,
+    fake_impl=inplace_fused_experts_fake,
     tags=(() if is_torch_equal_or_newer("2.7.0") else
           (torch.Tag.needs_fixed_stride_order, )),
 )
 
 
-def metax_outplace_fused_experts(
+def outplace_fused_experts(
     hidden_states: torch.Tensor,
     w1: torch.Tensor,
     w2: torch.Tensor,
@@ -1042,7 +1032,7 @@ def metax_outplace_fused_experts(
     w1_bias: Optional[torch.Tensor] = None,
     w2_bias: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    return metax_fused_experts_impl(
+    return fused_experts_impl(
         hidden_states, w1, w2, topk_weights, topk_ids, False, activation,
         is_act_and_mul, apply_router_weight_on_input, use_fp8_w8a8,
         use_int8_w8a8, use_int8_w8a16, use_int4_w4a16, use_mxfp4_w4a4,
@@ -1050,7 +1040,7 @@ def metax_outplace_fused_experts(
         w1_zp, w2_zp, a1_scale, a2_scale, block_shape, w1_bias, w2_bias)
 
 
-def metax_outplace_fused_experts_fake(
+def outplace_fused_experts_fake(
     hidden_states: torch.Tensor,
     w1: torch.Tensor,
     w2: torch.Tensor,
@@ -1080,32 +1070,32 @@ def metax_outplace_fused_experts_fake(
 
 
 direct_register_custom_op(
-    op_name="metax_outplace_fused_experts",
-    op_func=metax_outplace_fused_experts,
+    op_name="maca_outplace_fused_experts",
+    op_func=outplace_fused_experts,
     mutates_args=[],
-    fake_impl=metax_outplace_fused_experts_fake,
+    fake_impl=outplace_fused_experts_fake,
     tags=(() if is_torch_equal_or_newer("2.7.0") else
           (torch.Tag.needs_fixed_stride_order, )),
 )
 
 
-def metax_torch_vllm_inplace_fused_experts(**kwargs) -> torch.Tensor:
-    torch.ops.vllm.metax_inplace_fused_experts(**kwargs)
+def torch_vllm_inplace_fused_experts(**kwargs) -> torch.Tensor:
+    torch.ops.vllm.maca_inplace_fused_experts(**kwargs)
     hidden_states = kwargs['hidden_states']
     return hidden_states
 
 
-def metax_torch_vllm_outplace_fused_experts(**kwargs) -> torch.Tensor:
-    return torch.ops.vllm.metax_outplace_fused_experts(**kwargs)
+def torch_vllm_outplace_fused_experts(**kwargs) -> torch.Tensor:
+    return torch.ops.vllm.maca_outplace_fused_experts(**kwargs)
 
 
-def metax_dispatch_fused_experts_func(inplace: bool) -> Callable[..., torch.Tensor]:
+def dispatch_fused_experts_func(inplace: bool) -> Callable[..., torch.Tensor]:
     if inplace:
-        return metax_torch_vllm_inplace_fused_experts
-    return metax_torch_vllm_outplace_fused_experts
+        return torch_vllm_inplace_fused_experts
+    return torch_vllm_outplace_fused_experts
 
 
-def metax_fused_experts_impl(
+def fused_experts_impl(
     hidden_states: torch.Tensor,
     w1: torch.Tensor,
     w2: torch.Tensor,
@@ -1163,7 +1153,7 @@ def metax_fused_experts_impl(
     # https://github.com/vllm-project/vllm/issues/5938
     CHUNK_SIZE = envs.VLLM_FUSED_MOE_CHUNK_SIZE
     M = min(num_tokens, CHUNK_SIZE)
-    config_dtype = metax_get_config_dtype_str(use_fp8_w8a8=use_fp8_w8a8,
+    config_dtype = get_config_dtype_str(use_fp8_w8a8=use_fp8_w8a8,
         # ┌------------------------  Metax Modification -------------------------┐
                                         use_int8_w8a8=use_int8_w8a8,
         # └------------------------- Metax Modification -------------------------┘
@@ -1179,7 +1169,7 @@ def metax_fused_experts_impl(
                                     use_mxfp4_w4a4=use_mxfp4_w4a4)
 
     get_config_func = functools.partial(
-        metax_try_get_optimal_moe_config,
+        try_get_optimal_moe_config,
         w1.shape,
         w2.shape,
         top_k_num,
@@ -1311,7 +1301,7 @@ def metax_fused_experts_impl(
                 per_act_token_quant=per_channel_quant,
                 block_shape=block_shape)
             
-            metax_invoke_fused_moe_kernel(qcurr_hidden_states,
+            invoke_fused_moe_kernel(qcurr_hidden_states,
                                 w1,
                                 intermediate_cache1,
                                 a1q_scale,
@@ -1376,7 +1366,7 @@ def metax_fused_experts_impl(
                 moe_align_block_size(curr_topk_ids, stage2_config['BLOCK_SIZE_M'], 
                                         global_num_experts, expert_map))
 
-            metax_invoke_fused_moe_kernel(qintermediate_cache2,
+            invoke_fused_moe_kernel(qintermediate_cache2,
                                 w2,
                                 intermediate_cache3,
                                 a2q_scale,
@@ -1405,7 +1395,7 @@ def metax_fused_experts_impl(
     return out_hidden_states
 
 
-def metax_fused_experts(hidden_states: torch.Tensor,
+def fused_experts(hidden_states: torch.Tensor,
                   w1: torch.Tensor,
                   w2: torch.Tensor,
                   topk_weights: torch.Tensor,
@@ -1433,7 +1423,7 @@ def metax_fused_experts(hidden_states: torch.Tensor,
                   allow_cutlass_block_scaled_grouped_gemm: bool = False,
                   w1_bias: Optional[torch.Tensor] = None,
                   w2_bias: Optional[torch.Tensor] = None) -> torch.Tensor:
-    return metax_dispatch_fused_experts_func(inplace)(
+    return dispatch_fused_experts_func(inplace)(
             hidden_states=hidden_states,
             w1=w1,
             w2=w2,
@@ -1462,7 +1452,7 @@ def metax_fused_experts(hidden_states: torch.Tensor,
         )
 
 
-def metax_fused_moe(
+def fused_moe(
     hidden_states: torch.Tensor,
     w1: torch.Tensor,
     w2: torch.Tensor,
@@ -1562,7 +1552,7 @@ def metax_fused_moe(
         topk_weights, topk_ids = custom_routing_function(
             hidden_states, gating_output, topk, renormalize)
 
-    return metax_fused_experts(hidden_states,
+    return fused_experts(hidden_states,
                          w1,
                          w2,
                          topk_weights,
@@ -1696,13 +1686,13 @@ class TritonExperts(mk.FusedMoEPermuteExpertsUnpermute):
         if global_num_experts == -1:
             global_num_experts = E
 
-        config_dtype = metax_get_config_dtype_str(use_fp8_w8a8=self.use_fp8_w8a8,
+        config_dtype = get_config_dtype_str(use_fp8_w8a8=self.use_fp8_w8a8,
                                             use_int8_w8a16=self.use_int8_w8a16,
                                             use_int4_w4a16=self.use_int4_w4a16,
                                             use_mxfp4_w4a4=self.use_mxfp4_w4a4,
                                             dtype=hidden_states.dtype)
 
-        config = metax_try_get_optimal_moe_config(
+        config = try_get_optimal_moe_config(
             w1.size(),
             w2.size(),
             top_k_num,
@@ -1735,7 +1725,7 @@ class TritonExperts(mk.FusedMoEPermuteExpertsUnpermute):
             moe_align_block_size(topk_ids, config['BLOCK_SIZE_M'],
                                  global_num_experts, expert_map))
 
-        metax_invoke_fused_moe_kernel(
+        invoke_fused_moe_kernel(
             hidden_states,
             w1,
             intermediate_cache1,
@@ -1769,7 +1759,7 @@ class TritonExperts(mk.FusedMoEPermuteExpertsUnpermute):
             intermediate_cache2, a2_scale, self.quant_dtype,
             self.per_act_token_quant, self.block_shape)
 
-        metax_invoke_fused_moe_kernel(
+        invoke_fused_moe_kernel(
             qintermediate_cache2,
             w2,
             intermediate_cache3,
