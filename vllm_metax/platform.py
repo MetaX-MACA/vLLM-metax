@@ -50,11 +50,12 @@ def with_mcml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
 
 
 class MacaPlatformBase(Platform):
-    _enum = PlatformEnum.CUDA
+    _enum = PlatformEnum.OOT
     device_name: str = "Metax"
     device_type: str = "cuda"
     dispatch_key: str = "CUDA"
     ray_device_key: str = "GPU"
+    dist_backend: str = "mccl"
     device_control_env_var: str = "CUDA_VISIBLE_DEVICES"
 
     supported_quantization:list[str] = [
@@ -86,10 +87,6 @@ class MacaPlatformBase(Platform):
     @classmethod
     def get_device_total_memory(cls, device_id: int = 0) -> int:
         raise NotImplementedError
-
-    @classmethod
-    def is_cuda(cls) -> bool:
-        return True    
 
     @classmethod
     def is_cuda_alike(cls) -> bool:

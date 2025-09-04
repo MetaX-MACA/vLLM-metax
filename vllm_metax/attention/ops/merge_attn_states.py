@@ -31,8 +31,9 @@ def merge_attn_states(
             return headdim % 4 == 0
         return headdim % 8 == 0
 
-    if (current_platform.is_cuda() and supported_dtypes(output)
-            and supported_headdim(output)):
+    # /------------------------  Metax Modification -------------------------\
+    if (supported_dtypes(output) and supported_headdim(output)):
+    # \------------------------  Metax Modification -------------------------/
         from vllm._custom_ops import merge_attn_states
         return merge_attn_states(output, prefix_output, prefix_lse,
                                  suffix_output, suffix_lse, output_lse)
