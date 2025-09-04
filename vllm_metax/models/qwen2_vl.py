@@ -235,8 +235,7 @@ def apply_rotary_pos_emb_vision(t: torch.Tensor,
     cos = freqs.cos()
     sin = freqs.sin()
     apply_rotary_emb = apply_rotary_emb_torch
-    if current_platform.is_cuda():
-        from flash_attn.layers.rotary import apply_rotary_emb
+    from flash_attn.layers.rotary import apply_rotary_emb
     output = apply_rotary_emb(t_, cos, sin).type_as(t)
     return output
 

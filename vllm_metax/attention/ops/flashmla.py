@@ -6,20 +6,16 @@ from typing import Optional, Tuple
 import torch
 
 from vllm.logger import init_logger
-from vllm.platforms import current_platform
 
 logger = init_logger(__name__)
 
-if current_platform.is_cuda():
-    try:
-        # /------------------------  Metax Modification -------------------------\
-        import flash_mla  # noqa: F401
-        # \------------------------  Metax Modification -------------------------/
-        _flashmla_AVAILABLE = True
-    except ImportError:
-        _flashmla_AVAILABLE = False
-else :
+# /------------------------  Metax Modification -------------------------\
+try:
+    import flash_mla  # noqa: F401
+    _flashmla_AVAILABLE = True
+except ImportError:
     _flashmla_AVAILABLE = False
+# \------------------------  Metax Modification -------------------------/
 
 
 def is_flashmla_supported() -> Tuple[bool, Optional[str]]:
