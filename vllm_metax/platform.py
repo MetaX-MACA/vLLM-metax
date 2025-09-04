@@ -168,7 +168,7 @@ class MacaPlatformBase(Platform):
                 use_cutlass_mla = (
                     envs.VLLM_ATTENTION_BACKEND == "CUTLASS_MLA")
 
-            from vllm.attention.ops.flashmla import is_flashmla_supported
+            from vllm_metax.attention.ops.flashmla import is_flashmla_supported
             if use_flashmla and is_flashmla_supported()[0] \
                 and cache_config.block_size != 64:
                 cache_config.block_size = 64
