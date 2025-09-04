@@ -216,12 +216,6 @@ void cutlass_moe_mm(
     torch::Tensor const& b_strides, torch::Tensor const& c_strides,
     bool per_act_token, bool per_out_ch);
 
-void cutlass_fp4_group_mm(
-    torch::Tensor& output, const torch::Tensor& a, const torch::Tensor& b,
-    const torch::Tensor& a_blockscale, const torch::Tensor& b_blockscales,
-    const torch::Tensor& alphas, const torch::Tensor& problem_sizes,
-    const torch::Tensor& expert_offsets, const torch::Tensor& sf_offsets);
-
 void get_cutlass_moe_mm_data(
     const torch::Tensor& topk_ids, torch::Tensor& expert_offsets,
     torch::Tensor& problem_sizes1, torch::Tensor& problem_sizes2,
@@ -309,21 +303,3 @@ void selective_scan_fwd(const torch::Tensor& u, const torch::Tensor& delta,
                         const std::optional<torch::Tensor>& has_initial_state,
                         const torch::Tensor& ssm_states, int64_t pad_slot_id);
 
-using fptr_t = int64_t;
-fptr_t init_custom_ar(const std::vector<int64_t>& fake_ipc_ptrs,
-                      torch::Tensor& rank_data, int64_t rank,
-                      bool fully_connected);
-void all_reduce(fptr_t _fa, torch::Tensor& inp, torch::Tensor& out,
-                fptr_t reg_buffer, int64_t reg_buffer_sz_bytes);
-void dispose(fptr_t _fa);
-int64_t meta_size();
-void register_buffer(fptr_t _fa, const std::vector<int64_t>& fake_ipc_ptrs);
-std::tuple<std::vector<int64_t>, std::vector<int64_t>>
-get_graph_buffer_ipc_meta(fptr_t _fa);
-void register_graph_buffers(fptr_t _fa,
-                            const std::vector<std::vector<int64_t>>& handles,
-                            const std::vector<std::vector<int64_t>>& offsets);
-std::tuple<int64_t, torch::Tensor> allocate_shared_buffer_and_handle(
-    int64_t size);
-int64_t open_mem_handle(torch::Tensor& mem_handle);
-void free_shared_buffer(int64_t buffer);

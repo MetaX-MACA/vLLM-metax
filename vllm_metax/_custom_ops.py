@@ -21,10 +21,6 @@ if not current_platform.is_tpu() and not current_platform.is_xpu():
     except ImportError as e:
         logger.warning("Failed to import from vllm._C with %r", e)
 
-supports_moe_ops = False
-with contextlib.suppress(ImportError):
-    import vllm._moe_C  # noqa: F401
-    supports_moe_ops = True
 
 if TYPE_CHECKING:
 
@@ -98,47 +94,6 @@ def paged_attention_v2(
         alibi_slopes, kv_cache_dtype, k_scale, v_scale, tp_rank,
         blocksparse_local_blocks, blocksparse_vert_stride,
         blocksparse_block_size, blocksparse_head_sliding_step)
-
-
-def paged_attention_rocm(
-    out: torch.Tensor,
-    exp_sum: torch.Tensor,
-    max_logits: torch.Tensor,
-    tmp_out: torch.Tensor,
-    query: torch.Tensor,
-    key_cache: torch.Tensor,
-    value_cache: torch.Tensor,
-    num_kv_heads: int,
-    scale: float,
-    block_tables: torch.Tensor,
-    seq_lens: torch.Tensor,
-    query_start_loc: Optional[torch.Tensor],
-    block_size: int,
-    max_seq_len: int,
-    alibi_slopes: Optional[torch.Tensor],
-    kv_cache_dtype: str,
-    k_scale: torch.Tensor,
-    v_scale: torch.Tensor,
-    fp8_out_scale: Optional[torch.Tensor] = None,
-) -> None:
-    torch.ops._rocm_C.paged_attention(out, exp_sum, max_logits, tmp_out, query,
-                                      key_cache, value_cache, num_kv_heads,
-                                      scale, block_tables, seq_lens,
-                                      query_start_loc, block_size, max_seq_len,
-                                      alibi_slopes, kv_cache_dtype, k_scale,
-                                      v_scale, fp8_out_scale)
-
-
-def mla_decode_kvcache_cpu(
-    out: torch.Tensor,
-    query: torch.Tensor,
-    kv_cache: torch.Tensor,
-    scale: float,
-    block_tables: torch.Tensor,
-    seq_lens: torch.Tensor,
-) -> None:
-    torch.ops._C_cpu.mla_decode_kvcache(out, query, kv_cache, scale,
-                                        block_tables, seq_lens)
 
 
 # merge attn states ops
@@ -379,155 +334,10 @@ def gptq_gemm(a: torch.Tensor, b_q_weight: torch.Tensor,
                                   b_g_idx, use_exllama, bit, group_size, 
                                   perm_space, temp_space, dtype_bf16)
 
-"""
-if hasattr(torch.ops._C, "gptq_gemm"):
-
-    @register_fake("_C::gptq_gemm")
-    def _gptq_gemm_fake(a: torch.Tensor, b_q_weight: torch.Tensor,
-                        b_gptq_qzeros: torch.Tensor,
-                        b_gptq_scales: torch.Tensor, b_g_idx: torch.Tensor,
-                        use_exllama: bool, bit: int, 
-                        group_size: int, perm_space: torch.Tensor,
-                        temp_space: torch.Tensor, dtype_bf16: bool) -> torch.Tensor:
-        return torch.empty((a.size(0), b_q_weight.size(1)),
-                           dtype=a.dtype,
-                           device=a.device)
-"""
 
 def gptq_shuffle(q_weight: torch.Tensor, q_perm: torch.Tensor,
                  bit: int) -> None:
     torch.ops._C.gptq_shuffle(q_weight, q_perm, bit)
-
-
-# marlin
-def marlin_gemm(a: torch.Tensor, b_q_weight: torch.Tensor,
-                b_scales: torch.Tensor, workspace: torch.Tensor, size_m: int,
-                size_n: int, size_k: int) -> torch.Tensor:
-    return torch.ops._C.marlin_gemm(a, b_q_weight, b_scales, workspace, size_m,
-                                    size_n, size_k)
-
-
-# marlin_24
-def gptq_marlin_24_gemm(a: torch.Tensor, b_q_weight: torch.Tensor,
-                        b_meta: torch.Tensor, b_scales: torch.Tensor,
-                        workspace: torch.Tensor, b_q_type: ScalarType,
-                        size_m: int, size_n: int, size_k: int) -> torch.Tensor:
-    return torch.ops._C.gptq_marlin_24_gemm(a, b_q_weight, b_meta, b_scales,
-                                            workspace, b_q_type.id, size_m,
-                                            size_n, size_k)
-
-
-if hasattr(torch.ops._C, "gptq_marlin_24_gemm"):
-
-    @register_fake("_C::gptq_marlin_24_gemm")
-    def _gptq_marlin_24_gemm_fake(a: torch.Tensor, b_q_weight: torch.Tensor,
-                                  b_meta: torch.Tensor, b_scales: torch.Tensor,
-                                  workspace: torch.Tensor,
-                                  b_q_type: ScalarType, size_m: torch.SymInt,
-                                  size_n: torch.SymInt,
-                                  size_k: torch.SymInt) -> torch.Tensor:
-        return torch.empty((size_m, size_n), device=a.device, dtype=a.dtype)
-
-    @register_fake("_C::gptq_marlin_gemm")
-    def _gptq_marlin_gemm_fake(a: torch.Tensor,
-                               c: Optional[torch.Tensor],
-                               b_q_weight: torch.Tensor,
-                               b_scales: torch.Tensor,
-                               global_scale: Optional[torch.Tensor],
-                               b_zeros: Optional[torch.Tensor],
-                               g_idx: Optional[torch.Tensor],
-                               perm: Optional[torch.Tensor],
-                               workspace: torch.Tensor,
-                               b_q_type_id: int,
-                               size_m: torch.SymInt,
-                               size_n: torch.SymInt,
-                               size_k: torch.SymInt,
-                               is_k_full: bool = True,
-                               use_atomic_add: bool = False,
-                               use_fp32_reduce: bool = False,
-                               is_zp_float: bool = False) -> torch.Tensor:
-        return torch.empty((size_m, size_n), device=a.device, dtype=a.dtype)
-
-    @register_fake("_C::marlin_qqq_gemm")
-    def _marlin_qqq_gemm_fake(a: torch.Tensor, b_q_weight: torch.Tensor,
-                              s_tok: torch.Tensor, s_ch: torch.Tensor,
-                              s_group: torch.Tensor, workspace: torch.Tensor,
-                              size_m: torch.SymInt, size_n: torch.SymInt,
-                              size_k: torch.SymInt) -> torch.Tensor:
-        return torch.empty((size_m, size_n),
-                           dtype=torch.float16,
-                           device=a.device)
-
-    @register_fake("_C::marlin_gemm")
-    def _marlin_gemm_fake(a: torch.Tensor, b_q_weight: torch.Tensor,
-                          b_scales: torch.Tensor, workspace: torch.Tensor,
-                          size_m: torch.SymInt, size_n: torch.SymInt,
-                          size_k: torch.SymInt) -> torch.Tensor:
-        return torch.empty((size_m, size_n),
-                           dtype=torch.float16,
-                           device=a.device)
-
-    @register_fake("_C::awq_dequantize")
-    def _awq_dequantize_fake(qweight: torch.Tensor, scales: torch.Tensor,
-                             zeros: torch.Tensor, split_k_iters: torch.SymInt,
-                             thx: int, thy: int) -> torch.Tensor:
-        in_c = qweight.size(0)
-        qout_c = qweight.size(1)
-        out_c = qout_c * 8
-        return torch.empty((in_c, out_c),
-                           dtype=scales.dtype,
-                           device=scales.device)
-
-    @register_fake("_C::awq_gemm")
-    def _awq_gemm_fake(input: torch.Tensor, qweight: torch.Tensor,
-                       qzeros: torch.Tensor, scales: torch.Tensor,
-                       split_k_iters: torch.SymInt, temp_space: torch.Tensor, 
-                       dtype_bf16: bool) -> torch.Tensor:
-        num_in_feats = input.size(0)
-        return torch.empty((split_k_iters, num_in_feats, qweight.size(1) * 8),
-                           dtype=input.dtype,
-                           device=input.device).sum(0)
-
-    @register_fake("_C::machete_mm")
-    def machete_mm_fake(
-        a: torch.Tensor,
-        # b_q Should be the tensor returned by machete_prepack_B
-        b_q: torch.Tensor,
-        b_type: ScalarType,
-        out_type: Optional[torch.dtype] = None,
-        b_group_scales: Optional[torch.Tensor] = None,
-        b_group_zeros: Optional[torch.Tensor] = None,
-        b_group_size: Optional[int] = None,
-        b_channel_scales: Optional[torch.Tensor] = None,
-        a_token_scales: Optional[torch.Tensor] = None,
-        schedule: Optional[str] = None,
-    ) -> torch.Tensor:
-        m = a.size(0)
-        n = b_q.size(1)
-        return torch.empty((m, n), device=a.device, dtype=a.dtype)
-
-    @register_fake("_C::machete_prepack_B")
-    def machete_prepack_B_fake(
-            b_q_weight: torch.Tensor, a_type: torch.dtype, b_type: ScalarType,
-            group_scales_type: Optional[torch.dtype]) -> torch.Tensor:
-        return torch.empty_like(b_q_weight,
-                                memory_format=torch.contiguous_format)
-
-
-if hasattr(torch.ops._C, "allspark_w8a16_gemm"):
-
-    @register_fake("_C::allspark_w8a16_gemm")
-    def _allspark_w8a16_gemm_fake(a: torch.Tensor, b_qweight: torch.Tensor,
-                                  b_scales: torch.Tensor,
-                                  b_qzeros: Optional[torch.Tensor],
-                                  n: torch.SymInt, group_size: torch.SymInt,
-                                  sm_count: torch.SymInt,
-                                  sm_version: torch.SymInt,
-                                  CUBLAS_M_THRESHOLD: torch.SymInt,
-                                  has_zp: bool,
-                                  n32k16_reorder: bool) -> torch.Tensor:
-        m = a.size(0)
-        return torch.empty((m, n), device=a.device, dtype=a.dtype)
 
 
 if hasattr(torch.ops._C, "ggml_dequantize"):
@@ -600,6 +410,7 @@ if hasattr(torch.ops._C, "ggml_moe_a8_vec"):
 def cutlass_scaled_mm_supports_fp4(cuda_device_capability: int) -> bool:
     return torch.ops._C.cutlass_scaled_mm_supports_fp4(cuda_device_capability)
 
+
 def cutlass_scaled_fp4_mm(a: torch.Tensor, b: torch.Tensor,
                           block_scale_a: torch.Tensor,
                           block_scale_b: torch.Tensor, alpha: torch.Tensor,
@@ -611,6 +422,7 @@ def cutlass_scaled_fp4_mm(a: torch.Tensor, b: torch.Tensor,
                                        alpha)
     return out
 
+
 def cutlass_scaled_mm_supports_fp8(cuda_device_capability: int) -> bool:
     return torch.ops._C.cutlass_scaled_mm_supports_fp8(cuda_device_capability)
 
@@ -618,6 +430,7 @@ def cutlass_scaled_mm_supports_fp8(cuda_device_capability: int) -> bool:
 def cutlass_scaled_mm_supports_block_fp8(cuda_device_capability: int) -> bool:
     return torch.ops._C.cutlass_scaled_mm_supports_block_fp8(
         cuda_device_capability)
+
 
 # Batch gemm in vllm, support w8a8 int8 quantization
 def cutlass_scaled_batch_mm(a: torch.Tensor, b: torch.Tensor,
@@ -627,6 +440,7 @@ def cutlass_scaled_batch_mm(a: torch.Tensor, b: torch.Tensor,
     out = torch.empty((a.shape[0], a.shape[1], b.shape[2]), device = a.device, dtype = out_dtype)
     torch.ops._C.cutlass_scaled_mm(out, a, b, scale_a, scale_b, bias)
     return out
+
 
 def cutlass_scaled_mm(a: torch.Tensor,
                       b: torch.Tensor,
@@ -713,6 +527,7 @@ def cutlass_sparse_scaled_mm_supported(cuda_device_capability: int) -> bool:
 
 def cutlass_group_gemm_supported(cuda_device_capability: int) -> bool:
     return torch.ops._C.cutlass_group_gemm_supported(cuda_device_capability)
+
 
 def cutlass_sparse_compress(a: torch.Tensor) \
     -> tuple[torch.Tensor, torch.Tensor]:
@@ -905,141 +720,6 @@ def cutlass_moe_mm(out_tensors: torch.Tensor, a_tensors: torch.Tensor,
                                        c_strides, per_act_token, per_out_ch)
 
 
-def cutlass_fp4_moe_mm(a_tensors: torch.Tensor, b_tensors: torch.Tensor,
-                       a_scales: torch.Tensor, b_scales: torch.Tensor,
-                       alphas: torch.Tensor, problem_sizes: torch.Tensor,
-                       expert_offsets: torch.Tensor, sf_offsets: torch.Tensor,
-                       out_dtype: torch.dtype, device: torch.device):
-    """
-    An FP4 Blockscaled Group Gemm that takes in  a_tensors, b_tensors and runs
-    the gemms for each combination based on the specified problem sizes.
-
-    This is used as the MoE gemm during NVFP4 Quantized FusedMoE forward.
-    - a/b_tensors: the NVFP4 a_ptrs and b_ptrs tensors which are quantized
-                     input and expert weights.
-    - a_/b_scales: The blockscales in FP8-E4M3 precision
-    - expert_offsets/sf_offsets: Indices that mark at which token index
-                    each expert begins its computation. The number of tokens
-                    computed with expert E is expert_offsets[E + 1] -
-                    expert_offsets[E] And the sf_size per expert is
-                    sf_offset[E+1] - sf_offset[E]
-    - problem_sizes: MxNxK sizes of each expert's multiplication in two grouped
-                     MMs used in the fused MoE operation.
-    """
-    m_topk = a_tensors.shape[0]
-    n = b_tensors.shape[1]
-    c_shape = (m_topk, n)
-    c = torch.empty(c_shape, device=device, dtype=out_dtype)
-    torch.ops._C.cutlass_fp4_group_mm(c, a_tensors, b_tensors, a_scales,
-                                      b_scales, alphas, problem_sizes,
-                                      expert_offsets, sf_offsets)
-    return c.to(out_dtype)
-
-# gptq_marlin
-def gptq_marlin_repack(b_q_weight: torch.Tensor, perm: torch.Tensor,
-                       size_k: int, size_n: int,
-                       num_bits: int) -> torch.Tensor:
-    return torch.ops._C.gptq_marlin_repack(b_q_weight, perm, size_k, size_n,
-                                           num_bits)
-
-
-# gptq_marlin
-def awq_marlin_repack(b_q_weight: torch.Tensor, size_k: int, size_n: int,
-                      num_bits: int) -> torch.Tensor:
-    return torch.ops._C.awq_marlin_repack(b_q_weight, size_k, size_n, num_bits)
-
-
-def gptq_marlin_moe_repack(b_q_weight: torch.Tensor, perm: torch.Tensor,
-                           size_k: int, size_n: int,
-                           num_bits: int) -> torch.Tensor:
-    num_experts = b_q_weight.shape[0]
-    assert size_k % 16 == 0
-    output = torch.empty((num_experts, size_k // 16, size_n * (num_bits // 2)),
-                         device=b_q_weight.device,
-                         dtype=b_q_weight.dtype)
-    for e in range(num_experts):
-        output[e] = torch.ops._C.gptq_marlin_repack(b_q_weight[e], perm[e],
-                                                    size_k, size_n, num_bits)
-    return output
-
-
-def awq_marlin_moe_repack(b_q_weight: torch.Tensor, perm: torch.Tensor,
-                          size_k: int, size_n: int,
-                          num_bits: int) -> torch.Tensor:
-    num_experts = b_q_weight.shape[0]
-    assert size_k % 16 == 0
-    output = torch.empty((num_experts, size_k // 16, size_n * (num_bits // 2)),
-                         device=b_q_weight.device,
-                         dtype=b_q_weight.dtype)
-    for e in range(num_experts):
-        output[e] = torch.ops._C.awq_marlin_repack(b_q_weight[e], size_k,
-                                                   size_n, num_bits)
-    return output
-
-
-def gptq_marlin_gemm(a: torch.Tensor,
-                     c: Optional[torch.Tensor],
-                     b_q_weight: torch.Tensor,
-                     b_scales: torch.Tensor,
-                     global_scale: Optional[torch.Tensor],
-                     b_zeros: Optional[torch.Tensor],
-                     g_idx: Optional[torch.Tensor],
-                     perm: Optional[torch.Tensor],
-                     workspace: torch.Tensor,
-                     b_q_type: ScalarType,
-                     size_m: int,
-                     size_n: int,
-                     size_k: int,
-                     is_k_full: bool = True,
-                     use_atomic_add: bool = False,
-                     use_fp32_reduce: bool = False,
-                     is_zp_float: bool = False) -> torch.Tensor:
-    return torch.ops._C.gptq_marlin_gemm(a, c, b_q_weight, b_scales,
-                                         global_scale, b_zeros, g_idx, perm,
-                                         workspace, b_q_type.id, size_m,
-                                         size_n, size_k, is_k_full,
-                                         use_atomic_add, use_fp32_reduce,
-                                         is_zp_float)
-
-
-# machete
-def machete_supported_schedules(
-        a_type: torch.dtype,
-        b_type: ScalarType,
-        group_scales_type: Optional[torch.dtype],
-        group_zeros_type: Optional[torch.dtype] = None,
-        channel_scales_type: Optional[torch.dtype] = None,
-        token_scales_type: Optional[torch.dtype] = None,
-        out_type: Optional[torch.dtype] = None) -> list[str]:
-    return torch.ops._C.machete_supported_schedules(
-        a_type, b_type.id, group_scales_type, group_zeros_type,
-        channel_scales_type, token_scales_type, out_type)
-
-
-def machete_mm(
-        a: torch.Tensor,
-        # b_q Should be the tensor returned by machete_prepack_B
-        b_q: torch.Tensor,
-        b_type: ScalarType,
-        out_type: Optional[torch.dtype] = None,
-        b_group_scales: Optional[torch.Tensor] = None,
-        b_group_zeros: Optional[torch.Tensor] = None,
-        b_group_size: Optional[int] = None,
-        b_channel_scales: Optional[torch.Tensor] = None,
-        a_token_scales: Optional[torch.Tensor] = None,
-        schedule: Optional[str] = None) -> torch.Tensor:
-    return torch.ops._C.machete_mm(a, b_q, b_type.id, out_type, b_group_scales,
-                                   b_group_zeros, b_group_size,
-                                   b_channel_scales, a_token_scales, schedule)
-
-
-def machete_prepack_B(
-        b_q_weight: torch.Tensor, a_type: torch.dtype, b_type: ScalarType,
-        group_scales_type: Optional[torch.dtype]) -> torch.Tensor:
-    return torch.ops._C.machete_prepack_B(b_q_weight, a_type, b_type.id,
-                                          group_scales_type)
-
-
 if hasattr(torch.ops._C, "permute_cols"):
 
     @register_fake("_C::permute_cols")
@@ -1222,67 +902,6 @@ def scaled_fp8_quant(
     return output, scale
 
 
-# gptq allspark
-def allspark_repack_weight(
-        qweight: torch.Tensor,
-        scale: torch.Tensor,
-        zero_point: Optional[torch.Tensor] = None,
-        has_zp: bool = False
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """
-    Rearrange qweight, scale, and zero_point(if asymmetric) to n32k16 format
-    for Ampere W8A16 Fused Gemm kernel
-
-    Args:
-        qweight: uint8 weight tensor, original k x n format.
-        scale: fp16/bf16 weight scale tensor, 1 x n format.
-        zero_point: fp16/bf16 weight zero_point tensor, 1 x n format.
-            Must be provided for asymmetric quantization.
-        has_zp: if use symmetric quantization, has_zp = False.
-            if use asymmetric quantization, has_zp = True.
-
-    Returns:
-        tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]] :
-            rearranged weight, scale, and optionally zero_point.
-    """
-    K = qweight.shape[0]
-    N = qweight.shape[1]
-    N_32align = (N + 32 - 1) // 32 * 32
-
-    qweight_reorder = torch.empty((N_32align, K),
-                                  device=qweight.device,
-                                  dtype=qweight.dtype)
-    scale_reorder = torch.empty((1, N_32align),
-                                device=scale.device,
-                                dtype=scale.dtype)
-    zero_point_reorder = None
-    if has_zp:
-        assert zero_point is not None, (
-            "zero_point must be provided for asymmetric quantization.")
-        zero_point_reorder = torch.empty((1, N_32align),
-                                         device=zero_point.device,
-                                         dtype=zero_point.dtype)
-
-    torch.ops._C.rearrange_kn_weight_as_n32k16_order(
-        qweight, scale, zero_point, has_zp, qweight_reorder, scale_reorder,
-        zero_point_reorder, K, N, N_32align)
-
-    return qweight_reorder, scale_reorder, zero_point_reorder
-
-
-def allspark_w8a16_gemm(a: torch.Tensor, b_qweight: torch.Tensor,
-                        b_scales: torch.Tensor,
-                        b_qzeros: Optional[torch.Tensor], n: int,
-                        group_size: int, sm_count: int, sm_version: int,
-                        CUBLAS_M_THRESHOLD: int, has_zp: bool,
-                        n32k16_reorder: bool) -> torch.Tensor:
-
-    return torch.ops._C.allspark_w8a16_gemm(a, b_qweight, b_scales, b_qzeros,
-                                            n, group_size, sm_count,
-                                            sm_version, CUBLAS_M_THRESHOLD,
-                                            has_zp, n32k16_reorder)
-
-
 # int8
 def scaled_int8_quant(
     input: torch.Tensor,
@@ -1322,15 +941,6 @@ def scaled_int8_quant(
     torch.ops._C.dynamic_scaled_int8_quant(output, input, input_scales,
                                            input_azp)
     return output, input_scales, input_azp
-
-
-# qqq ops
-def marlin_qqq_gemm(a: torch.Tensor, b_q_weight: torch.Tensor,
-                    s_tok: torch.Tensor, s_ch: torch.Tensor,
-                    s_group: torch.Tensor, workspace: torch.Tensor,
-                    size_m: int, size_n: int, size_k: int) -> torch.Tensor:
-    return torch.ops._C.marlin_qqq_gemm(a, b_q_weight, s_tok, s_ch, s_group,
-                                        workspace, size_m, size_n, size_k)
 
 
 # gguf
@@ -1402,23 +1012,6 @@ def moe_align_block_size(topk_ids: torch.Tensor, num_experts: int,
                                           sorted_token_ids, experts_ids,
                                           num_tokens_post_pad)
 
-def moe_wna16_gemm(input: torch.Tensor, output: torch.Tensor,
-                   b_qweight: torch.Tensor, b_scales: torch.Tensor,
-                   b_qzeros: Optional[torch.Tensor],
-                   topk_weights: Optional[torch.Tensor],
-                   sorted_token_ids: torch.Tensor, experts_ids: torch.Tensor,
-                   num_tokens_post_pad: torch.Tensor, top_k: int,
-                   BLOCK_SIZE_M: int, BLOCK_SIZE_N: int, BLOCK_SIZE_K: int,
-                   bit: int) -> torch.Tensor:
-    if not current_platform.is_cuda():
-        raise NotImplementedError(
-            "The optimized moe_wna16_gemm kernel is only "
-            "available on CUDA platforms")
-    torch.ops._moe_C.moe_wna16_gemm(input, output, b_qweight, b_scales,
-                                    b_qzeros, topk_weights, sorted_token_ids,
-                                    experts_ids, num_tokens_post_pad, top_k,
-                                    BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K,
-                                    bit)
 
 def topk_softmax(topk_weights: torch.Tensor, topk_ids: torch.Tensor,
                  token_expert_indices: torch.Tensor,
@@ -1434,47 +1027,6 @@ def fused_moe_kernel(A: torch.Tensor, B: torch.Tensor, C: torch.Tensor,
                     topk_weights, topk_ids,
                     sorted_token_ids, expert_ids,
                     num_tokens_post_padded, mul_routed_weight, top_k, tileConfig)
-
-if supports_moe_ops and hasattr(torch.ops._moe_C, "marlin_gemm_moe"):
-
-    @register_fake("_moe_C::marlin_gemm_moe")
-    def marlin_gemm_moe_fake(a: torch.Tensor, b_q_weights: torch.Tensor,
-                             sorted_ids: torch.Tensor,
-                             topk_weights: torch.Tensor,
-                             topk_ids: torch.Tensor, b_scales: torch.Tensor,
-                             b_zero_points: torch.Tensor, g_idx: torch.Tensor,
-                             perm: torch.Tensor, workspace: torch.Tensor,
-                             b_q_type: ScalarType, size_m: torch.SymInt,
-                             size_n: torch.SymInt, size_k: torch.SymInt,
-                             is_k_full: bool, num_experts: int, topk: int,
-                             moe_block_size: int, replicate_input: bool,
-                             apply_weights: bool) -> torch.Tensor:
-        return torch.empty((size_m, topk, size_n),
-                           dtype=a.dtype,
-                           device=a.device)
-
-    @register_fake("_moe_C::moe_wna16_marlin_gemm")
-    def moe_wna16_marlin_gemm_fake(input: torch.Tensor,
-                                   output: Optional[torch.Tensor],
-                                   b_qweight: torch.Tensor,
-                                   b_scales: torch.Tensor,
-                                   b_qzeros: Optional[torch.Tensor],
-                                   g_idx: Optional[torch.Tensor],
-                                   perm: Optional[torch.Tensor],
-                                   workspace: torch.Tensor,
-                                   sorted_token_ids: torch.Tensor,
-                                   expert_ids: torch.Tensor,
-                                   num_tokens_past_padded: torch.Tensor,
-                                   topk_weights: torch.Tensor,
-                                   moe_block_size: int, top_k: int,
-                                   mul_topk_weights: bool, is_ep: bool,
-                                   b_q_type: ScalarType, size_m: int,
-                                   size_n: int, size_k: int, is_k_full: bool,
-                                   use_atomic_add: bool, use_fp32_reduce: bool,
-                                   is_zp_float: bool) -> torch.Tensor:
-        return torch.empty((size_m * top_k, size_n),
-                           dtype=input.dtype,
-                           device=input.device)
 
 
 def reshape_and_cache(
@@ -1555,52 +1107,6 @@ def get_max_shared_memory_per_block_device_attribute(device: int) -> int:
     # ruff: noqa: E501
     return torch.ops._C_cuda_utils.get_max_shared_memory_per_block_device_attribute(
         device)
-
-
-# custom ar
-def init_custom_ar(ipc_tensors: list[torch.Tensor], rank_data: torch.Tensor,
-                   rank: int, fully_connected: bool) -> int:
-    return torch.ops._C_custom_ar.init_custom_ar(ipc_tensors, rank_data, rank,
-                                                 fully_connected)
-
-
-def all_reduce(fa: int, inp: torch.Tensor, out: torch.Tensor, reg_buffer: int,
-               reg_buffer_sz_bytes: int) -> None:
-    torch.ops._C_custom_ar.all_reduce(fa, inp, out, reg_buffer,
-                                      reg_buffer_sz_bytes)
-
-
-def dispose(fa: int) -> None:
-    torch.ops._C_custom_ar.dispose(fa)
-
-
-def meta_size() -> int:
-    return torch.ops._C_custom_ar.meta_size()
-
-
-def register_buffer(fa: int, ipc_tensors: list[int]) -> None:
-    return torch.ops._C_custom_ar.register_buffer(fa, ipc_tensors)
-
-
-def get_graph_buffer_ipc_meta(fa: int) -> tuple[list[int], list[int]]:
-    return torch.ops._C_custom_ar.get_graph_buffer_ipc_meta(fa)
-
-
-def register_graph_buffers(fa: int, handles: list[list[int]],
-                           offsets: list[list[int]]) -> None:
-    torch.ops._C_custom_ar.register_graph_buffers(fa, handles, offsets)
-
-
-def allocate_shared_buffer_and_handle(size: int) -> tuple[int, torch.Tensor]:
-    return torch.ops._C_custom_ar.allocate_shared_buffer_and_handle(size)
-
-
-def open_mem_handle(mem_handle: torch.Tensor):
-    return torch.ops._C_custom_ar.open_mem_handle(mem_handle)
-
-
-def free_shared_buffer(ptr: int) -> None:
-    torch.ops._C_custom_ar.free_shared_buffer(ptr)
 
 
 def get_flash_mla_metadata(
