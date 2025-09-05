@@ -10,15 +10,15 @@ from vllm.platforms import current_platform
 
 logger = init_logger(__name__)
 
-if current_platform.is_cuda():
+# /------------------------  Metax Modification -------------------------\
+if current_platform.is_out_of_tree():
     try:
-        # /------------------------  Metax Modification -------------------------\
         import flash_mla  # noqa: F401
-        # \------------------------  Metax Modification -------------------------/
+# \------------------------  Metax Modification -------------------------/
         _flashmla_AVAILABLE = True
     except ImportError:
         _flashmla_AVAILABLE = False
-else :
+else:
     _flashmla_AVAILABLE = False
 
 
