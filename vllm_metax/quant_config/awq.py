@@ -17,6 +17,7 @@ from vllm.utils import direct_register_custom_op
 from vllm.model_executor.layers.quantization.awq import (AWQConfig, 
                                                          is_layer_skipped_awq, 
                                                         logger)
+from vllm.model_executor.layers.quantization.awq import AWQLinearMethod as vllm_AWQLinearMethod
 
 from vllm_metax.patch.model_executor.patch.layers.quantization.hook_register import (
     register_quantization_config)
@@ -51,80 +52,12 @@ class MacaAWQConfig(AWQConfig):
         return None
     
 
-class AWQLinearMethod(LinearMethodBase):
+class AWQLinearMethod(vllm_AWQLinearMethod):
     """Linear method for AWQ.
 
     Args:
         quant_config: The AWQ quantization config.
     """
-
-    def __init__(self, quant_config: AWQConfig):
-        self.quant_config = quant_config
-
-    def create_weights(self, layer: torch.nn.Module,
-                       input_size_per_partition: int,
-                       output_partition_sizes: list[int], input_size: int,
-                       output_size: int, params_dtype: torch.dtype,
-                       **extra_weight_attrs):
-        # Normalize group_size
-        if self.quant_config.group_size != -1:
-            group_size = self.quant_config.group_size
-        else:
-            group_size = input_size
-
-        if input_size_per_partition % group_size != 0:
-            raise ValueError(
-                "The input size is not aligned with the quantized "
-                "weight shape. This can be caused by too large "
-                "tensor parallel size.")
-
-        output_size_per_partition = sum(output_partition_sizes)
-        if output_size_per_partition % self.quant_config.pack_factor != 0:
-            raise ValueError(
-                "The output size is not aligned with the quantized "
-                "weight shape. This can be caused by too large "
-                "tensor parallel size.")
-
-        weight_loader = extra_weight_attrs.get("weight_loader")
-        qweight = PackedvLLMParameter(
-            data=torch.empty(
-                input_size_per_partition,
-                output_size_per_partition // self.quant_config.pack_factor,
-                dtype=torch.int32,
-            ),
-            input_dim=0,
-            output_dim=1,
-            packed_dim=1,
-            packed_factor=self.quant_config.pack_factor,
-            weight_loader=weight_loader)
-
-        num_groups = input_size_per_partition // group_size
-
-        qzeros = PackedvLLMParameter(
-            data=torch.empty(
-                num_groups,
-                output_size_per_partition // self.quant_config.pack_factor,
-                dtype=torch.int32,
-            ),
-            input_dim=0,
-            output_dim=1,
-            packed_dim=1,
-            packed_factor=self.quant_config.pack_factor,
-            weight_loader=weight_loader)
-
-        scales = GroupQuantScaleParameter(data=torch.empty(
-            num_groups,
-            output_size_per_partition,
-            dtype=params_dtype,
-        ),
-                                          input_dim=0,
-                                          output_dim=1,
-                                          weight_loader=weight_loader)
-
-        layer.register_parameter("qweight", qweight)
-        layer.register_parameter("qzeros", qzeros)
-        layer.register_parameter("scales", scales)
-
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
         layer.qweight = torch.nn.Parameter(layer.qweight.data,
                                            requires_grad=False)
@@ -166,7 +99,6 @@ def _apply_awq_fake(x: torch.Tensor,
                     bias: torch.Tensor,
                     pack_factor: int,
                     group_size: int) -> torch.Tensor:
-    logger.info(f"[Plugin] Hooked _apply_awq_fake -> {_apply_awq_fake}")
     out_shape = ()
     if group_size % 32:
         out_shape = (x.shape[:-1] + (qweight.shape[-1] * pack_factor, ))
@@ -213,7 +145,3 @@ direct_register_custom_op(
     fake_impl=_apply_awq_fake,
     tags=(torch.Tag.needs_fixed_stride_order, ),
 )
-
-
-
-

@@ -83,6 +83,8 @@ def register():
 def register_quant_configs():
     from vllm_metax.quant_config.awq_marlin \
         import MacaAWQMarlinConfig  # noqa: F401
+    from vllm_metax.quant_config.gptq_marlin \
+        import MacaGPTQMarlinConfig  # noqa: F401
     from vllm_metax.quant_config.awq \
         import MacaAWQConfig  # noqa: F401
     # HOTFIX: https://github.com/vllm-project/vllm/pull/22797
