@@ -5,7 +5,7 @@ from typing import Optional, Union
 import torch
 from torch.nn.parameter import Parameter
 
-from vllm import _custom_ops as ops
+from vllm_metax import _custom_ops as ops
 from vllm.model_executor.layers.fused_moe.layer import FusedMoE
 from vllm.model_executor.layers.quantization.base_config import (
     QuantizationConfig, QuantizeMethodBase)
@@ -15,7 +15,7 @@ from vllm.model_executor.layers.quantization.utils.gptq_utils import (
 from vllm.utils import direct_register_custom_op
 from vllm.model_executor.layers.quantization.gptq import (GPTQConfig, ExllamaState)
 from vllm.model_executor.layers.quantization.gptq import GPTQLinearMethod as vllm_GPTQLinearMethod
-from vllm_metax.patch.model_executor.patch.layers.quantization.hook_register import (
+from vllm_metax.patch.model_executor.patch.hook_register import (
     register_quantization_config)
 
 @register_quantization_config("gptq")

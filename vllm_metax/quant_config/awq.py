@@ -19,7 +19,7 @@ from vllm.model_executor.layers.quantization.awq import (AWQConfig,
                                                         logger)
 from vllm.model_executor.layers.quantization.awq import AWQLinearMethod as vllm_AWQLinearMethod
 
-from vllm_metax.patch.model_executor.patch.layers.quantization.hook_register import (
+from vllm_metax.patch.model_executor.patch.hook_register import (
     register_quantization_config)
 
 @register_quantization_config("awq")
