@@ -74,6 +74,9 @@ def post_installation():
 
     print("Post installation successful.")
 
+def collect_env() -> None:
+    from vllm_metax.collect_env import main as collect_env_main
+    collect_env_main()
 
 def register():
     """Register the METAX platform."""

@@ -45,6 +45,7 @@ metax_custom_ops = "vllm_metax:register_ops"
 
 [project.entry-points."console_scripts"]
 vllm_metax_init = "vllm_metax:post_installation"
+vllm_collect_env = "vllm_metax:collect_env"
 
 [tool.setuptools_scm]
 # no extra settings needed, presence enables setuptools-scm
