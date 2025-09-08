@@ -20,7 +20,14 @@ from setuptools.command.install import install
 from setuptools_scm import get_version
 from torch.utils.cpp_extension import CUDA_HOME
 
-USE_MACA = True
+try:
+    from torch.utils.cpp_extension import MACA_HOME
+    USE_MACA = True
+except ImportError:
+    MACA_HOME = None
+    USE_MACA = False
+
+
 CMAKE_EXECUTABLE = 'cmake' if not USE_MACA else 'cmake_maca'
 
 def load_module_from_path(module_name, path):
@@ -145,19 +152,10 @@ class cmake_build_ext(build_ext):
         default_cfg = "Debug" if self.debug else "RelWithDebInfo"
         cfg = envs.CMAKE_BUILD_TYPE or default_cfg
 
-        maca_version = get_maca_version_list()
-
         cmake_args = [
             '-DCMAKE_BUILD_TYPE={}'.format(cfg),
             '-DVLLM_TARGET_DEVICE={}'.format(VLLM_TARGET_DEVICE),
         ]
-        if USE_MACA:
-            maca_args_ext = ['-DUSE_MACA=ON',
-                '-DMACA_VERSION_MAJOR={}'.format(maca_version[0]),
-                '-DMACA_VERSION_MINOR={}'.format(maca_version[1]),
-                '-DMACA_VERSION_PATCH={}'.format(maca_version[2]),
-                '-DMACA_VERSION_BUILD={}'.format(maca_version[3]),]
-            cmake_args.extend(maca_args_ext)
 
         verbose = envs.VERBOSE
         if verbose:
@@ -212,19 +210,11 @@ class cmake_build_ext(build_ext):
             # Default build tool to whatever cmake picks.
             build_tool = []
             
-        logger.info(f"\nCMake configuration arguments:"
-                     f"\nCMake executable: {which('cmake')}"
-                     f"\nBuild directory: {ext.cmake_lists_dir}"
-                     f"\nBuild type: {cfg}")
-        logger.info("CMake arguments:")
-        for arg in cmake_args:
-            logger.info(f"  {arg}")
-        if build_tool:
-            logger.info(f"Build tool: {build_tool}")
-
         # Make sure we use the nvcc from CUDA_HOME
-        # if _is_cuda():
-        #     cmake_args += [f'-DCMAKE_CUDA_COMPILER={CUDA_HOME}/bin/nvcc']
+        if _is_cuda() and not USE_MACA:
+            cmake_args += [f'-DCMAKE_CUDA_COMPILER={CUDA_HOME}/bin/nvcc']
+        if USE_MACA:
+            cmake_args += [f'-DUSE_MACA=1']
         subprocess.check_call(
             [CMAKE_EXECUTABLE, ext.cmake_lists_dir, *build_tool, *cmake_args],
             cwd=self.build_temp)
@@ -445,12 +435,6 @@ def get_maca_version():
         first_line = file.readline().strip()
     return first_line.split(":")[-1]
 
-def get_maca_version_list():
-    version_str = get_maca_version()
-    version_list = list(map(int, (version_str or "0.0.0.0").split('.')))
-    version_list.extend([0] * (4 - len(version_list)))
-    return version_list
-    
 def get_vllm_version() -> str:
     from version_tools import fixed_version_scheme
     version = get_version(version_scheme=fixed_version_scheme, write_to="vllm_metax/_version.py")

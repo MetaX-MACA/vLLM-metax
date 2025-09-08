@@ -18,31 +18,19 @@ set(VLLM_TARGET_DEVICE "cuda" CACHE STRING "Target device backend for vLLM")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Target device: ${VLLM_TARGET_DEVICE}")
 
+# /-------------------- MACA Support --------------------/
 option(USE_MACA "Enable MACA Support" ON)
 option(ENABLE_BLAS_API "Enable blas api for fused moe" ON)
 
-if (USE_MACA)
-  message(STATUS "###########################")
-  message(STATUS "Detected Using MACA")
-  message(STATUS "###########################")
+set(MACA_PATH "$ENV{MACA_PATH}")
 
-  add_compile_definitions(
-    MACA_VERSION_MAJOR=${MACA_VERSION_MAJOR}
-    MACA_VERSION_MINOR=${MACA_VERSION_MINOR}
-    MACA_VERSION_PATCH=${MACA_VERSION_PATCH}
-    MACA_VERSION_BUILD=${MACA_VERSION_BUILD}
-  )
-  message(STATUS "MACA version: ${MACA_VERSION_MAJOR}.${MACA_VERSION_MINOR}.${MACA_VERSION_PATCH}.${MACA_VERSION_BUILD}")
-
-  set(MACA_PATH "$ENV{MACA_PATH}")
-  add_compile_definitions(USE_MACA)
-
-  if (MACA_PATH AND EXISTS ${MACA_PATH})
-    message(STATUS "MACA found at ${MACA_PATH}")
-  else()
-    message(FATAL_ERROR "MACA not found or invalid path, please check your MACA_PATH")
-  endif()
+if (NOT EXISTS ${MACA_PATH})
+  message(FATAL_ERROR "MACA not found or invalid path, please check your MACA_PATH")
 endif()
+
+message(STATUS "MACA found at ${MACA_PATH}")
+add_compile_definitions(USE_MACA)
+# /-----------------------------------------------------/
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/utils.cmake)
 
@@ -69,13 +57,9 @@ set(PYTHON_SUPPORTED_VERSIONS "3.9" "3.10" "3.11" "3.12")
 # requirements.txt files and should be kept consistent.  The ROCm torch
 # versions are derived from docker/Dockerfile.rocm
 #
-if (USE_MACA)
+
 set(TORCH_SUPPORTED_VERSION_CUDA "2.6.0")
 set(TORCH_SUPPORTED_VERSION_ROCM "2.6.0")
-else()
-set(TORCH_SUPPORTED_VERSION_CUDA "2.7.0")
-set(TORCH_SUPPORTED_VERSION_ROCM "2.7.0")
-endif()
 
 #
 # Try to find python package with an executable that exactly matches
@@ -118,45 +102,19 @@ else()
 endif()
 
 #
-# Forward the non-CUDA device extensions to external CMake scripts.
-#
-if (NOT VLLM_TARGET_DEVICE STREQUAL "cuda" AND
-    NOT VLLM_TARGET_DEVICE STREQUAL "rocm")
-    if (VLLM_TARGET_DEVICE STREQUAL "cpu")
-        include(${CMAKE_CURRENT_LIST_DIR}/cmake/cpu_extension.cmake)
-    else()
-        return()
-    endif()
-    return()
-endif()
-
-#
 # Set up GPU language and check the torch version and warn if it isn't
 # what is expected.
 #
-if (NOT HIP_FOUND AND CUDA_FOUND)
+if (CUDA_FOUND)
   set(VLLM_GPU_LANG "CUDA")
 
   if (NOT Torch_VERSION VERSION_EQUAL ${TORCH_SUPPORTED_VERSION_CUDA})
     message(WARNING "Pytorch version ${TORCH_SUPPORTED_VERSION_CUDA} "
       "expected for CUDA build, saw ${Torch_VERSION} instead.")
   endif()
-elseif(HIP_FOUND)
-  set(VLLM_GPU_LANG "HIP")
 
-  # Importing torch recognizes and sets up some HIP/ROCm configuration but does
-  # not let cmake recognize .hip files. In order to get cmake to understand the
-  # .hip extension automatically, HIP must be enabled explicitly.
-  enable_language(HIP)
-
-  # ROCm 5.X and 6.X
-  if (ROCM_VERSION_DEV_MAJOR GREATER_EQUAL 5 AND
-      NOT Torch_VERSION VERSION_EQUAL ${TORCH_SUPPORTED_VERSION_ROCM})
-    message(WARNING "Pytorch version >= ${TORCH_SUPPORTED_VERSION_ROCM} "
-      "expected for ROCm build, saw ${Torch_VERSION} instead.")
-  endif()
 else()
-  message(FATAL_ERROR "Can't find CUDA or HIP installation.")
+  message(FATAL_ERROR "Can't find CUDA")
 endif()
 
 
@@ -285,32 +243,14 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
   endif()
 
   # Substitue CUTLASS with MATLASS 
-  if (USE_MACA)
-    message(WARNING "Use MACA, Overwrite VLLM_CUTLASS_SRC_DIR.")
-    set(VLLM_CUTLASS_SRC_DIR $ENV{MACA_PATH}/include)
-  endif()
+  message(WARNING "Use MACA, Overwrite VLLM_CUTLASS_SRC_DIR.")
+  set(VLLM_CUTLASS_SRC_DIR $ENV{MACA_PATH}/include)
 
-  if(VLLM_CUTLASS_SRC_DIR)
-    if(NOT IS_ABSOLUTE VLLM_CUTLASS_SRC_DIR)
-      get_filename_component(VLLM_CUTLASS_SRC_DIR "${VLLM_CUTLASS_SRC_DIR}" ABSOLUTE)
-    endif()
-    message(STATUS "The VLLM_CUTLASS_SRC_DIR is set, using ${VLLM_CUTLASS_SRC_DIR} for compilation")
-    FetchContent_Declare(cutlass SOURCE_DIR ${VLLM_CUTLASS_SRC_DIR})
-  else()
-    FetchContent_Declare(
-        cutlass
-        GIT_REPOSITORY https://github.com/nvidia/cutlass.git
-        # Please keep this in sync with CUTLASS_REVISION line above.
-        GIT_TAG ${CUTLASS_REVISION}
-        GIT_PROGRESS TRUE
-
-        # Speed up CUTLASS download by retrieving only the specified GIT_TAG instead of the history.
-        # Important: If GIT_SHALLOW is enabled then GIT_TAG works only with branch names and tags.
-        # So if the GIT_TAG above is updated to a commit hash, GIT_SHALLOW must be set to FALSE
-        GIT_SHALLOW TRUE
-    )
+  if(NOT IS_ABSOLUTE VLLM_CUTLASS_SRC_DIR)
+    get_filename_component(VLLM_CUTLASS_SRC_DIR "${VLLM_CUTLASS_SRC_DIR}" ABSOLUTE)
   endif()
-  # FetchContent_MakeAvailable(cutlass)
+  message(STATUS "The VLLM_CUTLASS_SRC_DIR is set, using ${VLLM_CUTLASS_SRC_DIR} for compilation")
+  FetchContent_Declare(cutlass SOURCE_DIR ${VLLM_CUTLASS_SRC_DIR})
 
   list(APPEND VLLM_EXT_SRC
     "csrc/quantization/awq/gemm_kernels.cu"
@@ -339,155 +279,7 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
     PROPERTIES
     COMPILE_FLAGS " -mllvm -metaxgpu-igroup=true -mllvm -misched-postra=true"
   )  
-
-  # Only build Marlin kernels if we are building for at least some compatible archs.
-  # Keep building Marlin for 9.0 as there are some group sizes and shapes that
-  # are not supported by Machete yet.
-  # 9.0 for latest bf16 atomicAdd PTX
-  cuda_archs_loose_intersection(MARLIN_ARCHS "8.0;8.7;9.0+PTX" "${CUDA_ARCHS}")
-  if (MARLIN_ARCHS AND NOT USE_MACA)
-
-    #
-    # For the Marlin kernels we automatically generate sources for various
-    # preselected input type pairs and schedules.
-    # Generate sources:
-    set(MARLIN_GEN_SCRIPT
-      ${CMAKE_CURRENT_SOURCE_DIR}/csrc/quantization/gptq_marlin/generate_kernels.py)
-    file(MD5 ${MARLIN_GEN_SCRIPT} MARLIN_GEN_SCRIPT_HASH)
-
-    message(STATUS "Marlin generation script hash: ${MARLIN_GEN_SCRIPT_HASH}")
-    message(STATUS "Last run Marlin generate script hash: $CACHE{MARLIN_GEN_SCRIPT_HASH}")
-
-    if (NOT DEFINED CACHE{MARLIN_GEN_SCRIPT_HASH}
-        OR NOT $CACHE{MARLIN_GEN_SCRIPT_HASH} STREQUAL ${MARLIN_GEN_SCRIPT_HASH})
-      execute_process(
-        COMMAND ${CMAKE_COMMAND} -E env
-        PYTHONPATH=$PYTHONPATH
-          ${Python_EXECUTABLE} ${MARLIN_GEN_SCRIPT}
-        RESULT_VARIABLE marlin_generation_result
-        OUTPUT_VARIABLE marlin_generation_result
-        OUTPUT_FILE ${CMAKE_CURRENT_BINARY_DIR}/marlin_generation.log
-        ERROR_FILE ${CMAKE_CURRENT_BINARY_DIR}/marlin_generation.log
-      )
-
-      if (NOT marlin_generation_result EQUAL 0)
-        message(FATAL_ERROR "Marlin generation failed."
-                            " Result: \"${marlin_generation_result}\""
-                            "\nCheck the log for details: "
-                            "${CMAKE_CURRENT_BINARY_DIR}/marlin_generation.log")
-      else()
-        set(MARLIN_GEN_SCRIPT_HASH ${MARLIN_GEN_SCRIPT_HASH}
-            CACHE STRING "Last run Marlin generate script hash" FORCE)
-        message(STATUS "Marlin generation completed successfully.")
-      endif()
-    else()
-      message(STATUS "Marlin generation script has not changed, skipping generation.")
-    endif()
-
-    file(GLOB MARLIN_TEMPLATE_KERNEL_SRC "csrc/quantization/gptq_marlin/kernel_*.cu")
-    set_gencode_flags_for_srcs(
-      SRCS "${MARLIN_TEMPLATE_KERNEL_SRC}"
-      CUDA_ARCHS "${MARLIN_ARCHS}")
-
-    list(APPEND VLLM_EXT_SRC ${MARLIN_TEMPLATE_KERNEL_SRC})
-
-    set(MARLIN_SRCS
-       "csrc/quantization/marlin/dense/marlin_cuda_kernel.cu"
-       "csrc/quantization/marlin/sparse/marlin_24_cuda_kernel.cu"
-       "csrc/quantization/marlin/qqq/marlin_qqq_gemm_kernel.cu"
-       "csrc/quantization/gptq_marlin/gptq_marlin.cu"
-       "csrc/quantization/gptq_marlin/gptq_marlin_repack.cu"
-       "csrc/quantization/gptq_marlin/awq_marlin_repack.cu")
-    set_gencode_flags_for_srcs(
-      SRCS "${MARLIN_SRCS}"
-      CUDA_ARCHS "${MARLIN_ARCHS}")
-    list(APPEND VLLM_EXT_SRC "${MARLIN_SRCS}")
-    message(STATUS "Building Marlin kernels for archs: ${MARLIN_ARCHS}")
-  else()
-    message(WARNING "Use MACA, Skip MARLIN_ARCHS.")
-    message(STATUS "Not building Marlin kernels as no compatible archs found"
-                   " in CUDA target architectures")
-  endif()
-
-  # Only build AllSpark kernels if we are building for at least some compatible archs.
-  cuda_archs_loose_intersection(ALLSPARK_ARCHS "8.0;8.6;8.7;8.9" "${CUDA_ARCHS}")
-  if (ALLSPARK_ARCHS AND NOT USE_MACA)
-    set(ALLSPARK_SRCS
-       "csrc/quantization/gptq_allspark/allspark_repack.cu"
-       "csrc/quantization/gptq_allspark/allspark_qgemm_w8a16.cu")
-    set_gencode_flags_for_srcs(
-      SRCS "${ALLSPARK_SRCS}"
-      CUDA_ARCHS "${ALLSPARK_ARCHS}")
-    list(APPEND VLLM_EXT_SRC "${ALLSPARK_SRCS}")
-    message(STATUS "Building AllSpark kernels for archs: ${ALLSPARK_ARCHS}")
-  else()
-    message(WARNING "Use MACA, Skip ALLSPARK_ARCHS.")
-    message(STATUS "Not building AllSpark kernels as no compatible archs found"
-                   " in CUDA target architectures")
-  endif()
-
-
-  set(SCALED_MM_3X_ARCHS)
-  # The cutlass_scaled_mm kernels for Hopper (c3x, i.e. CUTLASS 3.x) require
-  # CUDA 12.0 or later
-  cuda_archs_loose_intersection(SCALED_MM_ARCHS "9.0a;" "${CUDA_ARCHS}")
-  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER 12.0 AND SCALED_MM_ARCHS AND NOT USE_MACA)
-    set(SRCS
-       "csrc/quantization/cutlass_w8a8/scaled_mm_c3x_sm90.cu"
-       "csrc/quantization/cutlass_w8a8/c3x/scaled_mm_sm90_fp8.cu"
-       "csrc/quantization/cutlass_w8a8/c3x/scaled_mm_sm90_int8.cu"
-       "csrc/quantization/cutlass_w8a8/c3x/scaled_mm_azp_sm90_int8.cu"
-       "csrc/quantization/cutlass_w8a8/c3x/scaled_mm_blockwise_sm90_fp8.cu")
-    set_gencode_flags_for_srcs(
-      SRCS "${SRCS}"
-      CUDA_ARCHS "${SCALED_MM_ARCHS}")
-    list(APPEND VLLM_EXT_SRC "${SRCS}")
-    list(APPEND VLLM_GPU_FLAGS "-DENABLE_SCALED_MM_SM90=1")
-    # Let scaled_mm_c2x know it doesn't need to build these arches
-    list(APPEND SCALED_MM_3X_ARCHS "${SCALED_MM_ARCHS}")
-    message(STATUS "Building scaled_mm_c3x_sm90 for archs: ${SCALED_MM_ARCHS}")
-  else()
-    message(WARNING "Use MACA, Skip SCALED_MM_ARCHS.")
-    if (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER 12.0 AND SCALED_MM_ARCHS)
-      message(STATUS "Not building scaled_mm_c3x_sm90 as CUDA Compiler version is "
-                     "not >= 12.0, we recommend upgrading to CUDA 12.0 or "
-                     "later if you intend on running FP8 quantized models on "
-                     "Hopper.")
-    else()
-      message(STATUS "Not building scaled_mm_c3x_sm90 as no compatible archs found "
-                     "in CUDA target architectures")
-    endif()
-  endif()
-
-  # The cutlass_scaled_mm kernels for Blackwell (c3x, i.e. CUTLASS 3.x) require
-  # CUDA 12.8 or later
-  cuda_archs_loose_intersection(SCALED_MM_ARCHS "10.0a;10.1a;12.0a" "${CUDA_ARCHS}")
-  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER 12.8 AND SCALED_MM_ARCHS)
-    set(SRCS
-      "csrc/quantization/cutlass_w8a8/scaled_mm_c3x_sm100.cu"
-      "csrc/quantization/cutlass_w8a8/c3x/scaled_mm_sm100_fp8.cu"
-      "csrc/quantization/cutlass_w8a8/c3x/scaled_mm_blockwise_sm100_fp8.cu"
-    )
-    set_gencode_flags_for_srcs(
-      SRCS "${SRCS}"
-      CUDA_ARCHS "${SCALED_MM_ARCHS}")
-    list(APPEND VLLM_EXT_SRC "${SRCS}")
-    list(APPEND VLLM_GPU_FLAGS "-DENABLE_SCALED_MM_SM100=1")
-    # Let scaled_mm_c2x know it doesn't need to build these arches
-    list(APPEND SCALED_MM_3X_ARCHS "${SCALED_MM_ARCHS}")
-    message(STATUS "Building scaled_mm_c3x_sm100 for archs: ${SCALED_MM_ARCHS}")
-  else()
-    if (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER 12.8 AND SCALED_MM_ARCHS)
-      message(STATUS "Not building scaled_mm_c3x_sm100 as CUDA Compiler version is "
-                     "not >= 12.8, we recommend upgrading to CUDA 12.8 or "
-                     "later if you intend on running FP8 quantized models on "
-                     "Blackwell.")
-    else()
-      message(STATUS "Not building scaled_mm_c3x_100 as no compatible archs found "
-                     "in CUDA target architectures")
-    endif()
-  endif()
-
+  
   #
   # For the cutlass_scaled_mm kernels we want to build the c2x (CUTLASS 2.x)
   # kernels for the remaining archs that are not already built for 3x.
@@ -521,51 +313,6 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
     endif()
   endif()
 
-  #
-  # 2:4 Sparse Kernels
-
-  # The 2:4 sparse kernels cutlass_scaled_sparse_mm and cutlass_compressor
-  # require CUDA 12.2 or later (and only work on Hopper).
-  cuda_archs_loose_intersection(SCALED_MM_ARCHS "9.0a;" "${CUDA_ARCHS}")
-  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER 12.2 AND SCALED_MM_ARCHS)
-    set(SRCS "csrc/sparse/cutlass/sparse_scaled_mm_c3x.cu")
-    set_gencode_flags_for_srcs(
-      SRCS "${SRCS}"
-      CUDA_ARCHS "${SCALED_MM_ARCHS}")
-    list(APPEND VLLM_EXT_SRC "${SRCS}")
-    list(APPEND VLLM_GPU_FLAGS "-DENABLE_SPARSE_SCALED_MM_C3X=1")
-    message(STATUS "Building sparse_scaled_mm_c3x for archs: ${SCALED_MM_ARCHS}")
-  else()
-    if (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER 12.2 AND SCALED_MM_ARCHS)
-      message(STATUS "Not building sparse_scaled_mm_c3x kernels as CUDA Compiler version is "
-                     "not >= 12.2, we recommend upgrading to CUDA 12.2 or later "
-                     "if you intend on running FP8 sparse quantized models on Hopper.")
-    else()
-      message(STATUS "Not building sparse_scaled_mm_c3x as no compatible archs found "
-                     "in CUDA target architectures")
-    endif()
-  endif()
-
-  # FP4 Archs and flags
-  cuda_archs_loose_intersection(FP4_ARCHS "10.0a" "${CUDA_ARCHS}")
-  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER 12.8 AND FP4_ARCHS AND NOT USE_MACA)
-    set(SRCS
-      "csrc/quantization/fp4/nvfp4_quant_kernels.cu"
-      "csrc/quantization/fp4/nvfp4_experts_quant.cu"
-      "csrc/quantization/fp4/nvfp4_scaled_mm_kernels.cu"
-      "csrc/quantization/fp4/nvfp4_blockwise_moe_kernel.cu")
-    set_gencode_flags_for_srcs(
-      SRCS "${SRCS}"
-      CUDA_ARCHS "${FP4_ARCHS}")
-    list(APPEND VLLM_EXT_SRC "${SRCS}")
-    list(APPEND VLLM_GPU_FLAGS "-DENABLE_NVFP4=1")
-    message(STATUS "Building NVFP4 for archs: ${FP4_ARCHS}")
-  else()
-    message(WARNING "Use MACA, Skip FP4_ARCHS.")
-    message(STATUS "Not building NVFP4 as no compatible archs were found.")
-    # clear FP4_ARCHS
-    set(FP4_ARCHS)
-  endif()
 
   # CUTLASS MLA Archs and flags
   cuda_archs_loose_intersection(MLA_ARCHS "10.0a" "${CUDA_ARCHS}")
@@ -699,6 +446,15 @@ define_gpu_extension_target(
   USE_SABI 3
   WITH_SOABI)
 
+target_compile_options(_C PRIVATE 
+  $<$<COMPILE_LANGUAGE:CUDA>:
+  --Wno-maca-min-blocks-per-multiprocessor
+  --Wno-ignored-attributes
+  --Wno-macro-redefined
+  --Wno-pass-failed
+  --Wno-maca-compat
+  >)
+
 # If CUTLASS is compiled on NVCC >= 12.5, it by default uses
 # cudaGetDriverEntryPointByVersion as a wrapper to avoid directly calling the
 # driver API. This causes problems when linking with earlier versions of CUDA.
@@ -729,70 +485,6 @@ set_gencode_flags_for_srcs(
   SRCS "${VLLM_MOE_EXT_SRC}"
   CUDA_ARCHS "${CUDA_ARCHS}")
 
-if(VLLM_GPU_LANG STREQUAL "CUDA" AND NOT USE_MACA)
-  set(VLLM_MOE_WNA16_SRC
-    "csrc/moe/moe_wna16.cu")
-
-  set_gencode_flags_for_srcs(
-    SRCS "${VLLM_MOE_WNA16_SRC}"
-    CUDA_ARCHS "${CUDA_ARCHS}")
-
-  list(APPEND VLLM_MOE_EXT_SRC "${VLLM_MOE_WNA16_SRC}")
-  # 9.0 for latest bf16 atomicAdd PTX
-  cuda_archs_loose_intersection(MARLIN_MOE_ARCHS "8.0;8.7;9.0+PTX" "${CUDA_ARCHS}")
-  if (MARLIN_MOE_ARCHS AND NOT USE_MACA)
-
-    #
-    # For the Marlin MOE kernels we automatically generate sources for various
-    # preselected input type pairs and schedules.
-    # Generate sources:
-    set(MOE_MARLIN_GEN_SCRIPT
-      ${CMAKE_CURRENT_SOURCE_DIR}/csrc/moe/marlin_moe_wna16/generate_kernels.py)
-    file(MD5 ${MOE_MARLIN_GEN_SCRIPT} MOE_MARLIN_GEN_SCRIPT_HASH)
-
-    message(STATUS "Marlin MOE generation script hash: ${MOE_MARLIN_GEN_SCRIPT_HASH}")
-    message(STATUS "Last run Marlin MOE generate script hash: $CACHE{MOE_MARLIN_GEN_SCRIPT_HASH}")
-
-    if (NOT DEFINED CACHE{MOE_MARLIN_GEN_SCRIPT_HASH}
-        OR NOT $CACHE{MOE_MARLIN_GEN_SCRIPT_HASH} STREQUAL ${MOE_MARLIN_GEN_SCRIPT_HASH})
-      execute_process(
-        COMMAND ${CMAKE_COMMAND} -E env
-        PYTHONPATH=$PYTHONPATH
-          ${Python_EXECUTABLE} ${MOE_MARLIN_GEN_SCRIPT}
-        RESULT_VARIABLE moe_marlin_generation_result
-        OUTPUT_VARIABLE moe_marlin_generation_output
-        OUTPUT_FILE ${CMAKE_CURRENT_BINARY_DIR}/moe_marlin_generation.log
-        ERROR_FILE ${CMAKE_CURRENT_BINARY_DIR}/moe_marlin_generation.log
-      )
-
-      if (NOT moe_marlin_generation_result EQUAL 0)
-        message(FATAL_ERROR "Marlin MOE generation failed."
-                            " Result: \"${moe_marlin_generation_result}\""
-                            "\nCheck the log for details: "
-                            "${CMAKE_CURRENT_BINARY_DIR}/moe_marlin_generation.log")
-      else()
-        set(MOE_MARLIN_GEN_SCRIPT_HASH ${MOE_MARLIN_GEN_SCRIPT_HASH}
-            CACHE STRING "Last run Marlin MOE generate script hash" FORCE)
-        message(STATUS "Marlin MOE generation completed successfully.")
-      endif()
-    else()
-      message(STATUS "Marlin MOE generation script has not changed, skipping generation.")
-    endif()
-
-    file(GLOB MOE_WNAA16_MARLIN_SRC "csrc/moe/marlin_moe_wna16/*.cu")
-    set_gencode_flags_for_srcs(
-      SRCS "${MOE_WNAA16_MARLIN_SRC}"
-      CUDA_ARCHS "${MARLIN_MOE_ARCHS}")
-
-    list(APPEND VLLM_MOE_EXT_SRC ${MOE_WNAA16_MARLIN_SRC})
-
-    message(STATUS "Building Marlin MOE kernels for archs: ${MARLIN_MOE_ARCHS}")
-  else()
-    message(WARNING "Use MACA, Skip MARLIN_MOE_ARCHS.")
-    message(STATUS "Not building Marlin MOE kernels as no compatible archs found"
-                   " in CUDA target architectures")
-  endif()
-endif()
 
 if(VLLM_GPU_LANG STREQUAL "CUDA")
   set(MOE_PERMUTE_SRC
@@ -827,11 +519,3 @@ define_gpu_extension_target(
   USE_SABI 3
   WITH_SOABI)
 
-
-# For CUDA we also build and ship some external projects.
-if (VLLM_GPU_LANG STREQUAL "CUDA" AND NOT USE_MACA)
-    include(cmake/external_projects/flashmla.cmake)
-
-    # vllm-flash-attn should be last as it overwrites some CMake functions
-    include(cmake/external_projects/vllm_flash_attn.cmake)
-endif ()
