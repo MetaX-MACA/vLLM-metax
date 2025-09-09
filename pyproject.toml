@@ -111,6 +111,30 @@ ignore = [
     "UP035"
 ]
 
+[tool.mypy]
+plugins = ['pydantic.mypy']
+ignore_missing_imports = true
+check_untyped_defs = true
+follow_imports = "silent"
+
+# After fixing type errors resulting from follow_imports: "skip" -> "silent",
+# move the directory here and remove it from tools/mypy.sh
+files = [
+    "vllm_metax/*.py",
+]
+# TODO(woosuk): Include the code from Megatron and HuggingFace.
+exclude = [
+    'vllm_metax/distributed/.*\.py$',
+    # Ignore triton kernels in ops.
+    'vllm_metax/attention/ops/.*\.py$'
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "vllm.*",
+]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 markers = [
     "skip_global_cleanup",

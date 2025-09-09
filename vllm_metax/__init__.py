@@ -44,10 +44,12 @@ def post_installation():
     print("Post installation script.")
 
     # Get the path to the vllm distribution
-    vllm_dist_path = importlib.metadata.distribution("vllm").locate_file(
-        "vllm")
-    plugin_dist_path = importlib.metadata.distribution(
-        "vllm_metax").locate_file("vllm_metax")
+    vllm_dist_path = Path(
+        str(importlib.metadata.distribution("vllm").locate_file("vllm")))
+    plugin_dist_path = Path(
+        str(
+            importlib.metadata.distribution("vllm_metax").locate_file(
+                "vllm_metax")))
 
     assert (os.path.exists(vllm_dist_path))
     assert (os.path.exists(plugin_dist_path))

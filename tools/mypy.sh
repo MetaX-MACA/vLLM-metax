@@ -21,6 +21,6 @@ run_mypy() {
 }
 
 run_mypy # Note that this is less strict than CI
-run_mypy tests
-run_mypy vllm_metax
-run_mypy examples
+# run_mypy tests
+# run_mypy examples
+

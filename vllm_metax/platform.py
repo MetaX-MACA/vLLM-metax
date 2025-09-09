@@ -311,7 +311,7 @@ class MacaPlatformBase(Platform):
 
         # Backends for V0 engine
         else:
-            logger.warning_once(
+            raise AssertionError(
                 "V0 engine is deprecated on Maca. Please switch to V1.")
 
     @classmethod
@@ -427,8 +427,6 @@ class MxmlPlatform(MacaPlatformBase):
     @with_mcml_context
     def get_device_name(cls, device_id: int = 0) -> str:
         return "Device 4000"
-        physical_device_id = device_id_to_physical_device_id(device_id)
-        return cls._get_physical_device_name(physical_device_id)
 
     @classmethod
     @with_mcml_context
