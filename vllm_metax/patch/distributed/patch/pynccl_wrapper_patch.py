@@ -1,27 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0
 
-import vllm
+import ctypes
 import platform
+from typing import Any, Dict, Optional
+
+import vllm
+from vllm.distributed.device_communicators.pynccl_wrapper import (
+    Function, NCCLLibrary, buffer_type, cudaStream_t, logger, ncclComm_t,
+    ncclDataType_t, ncclDataTypeEnum, ncclRedOp_t, ncclResult_t, ncclUniqueId)
 from vllm.logger import init_logger
 
-
-from vllm.distributed.device_communicators.pynccl_wrapper import (Function,
-                                                                  ncclResult_t,
-                                                                  ncclUniqueId,
-                                                                  ncclComm_t,
-                                                                  ncclRedOp_t,
-                                                                  cudaStream_t,
-                                                                  buffer_type,
-                                                                  ncclDataType_t,
-                                                                  ncclDataTypeEnum,
-                                                                  logger,
-                                                                  NCCLLibrary,
-                                                                  )
-import ctypes
 from vllm_metax.utils import find_mccl_library
-from typing import Optional, Dict, Any
 
 logger = init_logger(__name__)
+
 
 class NCCLLibrary:
     exported_functions = [
@@ -234,5 +226,3 @@ class NCCLLibrary:
 
 
 vllm.distributed.device_communicators.pynccl_wrapper.NCCLLibrary = NCCLLibrary
-
-

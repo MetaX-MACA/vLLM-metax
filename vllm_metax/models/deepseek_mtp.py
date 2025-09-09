@@ -6,7 +6,6 @@ from typing import Optional
 import torch
 import torch.nn as nn
 from transformers import PretrainedConfig
-
 from vllm.config import CacheConfig, ModelConfig, VllmConfig
 from vllm.model_executor.layers.fused_moe import FusedMoE
 from vllm.model_executor.layers.layernorm import RMSNorm
@@ -15,13 +14,12 @@ from vllm.model_executor.layers.quantization import QuantizationConfig
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     ParallelLMHead, VocabParallelEmbedding)
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
-from vllm.model_executor.sampling_metadata import SamplingMetadata
-from vllm.sequence import IntermediateTensors
-
-from vllm.model_executor.models.deepseek_v2 import (DeepseekV2DecoderLayer,
-                          get_spec_layer_idx_from_weight_name)
+from vllm.model_executor.models.deepseek_v2 import (
+    DeepseekV2DecoderLayer, get_spec_layer_idx_from_weight_name)
 from vllm.model_executor.models.interfaces import SupportsPP
 from vllm.model_executor.models.utils import maybe_prefix
+from vllm.model_executor.sampling_metadata import SamplingMetadata
+from vllm.sequence import IntermediateTensors
 
 
 class SharedHead(nn.Module):

@@ -4,7 +4,6 @@
 from typing import Optional, Tuple
 
 import torch
-
 from vllm.logger import init_logger
 from vllm.platforms import current_platform
 
@@ -14,7 +13,8 @@ logger = init_logger(__name__)
 if current_platform.is_out_of_tree():
     try:
         import flash_mla  # noqa: F401
-# \------------------------  Metax Modification -------------------------/
+
+        # \------------------------  Metax Modification -------------------------/
         _flashmla_AVAILABLE = True
     except ImportError:
         _flashmla_AVAILABLE = False
@@ -48,10 +48,10 @@ def get_mla_metadata(
         num_splits: (batch_size + 1), dtype torch.int32.
     """
     # /------------------------  Metax Modification -------------------------\
-    return flash_mla.flash_mla_interface.get_mla_metadata(cache_seqlens,
-                                                          num_heads_per_head_k,
-                                                          num_heads_k)
+    return flash_mla.flash_mla_interface.get_mla_metadata(
+        cache_seqlens, num_heads_per_head_k, num_heads_k)
     # \------------------------- Metax Modification -------------------------/
+
 
 def flash_mla_with_kvcache(
     q: torch.Tensor,

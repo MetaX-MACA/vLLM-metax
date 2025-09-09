@@ -133,13 +133,13 @@ static __device__ __forceinline__ void moe_q(
 #define NWARPS_Q4_0 4
 
 template <typename scalar_t, bool need_check>
-static __global__ void
-    moe_q4_0(const void* __restrict__ vx, const void* __restrict__ vy,
-             scalar_t* __restrict__ dst, const int* sorted_token_ids,
-             const int* expert_ids, const int* num_tokens_post_padded,
-             const int exp_stride, const int ncols_x, const int nrows_x,
-             const int ncols_y, const int nrows_y, const int nrows_dst,
-             const int top_k) {
+static __global__ void moe_q4_0(
+    const void* __restrict__ vx, const void* __restrict__ vy,
+    scalar_t* __restrict__ dst, const int* sorted_token_ids,
+    const int* expert_ids, const int* num_tokens_post_padded,
+    const int exp_stride, const int ncols_x, const int nrows_x,
+    const int ncols_y, const int nrows_y, const int nrows_dst,
+    const int top_k) {
   const int mmq_x = MOE_X_Q4_0;
   const int mmq_y = MOE_Y_Q4_0;
   const int nwarps = NWARPS_Q4_0;
@@ -185,13 +185,13 @@ static void ggml_moe_q4_0_q8_1_cuda(
 #define NWARPS_Q4_1 4
 
 template <typename scalar_t, bool need_check>
-static __global__ void
-    moe_q4_1(const void* __restrict__ vx, const void* __restrict__ vy,
-             scalar_t* __restrict__ dst, const int* sorted_token_ids,
-             const int* expert_ids, const int* num_tokens_post_padded,
-             const int exp_stride, const int ncols_x, const int nrows_x,
-             const int ncols_y, const int nrows_y, const int nrows_dst,
-             const int top_k) {
+static __global__ void moe_q4_1(
+    const void* __restrict__ vx, const void* __restrict__ vy,
+    scalar_t* __restrict__ dst, const int* sorted_token_ids,
+    const int* expert_ids, const int* num_tokens_post_padded,
+    const int exp_stride, const int ncols_x, const int nrows_x,
+    const int ncols_y, const int nrows_y, const int nrows_dst,
+    const int top_k) {
   const int mmq_x = MOE_X_Q4_1;
   const int mmq_y = MOE_Y_Q4_1;
   const int nwarps = NWARPS_Q4_1;
@@ -237,13 +237,13 @@ static void ggml_moe_q4_1_q8_1_cuda(
 #define NWARPS_Q5_0 4
 
 template <typename scalar_t, bool need_check>
-static __global__ void
-    moe_q5_0(const void* __restrict__ vx, const void* __restrict__ vy,
-             scalar_t* __restrict__ dst, const int* sorted_token_ids,
-             const int* expert_ids, const int* num_tokens_post_padded,
-             const int exp_stride, const int ncols_x, const int nrows_x,
-             const int ncols_y, const int nrows_y, const int nrows_dst,
-             const int top_k) {
+static __global__ void moe_q5_0(
+    const void* __restrict__ vx, const void* __restrict__ vy,
+    scalar_t* __restrict__ dst, const int* sorted_token_ids,
+    const int* expert_ids, const int* num_tokens_post_padded,
+    const int exp_stride, const int ncols_x, const int nrows_x,
+    const int ncols_y, const int nrows_y, const int nrows_dst,
+    const int top_k) {
   const int mmq_x = MOE_X_Q5_0;
   const int mmq_y = MOE_Y_Q5_0;
   const int nwarps = NWARPS_Q5_0;
@@ -289,13 +289,13 @@ static void ggml_moe_q5_0_q8_1_cuda(
 #define NWARPS_Q5_1 4
 
 template <typename scalar_t, bool need_check>
-static __global__ void
-    moe_q5_1(const void* __restrict__ vx, const void* __restrict__ vy,
-             scalar_t* __restrict__ dst, const int* sorted_token_ids,
-             const int* expert_ids, const int* num_tokens_post_padded,
-             const int exp_stride, const int ncols_x, const int nrows_x,
-             const int ncols_y, const int nrows_y, const int nrows_dst,
-             const int top_k) {
+static __global__ void moe_q5_1(
+    const void* __restrict__ vx, const void* __restrict__ vy,
+    scalar_t* __restrict__ dst, const int* sorted_token_ids,
+    const int* expert_ids, const int* num_tokens_post_padded,
+    const int exp_stride, const int ncols_x, const int nrows_x,
+    const int ncols_y, const int nrows_y, const int nrows_dst,
+    const int top_k) {
   const int mmq_x = MOE_X_Q5_1;
   const int mmq_y = MOE_Y_Q5_1;
   const int nwarps = NWARPS_Q5_1;
@@ -341,13 +341,13 @@ static void ggml_moe_q5_1_q8_1_cuda(
 #define NWARPS_Q8_0 4
 
 template <typename scalar_t, bool need_check>
-static __global__ void
-    moe_q8_0(const void* __restrict__ vx, const void* __restrict__ vy,
-             scalar_t* __restrict__ dst, const int* sorted_token_ids,
-             const int* expert_ids, const int* num_tokens_post_padded,
-             const int exp_stride, const int ncols_x, const int nrows_x,
-             const int ncols_y, const int nrows_y, const int nrows_dst,
-             const int top_k) {
+static __global__ void moe_q8_0(
+    const void* __restrict__ vx, const void* __restrict__ vy,
+    scalar_t* __restrict__ dst, const int* sorted_token_ids,
+    const int* expert_ids, const int* num_tokens_post_padded,
+    const int exp_stride, const int ncols_x, const int nrows_x,
+    const int ncols_y, const int nrows_y, const int nrows_dst,
+    const int top_k) {
   const int mmq_x = MOE_X_Q8_0;
   const int mmq_y = MOE_Y_Q8_0;
   const int nwarps = NWARPS_Q8_0;
@@ -393,13 +393,13 @@ static void ggml_moe_q8_0_q8_1_cuda(
 #define NWARPS_Q2_K 4
 
 template <typename scalar_t, bool need_check>
-static __global__ void
-    moe_q2_K(const void* __restrict__ vx, const void* __restrict__ vy,
-             scalar_t* __restrict__ dst, const int* sorted_token_ids,
-             const int* expert_ids, const int* num_tokens_post_padded,
-             const int exp_stride, const int ncols_x, const int nrows_x,
-             const int ncols_y, const int nrows_y, const int nrows_dst,
-             const int top_k) {
+static __global__ void moe_q2_K(
+    const void* __restrict__ vx, const void* __restrict__ vy,
+    scalar_t* __restrict__ dst, const int* sorted_token_ids,
+    const int* expert_ids, const int* num_tokens_post_padded,
+    const int exp_stride, const int ncols_x, const int nrows_x,
+    const int ncols_y, const int nrows_y, const int nrows_dst,
+    const int top_k) {
   const int mmq_x = MOE_X_Q2_K;
   const int mmq_y = MOE_Y_Q2_K;
   const int nwarps = NWARPS_Q2_K;
@@ -445,14 +445,13 @@ static void ggml_moe_q2_K_q8_1_cuda(
 #define NWARPS_Q3_K 4
 
 template <typename scalar_t, bool need_check>
-static __global__ void
-    moe_q3_K(const void* __restrict__ vx, const void* __restrict__ vy,
-             scalar_t* __restrict__ dst, const int* sorted_token_ids,
-             const int* expert_ids, const int* num_tokens_post_padded,
-             const int exp_stride, const int ncols_x, const int nrows_x,
-             const int ncols_y, const int nrows_y, const int nrows_dst,
-             const int top_k) {
-
+static __global__ void moe_q3_K(
+    const void* __restrict__ vx, const void* __restrict__ vy,
+    scalar_t* __restrict__ dst, const int* sorted_token_ids,
+    const int* expert_ids, const int* num_tokens_post_padded,
+    const int exp_stride, const int ncols_x, const int nrows_x,
+    const int ncols_y, const int nrows_y, const int nrows_dst,
+    const int top_k) {
   const int mmq_x = MOE_X_Q3_K;
   const int mmq_y = MOE_Y_Q3_K;
   const int nwarps = NWARPS_Q3_K;
@@ -497,13 +496,13 @@ static void ggml_moe_q3_K_q8_1_cuda(
 #define NWARPS_Q4_K 4
 
 template <typename scalar_t, bool need_check>
-static __global__ void
-    moe_q4_K(const void* __restrict__ vx, const void* __restrict__ vy,
-             scalar_t* __restrict__ dst, const int* sorted_token_ids,
-             const int* expert_ids, const int* num_tokens_post_padded,
-             const int exp_stride, const int ncols_x, const int nrows_x,
-             const int ncols_y, const int nrows_y, const int nrows_dst,
-             const int top_k) {
+static __global__ void moe_q4_K(
+    const void* __restrict__ vx, const void* __restrict__ vy,
+    scalar_t* __restrict__ dst, const int* sorted_token_ids,
+    const int* expert_ids, const int* num_tokens_post_padded,
+    const int exp_stride, const int ncols_x, const int nrows_x,
+    const int ncols_y, const int nrows_y, const int nrows_dst,
+    const int top_k) {
   const int mmq_x = MOE_X_Q4_K;
   const int mmq_y = MOE_Y_Q4_K;
   const int nwarps = NWARPS_Q4_K;
@@ -549,13 +548,13 @@ static void ggml_moe_q4_K_q8_1_cuda(
 #define NWARPS_Q5_K 4
 
 template <typename scalar_t, bool need_check>
-static __global__ void
-    moe_q5_K(const void* __restrict__ vx, const void* __restrict__ vy,
-             scalar_t* __restrict__ dst, const int* sorted_token_ids,
-             const int* expert_ids, const int* num_tokens_post_padded,
-             const int exp_stride, const int ncols_x, const int nrows_x,
-             const int ncols_y, const int nrows_y, const int nrows_dst,
-             const int top_k) {
+static __global__ void moe_q5_K(
+    const void* __restrict__ vx, const void* __restrict__ vy,
+    scalar_t* __restrict__ dst, const int* sorted_token_ids,
+    const int* expert_ids, const int* num_tokens_post_padded,
+    const int exp_stride, const int ncols_x, const int nrows_x,
+    const int ncols_y, const int nrows_y, const int nrows_dst,
+    const int top_k) {
   const int mmq_x = MOE_X_Q5_K;
   const int mmq_y = MOE_Y_Q5_K;
   const int nwarps = NWARPS_Q5_K;
@@ -601,13 +600,13 @@ static void ggml_moe_q5_K_q8_1_cuda(
 #define NWARPS_Q6_K 4
 
 template <typename scalar_t, bool need_check>
-static __global__ void
-    moe_q6_K(const void* __restrict__ vx, const void* __restrict__ vy,
-             scalar_t* __restrict__ dst, const int* sorted_token_ids,
-             const int* expert_ids, const int* num_tokens_post_padded,
-             const int exp_stride, const int ncols_x, const int nrows_x,
-             const int ncols_y, const int nrows_y, const int nrows_dst,
-             const int top_k) {
+static __global__ void moe_q6_K(
+    const void* __restrict__ vx, const void* __restrict__ vy,
+    scalar_t* __restrict__ dst, const int* sorted_token_ids,
+    const int* expert_ids, const int* num_tokens_post_padded,
+    const int exp_stride, const int ncols_x, const int nrows_x,
+    const int ncols_y, const int nrows_y, const int nrows_dst,
+    const int top_k) {
   const int mmq_x = MOE_X_Q6_K;
   const int mmq_y = MOE_Y_Q6_K;
   const int nwarps = NWARPS_Q6_K;

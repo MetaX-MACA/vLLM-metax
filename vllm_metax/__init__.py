@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
-import os
-import shutil
 import importlib.metadata
 import importlib.util
+import os
+import shutil
 from pathlib import Path
+
 
 def copy_with_backup(src_path: Path, dest_path: Path):
     """
@@ -43,8 +44,8 @@ def post_installation():
     print("Post installation script.")
 
     # Get the path to the vllm distribution
-    vllm_dist_path = importlib.metadata.distribution(
-        "vllm").locate_file("vllm")
+    vllm_dist_path = importlib.metadata.distribution("vllm").locate_file(
+        "vllm")
     plugin_dist_path = importlib.metadata.distribution(
         "vllm_metax").locate_file("vllm_metax")
 
@@ -55,12 +56,18 @@ def post_installation():
     print(f"vLLM_plugin Dist Location: [{plugin_dist_path}]")
 
     files_to_copy = {
-        "_C.abi3.so": vllm_dist_path,
-        "_moe_C.abi3.so": vllm_dist_path,
-        "cumem_allocator.abi3.so": vllm_dist_path,
+        "_C.abi3.so":
+        vllm_dist_path,
+        "_moe_C.abi3.so":
+        vllm_dist_path,
+        "cumem_allocator.abi3.so":
+        vllm_dist_path,
         # TODO: workaround for torch 2.7 inferscheme, remove when torch >= 2.7
-        "patch/vllm_substitution/fp8_utils.py" : vllm_dist_path / "model_executor/layers/quantization/utils/fp8_utils.py",
-        "patch/vllm_substitution/fused_moe.py" : vllm_dist_path / "model_executor/layers/fused_moe/fused_moe.py",
+        "patch/vllm_substitution/fp8_utils.py":
+        vllm_dist_path /
+        "model_executor/layers/quantization/utils/fp8_utils.py",
+        "patch/vllm_substitution/fused_moe.py":
+        vllm_dist_path / "model_executor/layers/fused_moe/fused_moe.py",
     }
 
     for src_path, dest_path in files_to_copy.items():
@@ -74,9 +81,11 @@ def post_installation():
 
     print("Post installation successful.")
 
+
 def collect_env() -> None:
     from vllm_metax.collect_env import main as collect_env_main
     collect_env_main()
+
 
 def register():
     """Register the METAX platform."""
@@ -84,26 +93,25 @@ def register():
 
 
 def register_quant_configs():
-    from vllm_metax.quant_config.awq_marlin \
-        import MacaAWQMarlinConfig  # noqa: F401
-    from vllm_metax.quant_config.gptq_marlin \
-        import MacaGPTQMarlinConfig  # noqa: F401
-    from vllm_metax.quant_config.awq \
-        import MacaAWQConfig  # noqa: F401
-    from vllm_metax.quant_config.gptq \
-        import MacaGPTQConfig  # noqa: F401
+    from vllm_metax.quant_config.awq import MacaAWQConfig  # noqa: F401
+    from vllm_metax.quant_config.awq_marlin import \
+        MacaAWQMarlinConfig  # noqa: F401
+    from vllm_metax.quant_config.gptq import MacaGPTQConfig  # noqa: F401
+    from vllm_metax.quant_config.gptq_marlin import \
+        MacaGPTQMarlinConfig  # noqa: F401
     # HOTFIX: https://github.com/vllm-project/vllm/pull/22797
-    from vllm_metax.quant_config.moe_wna16 \
-        import MacaMoeWNA16Config  # noqa: F401
+    from vllm_metax.quant_config.moe_wna16 import \
+        MacaMoeWNA16Config  # noqa: F401
 
 
 def register_model():
-    import vllm_metax.patch
+    import vllm_metax.patch  # noqa: F401
 
     register_quant_configs()
 
     from .models import register_model
     register_model()
+
 
 def register_ops():
     import vllm_metax.ops  # noqa: F401

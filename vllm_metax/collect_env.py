@@ -15,8 +15,8 @@ import sys
 from collections import namedtuple
 
 import regex as re
-
 from vllm.envs import environment_variables as vllm_envs
+
 from vllm_metax.envs import environment_variables as plugin_envs
 
 all_envs = vllm_envs | plugin_envs
@@ -218,13 +218,16 @@ def get_running_cuda_version(run_lambda):
     return run_and_parse_first_match(run_lambda, 'nvcc --version',
                                      r'release .+ V(.*)')
 
+
 def get_running_maca_version(run_lambda):
     return run_and_parse_first_match(run_lambda, 'mx-smi',
                                      r'MACA Version:\s*([^\s]+)')
 
+
 def get_bios_version(run_lambda):
     return run_and_parse_first_match(run_lambda, 'mx-smi',
                                      r'BIOS Version:\s*([^\s]+)')
+
 
 def get_cudnn_version(run_lambda):
     """Return a list of libcudnn.so; it's hard to tell which one is being used."""

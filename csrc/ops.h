@@ -140,7 +140,7 @@ void fatrelu_and_mul(torch::Tensor& out, torch::Tensor& input,
                      double threshold);
 
 void swigluoai_and_mul(torch::Tensor& out, torch::Tensor& input,
-                    double alpha = 1.702, double limit = 7.0);
+                       double alpha = 1.702, double limit = 7.0);
 
 void gelu_new(torch::Tensor& out, torch::Tensor& input);
 
@@ -156,10 +156,9 @@ void cutlass_mla_decode(torch::Tensor const& out, torch::Tensor const& q_nope,
 
 torch::Tensor get_cuda_view_from_cpu_tensor(torch::Tensor& cpu_tensor);
 
-
 torch::Tensor awq_gemm(torch::Tensor _in_feats, torch::Tensor _kernel,
                        torch::Tensor _scaling_factors, torch::Tensor _zeros,
-                       int64_t split_k_iters, torch::Tensor _temp_space, 
+                       int64_t split_k_iters, torch::Tensor _temp_space,
                        bool dtype_bf16);
 
 torch::Tensor awq_dequantize(torch::Tensor _kernel,
@@ -266,18 +265,17 @@ void static_scaled_int8_quant(torch::Tensor& out, torch::Tensor const& input,
 void dynamic_scaled_int8_quant(torch::Tensor& out, torch::Tensor const& input,
                                torch::Tensor& scales,
                                std::optional<torch::Tensor> const& azp);
-                               
-void fused_silu_mul_dq_mask_quant_pack(
-    torch::Tensor& out,          
-    torch::Tensor const& input, 
-    torch::Tensor const &mask);
+
+void fused_silu_mul_dq_mask_quant_pack(torch::Tensor& out,
+                                       torch::Tensor const& input,
+                                       torch::Tensor const& mask);
 
 torch::Tensor gptq_gemm(torch::Tensor a, torch::Tensor b_q_weight,
                         torch::Tensor b_gptq_qzeros,
                         torch::Tensor b_gptq_scales, torch::Tensor b_g_idx,
-                        bool use_exllama, int64_t bit, int64_t group_size, 
+                        bool use_exllama, int64_t bit, int64_t group_size,
                         torch::Tensor perm_space, torch::Tensor temp_space,
-			            bool dtype_bf16);
+                        bool dtype_bf16);
 
 void gptq_shuffle(torch::Tensor q_weight, torch::Tensor q_perm, int64_t bit);
 
@@ -302,4 +300,3 @@ void selective_scan_fwd(const torch::Tensor& u, const torch::Tensor& delta,
                         const std::optional<torch::Tensor>& cache_indices,
                         const std::optional<torch::Tensor>& has_initial_state,
                         const torch::Tensor& ssm_states, int64_t pad_slot_id);
-

@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
-from vllm.model_executor.layers.quantization import (register_quantization_config, 
-                                                     QuantizationConfig,
-                                                     QUANTIZATION_METHODS, 
-                                                     _CUSTOMIZED_METHOD_TO_QUANT_CONFIG)
+from vllm.model_executor.layers.quantization import (
+    _CUSTOMIZED_METHOD_TO_QUANT_CONFIG, QUANTIZATION_METHODS,
+    QuantizationConfig, register_quantization_config)
+
 
 def register_quantization_config(quantization: str):
     """Register a customized vllm quantization config.
@@ -37,5 +37,7 @@ def register_quantization_config(quantization: str):
 
     return _wrapper
 
+
 import vllm.model_executor.layers.quantization
+
 vllm.model_executor.layers.quantization.register_quantization_config = register_quantization_config

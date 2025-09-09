@@ -22,7 +22,6 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, m) {
       "                     Tensor! num_tokens_post_pad) -> ()");
   m.impl("moe_align_block_size", torch::kCUDA, &moe_align_block_size);
 
-
   m.def(
       "moe_permute(Tensor input, Tensor topk_ids,"
       "Tensor token_expert_indices, Tensor? expert_map, int n_expert,"
@@ -45,13 +44,13 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, m) {
       "output_tensor) -> ()");
   m.impl("shuffle_rows", torch::kCUDA, &shuffle_rows);
 
-
-// Fused moe in mcblas
+  // Fused moe in mcblas
   m.def(
       "fused_moe_kernel(Tensor! A, Tensor! B, Tensor! C,"
       "Tensor! topk_weights, Tensor! topk_ids,"
       "Tensor! sorted_token_ids, Tensor! expert_ids,"
-      "Tensor! num_tokens_post_padded, bool mul_routed_weight, int top_k, int tileConfig) -> ()");
+      "Tensor! num_tokens_post_padded, bool mul_routed_weight, int top_k, int "
+      "tileConfig) -> ()");
   m.impl("fused_moe_kernel", torch::kCUDA, &fused_moe_kernel);
 }
 

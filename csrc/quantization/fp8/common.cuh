@@ -8,9 +8,7 @@
 // Determines the preferred FP8 type for the current platform.
 // Note that for CUDA this just returns true,
 // but on ROCm it will check device props.
-static bool is_fp8_ocp() {
-  return true;
-}
+static bool is_fp8_ocp() { return true; }
 
 namespace vllm {
 

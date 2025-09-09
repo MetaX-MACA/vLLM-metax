@@ -193,15 +193,14 @@ from dataclasses import dataclass, field
 from typing import ClassVar, Generic, Optional, TypeVar, Union
 
 import torch
-
 import vllm.envs as envs
+from flash_attn import flash_attn_varlen_func
 from vllm import _custom_ops as ops
 from vllm.attention.backends.abstract import (AttentionBackend, AttentionLayer,
                                               AttentionMetadata,
                                               MLAAttentionImpl)
 from vllm.attention.backends.utils import get_mla_dims
 from vllm.attention.ops.merge_attn_states import merge_attn_states
-from vllm_metax.attention.utils.fa_utils import get_flash_attn_version
 from vllm.config import VllmConfig
 from vllm.logger import init_logger
 from vllm.model_executor.layers.linear import (ColumnParallelLinear,
@@ -216,14 +215,15 @@ from vllm.v1.attention.backends.utils import (AttentionMetadataBuilder,
                                               infer_global_hyperparameters,
                                               split_decodes_and_prefills)
 from vllm.v1.kv_cache_interface import AttentionSpec
+
 from vllm_metax import envs as mx_envs
+from vllm_metax.attention.utils.fa_utils import get_flash_attn_version
 
-
-from flash_attn import flash_attn_varlen_func
 is_vllm_fa = False
 
 try:
     from flashinfer import BatchPrefillWithRaggedKVCacheWrapper
+
     # /------------------------  Metax Modification -------------------------\
     # from flashinfer.prefill import (  # noqa: F401
     #     cudnn_batch_prefill_with_kv_cache)

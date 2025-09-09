@@ -32,7 +32,6 @@ It supports page size >= 1.
 import logging
 
 from packaging import version
-
 from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
 
@@ -437,9 +436,7 @@ def _decode_grouped_att_m_fwd(
     if is_maca_:
         # https://rocm.docs.amd.com/en/latest/how-to/rocm-for-ai/inference-optimization/workload.html#mi300x-triton-kernel-performance-optimization
         # https://github.com/triton-lang/triton/blob/main/third_party/amd/backend/compiler.py
-        extra_kargs = {
-            "scenario":"mla"
-        }
+        extra_kargs = {"scenario": "mla"}
         num_stages = 1
 
     _fwd_grouped_kernel_stage1[grid](

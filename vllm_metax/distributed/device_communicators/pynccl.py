@@ -6,13 +6,13 @@ from typing import Optional, Union
 import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup, ReduceOp
+from vllm.distributed.utils import StatelessProcessGroup
+from vllm.logger import init_logger
+from vllm.utils import current_stream
 
 from vllm_metax.distributed.device_communicators.pynccl_wrapper import (
     NCCLLibrary, buffer_type, cudaStream_t, ncclComm_t, ncclDataTypeEnum,
     ncclRedOpTypeEnum, ncclUniqueId)
-from vllm.distributed.utils import StatelessProcessGroup
-from vllm.logger import init_logger
-from vllm.utils import current_stream
 
 logger = init_logger(__name__)
 

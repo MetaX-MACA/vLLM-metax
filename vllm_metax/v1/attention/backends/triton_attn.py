@@ -6,13 +6,12 @@ from functools import cache
 from typing import ClassVar, Optional
 
 import torch
-
 from vllm import _custom_ops as ops
 from vllm import envs
 from vllm.attention.backends.abstract import (AttentionBackend, AttentionImpl,
                                               AttentionMetadata, AttentionType)
-from vllm.attention.ops.chunked_prefill_paged_decode import (
-    chunked_prefill_paged_decode)
+from vllm.attention.ops.chunked_prefill_paged_decode import \
+    chunked_prefill_paged_decode
 from vllm.attention.ops.paged_attn import PagedAttention
 from vllm.config import VllmConfig
 from vllm.logger import init_logger
@@ -250,14 +249,14 @@ class TritonAttentionImpl(AttentionImpl):
             if use_aiter_unified_attention():
                 logger.info_once(
                     "Using aiter unified attention for TritonAttentionImpl")
-                from aiter.ops.triton.unified_attention import (
-                    unified_attention)
+                from aiter.ops.triton.unified_attention import \
+                    unified_attention
                 self.unified_attention = unified_attention
             else:
                 logger.info_once(
                     "Using vllm unified attention for TritonAttentionImpl")
-                from vllm.attention.ops.triton_unified_attention import (
-                    unified_attention)
+                from vllm.attention.ops.triton_unified_attention import \
+                    unified_attention
                 self.unified_attention = unified_attention
 
         self.sinks = sinks

@@ -715,292 +715,329 @@ fp_gemm_half_q_half_gptq_kernel pick_gemm_half_q_half_gptq_kernel(
 }
 
 template <typename T>
-__global__ void blasMemset(T *data, size_t cnt, T init) {
-    size_t threads = gridDim.x * blockDim.x;
-    size_t itemsPerThread = (cnt + threads - 1) / threads;
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    for (size_t loop = 0; loop < itemsPerThread && loop * threads + tid < cnt; ++loop) {
-        data[loop * threads + tid] = init;
-    }
+__global__ void blasMemset(T* data, size_t cnt, T init) {
+  size_t threads = gridDim.x * blockDim.x;
+  size_t itemsPerThread = (cnt + threads - 1) / threads;
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  for (size_t loop = 0; loop < itemsPerThread && loop * threads + tid < cnt;
+       ++loop) {
+    data[loop * threads + tid] = init;
+  }
 }
 
 template <typename dstT, typename srcT, typename scalarT>
-__global__ void blasMemcpy(dstT *dst, const srcT *src, size_t cnt, scalarT beta) {
-    size_t threads = gridDim.x * blockDim.x;
-    size_t itemsPerThread = (cnt + threads - 1) / threads;
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    for (size_t loop = 0; loop < itemsPerThread && loop * threads + tid < cnt; ++loop) {
-        dst[loop * threads + tid] =
-            static_cast<double>(beta) * static_cast<double>(src[loop * threads + tid]);
-    }
+__global__ void blasMemcpy(dstT* dst, const srcT* src, size_t cnt,
+                           scalarT beta) {
+  size_t threads = gridDim.x * blockDim.x;
+  size_t itemsPerThread = (cnt + threads - 1) / threads;
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  for (size_t loop = 0; loop < itemsPerThread && loop * threads + tid < cnt;
+       ++loop) {
+    dst[loop * threads + tid] = static_cast<double>(beta) *
+                                static_cast<double>(src[loop * threads + tid]);
+  }
 }
 
 template <typename reducT, typename outputT, typename scalarT>
-__global__ void blasReduc(outputT *dC_out, outputT *dC_in, reducT *d_acc, int count, int segs, scalarT beta)
-{
-    using accT = float;
-    size_t threads = gridDim.x * blockDim.x;
-    size_t itemsPerThread = (count + threads - 1) / threads;
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    for (size_t loop = 0; loop < itemsPerThread && (loop * threads + tid) < count; ++loop) {
-        accT acc = static_cast<accT>(beta) * static_cast<accT>(dC_in[loop * threads + tid]);
-        for (size_t SEG=0; SEG < segs; ++SEG)
-        {
-            acc += static_cast<accT>(d_acc[SEG * count + loop * threads + tid]);
-        }
-        dC_out[loop * threads + tid] = static_cast<outputT>(acc);
+__global__ void blasReduc(outputT* dC_out, outputT* dC_in, reducT* d_acc,
+                          int count, int segs, scalarT beta) {
+  using accT = float;
+  size_t threads = gridDim.x * blockDim.x;
+  size_t itemsPerThread = (count + threads - 1) / threads;
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  for (size_t loop = 0; loop < itemsPerThread && (loop * threads + tid) < count;
+       ++loop) {
+    accT acc = static_cast<accT>(beta) *
+               static_cast<accT>(dC_in[loop * threads + tid]);
+    for (size_t SEG = 0; SEG < segs; ++SEG) {
+      acc += static_cast<accT>(d_acc[SEG * count + loop * threads + tid]);
     }
+    dC_out[loop * threads + tid] = static_cast<outputT>(acc);
+  }
 }
 
-template<typename T_ACC, typename T_ACC_PACK, typename T, typename T_PACK>
-__global__ void split_reduce(const T_ACC* src, const int row, const int splitk, T* dest) {
-    constexpr int ELEMS = sizeof(T_ACC_PACK)/sizeof(T_ACC);
-    for (int i = threadIdx.x + blockDim.x * blockIdx.x; i < row*sizeof(T_ACC)/sizeof(T_ACC_PACK); i += blockDim.x*gridDim.x) {
-        T_ACC_PACK p0 = ((T_ACC_PACK*)src)[i];
-        T_ACC p0_a[ELEMS];
-        for (int j = 0; j < ELEMS; j++) p0_a[j] = ((T_ACC*)&p0)[j];
-        for (int k = 1; k < splitk; k++) {
-            p0 = ((T_ACC_PACK*)src)[i + row / ELEMS * k];
-            for (int j = 0; j < ELEMS; j++) {
-                p0_a[j] += ((T_ACC*)&p0)[j];
-            }
-        }
-        T dest_pack[ELEMS];
-        for (int j = 0; j < ELEMS; j++) dest_pack[j] = p0_a[j];
-        ((T_PACK*)dest)[i] = *(T_PACK*)dest_pack;
+template <typename T_ACC, typename T_ACC_PACK, typename T, typename T_PACK>
+__global__ void split_reduce(const T_ACC* src, const int row, const int splitk,
+                             T* dest) {
+  constexpr int ELEMS = sizeof(T_ACC_PACK) / sizeof(T_ACC);
+  for (int i = threadIdx.x + blockDim.x * blockIdx.x;
+       i < row * sizeof(T_ACC) / sizeof(T_ACC_PACK);
+       i += blockDim.x * gridDim.x) {
+    T_ACC_PACK p0 = ((T_ACC_PACK*)src)[i];
+    T_ACC p0_a[ELEMS];
+    for (int j = 0; j < ELEMS; j++) p0_a[j] = ((T_ACC*)&p0)[j];
+    for (int k = 1; k < splitk; k++) {
+      p0 = ((T_ACC_PACK*)src)[i + row / ELEMS * k];
+      for (int j = 0; j < ELEMS; j++) {
+        p0_a[j] += ((T_ACC*)&p0)[j];
+      }
     }
+    T dest_pack[ELEMS];
+    for (int j = 0; j < ELEMS; j++) dest_pack[j] = p0_a[j];
+    ((T_PACK*)dest)[i] = *(T_PACK*)dest_pack;
+  }
 }
 
 template <int tileK, int tileN>
-__global__ void perm_b(half *output, const half *input, const int *idx, int k, int n, int ldb) {
-    int tid = threadIdx.x;
-    int row = blockIdx.x * tileK + tid;
-    if (row < k) {
-        int index = idx[row];
-        int col_offset = blockIdx.y * tileN;
+__global__ void perm_b(half* output, const half* input, const int* idx, int k,
+                       int n, int ldb) {
+  int tid = threadIdx.x;
+  int row = blockIdx.x * tileK + tid;
+  if (row < k) {
+    int index = idx[row];
+    int col_offset = blockIdx.y * tileN;
 #pragma unroll 1
-        for (int i = 0; (i < tileN) && ((col_offset + i) < n); ++i) {
-            int col = col_offset + i;
-            output[row + ldb * col] = input[index + ldb * col];
-        }
+    for (int i = 0; (i < tileN) && ((col_offset + i) < n); ++i) {
+      int col = col_offset + i;
+      output[row + ldb * col] = input[index + ldb * col];
     }
+  }
 }
 
 #define SWITCH_CASE_BATCH(BlockDimX, SplitK, BATCH) \
-    case BATCH: {                                   \
-        CALL_GEMM(BlockDimX, SplitK, BATCH)         \
-        break;                                      \
-    }
+  case BATCH: {                                     \
+    CALL_GEMM(BlockDimX, SplitK, BATCH)             \
+    break;                                          \
+  }
 
-#define APPLY_HGEMM_BATCH(BlockDimX, SplitK, BATCH) \
-    switch(BATCH) {                                 \
-        SWITCH_CASE_BATCH(BlockDimX, SplitK, 1)           \
-        SWITCH_CASE_BATCH(BlockDimX, SplitK, 2)           \
-        SWITCH_CASE_BATCH(BlockDimX, SplitK, 3)           \
-        SWITCH_CASE_BATCH(BlockDimX, SplitK, 4)           \
-        default: {                                          \
-            launched = false;                               \
-            printf("ERROR: Unsupported BATCH %d\n", BATCH); \
-            break;                                          \
-        }                                                   \
-    }
+#define APPLY_HGEMM_BATCH(BlockDimX, SplitK, BATCH)   \
+  switch (BATCH) {                                    \
+    SWITCH_CASE_BATCH(BlockDimX, SplitK, 1)           \
+    SWITCH_CASE_BATCH(BlockDimX, SplitK, 2)           \
+    SWITCH_CASE_BATCH(BlockDimX, SplitK, 3)           \
+    SWITCH_CASE_BATCH(BlockDimX, SplitK, 4)           \
+    default: {                                        \
+      launched = false;                               \
+      printf("ERROR: Unsupported BATCH %d\n", BATCH); \
+      break;                                          \
+    }                                                 \
+  }
 
 #define SWITCH_CASE_BlockDimX(BlockDimX, SplitK, BATCH) \
-    case BlockDimX: {                                   \
-        APPLY_HGEMM_BATCH(BlockDimX, SplitK, BATCH)    \
-        break;                                          \
-    }
+  case BlockDimX: {                                     \
+    APPLY_HGEMM_BATCH(BlockDimX, SplitK, BATCH)         \
+    break;                                              \
+  }
 
-#define APPLY_HGEMM(BlockDimX, SplitK, BATCH)           \
-    switch (BlockDimX) {                                \
-        SWITCH_CASE_BlockDimX(16, SplitK, BATCH)        \
-        SWITCH_CASE_BlockDimX(32, SplitK, BATCH)        \
-        SWITCH_CASE_BlockDimX(64, SplitK, BATCH)        \
-        SWITCH_CASE_BlockDimX(128, SplitK, BATCH)       \
-        SWITCH_CASE_BlockDimX(256, SplitK, BATCH)       \
-        default: {                                                  \
-            launched = false;                                       \
-            printf("ERROR: Unsupported BlockDimX %d\n", BlockDimX); \
-            break;                                                  \
-        }                                                           \
-    }
+#define APPLY_HGEMM(BlockDimX, SplitK, BATCH)                             \
+  switch (BlockDimX) {                                                    \
+    SWITCH_CASE_BlockDimX(16, SplitK, BATCH)                              \
+        SWITCH_CASE_BlockDimX(32, SplitK, BATCH)                          \
+            SWITCH_CASE_BlockDimX(64, SplitK, BATCH)                      \
+                SWITCH_CASE_BlockDimX(128, SplitK, BATCH)                 \
+                    SWITCH_CASE_BlockDimX(256, SplitK, BATCH) default : { \
+      launched = false;                                                   \
+      printf("ERROR: Unsupported BlockDimX %d\n", BlockDimX);             \
+      break;                                                              \
+    }                                                                     \
+  }
 
-bool call_kernel(const half *srcB,
-    const quant_packed_type *srcA,
-    quant_packed_type *zeros, half *scales,
-    half* dst_D,
-    int m, int n, int k, int srcStride, int dstStride,
-    int block_x, int split_k, int bit,
-    const int* b_perm_D = nullptr) {
-    constexpr int ThreadBlock = 256;
-    const dim3 threadBlock = {static_cast<unsigned int>(ThreadBlock)};
-    const dim3 gridBlock = {static_cast<unsigned int>(m / (block_x * sizeof(float4) / sizeof(quant_packed_type))), static_cast<unsigned int>(split_k)};
-    const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-    if (split_k * QUANT_GROUP > k || k % QUANT_GROUP != 0) return false;
-    if (block_x < 16 || n > 4) return false;
-    bool launched = true;
-    #define CALL_GEMM(BX, SK, N) \
-    if (bit == 4) { \
-        if (QUANT_GROUP*SK == k && BX == 256) { \
-            hgemv_nn_splitk_gptq_tb256_bx256_kb128<N><<<gridBlock, threadBlock, 0, stream>>>( \
-                srcB, srcA, zeros, scales, dst_D, m, n, k, srcStride, dstStride, k/SK, b_perm_D); \
-        } else {    \
-            hgemv_nn_splitk_gptq<256, BX, N><<<gridBlock, threadBlock, 0, stream>>>( \
-                srcB, srcA, zeros, scales, dst_D, m, n, k, srcStride, dstStride, k/SK, b_perm_D);  \
-        } \
-    } \
-    if (bit == 8) { \
-        hgemv_nn_splitk_gptq_int8<256, BX, N><<<gridBlock, threadBlock, 0, stream>>>( \
-            srcB, srcA, zeros, scales, dst_D, m, n, k, srcStride, dstStride, k/SK, b_perm_D); \
-    }
-    APPLY_HGEMM(block_x, split_k, n);
-    return launched;
+bool call_kernel(const half* srcB, const quant_packed_type* srcA,
+                 quant_packed_type* zeros, half* scales, half* dst_D, int m,
+                 int n, int k, int srcStride, int dstStride, int block_x,
+                 int split_k, int bit, const int* b_perm_D = nullptr) {
+  constexpr int ThreadBlock = 256;
+  const dim3 threadBlock = {static_cast<unsigned int>(ThreadBlock)};
+  const dim3 gridBlock = {
+      static_cast<unsigned int>(
+          m / (block_x * sizeof(float4) / sizeof(quant_packed_type))),
+      static_cast<unsigned int>(split_k)};
+  const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+  if (split_k * QUANT_GROUP > k || k % QUANT_GROUP != 0) return false;
+  if (block_x < 16 || n > 4) return false;
+  bool launched = true;
+#define CALL_GEMM(BX, SK, N)                                                   \
+  if (bit == 4) {                                                              \
+    if (QUANT_GROUP * SK == k && BX == 256) {                                  \
+      hgemv_nn_splitk_gptq_tb256_bx256_kb128<N>                                \
+          <<<gridBlock, threadBlock, 0, stream>>>(                             \
+              srcB, srcA, zeros, scales, dst_D, m, n, k, srcStride, dstStride, \
+              k / SK, b_perm_D);                                               \
+    } else {                                                                   \
+      hgemv_nn_splitk_gptq<256, BX, N><<<gridBlock, threadBlock, 0, stream>>>( \
+          srcB, srcA, zeros, scales, dst_D, m, n, k, srcStride, dstStride,     \
+          k / SK, b_perm_D);                                                   \
+    }                                                                          \
+  }                                                                            \
+  if (bit == 8) {                                                              \
+    hgemv_nn_splitk_gptq_int8<256, BX, N>                                      \
+        <<<gridBlock, threadBlock, 0, stream>>>(srcB, srcA, zeros, scales,     \
+                                                dst_D, m, n, k, srcStride,     \
+                                                dstStride, k / SK, b_perm_D);  \
+  }
+  APPLY_HGEMM(block_x, split_k, n);
+  return launched;
 }
 
 void gemm_half_q_half_cuda_part(const half* a, const uint32_t* b_q_weight,
                                 const uint32_t* b_gptq_qzeros,
                                 const half* b_gptq_scales, const int* b_q_perm,
                                 half* c, int size_m, int size_n, int size_k,
-                                int m_count, int groups, int bit, bool m_sign, bool v_sign) {
-  if ((bit == 4 || bit == 8) && m_sign && !v_sign){
-        const int threads_n = 256;
-        const int tileM = 128;
-        const int tileN = 32;
-        const int tileK = 128;
-        int lda = size_n;
-        int ldb = size_k;
-        int ldc = size_n;
+                                int m_count, int groups, int bit, bool m_sign,
+                                bool v_sign) {
+  if ((bit == 4 || bit == 8) && m_sign && !v_sign) {
+    const int threads_n = 256;
+    const int tileM = 128;
+    const int tileN = 32;
+    const int tileK = 128;
+    int lda = size_n;
+    int ldb = size_k;
+    int ldc = size_n;
 
-        int splitk_iters = 3;
-        bool isSplitk = splitk_iters > 1;
+    int splitk_iters = 3;
+    bool isSplitk = splitk_iters > 1;
 
-        uint32_t gridx = (size_n - 1) / tileM + 1;
-        uint32_t gridy = (size_m - 1) / tileN + 1;
-        uint32_t gridz = splitk_iters;
+    uint32_t gridx = (size_n - 1) / tileM + 1;
+    uint32_t gridy = (size_m - 1) / tileN + 1;
+    uint32_t gridz = splitk_iters;
 
-        uint32_t* zeros = const_cast<uint32_t*>(b_gptq_qzeros);
-        half* scales = const_cast<half*>(b_gptq_scales);
+    uint32_t* zeros = const_cast<uint32_t*>(b_gptq_qzeros);
+    half* scales = const_cast<half*>(b_gptq_scales);
 
-        dim3 dimBlock(threads_n, 1, 1);
-        dim3 dimGrid(gridx, gridy, gridz);
-        float alpha = 1.0, beta = 0.0;
-        const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-        bool isBetaZero = (beta == 0.0);
-        Operation_t trans_a = Operation_t(0);
-        Operation_t trans_b = Operation_t(0);
+    dim3 dimBlock(threads_n, 1, 1);
+    dim3 dimGrid(gridx, gridy, gridz);
+    float alpha = 1.0, beta = 0.0;
+    const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+    bool isBetaZero = (beta == 0.0);
+    Operation_t trans_a = Operation_t(0);
+    Operation_t trans_b = Operation_t(0);
 
-        if (trans_a == OP_N && trans_b == OP_N && size_n % 8 == 0 && size_k % 8 == 0) {
-             half *dB_perm;
-             if (b_q_perm != nullptr) {
-                 mcMallocAsync((void **)&dB_perm, ldb * size_m * sizeof(input_type), stream);
-                 const int threads_n1 = 128;
-                 const int tileK1 = 128;
-                 const int tileN1 = 8;
-                 uint32_t gridx1 = (size_k - 1) / tileK1 + 1;
-                 uint32_t gridy1 = (size_m - 1) / tileN1 + 1;
-                 dim3 dimBlock1(threads_n1, 1, 1);
-                 dim3 dimGrid1(gridx1, gridy1, 1);
-                 perm_b<tileK1, tileN1><<<dimGrid1, dimBlock1, 0, stream>>>(dB_perm, a, b_q_perm, size_k, size_m, ldb);
-             }
-             const half *dB_actual = (b_q_perm != nullptr ? dB_perm : a);
-	     if (bit == 4) {
-                 if (!isSplitk) {
-                     if (isBetaZero) {
-                         Hgemm_nn_128x32x128_8m1n8k_gptq_4bit<OP_N, OP_N, true, tileM, tileN, tileK, true, false>
-                             <<<dimGrid, dimBlock, 0, stream>>>(size_n, size_m, size_k, alpha, beta, b_q_weight, lda, dB_actual, ldb, c,
-                                                                c, ldc, zeros, scales);
-                     } else {
-                         Hgemm_nn_128x32x128_8m1n8k_gptq_4bit<OP_N, OP_N, false, tileM, tileN, tileK, true, false>
-                             <<<dimGrid, dimBlock, 0, stream>>>(size_n, size_m, size_k, alpha, beta, b_q_weight, lda, dB_actual, ldb, c,
-                                                                c, ldc, zeros, scales);
-                     }
-                 } else {
-                     if (isBetaZero) {
-                         Hgemm_nn_128x32x128_8m1n8k_gptq_4bit<OP_N, OP_N, true, tileM, tileN, tileK, true, true>
-                             <<<dimGrid, dimBlock, 0, stream>>>(size_n, size_m, size_k, alpha, beta, b_q_weight, lda, dB_actual, ldb, c, c,
-                                                                ldc, zeros, scales, splitk_iters, c);
-                     }
-                     else {
-                         acc_type *d_acc;
-                         mcMalloc(reinterpret_cast<void **>(&d_acc), size_n * size_m * sizeof(acc_type));
-                         blasMemcpy<<<104, 512, 0, stream>>>(d_acc, c, size_n * size_m, beta);
-                         Hgemm_nn_128x32x128_8m1n8k_gptq_4bit<OP_N, OP_N, false, tileM, tileN, tileK, true, true>
-                             <<<dimGrid, dimBlock, 0, stream>>>(size_n, size_m, size_k, alpha, beta, b_q_weight, lda, dB_actual, ldb, c, c,
-                                                                ldc, zeros, scales, splitk_iters, d_acc);
-                         blasMemcpy<<<104, 512, 0, stream>>>(c, d_acc, size_n * size_m, 1);
-                         mcFree(d_acc);
-                     }
-                 }
-             }
-	     else if (bit == 8){
-                 if (!isSplitk) {
-                     if (isBetaZero) {
-                         Hgemm_nn_128x32x128_8m1n8k_gptq_8bit<OP_N, OP_N, true, tileM, tileN, tileK, true, false>
-                             <<<dimGrid, dimBlock, 0, stream>>>(size_n, size_m, size_k, alpha, beta, b_q_weight, lda, dB_actual, ldb, c,
-                                                                c, ldc, zeros, scales, 1, nullptr, nullptr);
-                     } else {
-                         Hgemm_nn_128x32x128_8m1n8k_gptq_8bit<OP_N, OP_N, false, tileM, tileN, tileK, true, false>
-                             <<<dimGrid, dimBlock, 0, stream>>>(size_n, size_m, size_k, alpha, beta, b_q_weight, lda, dB_actual, ldb, c,
-                                                                c, ldc, zeros, scales);
-                     }
-                 } else {
-                     if (isBetaZero) {
-                         Hgemm_nn_128x32x128_8m1n8k_gptq_8bit<OP_N, OP_N, true, tileM, tileN, tileK, true, true>
-                             <<<dimGrid, dimBlock, 0, stream>>>(size_n, size_m, size_k, alpha, beta, b_q_weight, lda, dB_actual, ldb, c, c,
-                                                                ldc, zeros, scales, splitk_iters, c);
-                     } else {
-                         acc_type *d_acc;
-                         mcMallocAsync(reinterpret_cast<void **>(&d_acc), size_n * size_m * sizeof(acc_type), stream);
-                         blasMemcpy<<<104, 512, 0, stream>>>(d_acc, c, size_n * size_m, beta);
-                         Hgemm_nn_128x32x128_8m1n8k_gptq_8bit<OP_N, OP_N, false, tileM, tileN, tileK, true, true>
-                             <<<dimGrid, dimBlock, 0, stream>>>(size_n, size_m, size_k, alpha, beta, b_q_weight, lda, dB_actual, ldb, c, c,
-                                                                ldc, zeros, scales, splitk_iters, d_acc);
-                         blasMemcpy<<<104, 512, 0, stream>>>(c, d_acc, size_n * size_m, 1);
-                         mcFreeAsync(d_acc, stream);
-                     }
-                 }
-             }
-             if (b_q_perm != nullptr) {
-                 mcFreeAsync(dB_perm, stream);
-             }
+    if (trans_a == OP_N && trans_b == OP_N && size_n % 8 == 0 &&
+        size_k % 8 == 0) {
+      half* dB_perm;
+      if (b_q_perm != nullptr) {
+        mcMallocAsync((void**)&dB_perm, ldb * size_m * sizeof(input_type),
+                      stream);
+        const int threads_n1 = 128;
+        const int tileK1 = 128;
+        const int tileN1 = 8;
+        uint32_t gridx1 = (size_k - 1) / tileK1 + 1;
+        uint32_t gridy1 = (size_m - 1) / tileN1 + 1;
+        dim3 dimBlock1(threads_n1, 1, 1);
+        dim3 dimGrid1(gridx1, gridy1, 1);
+        perm_b<tileK1, tileN1><<<dimGrid1, dimBlock1, 0, stream>>>(
+            dB_perm, a, b_q_perm, size_k, size_m, ldb);
+      }
+      const half* dB_actual = (b_q_perm != nullptr ? dB_perm : a);
+      if (bit == 4) {
+        if (!isSplitk) {
+          if (isBetaZero) {
+            Hgemm_nn_128x32x128_8m1n8k_gptq_4bit<OP_N, OP_N, true, tileM, tileN,
+                                                 tileK, true, false>
+                <<<dimGrid, dimBlock, 0, stream>>>(
+                    size_n, size_m, size_k, alpha, beta, b_q_weight, lda,
+                    dB_actual, ldb, c, c, ldc, zeros, scales);
+          } else {
+            Hgemm_nn_128x32x128_8m1n8k_gptq_4bit<OP_N, OP_N, false, tileM,
+                                                 tileN, tileK, true, false>
+                <<<dimGrid, dimBlock, 0, stream>>>(
+                    size_n, size_m, size_k, alpha, beta, b_q_weight, lda,
+                    dB_actual, ldb, c, c, ldc, zeros, scales);
+          }
         } else {
-            printf("Parameters not supported!\n");
-            return;
+          if (isBetaZero) {
+            Hgemm_nn_128x32x128_8m1n8k_gptq_4bit<OP_N, OP_N, true, tileM, tileN,
+                                                 tileK, true, true>
+                <<<dimGrid, dimBlock, 0, stream>>>(
+                    size_n, size_m, size_k, alpha, beta, b_q_weight, lda,
+                    dB_actual, ldb, c, c, ldc, zeros, scales, splitk_iters, c);
+          } else {
+            acc_type* d_acc;
+            mcMalloc(reinterpret_cast<void**>(&d_acc),
+                     size_n * size_m * sizeof(acc_type));
+            blasMemcpy<<<104, 512, 0, stream>>>(d_acc, c, size_n * size_m,
+                                                beta);
+            Hgemm_nn_128x32x128_8m1n8k_gptq_4bit<OP_N, OP_N, false, tileM,
+                                                 tileN, tileK, true, true>
+                <<<dimGrid, dimBlock, 0, stream>>>(
+                    size_n, size_m, size_k, alpha, beta, b_q_weight, lda,
+                    dB_actual, ldb, c, c, ldc, zeros, scales, splitk_iters,
+                    d_acc);
+            blasMemcpy<<<104, 512, 0, stream>>>(c, d_acc, size_n * size_m, 1);
+            mcFree(d_acc);
+          }
         }
-  }
-  else if((bit == 4 || bit == 8) && v_sign){
-         constexpr int m_per_thread = 4;
-         uint32_t* zeros = const_cast<uint32_t*>(b_gptq_qzeros);
-         half* scales = const_cast<half*>(b_gptq_scales);
-         auto kernel_testing = [&](int bx, int sk) -> bool {
-             return call_kernel(a, b_q_weight, zeros, scales, c, size_n, size_m, size_k, size_n, size_n, bx, sk, bit, b_q_perm);
-         };
-         if (bit == 4){
-             auto& sl_warmup = hgemv_selector::GemvSelectorHolder<QUANT_GROUP,8,m_per_thread>::selector(size_n, size_m, size_k);
-             if (sl_warmup.valid()) {
-                 if (!sl_warmup.selected()) {
-                     sl_warmup.select_in_warmup(kernel_testing);
-                     mcMemset(c, 0, size_n * size_m * sizeof(half));
-                     sl_warmup.run(kernel_testing);
-                 } else {
-                     sl_warmup.run(kernel_testing);
-                 }
-             }
-         }
-         else {
-             auto& sl_warmup = hgemv_selector::GemvSelectorHolder<QUANT_GROUP,4,m_per_thread>::selector(size_n, size_m, size_k);
-             if (sl_warmup.valid()) {
-                 if (!sl_warmup.selected()) {
-                     sl_warmup.select_in_warmup(kernel_testing);
-                     mcMemset(c, 0, size_n * size_m * sizeof(half));
-                     sl_warmup.run(kernel_testing);
-                 } else {
-                     sl_warmup.run(kernel_testing);
-                 }
-             }
-         }
-  }
-  else {
+      } else if (bit == 8) {
+        if (!isSplitk) {
+          if (isBetaZero) {
+            Hgemm_nn_128x32x128_8m1n8k_gptq_8bit<OP_N, OP_N, true, tileM, tileN,
+                                                 tileK, true, false>
+                <<<dimGrid, dimBlock, 0, stream>>>(
+                    size_n, size_m, size_k, alpha, beta, b_q_weight, lda,
+                    dB_actual, ldb, c, c, ldc, zeros, scales, 1, nullptr,
+                    nullptr);
+          } else {
+            Hgemm_nn_128x32x128_8m1n8k_gptq_8bit<OP_N, OP_N, false, tileM,
+                                                 tileN, tileK, true, false>
+                <<<dimGrid, dimBlock, 0, stream>>>(
+                    size_n, size_m, size_k, alpha, beta, b_q_weight, lda,
+                    dB_actual, ldb, c, c, ldc, zeros, scales);
+          }
+        } else {
+          if (isBetaZero) {
+            Hgemm_nn_128x32x128_8m1n8k_gptq_8bit<OP_N, OP_N, true, tileM, tileN,
+                                                 tileK, true, true>
+                <<<dimGrid, dimBlock, 0, stream>>>(
+                    size_n, size_m, size_k, alpha, beta, b_q_weight, lda,
+                    dB_actual, ldb, c, c, ldc, zeros, scales, splitk_iters, c);
+          } else {
+            acc_type* d_acc;
+            mcMallocAsync(reinterpret_cast<void**>(&d_acc),
+                          size_n * size_m * sizeof(acc_type), stream);
+            blasMemcpy<<<104, 512, 0, stream>>>(d_acc, c, size_n * size_m,
+                                                beta);
+            Hgemm_nn_128x32x128_8m1n8k_gptq_8bit<OP_N, OP_N, false, tileM,
+                                                 tileN, tileK, true, true>
+                <<<dimGrid, dimBlock, 0, stream>>>(
+                    size_n, size_m, size_k, alpha, beta, b_q_weight, lda,
+                    dB_actual, ldb, c, c, ldc, zeros, scales, splitk_iters,
+                    d_acc);
+            blasMemcpy<<<104, 512, 0, stream>>>(c, d_acc, size_n * size_m, 1);
+            mcFreeAsync(d_acc, stream);
+          }
+        }
+      }
+      if (b_q_perm != nullptr) {
+        mcFreeAsync(dB_perm, stream);
+      }
+    } else {
+      printf("Parameters not supported!\n");
+      return;
+    }
+  } else if ((bit == 4 || bit == 8) && v_sign) {
+    constexpr int m_per_thread = 4;
+    uint32_t* zeros = const_cast<uint32_t*>(b_gptq_qzeros);
+    half* scales = const_cast<half*>(b_gptq_scales);
+    auto kernel_testing = [&](int bx, int sk) -> bool {
+      return call_kernel(a, b_q_weight, zeros, scales, c, size_n, size_m,
+                         size_k, size_n, size_n, bx, sk, bit, b_q_perm);
+    };
+    if (bit == 4) {
+      auto& sl_warmup = hgemv_selector::GemvSelectorHolder<
+          QUANT_GROUP, 8, m_per_thread>::selector(size_n, size_m, size_k);
+      if (sl_warmup.valid()) {
+        if (!sl_warmup.selected()) {
+          sl_warmup.select_in_warmup(kernel_testing);
+          mcMemset(c, 0, size_n * size_m * sizeof(half));
+          sl_warmup.run(kernel_testing);
+        } else {
+          sl_warmup.run(kernel_testing);
+        }
+      }
+    } else {
+      auto& sl_warmup = hgemv_selector::GemvSelectorHolder<
+          QUANT_GROUP, 4, m_per_thread>::selector(size_n, size_m, size_k);
+      if (sl_warmup.valid()) {
+        if (!sl_warmup.selected()) {
+          sl_warmup.select_in_warmup(kernel_testing);
+          mcMemset(c, 0, size_n * size_m * sizeof(half));
+          sl_warmup.run(kernel_testing);
+        } else {
+          sl_warmup.run(kernel_testing);
+        }
+      }
+    }
+  } else {
     dim3 blockDim, gridDim;
     blockDim.x = BLOCK_KN_SIZE;
     blockDim.y = 1;
@@ -1014,8 +1051,8 @@ void gemm_half_q_half_cuda_part(const half* a, const uint32_t* b_q_weight,
 
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
     kernel<<<gridDim, blockDim, 0, stream>>>(a, b_q_weight, b_gptq_qzeros,
-                                            b_gptq_scales, c, size_m, size_n,
-                                            size_k, groups, b_q_perm);
+                                             b_gptq_scales, c, size_m, size_n,
+                                             size_k, groups, b_q_perm);
   }
 }
 
@@ -1730,256 +1767,243 @@ void reconstruct_gptq(const uint32_t* b_q_weight, const uint32_t* b_gptq_qzeros,
                                            width, groups, out);
 }
 
-
 template <int tileK, int tileM, typename dtype>
-__global__ void perm_a(dtype *output, const dtype *input, const int *idx, int k, int m, int lda) {
-    int tid = threadIdx.x;
-    int row = blockIdx.x * tileK + tid;
-    int col_st = blockIdx.y * tileM;
-    if (row < k) {
-        int index = idx[row];
-        #pragma unroll tileM
-        for (int i = 0; i < tileM; ++i) {
-            int col = col_st + i;
-            if (col < m) {
-                output[row + lda * col] = input[index + lda * col];
-            }
-        }
+__global__ void perm_a(dtype* output, const dtype* input, const int* idx, int k,
+                       int m, int lda) {
+  int tid = threadIdx.x;
+  int row = blockIdx.x * tileK + tid;
+  int col_st = blockIdx.y * tileM;
+  if (row < k) {
+    int index = idx[row];
+#pragma unroll tileM
+    for (int i = 0; i < tileM; ++i) {
+      int col = col_st + i;
+      if (col < m) {
+        output[row + lda * col] = input[index + lda * col];
+      }
     }
+  }
 }
 
-template <typename input_tp, const vllm::ScalarTypeId w_type_id, typename output_tp, typename quant_packed_tp>
-bool launch_gemm_gptq(int m,
-                      int n,
-                      int k,
-                      int quant_group,
-                      const input_tp *dA,
-                      int lda,
-                      const quant_packed_tp *dB,
-                      int ldb,
-                      output_tp *dC,
-		                  float *dC_temp,
-                      int ldc,
-                      quant_packed_tp *d_zeros,
-                      input_tp *d_scales,
-                      const cudaStream_t stream,
-                      int chunks = 1) {
-    using namespace hgemm_marlin_gptq;
-    if(n % 16 != 0) {
-        printf("n %% 16 != 0, n = %d\n", n);
-        return false;
-    }
-    if(k % 32 != 0) {
-        printf("k %% 32 != 0, k = %d\n", k);
-        return false;
-    }
-    //const vllm::ScalarTypeId w_type_id = vllm::kU4B8.id();
-    const int THREADS = 256;
-    int BLOCKS_M = div_ceil(m, SLICE_M);
-    if(BLOCKS_M >= MAX_BLOCKS_M && BLOCKS_M % MAX_BLOCKS_M != 0) {
-        printf("Error: input m is error, m = %d, blocks_m = %d\n", m, BLOCKS_M);
-        return false;
-    }
-    if (BLOCKS_M > MAX_BLOCKS_M) BLOCKS_M = MAX_BLOCKS_M;
-    int BLOCKS_N = 8;
-    //int BLOCKS_K = 4;
-    //It is better let TILE_K = quant_group
-    //But if quant_group is too large, a quant_group can be divided into two parts
-    int BLOCKS_K = quant_group / SLICE_K;
-    if (quant_group > 128) BLOCKS_K = 128 / SLICE_K;
+template <typename input_tp, const vllm::ScalarTypeId w_type_id,
+          typename output_tp, typename quant_packed_tp>
+bool launch_gemm_gptq(int m, int n, int k, int quant_group, const input_tp* dA,
+                      int lda, const quant_packed_tp* dB, int ldb,
+                      output_tp* dC, float* dC_temp, int ldc,
+                      quant_packed_tp* d_zeros, input_tp* d_scales,
+                      const cudaStream_t stream, int chunks = 1) {
+  using namespace hgemm_marlin_gptq;
+  if (n % 16 != 0) {
+    printf("n %% 16 != 0, n = %d\n", n);
+    return false;
+  }
+  if (k % 32 != 0) {
+    printf("k %% 32 != 0, k = %d\n", k);
+    return false;
+  }
+  // const vllm::ScalarTypeId w_type_id = vllm::kU4B8.id();
+  const int THREADS = 256;
+  int BLOCKS_M = div_ceil(m, SLICE_M);
+  if (BLOCKS_M >= MAX_BLOCKS_M && BLOCKS_M % MAX_BLOCKS_M != 0) {
+    printf("Error: input m is error, m = %d, blocks_m = %d\n", m, BLOCKS_M);
+    return false;
+  }
+  if (BLOCKS_M > MAX_BLOCKS_M) BLOCKS_M = MAX_BLOCKS_M;
+  int BLOCKS_N = 8;
+  // int BLOCKS_K = 4;
+  // It is better let TILE_K = quant_group
+  // But if quant_group is too large, a quant_group can be divided into two
+  // parts
+  int BLOCKS_K = quant_group / SLICE_K;
+  if (quant_group > 128) BLOCKS_K = 128 / SLICE_K;
 
-    if (BLOCKS_M == 1 || BLOCKS_M == 2) {
-        BLOCKS_N = 16;
-    }
-    const bool HAS_ACT_ORDER = false;
-    //const bool HAS_ZP = false;
-    const bool HAS_ZP = (w_type_id == vllm::kU4.id()) || (w_type_id == vllm::kU8.id());
-    int *g_idx = nullptr;
-    bool HAS_NK_PRED = true;
-    bool HAS_M_PRED = true;
-    //int TILE_N = BLOCKS_N * SLICE_N;
-    //int TILE_K = BLOCKS_K * SLICE_K;
-    //int TILE_M = BLOCKS_M * SLICE_M;
-    if (n % TILE_N == 0 && k % TILE_K == 0) {
-        HAS_NK_PRED = false;
-    }
-    if (m % TILE_M == 0) {
-        HAS_M_PRED = false;
-    }
+  if (BLOCKS_M == 1 || BLOCKS_M == 2) {
+    BLOCKS_N = 16;
+  }
+  const bool HAS_ACT_ORDER = false;
+  // const bool HAS_ZP = false;
+  const bool HAS_ZP =
+      (w_type_id == vllm::kU4.id()) || (w_type_id == vllm::kU8.id());
+  int* g_idx = nullptr;
+  bool HAS_NK_PRED = true;
+  bool HAS_M_PRED = true;
+  // int TILE_N = BLOCKS_N * SLICE_N;
+  // int TILE_K = BLOCKS_K * SLICE_K;
+  // int TILE_M = BLOCKS_M * SLICE_M;
+  if (n % TILE_N == 0 && k % TILE_K == 0) {
+    HAS_NK_PRED = false;
+  }
+  if (m % TILE_M == 0) {
+    HAS_M_PRED = false;
+  }
 
-#define LAUNCH_GPTQ(threads, bm, bn, bk, has_act_order, has_zp, has_nk_pred, has_m_pred) \
-    else if (THREADS == threads && BLOCKS_M == bm && BLOCKS_N == bn \
-        && BLOCKS_K == bk  && HAS_ACT_ORDER == has_act_order \
-        && HAS_ZP == has_zp \
-        && HAS_M_PRED == has_m_pred && HAS_NK_PRED == has_nk_pred) { \
-            launch_gemm_gptq_kernel<input_tp, w_type_id, \
-                    threads, bm, bn, bk, has_act_order, has_zp, has_m_pred, has_nk_pred>( \
-                    (const PackTypeInt4*)dA, \
-                    (const PackTypeInt4*)dB, \
-                    (PackTypeInt4*)dC, \
-                    (PackTypeInt4*)dC_temp, \
-                    (const PackTypeInt4*)d_scales, \
-                    (const PackTypeInt4*)d_zeros, \
-                    nullptr, m, n, k, quant_group, chunks,\
-                    stream); \
-    }
+#define LAUNCH_GPTQ(threads, bm, bn, bk, has_act_order, has_zp, has_nk_pred, \
+                    has_m_pred)                                              \
+  else if (THREADS == threads && BLOCKS_M == bm && BLOCKS_N == bn &&         \
+           BLOCKS_K == bk && HAS_ACT_ORDER == has_act_order &&               \
+           HAS_ZP == has_zp && HAS_M_PRED == has_m_pred &&                   \
+           HAS_NK_PRED == has_nk_pred) {                                     \
+    launch_gemm_gptq_kernel<input_tp, w_type_id, threads, bm, bn, bk,        \
+                            has_act_order, has_zp, has_m_pred, has_nk_pred>( \
+        (const PackTypeInt4*)dA, (const PackTypeInt4*)dB, (PackTypeInt4*)dC, \
+        (PackTypeInt4*)dC_temp, (const PackTypeInt4*)d_scales,               \
+        (const PackTypeInt4*)d_zeros, nullptr, m, n, k, quant_group, chunks, \
+        stream);                                                             \
+  }
 
-#define LAUNCH_GPTQ_K(bk, has_act_order, has_zp, has_nk_pred, has_m_pred) \
-    LAUNCH_GPTQ(256, 1, 16, bk, has_act_order, has_zp, has_nk_pred, has_m_pred) \
-    LAUNCH_GPTQ(256, 2, 16, bk, has_act_order, has_zp, has_nk_pred, has_m_pred) \
-    LAUNCH_GPTQ(256, 3, 8, bk, has_act_order, has_zp, has_nk_pred, has_m_pred) \
-    LAUNCH_GPTQ(256, 4, 8, bk, has_act_order, has_zp, has_nk_pred, has_m_pred)
+#define LAUNCH_GPTQ_K(bk, has_act_order, has_zp, has_nk_pred, has_m_pred)     \
+  LAUNCH_GPTQ(256, 1, 16, bk, has_act_order, has_zp, has_nk_pred, has_m_pred) \
+  LAUNCH_GPTQ(256, 2, 16, bk, has_act_order, has_zp, has_nk_pred, has_m_pred) \
+  LAUNCH_GPTQ(256, 3, 8, bk, has_act_order, has_zp, has_nk_pred, has_m_pred)  \
+  LAUNCH_GPTQ(256, 4, 8, bk, has_act_order, has_zp, has_nk_pred, has_m_pred)
 
-#define LAUNCH_GPTQ_ZP(has_zp, has_nk_pred, has_m_pred) \
-    LAUNCH_GPTQ_K(1, false, has_zp, has_nk_pred, has_m_pred) \
-    LAUNCH_GPTQ_K(2, false, has_zp, has_nk_pred, has_m_pred) \
-    LAUNCH_GPTQ_K(4, false, has_zp, has_nk_pred, has_m_pred) \
-    LAUNCH_GPTQ_K(8, false, has_zp, has_nk_pred, has_m_pred)
+#define LAUNCH_GPTQ_ZP(has_zp, has_nk_pred, has_m_pred)    \
+  LAUNCH_GPTQ_K(1, false, has_zp, has_nk_pred, has_m_pred) \
+  LAUNCH_GPTQ_K(2, false, has_zp, has_nk_pred, has_m_pred) \
+  LAUNCH_GPTQ_K(4, false, has_zp, has_nk_pred, has_m_pred) \
+  LAUNCH_GPTQ_K(8, false, has_zp, has_nk_pred, has_m_pred)
 
 #define LAUNCH_GPTQ_PRED(has_nk_pred, has_m_pred) \
-    LAUNCH_GPTQ_ZP(false, has_nk_pred, has_m_pred) 
-    //LAUNCH_GPTQ_ZP(true, has_nk_pred, has_m_pred)
+  LAUNCH_GPTQ_ZP(false, has_nk_pred, has_m_pred)
+  // LAUNCH_GPTQ_ZP(true, has_nk_pred, has_m_pred)
 
-    if (false) {
+  if (false) {
+  }
+  LAUNCH_GPTQ_PRED(true, true)
+  LAUNCH_GPTQ_PRED(true, false)
+  LAUNCH_GPTQ_PRED(false, true)
+  LAUNCH_GPTQ_PRED(false, false)
+  else {
+    printf(
+        "BLOCKS_M=%d, BLOCKS_N=%d, BLOCKS_k=%d, THREADS=%d, HAS_ACT_ORDER=%d, "
+        "HAS_ZP=%d, quant_group=%d, HAS_M_PRED=%d, HAS_NK_PRED=%d is not "
+        "supported\n",
+        BLOCKS_M, BLOCKS_N, BLOCKS_K, THREADS, HAS_ACT_ORDER, HAS_ZP,
+        quant_group, HAS_M_PRED, HAS_NK_PRED);
+    return false;
+  }
 
-    }
-    LAUNCH_GPTQ_PRED(true, true)
-    LAUNCH_GPTQ_PRED(true, false)
-    LAUNCH_GPTQ_PRED(false, true)
-    LAUNCH_GPTQ_PRED(false, false)
-    else {
-        printf("BLOCKS_M=%d, BLOCKS_N=%d, BLOCKS_k=%d, THREADS=%d, HAS_ACT_ORDER=%d, HAS_ZP=%d, quant_group=%d, HAS_M_PRED=%d, HAS_NK_PRED=%d is not supported\n",
-        BLOCKS_M, BLOCKS_N, BLOCKS_K, THREADS, HAS_ACT_ORDER, HAS_ZP, quant_group, HAS_M_PRED, HAS_NK_PRED);
-        return false;
-    }
-
-    return true;
+  return true;
 }
 
 #ifdef BF16_HIGH_PRECISION
-__global__ void vectorized_elementwise_fp32tobf16(float* input, __maca_bfloat16* output, int N) {
-    uint64_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-    if (tid < N) {
-        // printf("tid = %d, input = %f, output = %f\n", tid, input[tid], (float)(__maca_bfloat16)input[tid]);
-        *(__maca_bfloat16*)(output+tid) = (__maca_bfloat16)input[tid];
-    }
+__global__ void vectorized_elementwise_fp32tobf16(float* input,
+                                                  __maca_bfloat16* output,
+                                                  int N) {
+  uint64_t tid = threadIdx.x + blockIdx.x * blockDim.x;
+  if (tid < N) {
+    // printf("tid = %d, input = %f, output = %f\n", tid, input[tid],
+    // (float)(__maca_bfloat16)input[tid]);
+    *(__maca_bfloat16*)(output + tid) = (__maca_bfloat16)input[tid];
+  }
 }
 #else
-__global__ void vectorized_elementwise_fp16tobf16(__maca_bfloat16* input, int N) {
-    uint64_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-    if (tid < N) {
-        input[tid] = (float)(*(half*)(input+tid));
-    }
+__global__ void vectorized_elementwise_fp16tobf16(__maca_bfloat16* input,
+                                                  int N) {
+  uint64_t tid = threadIdx.x + blockIdx.x * blockDim.x;
+  if (tid < N) {
+    input[tid] = (float)(*(half*)(input + tid));
+  }
 }
 #endif
 
+template <typename input_tp, const vllm::ScalarTypeId w_type_id,
+          typename output_tp, typename quant_packed_tp>
+bool launch_gemm(int m, int n, int k, int quant_group, const input_tp* dA,
+                 int lda, const quant_packed_tp* dB, int ldb, output_tp* dC,
+                 float* dC_temp, int ldc, quant_packed_tp* d_zeros,
+                 input_tp* d_scales, const int* g_idx, input_tp* perm_space,
+                 bool is_gptq = true) {
+  using namespace hgemm_marlin_gptq;
+  // constexpr int max_blocks_m = 4;
+  int total_m_blocks = div_ceil(m, SLICE_M);
+  int chunks = total_m_blocks / MAX_BLOCKS_M;
+  int rest_blocks_m = total_m_blocks % MAX_BLOCKS_M;
+  // printf("m=%d,n=%d,k=%d,lda=%d,ldb=%d,ldc=%d,total_m_blocks=%d,chunks=%d,rest_blocks_m=%d\n",
+  //     m, n, k, lda, ldb, ldc, total_m_blocks, chunks, rest_blocks_m
+  // );
+  const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+  // input_tp *dA_perm;
+  if (g_idx != nullptr) {
+    // mcMalloc(reinterpret_cast<void **>(&dA_perm), k * m * sizeof(input_tp));
+    // mcMallocAsync(reinterpret_cast<void **>(&dA_perm), k * m *
+    // sizeof(input_tp), stream);
+    const int threads = 256;
+    const int tileK1 = 256;
+    const int tileM1 = 16;
+    uint32_t gridx1 = (k + tileK1 - 1) / tileK1;
+    uint32_t gridy1 = (m + tileM1 - 1) / tileM1;
+    dim3 dimBlock1(threads, 1, 1);
+    dim3 dimGrid1(gridx1, gridy1, 1);
+    perm_a<tileK1, tileM1, input_tp>
+        <<<dimGrid1, dimBlock1, 0, stream>>>(perm_space, dA, g_idx, k, m, k);
+  }
+  const input_tp* dA_actual = (g_idx != nullptr ? perm_space : dA);
+  bool ret = true;
+  if (chunks > 0) {
+    int real_m = m > chunks * MAX_BLOCKS_M * SLICE_M
+                     ? chunks * MAX_BLOCKS_M * SLICE_M
+                     : m;
+    if (is_gptq) {
+      ret = launch_gemm_gptq<input_tp, w_type_id, output_tp, quant_packed_tp>(
+          real_m, n, k, quant_group, dA_actual, lda, dB, ldb, dC, dC_temp, ldc,
+          d_zeros, d_scales, stream, chunks);
+    }
+  }
+  if (rest_blocks_m > 0) {
+    int m_offset = chunks * MAX_BLOCKS_M * SLICE_M;
+    if (is_gptq) {
+      ret = ret &&
+            launch_gemm_gptq<input_tp, w_type_id, output_tp, quant_packed_tp>(
+                m - m_offset, n, k, quant_group, dA_actual + lda * m_offset,
+                lda, dB, ldb, dC + ldc * m_offset, dC_temp, ldc, d_zeros,
+                d_scales, stream, 1);
+    }
+  }
 
-template <typename input_tp, const vllm::ScalarTypeId w_type_id, typename output_tp, typename quant_packed_tp>
-bool launch_gemm(int m,
-                int n,
-                int k,
-                int quant_group,
-                const input_tp *dA,
-                int lda,
-                const quant_packed_tp *dB,
-                int ldb,
-                output_tp *dC,
-                float *dC_temp,
-                int ldc,
-                quant_packed_tp *d_zeros,
-                input_tp *d_scales,
-                const int* g_idx,
-                input_tp *perm_space,
-                bool is_gptq = true) {
-    using namespace hgemm_marlin_gptq;
-    //constexpr int max_blocks_m = 4;
-    int total_m_blocks = div_ceil(m, SLICE_M);
-    int chunks = total_m_blocks / MAX_BLOCKS_M;
-    int rest_blocks_m = total_m_blocks % MAX_BLOCKS_M;
-    // printf("m=%d,n=%d,k=%d,lda=%d,ldb=%d,ldc=%d,total_m_blocks=%d,chunks=%d,rest_blocks_m=%d\n",
-    //     m, n, k, lda, ldb, ldc, total_m_blocks, chunks, rest_blocks_m
-    // );
-    const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-    //input_tp *dA_perm;
-    if (g_idx != nullptr) {
-        //mcMalloc(reinterpret_cast<void **>(&dA_perm), k * m * sizeof(input_tp));
-        //mcMallocAsync(reinterpret_cast<void **>(&dA_perm), k * m * sizeof(input_tp), stream);
-        const int threads = 256;
-        const int tileK1 = 256;
-        const int tileM1 = 16;
-        uint32_t gridx1 = (k + tileK1 - 1) / tileK1;
-        uint32_t gridy1 = (m + tileM1 - 1) / tileM1;
-        dim3 dimBlock1(threads, 1, 1);
-        dim3 dimGrid1(gridx1, gridy1, 1);
-        perm_a<tileK1, tileM1, input_tp><<<dimGrid1, dimBlock1, 0, stream>>>(perm_space, dA, g_idx, k, m, k);
-    }
-    const input_tp *dA_actual = (g_idx != nullptr ? perm_space : dA);
-    bool ret = true;
-    if (chunks > 0) {
-        int real_m = m > chunks * MAX_BLOCKS_M * SLICE_M ? chunks * MAX_BLOCKS_M * SLICE_M : m;
-        if (is_gptq) {
-            ret = launch_gemm_gptq<input_tp, w_type_id, output_tp, quant_packed_tp>(
-                    real_m, n, k, quant_group, 
-                    dA_actual, lda, 
-                    dB, ldb, 
-                    dC, dC_temp, ldc, 
-                    d_zeros, d_scales, stream, chunks);
-        }
-    }
-    if (rest_blocks_m > 0) {
-        int m_offset = chunks * MAX_BLOCKS_M * SLICE_M;
-        if (is_gptq) {
-            ret = ret && launch_gemm_gptq<input_tp, w_type_id, output_tp, quant_packed_tp>(
-                            m - m_offset, n, k, quant_group, 
-                            dA_actual + lda * m_offset, lda, 
-                            dB, ldb, 
-                            dC + ldc * m_offset, dC_temp, ldc, 
-                            d_zeros, d_scales, stream, 1);
-        }
-    }
-
-//#if 0
-    if constexpr(std::is_same_v<input_tp, __maca_bfloat16>) {
-        uint64_t size = m * n;
-        uint64_t block = 512;
-        uint64_t grid = div_ceil(size, block);
-	    vectorized_elementwise_fp32tobf16<<<grid, block, 0, stream>>>((float*)dC_temp, (input_tp*)dC, size);
-    }
+  // #if 0
+  if constexpr (std::is_same_v<input_tp, __maca_bfloat16>) {
+    uint64_t size = m * n;
+    uint64_t block = 512;
+    uint64_t grid = div_ceil(size, block);
+    vectorized_elementwise_fp32tobf16<<<grid, block, 0, stream>>>(
+        (float*)dC_temp, (input_tp*)dC, size);
+  }
 #if 0
-    #ifdef BF16_HIGH_PRECISION
+  #ifdef BF16_HIGH_PRECISION
 	  vectorized_elementwise_fp32tobf16<<<grid, block, 0, stream>>>((float*)dC_temp, (input_tp*)dC, size);
-    #else
+  #else
           vectorized_elementwise_fp16tobf16<<<grid, block, 0, stream>>>((input_tp*)dC, size);
-    #endif
+  #endif
 #endif
 
-    return ret;
+  return ret;
 }
 
-void gemm_bf16_q_bf16_cuda(const __maca_bfloat16* a,
-		           const uint32_t* b_q_weight,
-			   const uint32_t* b_gptq_qzeros,
-			   const __maca_bfloat16* b_gptq_scales, const int* b_g_idx,
-			   __maca_bfloat16* c, float* temp_space, int size_m, int size_n, int size_k,
-			   int bit, int group_size, __maca_bfloat16* perm_space) {
+void gemm_bf16_q_bf16_cuda(const __maca_bfloat16* a, const uint32_t* b_q_weight,
+                           const uint32_t* b_gptq_qzeros,
+                           const __maca_bfloat16* b_gptq_scales,
+                           const int* b_g_idx, __maca_bfloat16* c,
+                           float* temp_space, int size_m, int size_n,
+                           int size_k, int bit, int group_size,
+                           __maca_bfloat16* perm_space) {
   bool opt = ((group_size == 128) || (group_size == 64));
   using scalar_t = __maca_bfloat16;
   if ((bit == 4) && opt) {
-	  uint32_t* zeros = const_cast<uint32_t*>(b_gptq_qzeros);
-	  scalar_t* scales = const_cast<scalar_t*>(b_gptq_scales);
-	  launch_gemm<scalar_t, vllm::kU4B8.id(), scalar_t, quant_packed_type>(size_m, size_n, size_k,
-			  group_size, a, size_k, b_q_weight, size_n, c, temp_space, size_n, zeros, scales,
-			  b_g_idx, perm_space, true);
+    uint32_t* zeros = const_cast<uint32_t*>(b_gptq_qzeros);
+    scalar_t* scales = const_cast<scalar_t*>(b_gptq_scales);
+    launch_gemm<scalar_t, vllm::kU4B8.id(), scalar_t, quant_packed_type>(
+        size_m, size_n, size_k, group_size, a, size_k, b_q_weight, size_n, c,
+        temp_space, size_n, zeros, scales, b_g_idx, perm_space, true);
   } else if ((bit == 8) && opt) {
-          uint32_t* zeros = const_cast<uint32_t*>(b_gptq_qzeros);
-          scalar_t* scales = const_cast<scalar_t*>(b_gptq_scales);
-          launch_gemm<scalar_t, vllm::kU8B128.id(), scalar_t, quant_packed_type>(size_m, size_n, size_k,
-                          group_size, a, size_k, b_q_weight, size_n, c, temp_space, size_n, zeros, scales,
-                          b_g_idx, perm_space, true);
+    uint32_t* zeros = const_cast<uint32_t*>(b_gptq_qzeros);
+    scalar_t* scales = const_cast<scalar_t*>(b_gptq_scales);
+    launch_gemm<scalar_t, vllm::kU8B128.id(), scalar_t, quant_packed_type>(
+        size_m, size_n, size_k, group_size, a, size_k, b_q_weight, size_n, c,
+        temp_space, size_n, zeros, scales, b_g_idx, perm_space, true);
   } else {
-	  printf("Only supported bit-4 , bit-8 of block_size 128 or 64 now!\n");
+    printf("Only supported bit-4 , bit-8 of block_size 128 or 64 now!\n");
   }
-
 }
 void gemm_half_q_half_cuda(cublasHandle_t cublas_handle, const half* a,
                            const uint32_t* b_q_weight,
@@ -1991,27 +2015,27 @@ void gemm_half_q_half_cuda(cublasHandle_t cublas_handle, const half* a,
   bool use_reconstruct;
   bool opt = ((group_size == 128) || (group_size == 64));
   if ((bit == 4) && opt) {
-          if ((size_m <= 2) && (group_size == 128)) {
-                  gemm_half_q_half_cuda_part(a, b_q_weight, b_gptq_qzeros, b_gptq_scales,
-                                             b_g_idx, c, size_m, size_n, size_k,
-                                             BLOCK_M_SIZE_MAX, groups, bit, true, true);
-          } else {
-                  uint32_t* zeros = const_cast<uint32_t*>(b_gptq_qzeros);
-                  half* scales = const_cast<half*>(b_gptq_scales);
-                  launch_gemm<input_type, vllm::kU4B8.id(), output_type, quant_packed_type>(size_m, size_n, size_k,
-                                  group_size, a, size_k, b_q_weight, size_n, c, nullptr, size_n, zeros, scales,
-                                  b_g_idx, perm_space, true);
-          }
+    if ((size_m <= 2) && (group_size == 128)) {
+      gemm_half_q_half_cuda_part(a, b_q_weight, b_gptq_qzeros, b_gptq_scales,
+                                 b_g_idx, c, size_m, size_n, size_k,
+                                 BLOCK_M_SIZE_MAX, groups, bit, true, true);
+    } else {
+      uint32_t* zeros = const_cast<uint32_t*>(b_gptq_qzeros);
+      half* scales = const_cast<half*>(b_gptq_scales);
+      launch_gemm<input_type, vllm::kU4B8.id(), output_type, quant_packed_type>(
+          size_m, size_n, size_k, group_size, a, size_k, b_q_weight, size_n, c,
+          nullptr, size_n, zeros, scales, b_g_idx, perm_space, true);
+    }
   } else if ((bit == 8) && opt) {
-          uint32_t* zeros = const_cast<uint32_t*>(b_gptq_qzeros);
-          half* scales = const_cast<half*>(b_gptq_scales);
-          launch_gemm<input_type, vllm::kU8B128.id(), output_type, quant_packed_type>(size_m, size_n, size_k,
-                          group_size, a, size_k, b_q_weight, size_n, c, nullptr, size_n, zeros, scales,
-                          b_g_idx, perm_space, true);
+    uint32_t* zeros = const_cast<uint32_t*>(b_gptq_qzeros);
+    half* scales = const_cast<half*>(b_gptq_scales);
+    launch_gemm<input_type, vllm::kU8B128.id(), output_type, quant_packed_type>(
+        size_m, size_n, size_k, group_size, a, size_k, b_q_weight, size_n, c,
+        nullptr, size_n, zeros, scales, b_g_idx, perm_space, true);
   } else {
     if (use_exllama) {
       use_reconstruct = ((bit == 8 && size_m > MAX_Q_GEMM_ROWS_8BIT) ||
-                        (bit != 8 && size_m > MAX_Q_GEMM_ROWS));
+                         (bit != 8 && size_m > MAX_Q_GEMM_ROWS));
     } else {
       // The 2/3-bit kernels are somehow slower than dequant + gemm baseline, so
       // we disabled them for now.
@@ -2024,13 +2048,13 @@ void gemm_half_q_half_cuda(cublasHandle_t cublas_handle, const half* a,
                             temp_dq, size_k, size_n, groups, bit);
       } else {
         reconstruct_gptq(b_q_weight, b_gptq_qzeros, b_gptq_scales, b_g_idx,
-                        temp_dq, size_k, size_n, groups, bit);
+                         temp_dq, size_k, size_n, groups, bit);
       }
 
       const half alpha = __float2half(1.0f);
       const half beta = __float2half(0.0f);
-      cublasHgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N, size_n, size_m, size_k,
-                  &alpha, temp_dq, size_n, a, size_k, &beta, c, size_n);
+      cublasHgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N, size_n, size_m,
+                  size_k, &alpha, temp_dq, size_n, a, size_k, &beta, c, size_n);
     } else if (use_exllama) {
       // Quantized matmul
       int max_chunks = size_m / BLOCK_M_SIZE_MAX;
@@ -2038,30 +2062,30 @@ void gemm_half_q_half_cuda(cublasHandle_t cublas_handle, const half* a,
       int last_chunk_size = size_m - last_chunk;
 
       bool m_sign;
-            bool v_sign;
-            if (group_size == 128) {
-                    m_sign = size_m <= 50;
-                    v_sign = size_m <= 4;
-            } else {
-                    m_sign = false;
-                    v_sign = false;
-            }
+      bool v_sign;
+      if (group_size == 128) {
+        m_sign = size_m <= 50;
+        v_sign = size_m <= 4;
+      } else {
+        m_sign = false;
+        v_sign = false;
+      }
 
       if (max_chunks) {
-        gemm_half_q_half_cuda_part(a, b_q_weight, b_gptq_qzeros, b_gptq_scales,
-                                  b_g_idx, c, last_chunk, size_n, size_k,
-                                  BLOCK_M_SIZE_MAX, groups, bit, m_sign, v_sign);
+        gemm_half_q_half_cuda_part(
+            a, b_q_weight, b_gptq_qzeros, b_gptq_scales, b_g_idx, c, last_chunk,
+            size_n, size_k, BLOCK_M_SIZE_MAX, groups, bit, m_sign, v_sign);
       }
 
       if (last_chunk_size) {
-        gemm_half_q_half_cuda_part(a + last_chunk * size_k, b_q_weight,
-                                  b_gptq_qzeros, b_gptq_scales, b_g_idx,
-                                  c + last_chunk * size_n, last_chunk_size,
-                                  size_n, size_k, last_chunk_size, groups, bit,  m_sign, v_sign);
+        gemm_half_q_half_cuda_part(
+            a + last_chunk * size_k, b_q_weight, b_gptq_qzeros, b_gptq_scales,
+            b_g_idx, c + last_chunk * size_n, last_chunk_size, size_n, size_k,
+            last_chunk_size, groups, bit, m_sign, v_sign);
       }
     } else {
       gemm_half_q_half_alt(a, b_q_weight, b_gptq_qzeros, b_gptq_scales, b_g_idx,
-                          c, size_m, size_n, size_k, bit);
+                           c, size_m, size_n, size_k, bit);
     }
   }
 }
@@ -2359,19 +2383,17 @@ torch::Tensor gptq_gemm(torch::Tensor a, torch::Tensor b_q_weight,
       {b_q_weight.size(0) * 32 / bit, b_q_weight.size(1)}, options);
 
   if (dtype_bf16) {
-      vllm::gptq::gemm_bf16_q_bf16_cuda(
+    vllm::gptq::gemm_bf16_q_bf16_cuda(
         (const __maca_bfloat16*)a.data_ptr(),
         (const uint32_t*)b_q_weight.data_ptr(),
         (const uint32_t*)b_gptq_qzeros.data_ptr(),
         (const __maca_bfloat16*)b_gptq_scales.data_ptr(),
         b_g_idx.device().is_meta() ? NULL : (const int*)b_g_idx.data_ptr(),
-        (__maca_bfloat16*)c.data_ptr(),
-	(float*)temp_space.data_ptr(),
-        c.size(0),              // m
-        c.size(1),              // n
-        a.size(1),              // k
-        bit, group_size,
-        (__maca_bfloat16*)perm_space.data_ptr());
+        (__maca_bfloat16*)c.data_ptr(), (float*)temp_space.data_ptr(),
+        c.size(0),  // m
+        c.size(1),  // n
+        a.size(1),  // k
+        bit, group_size, (__maca_bfloat16*)perm_space.data_ptr());
   } else {
     vllm::gptq::gemm_half_q_half_cuda(
         at::cuda::getCurrentCUDABlasHandle(), (const half*)a.data_ptr(),
@@ -2384,8 +2406,7 @@ torch::Tensor gptq_gemm(torch::Tensor a, torch::Tensor b_q_weight,
         c.size(1),              // n
         a.size(1),              // k
         b_gptq_qzeros.size(0),  // group number
-        use_exllama, bit, group_size,
-        (half*)perm_space.data_ptr());
+        use_exllama, bit, group_size, (half*)perm_space.data_ptr());
   }
 
   return c;

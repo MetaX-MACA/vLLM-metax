@@ -10,7 +10,6 @@ from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Generic, Optional,
 
 import numpy as np
 import torch
-
 from vllm.config import VllmConfig, get_layers_from_vllm_config
 from vllm.utils import cdiv
 
@@ -22,8 +21,8 @@ if TYPE_CHECKING:
 import vllm.envs as envs
 from vllm.attention.backends.abstract import AttentionBackend
 from vllm.attention.layer import Attention
-from vllm.distributed.kv_transfer.kv_connector.utils import (
-    get_kv_connector_cache_layout)
+from vllm.distributed.kv_transfer.kv_connector.utils import \
+    get_kv_connector_cache_layout
 from vllm.logger import init_logger
 from vllm.v1.kv_cache_interface import AttentionSpec
 

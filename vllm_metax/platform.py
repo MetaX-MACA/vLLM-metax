@@ -6,22 +6,21 @@ pynvml. However, it should not initialize cuda context.
 import os
 from datetime import timedelta
 from functools import wraps
-from typing import (TYPE_CHECKING, Callable, List, Optional, TypeVar,
-                    Union)
+from typing import TYPE_CHECKING, Callable, List, Optional, TypeVar, Union
 
 import torch
-from torch.distributed import PrefixStore, ProcessGroup
-from torch.distributed.distributed_c10d import is_nccl_available
-from typing_extensions import ParamSpec
-
 # import custom ops, trigger op registration
 import vllm._C  # noqa
 import vllm.envs as envs
+from torch.distributed import PrefixStore, ProcessGroup
+from torch.distributed.distributed_c10d import is_nccl_available
+from typing_extensions import ParamSpec
 from vllm.logger import logger
-from vllm_metax.utils import import_pymxml
+from vllm.platforms.interface import (DeviceCapability, FlexibleArgumentParser,
+                                      Platform, PlatformEnum, _Backend)
 from vllm.utils import cuda_device_count_stateless
 
-from vllm.platforms.interface import DeviceCapability, Platform, PlatformEnum, _Backend, FlexibleArgumentParser
+from vllm_metax.utils import import_pymxml
 
 if TYPE_CHECKING:
     from vllm.config import ModelConfig, VllmConfig
@@ -35,6 +34,7 @@ pymxml = import_pymxml()
 # see https://github.com/huggingface/diffusers/issues/9704 for details
 # torch.backends.cuda.enable_cudnn_sdp(False)
 torch.backends.cuda.enable_cudnn_sdp(False)
+
 
 def with_mcml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
 
@@ -58,9 +58,9 @@ class MacaPlatformBase(Platform):
     dist_backend: str = "mccl"
     device_control_env_var: str = "CUDA_VISIBLE_DEVICES"
 
-    supported_quantization:list[str] = [
-        "awq", "gptq", "compressed-tensors", "compressed_tensors",
-        "moe_wna16", "gguf"
+    supported_quantization: list[str] = [
+        "awq", "gptq", "compressed-tensors", "compressed_tensors", "moe_wna16",
+        "gguf"
     ]
 
     @classmethod
@@ -197,9 +197,13 @@ class MacaPlatformBase(Platform):
         if vllm_config.model_config is not None and \
             not vllm_config.model_config.enforce_eager and \
             compilation_config.cudagraph_capture_sizes is not None:
-            batch_size_capture_list = [size for size in compilation_config.cudagraph_capture_sizes if size < 257]
+            batch_size_capture_list = [
+                size for size in compilation_config.cudagraph_capture_sizes
+                if size < 257
+            ]
             compilation_config.cudagraph_capture_sizes = None
-            compilation_config.init_with_cudagraph_sizes(batch_size_capture_list)
+            compilation_config.init_with_cudagraph_sizes(
+                batch_size_capture_list)
 
         if vllm_config.model_config is not None:
             model_config.disable_cascade_attn = True
@@ -226,17 +230,17 @@ class MacaPlatformBase(Platform):
             if selected_backend == _Backend.CUTLASS_MLA or (
                     cls.is_device_capability(100) and selected_backend is None
                     and block_size == 128):
-                logger.warning(
-                    "Cutlass MLA backend is not supported on Maca")
+                logger.warning("Cutlass MLA backend is not supported on Maca")
             if selected_backend == _Backend.TRITON_MLA or block_size != 64:
                 if use_v1:
                     logger.info_once("Using Triton MLA backend on V1 engine.")
                     return TRITON_MLA_V1
                 else:
-                    logger.warning("Triton MLA backend is only supported on V1 engine")
+                    logger.warning(
+                        "Triton MLA backend is only supported on V1 engine")
             else:
-                from vllm_metax.attention.backends.flashmla import (
-                    is_flashmla_supported)
+                from vllm_metax.attention.backends.flashmla import \
+                    is_flashmla_supported
                 if not is_flashmla_supported()[0]:
                     logger.warning(
                         "FlashMLA backend is not supported due to %s",
@@ -252,16 +256,17 @@ class MacaPlatformBase(Platform):
                             "Using FlashMLA backend on V1 engine.")
                         return FLASHMLA_V1
                     else:
-                        logger.warning("FlashMLA backend is only supported on V1 engine")
+                        logger.warning(
+                            "FlashMLA backend is only supported on V1 engine")
         if use_v1:
             FLASHINFER_V1 = "vllm_metax.v1.attention.backends.flashinfer.MacaFlashInferBackend"  # noqa: E501
             FLASH_ATTN_V1 = "vllm_metax.v1.attention.backends.flash_attn.MacaFlashAttentionBackend"  # noqa: E501
-    
+
             if selected_backend == _Backend.FLASHINFER:
                 logger.info_once("Using FlashInfer backend on V1 engine.")
                 if cls.has_device_capability(100):
-                    from vllm.v1.attention.backends.utils import (
-                        set_kv_cache_layout)
+                    from vllm.v1.attention.backends.utils import \
+                        set_kv_cache_layout
                     set_kv_cache_layout("HND")
                 return FLASHINFER_V1
             elif selected_backend == _Backend.FLASH_ATTN:
@@ -275,8 +280,8 @@ class MacaPlatformBase(Platform):
             if cls.is_device_capability(100):
                 if is_default_backend_supported := is_attn_backend_supported(
                         FLASHINFER_V1, head_size, dtype):
-                    from vllm.v1.attention.backends.utils import (
-                        set_kv_cache_layout)
+                    from vllm.v1.attention.backends.utils import \
+                        set_kv_cache_layout
 
                     logger.info_once(
                         "Using FlashInfer backend with HND KV cache layout on "
@@ -306,7 +311,8 @@ class MacaPlatformBase(Platform):
 
         # Backends for V0 engine
         else:
-            logger.warning_once("V0 engine is deprecated on Maca. Please switch to V1.")
+            logger.warning_once(
+                "V0 engine is deprecated on Maca. Please switch to V1.")
 
     @classmethod
     def get_punica_wrapper(cls) -> str:
@@ -327,7 +333,7 @@ class MacaPlatformBase(Platform):
     @classmethod
     def use_custom_allreduce(cls) -> bool:
         return False
-    
+
     @classmethod
     def get_static_graph_wrapper_cls(cls) -> str:
         return "vllm.compilation.cuda_graph.CUDAGraphWrapper"
@@ -384,7 +390,6 @@ class MacaPlatformBase(Platform):
                                 parser: Optional[FlexibleArgumentParser] = None
                                 ) -> None:
         logger.info("[hook] platform:pre_register_and_update...")
-        import vllm_metax.patch
 
 
 # NVML utils

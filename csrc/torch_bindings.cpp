@@ -39,10 +39,9 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
   ops.impl("get_cuda_view_from_cpu_tensor", torch::kCPU,
            &get_cuda_view_from_cpu_tensor);
 
-// ┌------------------------  No Used Backend for Metax  -------------------------┐
-  // Attention ops
-  // Compute the attention between an input query and the cached
-  // keys/values using PagedAttention.
+  // ┌------------------------  No Used Backend for Metax
+  // -------------------------┐ Attention ops Compute the attention between an
+  // input query and the cached keys/values using PagedAttention.
   ops.def(
       "paged_attention_v1("
       "    Tensor! out, Tensor query, Tensor key_cache,"
@@ -82,7 +81,7 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
       "    Tensor suffix_lse) -> ()");
   ops.impl("merge_attn_states", torch::kCUDA, &merge_attn_states);
 
-  // dual_chunk_flash_attn 
+  // dual_chunk_flash_attn
   ops.def(
       "convert_vertical_slash_indexes("
       "   Tensor! block_count, Tensor! block_offset, "
@@ -105,7 +104,8 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
       "   bool causal) -> ()");
   ops.impl("convert_vertical_slash_indexes_mergehead", torch::kCUDA,
            &convert_vertical_slash_indexes_mergehead);
-// └-------------------------  No Used Backend for Metax  -------------------------┘
+  // └-------------------------  No Used Backend for Metax
+  // -------------------------┘
 
   // Activation ops
   // Activation function used in SwiGLU.
@@ -169,9 +169,9 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
   ops.impl("apply_repetition_penalties_", torch::kCUDA,
            &apply_repetition_penalties_);
 
-// ┌------------------------  Not supported fot Metax  -------------------------┐
-  // Layernorm-quant
-  // Apply Root Mean Square (RMS) Normalization to the input tensor.
+  // ┌------------------------  Not supported for Metax
+  // -------------------------┐ Layernorm-quant Apply Root Mean Square (RMS)
+  // Normalization to the input tensor.
   ops.def(
       "rms_norm_static_fp8_quant(Tensor! result, Tensor input, Tensor weight, "
       "Tensor scale, float epsilon) -> "
@@ -194,7 +194,8 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
       "Tensor? scale_ub, Tensor!? residual) -> ()");
   ops.impl("rms_norm_dynamic_per_token_quant", torch::kCUDA,
            &rms_norm_dynamic_per_token_quant);
-// └------------------------- Not supported fot Metax  -------------------------┘
+  // └------------------------- Not supported for Metax
+  // -------------------------┘
 
   // Rotary embedding
   // Apply GPT-NeoX or GPT-J style rotary embedding to query and key.
@@ -218,7 +219,8 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
   // Quantized GEMM for AWQ.
   ops.def(
       "awq_gemm(Tensor _in_feats, Tensor _kernel, Tensor _scaling_factors, "
-      "Tensor _zeros, SymInt split_k_iters, Tensor _temp_space, bool dtype_bf16) -> Tensor");
+      "Tensor _zeros, SymInt split_k_iters, Tensor _temp_space, bool "
+      "dtype_bf16) -> Tensor");
   ops.impl("awq_gemm", torch::kCUDA, &awq_gemm);
 
   // Dequantization for AWQ.
@@ -228,8 +230,7 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
   ops.impl("awq_dequantize", torch::kCUDA, &awq_dequantize);
 
   // Convert AWQ to GPTQ
-  ops.def(
-      "awq_to_gptq_4bit(Tensor qweight) -> Tensor");
+  ops.def("awq_to_gptq_4bit(Tensor qweight) -> Tensor");
   ops.impl("awq_to_gptq_4bit", torch::kCUDA, &awq_to_gptq_4bit);
 
   // CUTLASS w8a8 GEMM, supporting symmetric per-tensor or per-row/column
@@ -298,7 +299,8 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
   // to prevent the meta function registry.
   ops.def(
       "gptq_gemm(Tensor a, Tensor b_q_weight, Tensor b_gptq_qzeros, "
-      "Tensor b_gptq_scales, Tensor b_g_idx, bool use_exllama, int bit, int group_size, Tensor perm_space, "
+      "Tensor b_gptq_scales, Tensor b_g_idx, bool use_exllama, int bit, int "
+      "group_size, Tensor perm_space, "
       "Tensor temp_space, bool dtype_bf16)-> Tensor");
   ops.impl("gptq_gemm", torch::kCUDA, &gptq_gemm);
 
@@ -306,8 +308,9 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
   ops.def("gptq_shuffle(Tensor! q_weight, Tensor q_perm, int bit) -> ()");
   ops.impl("gptq_shuffle", torch::kCUDA, &gptq_shuffle);
 
-// ┌------------------------  Not supported fot Metax  -------------------------┐
-  // Compute FP8 quantized tensor for given scaling factor.
+  // ┌------------------------  Not supported for Metax
+  // -------------------------┐ Compute FP8 quantized tensor for given scaling
+  // factor.
   ops.def(
       "static_scaled_fp8_quant(Tensor! result, Tensor input, Tensor scale) -> "
       "()");
@@ -327,7 +330,8 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
       "()");
   ops.impl("dynamic_per_token_scaled_fp8_quant", torch::kCUDA,
            &dynamic_per_token_scaled_fp8_quant);
-// └------------------------- Not supported fot Metax  -------------------------┘
+  // └------------------------- Not supported for Metax
+  // -------------------------┘
 
   // Compute int8 quantized tensor for given scaling factor.
   ops.def(
@@ -354,7 +358,6 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
       "Tensor! ssm_states,"
       "int pad_slot_id) -> ()");
   ops.impl("selective_scan_fwd", torch::kCUDA, &selective_scan_fwd);
-
 }
 
 TORCH_LIBRARY_EXPAND(CONCAT(TORCH_EXTENSION_NAME, _cache_ops), cache_ops) {

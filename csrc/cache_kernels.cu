@@ -14,7 +14,6 @@
 #include <map>
 #include <vector>
 
-
 void swap_blocks(torch::Tensor& src, torch::Tensor& dst,
                  const torch::Tensor& block_mapping) {
   torch::Device src_device = src.device();
@@ -315,7 +314,7 @@ __global__ void reshape_and_cache_flash_kernel(
 
     vectorize_with_alignment<VEC_SIZE>(value_src, value_dst, n_elems,
                                        threadIdx.x, blockDim.x, v_op);
-    } else {
+  } else {
     // HND layout: heads are strided, but each head_size segment is contiguous
     // kv cache: [num_blocks, num_heads, block_size, head_size]
     const int lane = threadIdx.x & 31;     // 0..31 within warp

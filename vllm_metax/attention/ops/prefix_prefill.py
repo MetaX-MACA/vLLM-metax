@@ -5,7 +5,6 @@
 # https://github.com/ModelTC/lightllm/blob/main/lightllm/models/llama/triton_kernel/context_flashattention_nopad.py
 
 import torch
-
 from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
 

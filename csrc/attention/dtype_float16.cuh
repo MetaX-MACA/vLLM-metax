@@ -105,32 +105,32 @@ inline __device__ uint32_t float2_to_half2(float2 f) {
     uint32_t u32;
     uint16_t u16[2];
   } tmp;
-  #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   __half2 __tmp = __half2(__float2half(f.x), __float2half(f.y));
   tmp.u32 = *(uint32_t*)&__tmp;
-  #else
+#else
   tmp.u16[0] = float_to_half(f.x);
   tmp.u16[1] = float_to_half(f.y);
-  #endif
+#endif
   return tmp.u32;
 }
 
 // Vector addition.
 inline __device__ uint16_t add(uint16_t a, uint16_t b) {
   uint16_t c;
-  unsigned short __a=(a);
-  unsigned short __b=(b);
-  __half __d=__hadd(*(__half*)&__a,*(__half*)&__b);
-  (c)=*(unsigned short*)&__d;
+  unsigned short __a = (a);
+  unsigned short __b = (b);
+  __half __d = __hadd(*(__half*)&__a, *(__half*)&__b);
+  (c) = *(unsigned short*)&__d;
   return c;
 }
 
 inline __device__ uint32_t add(uint32_t a, uint32_t b) {
   uint32_t c;
-  unsigned int __a=(a);
-  unsigned int __b=(b);
-  __half2 __d=__hadd2(*(__half2*)&__a,*(__half2*)&__b);
-  (c)=*(unsigned int*)&__d;
+  unsigned int __a = (a);
+  unsigned int __b = (b);
+  __half2 __d = __hadd2(*(__half2*)&__a, *(__half2*)&__b);
+  (c) = *(unsigned int*)&__d;
   return c;
 }
 
@@ -175,20 +175,20 @@ inline __device__ Float8_ add(uint4 a, Float8_ fb) {
 template <>
 inline __device__ uint16_t mul(uint16_t a, uint16_t b) {
   uint16_t c;
-  unsigned short __a=(a);
-  unsigned short __b=(b);
-  __half __d=__hmul(*(__half*)&__a,*(__half*)&__b);
-  (c)=*(unsigned short*)&__d;
+  unsigned short __a = (a);
+  unsigned short __b = (b);
+  __half __d = __hmul(*(__half*)&__a, *(__half*)&__b);
+  (c) = *(unsigned short*)&__d;
   return c;
 }
 
 template <>
 inline __device__ uint32_t mul(uint32_t a, uint32_t b) {
   uint32_t c;
-  unsigned int __a=(a);
-  unsigned int __b=(b);
-  __half2 __d=__hmul2(*(__half2*)&__a,*(__half2*)&__b);
-  (c)=*(unsigned int*)&__d;
+  unsigned int __a = (a);
+  unsigned int __b = (b);
+  __half2 __d = __hmul2(*(__half2*)&__a, *(__half2*)&__b);
+  (c) = *(unsigned int*)&__d;
   return c;
 }
 
@@ -295,11 +295,11 @@ inline __device__ Float8_ mul(uint16_t a, uint4 b) {
 // Vector fused multiply-add.
 inline __device__ uint32_t fma(uint32_t a, uint32_t b, uint32_t c) {
   uint32_t d;
-  unsigned int __a=(a);
-  unsigned int __b=(b);
-  unsigned int __c=(c);
-  __half2 __d=__hfma2(*(__half2*)&__a,*(__half2*)&__b,*(__half2*)&__c);
-  (d)=*(unsigned int*)&__d;
+  unsigned int __a = (a);
+  unsigned int __b = (b);
+  unsigned int __c = (c);
+  __half2 __d = __hfma2(*(__half2*)&__a, *(__half2*)&__b, *(__half2*)&__c);
+  (d) = *(unsigned int*)&__d;
   return d;
 }
 

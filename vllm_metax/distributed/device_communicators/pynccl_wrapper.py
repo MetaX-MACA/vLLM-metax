@@ -28,7 +28,6 @@ from typing import Any, Dict, List, Optional
 
 import torch
 from torch.distributed import ReduceOp
-
 from vllm.logger import init_logger
 from vllm.utils import find_nccl_library
 

@@ -3,7 +3,6 @@
 from typing import Optional
 
 import torch
-
 from vllm.platforms import current_platform
 
 
@@ -34,12 +33,12 @@ def merge_attn_states(
     # /------------------------  Metax Modification -------------------------\
     if (current_platform.is_out_of_tree() and supported_dtypes(output)
             and supported_headdim(output)):
-    # \------------------------  Metax Modification -------------------------/
+        # \------------------------  Metax Modification -------------------------/
         from vllm._custom_ops import merge_attn_states
         return merge_attn_states(output, prefix_output, prefix_lse,
                                  suffix_output, suffix_lse, output_lse)
     else:
-        from vllm.attention.ops.triton_merge_attn_states import (
-            merge_attn_states)
+        from vllm.attention.ops.triton_merge_attn_states import \
+            merge_attn_states
         return merge_attn_states(output, prefix_output, prefix_lse,
                                  suffix_output, suffix_lse, output_lse)

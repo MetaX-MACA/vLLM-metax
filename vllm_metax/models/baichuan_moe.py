@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
-
-import time
 """Inference-only Baichuan-MOE model."""
 from transformers.configuration_utils import PretrainedConfig
+
+
 class BaiChuanMoEConfig(PretrainedConfig):
     model_type = "baichuan-moe"
     keys_to_ignore_at_inference = ["past_key_values"]
@@ -27,9 +27,9 @@ class BaiChuanMoEConfig(PretrainedConfig):
         moe_experts_fixed=0,
         moe_experts_selected=2,
         moe_experts_routed=8,
-        num_experts_fixed_per_layer=None, # "0,0,0,1,0,2"
-        num_experts_selected_per_layer=None, # "1,2,1,1,1,2"
-        num_experts_routed_per_layer=None, # "1,8,1,8,1,16"
+        num_experts_fixed_per_layer=None,  # "0,0,0,1,0,2"
+        num_experts_selected_per_layer=None,  # "1,2,1,1,1,2"
+        num_experts_routed_per_layer=None,  # "1,8,1,8,1,16"
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -47,22 +47,35 @@ class BaiChuanMoEConfig(PretrainedConfig):
         self.moe_experts_selected = moe_experts_selected
         self.moe_experts_routed = moe_experts_routed
         if num_experts_routed_per_layer:
-            self.num_experts_routed_per_layer = [int(_.strip()) for _ in num_experts_routed_per_layer.split(",")]
-            assert len(self.num_experts_routed_per_layer) == self.num_hidden_layers
+            self.num_experts_routed_per_layer = [
+                int(_.strip()) for _ in num_experts_routed_per_layer.split(",")
+            ]
+            assert len(
+                self.num_experts_routed_per_layer) == self.num_hidden_layers
             assert all([_ >= 1 for _ in self.num_experts_routed_per_layer])
         else:
             self.num_experts_routed_per_layer = None
 
         if num_experts_selected_per_layer:
-            self.num_experts_selected_per_layer = [int(_.strip()) for _ in num_experts_selected_per_layer.split(",")]
-            assert len(self.num_experts_selected_per_layer) == self.num_hidden_layers
-            assert all([x >= y for x, y in zip(self.num_experts_routed_per_layer, self.num_experts_selected_per_layer)])
+            self.num_experts_selected_per_layer = [
+                int(_.strip())
+                for _ in num_experts_selected_per_layer.split(",")
+            ]
+            assert len(
+                self.num_experts_selected_per_layer) == self.num_hidden_layers
+            assert all([
+                x >= y for x, y in zip(self.num_experts_routed_per_layer,
+                                       self.num_experts_selected_per_layer)
+            ])
         else:
             self.num_experts_selected_per_layer = None
 
         if num_experts_fixed_per_layer:
-            self.num_experts_fixed_per_layer = [int(_.strip()) for _ in num_experts_fixed_per_layer.split(",")]
-            assert len(self.num_experts_fixed_per_layer) == self.num_hidden_layers
+            self.num_experts_fixed_per_layer = [
+                int(_.strip()) for _ in num_experts_fixed_per_layer.split(",")
+            ]
+            assert len(
+                self.num_experts_fixed_per_layer) == self.num_hidden_layers
         else:
             self.num_experts_fixed_per_layer = None
 
@@ -74,69 +87,66 @@ class BaiChuanMoEConfig(PretrainedConfig):
             **kwargs,
         )
 
-import math
+
 import copy
-from typing import List, Optional, Iterable, Tuple
+import math
+from typing import Iterable, List, Optional, Tuple
+
 import torch
 from torch import nn
-import torch.nn.functional as F
-from transformers.activations import ACT2FN
-
 from vllm.attention import Attention, AttentionMetadata
-
-from vllm.config import CacheConfig, LoRAConfig, VllmConfig
-from vllm_metax.model_executor.layers.fused_moe.fused_moe import fused_moe
-from vllm.model_executor.layers.layernorm import RMSNorm
-from vllm.model_executor.layers.linear import (LinearMethodBase,
-                                               ColumnParallelLinear,
-                                               QKVParallelLinear,
-                                               ReplicatedLinear,
-                                               MergedColumnParallelLinear,
-                                               RowParallelLinear)
-from vllm.model_executor.layers.activation import SiluAndMul,GeluAndMul
-from vllm.model_executor.layers.logits_processor import LogitsProcessor
-from vllm.model_executor.layers.quantization.base_config import (
-    QuantizationConfig)
-from vllm.model_executor.layers.rotary_embedding import get_rope
-from vllm.model_executor.layers.sampler import Sampler, SamplerOutput 
-from vllm.model_executor.layers.vocab_parallel_embedding import (
-    DEFAULT_VOCAB_PADDING_SIZE, ParallelLMHead, VocabParallelEmbedding)
-from vllm.distributed import (get_pp_group,
-                              get_tensor_model_parallel_rank,
+from vllm.config import CacheConfig, VllmConfig
+from vllm.distributed import (get_pp_group, get_tensor_model_parallel_rank,
                               get_tensor_model_parallel_world_size,
                               tensor_model_parallel_all_reduce)
-
-from vllm.model_executor.sampling_metadata import SamplingMetadata
-from vllm.model_executor.utils import set_weight_attrs
+from vllm.model_executor.layers.activation import GeluAndMul, SiluAndMul
+from vllm.model_executor.layers.layernorm import RMSNorm
+from vllm.model_executor.layers.linear import (MergedColumnParallelLinear,
+                                               QKVParallelLinear,
+                                               ReplicatedLinear,
+                                               RowParallelLinear)
+from vllm.model_executor.layers.logits_processor import LogitsProcessor
+from vllm.model_executor.layers.quantization.base_config import \
+    QuantizationConfig
+from vllm.model_executor.layers.rotary_embedding import get_rope
+from vllm.model_executor.layers.sampler import Sampler, SamplerOutput
+from vllm.model_executor.layers.vocab_parallel_embedding import (
+    DEFAULT_VOCAB_PADDING_SIZE, ParallelLMHead, VocabParallelEmbedding)
 #from vllm.model_executor.weight_utils import (default_weight_loader,
 #                                              hf_model_weights_iterator)
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
-from vllm.sequence import IntermediateTensors
 from vllm.model_executor.models.interfaces import SupportsPP
-from vllm.model_executor.models.utils import PPMissingLayer, is_pp_missing_parameter, make_layers, make_empty_intermediate_tensors_factory, maybe_prefix
+from vllm.model_executor.models.utils import (PPMissingLayer,
+                                              is_pp_missing_parameter,
+                                              make_layers, maybe_prefix)
+from vllm.model_executor.sampling_metadata import SamplingMetadata
+from vllm.model_executor.utils import set_weight_attrs
+from vllm.sequence import IntermediateTensors
+
+from vllm_metax.model_executor.layers.fused_moe.fused_moe import fused_moe
+
 
 class MLP(nn.Module):
-    def __init__(
-            self,
-            hidden_size: int,
-            intermediate_size: int,
-            hidden_act: str,
-            quant_config: Optional[QuantizationConfig] = None,
-            prefix: str = ""
-    ):
+
+    def __init__(self,
+                 hidden_size: int,
+                 intermediate_size: int,
+                 hidden_act: str,
+                 quant_config: Optional[QuantizationConfig] = None,
+                 prefix: str = ""):
         super().__init__()
         self.gate_up_proj = MergedColumnParallelLinear(
             hidden_size, [intermediate_size] * 2,
             bias=False,
             quant_config=quant_config,
-            prefix=f"{prefix}.gate_up_proj"
-            )
-        self.down_proj = RowParallelLinear(intermediate_size,
-                                           hidden_size,
-                                           bias=False,
-                                           quant_config=quant_config,
-                                           prefix=f"{prefix}.down_proj",
-                                           )
+            prefix=f"{prefix}.gate_up_proj")
+        self.down_proj = RowParallelLinear(
+            intermediate_size,
+            hidden_size,
+            bias=False,
+            quant_config=quant_config,
+            prefix=f"{prefix}.down_proj",
+        )
         if hidden_act not in ["silu", "gelu"]:
             raise ValueError(f"Unsupported activation: {hidden_act}. "
                              "Only silu and gelu are supported for now.")
@@ -163,16 +173,16 @@ class MixtralMLP(nn.Module):
     """
 
     def __init__(self,
-                hidden_size,
-                intermediate_size,
-                hidden_act,
-                moe_experts_routed,
-                moe_experts_selected,
-                moe_experts_fixed,
-                quant_config: Optional[QuantizationConfig] = None,
-                params_dtype: Optional[torch.dtype] = None,
-                tp_size: Optional[int] = None,
-                prefix: str = ""):
+                 hidden_size,
+                 intermediate_size,
+                 hidden_act,
+                 moe_experts_routed,
+                 moe_experts_selected,
+                 moe_experts_fixed,
+                 quant_config: Optional[QuantizationConfig] = None,
+                 params_dtype: Optional[torch.dtype] = None,
+                 tp_size: Optional[int] = None,
+                 prefix: str = ""):
         super().__init__()
         self.tp_size = tp_size or get_tensor_model_parallel_world_size()
         self.num_experts_routed = moe_experts_routed
@@ -181,16 +191,16 @@ class MixtralMLP(nn.Module):
         self.hidden_size = hidden_size
         self.intermediate_size = intermediate_size // self.tp_size
 
-
         if params_dtype is None:
             params_dtype = torch.get_default_dtype()
         self.params_dtype = params_dtype
-        self.router = ReplicatedLinear(self.hidden_size,
-                                        self.num_experts_routed,
-                                        bias=False,
-                                        quant_config=quant_config,
-                                        params_dtype=self.params_dtype,
-                                        )
+        self.router = ReplicatedLinear(
+            self.hidden_size,
+            self.num_experts_routed,
+            bias=False,
+            quant_config=quant_config,
+            params_dtype=self.params_dtype,
+        )
 
         self.ws = nn.Parameter(
             torch.empty(self.num_experts_routed,
@@ -204,7 +214,7 @@ class MixtralMLP(nn.Module):
                         self.intermediate_size,
                         device="cuda",
                         dtype=self.params_dtype))
-        
+
         set_weight_attrs(self.ws, {
             "weight_loader": self.weight_loader,
         })
@@ -212,9 +222,13 @@ class MixtralMLP(nn.Module):
             "weight_loader": self.weight_loader,
         })
 
-
         if moe_experts_fixed >= 1:
-            self.local_experts_fixed = MLP(hidden_size, intermediate_size*moe_experts_fixed, hidden_act, quant_config=quant_config, prefix=f"{prefix}.mlp")
+            self.local_experts_fixed = MLP(hidden_size,
+                                           intermediate_size *
+                                           moe_experts_fixed,
+                                           hidden_act,
+                                           quant_config=quant_config,
+                                           prefix=f"{prefix}.mlp")
         else:
             self.local_experts_fixed = None
 
@@ -227,10 +241,10 @@ class MixtralMLP(nn.Module):
         if weight_name.endswith("gate_proj.weight"):
             param_data[expert_id, 0:shard_size, :] = loaded_weight[shard, :]
         if weight_name.endswith("up_proj.weight"):
-            param_data[expert_id, shard_size:2 * shard_size, :] = loaded_weight[shard, :]
+            param_data[expert_id,
+                       shard_size:2 * shard_size, :] = loaded_weight[shard, :]
         if weight_name.endswith("down_proj.weight"):
             param_data[expert_id, :, :] = loaded_weight[:, shard]
-
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         """ """
@@ -247,28 +261,31 @@ class MixtralMLP(nn.Module):
         if self.tp_size > 1:
             final_hidden_states = tensor_model_parallel_all_reduce(
                 final_hidden_states)
-        
+
         final_hidden_states = final_hidden_states.view(num_tokens, hidden_size)
-        
+
         if self.local_experts_fixed:
-            final_hidden_states += self.local_experts_fixed(hidden_states).reshape(num_tokens, hidden_size)
+            final_hidden_states += self.local_experts_fixed(
+                hidden_states).reshape(num_tokens, hidden_size)
             final_hidden_states /= 2
-        
+
         ret = final_hidden_states.reshape(num_tokens, hidden_size)
         return ret
 
 
 class MixtralAttention(nn.Module):
 
-    def __init__(self,
-                 hidden_size: int,
-                 num_heads: int,
-                 num_kv_heads: int,
-                 max_position: int = 4096 * 32,
-                 rope_theta: float = 10000,
-                 cache_config: Optional[CacheConfig] = None,
-                 quant_config: Optional[QuantizationConfig] = None,
-                 prefix: str = "",) -> None:
+    def __init__(
+        self,
+        hidden_size: int,
+        num_heads: int,
+        num_kv_heads: int,
+        max_position: int = 4096 * 32,
+        rope_theta: float = 10000,
+        cache_config: Optional[CacheConfig] = None,
+        quant_config: Optional[QuantizationConfig] = None,
+        prefix: str = "",
+    ) -> None:
         super().__init__()
         self.hidden_size = hidden_size
         tp_size = get_tensor_model_parallel_world_size()
@@ -314,15 +331,13 @@ class MixtralAttention(nn.Module):
             base=int(self.rope_theta),
             is_neox_style=True,
         )
-        self.attn = Attention(
-            self.num_heads,
-            self.head_dim,
-            self.scaling,
-            num_kv_heads=self.num_kv_heads,
-            cache_config=cache_config,
-            quant_config=quant_config,
-            prefix=f"{prefix}.attn"
-        )
+        self.attn = Attention(self.num_heads,
+                              self.head_dim,
+                              self.scaling,
+                              num_kv_heads=self.num_kv_heads,
+                              cache_config=cache_config,
+                              quant_config=quant_config,
+                              prefix=f"{prefix}.attn")
 
     def forward(
         self,
@@ -340,13 +355,12 @@ class MixtralAttention(nn.Module):
 
 
 class DecoderLayer(nn.Module):
-    def __init__(
-        self,
-        config: BaiChuanMoEConfig,
-        cache_config: Optional[CacheConfig] = None,
-        quant_config: Optional[QuantizationConfig] = None,
-        prefix: str = ""
-    ) -> None:
+
+    def __init__(self,
+                 config: BaiChuanMoEConfig,
+                 cache_config: Optional[CacheConfig] = None,
+                 quant_config: Optional[QuantizationConfig] = None,
+                 prefix: str = "") -> None:
         super().__init__()
         self.hidden_size = config.hidden_size
         # Requires transformers > 4.32.0
@@ -360,29 +374,29 @@ class DecoderLayer(nn.Module):
             cache_config=cache_config,
             quant_config=quant_config,
             prefix=f"{prefix}.self_attn")
-        
-        
+
         # Dense
         if config.moe_experts_routed == 1:
             self.mlp = MLP(hidden_size=config.hidden_size,
-                            intermediate_size=config.intermediate_size,
-                            hidden_act=config.hidden_act, quant_config=quant_config,
-                            prefix=f"{prefix}.mlp")
+                           intermediate_size=config.intermediate_size,
+                           hidden_act=config.hidden_act,
+                           quant_config=quant_config,
+                           prefix=f"{prefix}.mlp")
         # MoE
         else:
             self.mlp = MixtralMLP(config.hidden_size,
-                                    config.intermediate_size,
-                                    config.hidden_act,
-                                    config.moe_experts_routed,
-                                    config.moe_experts_selected,
-                                    config.moe_experts_fixed,
-                                    quant_config=quant_config,
-                                    prefix=f"{prefix}.mlp")
+                                  config.intermediate_size,
+                                  config.hidden_act,
+                                  config.moe_experts_routed,
+                                  config.moe_experts_selected,
+                                  config.moe_experts_fixed,
+                                  quant_config=quant_config,
+                                  prefix=f"{prefix}.mlp")
         self.input_layernorm = RMSNorm(config.hidden_size,
                                        eps=config.rms_norm_eps)
         self.post_attention_layernorm = RMSNorm(config.hidden_size,
                                                 eps=config.rms_norm_eps)
-    
+
     def forward(
         self,
         positions: torch.Tensor,
@@ -409,22 +423,28 @@ class DecoderLayer(nn.Module):
         # Fully Connected
         hidden_states, residual = self.post_attention_layernorm(
             hidden_states, residual)
-        
+
         hidden_states = self.mlp(hidden_states)
 
         return hidden_states, residual
 
+
 def layer_function(prefix, config, cache_config, quant_config):
-    index = int(prefix.split(".")[-1])  
+    index = int(prefix.split(".")[-1])
     config_ = copy.deepcopy(config)
 
     config_.moe_experts_fixed = config.num_experts_fixed_per_layer[index]
     config_.moe_experts_selected = config.num_experts_selected_per_layer[index]
     config_.moe_experts_routed = config.num_experts_routed_per_layer[index]
 
-    return DecoderLayer(config=config_, cache_config=cache_config, quant_config=quant_config, prefix=prefix)
+    return DecoderLayer(config=config_,
+                        cache_config=cache_config,
+                        quant_config=quant_config,
+                        prefix=prefix)
+
 
 class Model(nn.Module):
+
     def __init__(self, vllm_config: VllmConfig, prefix: str = "") -> None:
         super().__init__()
         config = vllm_config.model_config.hf_config
@@ -450,19 +470,18 @@ class Model(nn.Module):
         if config.num_experts_routed_per_layer:
             self.start_layer, self.end_layer, self.layers = make_layers(
                 num_hidden_layers=config.num_hidden_layers,
-                layer_fn=lambda prefix: layer_function(prefix, config, cache_config, quant_config),
-                prefix=f"{prefix}.layers",  
+                layer_fn=lambda prefix: layer_function(
+                    prefix, config, cache_config, quant_config),
+                prefix=f"{prefix}.layers",
             )
         else:
             self.start_layer, self.end_layer, self.layers = make_layers(
                 num_hidden_layers=config.num_hidden_layers,
-                layer_fn = lambda prefix: DecoderLayer(
-                    config=config,
-                    cache_config=cache_config,
-                    quant_config=quant_config,
-                    prefix=prefix
-                ),
-                prefix=f"{prefix}.layers",  
+                layer_fn=lambda prefix: DecoderLayer(config=config,
+                                                     cache_config=cache_config,
+                                                     quant_config=quant_config,
+                                                     prefix=prefix),
+                prefix=f"{prefix}.layers",
             )
 
         if get_pp_group().is_last_rank:
@@ -495,18 +514,20 @@ class Model(nn.Module):
                 attn_metadata,
                 residual,
             )
-        
+
         if not get_pp_group().is_last_rank:
             return IntermediateTensors({
                 "hidden_states": hidden_states,
                 "residual": residual
             })
-        
+
         hidden_states, _ = self.norm(hidden_states, residual)
-        
+
         return hidden_states
 
+
 class NormHead(nn.Module):
+
     def __init__(self, hidden_size, vocab_size, bias=False):
         super().__init__()
         self.weight = nn.Parameter(torch.empty((vocab_size, hidden_size)))
@@ -515,6 +536,7 @@ class NormHead(nn.Module):
 
     def forward(self, hidden_states):
         return nn.functional.linear(hidden_states, self.norm_weight)
+
 
 class BaiChuanMoEForCausalLM(nn.Module, SupportsPP):
     # packed_modules_mapping = {
@@ -547,7 +569,8 @@ class BaiChuanMoEForCausalLM(nn.Module, SupportsPP):
 
         self.config = config
         self.quant_config = quant_config
-        self.model = Model(vllm_config=vllm_config, prefix=maybe_prefix(prefix, "model"))
+        self.model = Model(vllm_config=vllm_config,
+                           prefix=maybe_prefix(prefix, "model"))
         if get_pp_group().is_last_rank:
             self.unpadded_vocab_size = config.vocab_size
             if lora_config:
@@ -561,14 +584,13 @@ class BaiChuanMoEForCausalLM(nn.Module, SupportsPP):
                 # We need bigger padding if using lora for kernel
                 # compatibility
                 if not lora_config else lora_config.lora_vocab_padding_size,
-                prefix=maybe_prefix(prefix, "lm_head")
-            )
+                prefix=maybe_prefix(prefix, "lm_head"))
             self.logits_processor = LogitsProcessor(self.unpadded_vocab_size,
-                                                config.vocab_size)
+                                                    config.vocab_size)
             self.sampler = Sampler()
         else:
             self.lm_head = PPMissingLayer()
-    
+
     def forward(
         self,
         input_ids: torch.Tensor,
@@ -586,7 +608,7 @@ class BaiChuanMoEForCausalLM(nn.Module, SupportsPP):
         logits = self.logits_processor(self.lm_head, hidden_states,
                                        sampling_metadata)
         return logits
-    
+
     def make_empty_intermediate_tensors(
             self, batch_size: int, dtype: torch.dtype,
             device: torch.device) -> IntermediateTensors:
@@ -617,20 +639,22 @@ class BaiChuanMoEForCausalLM(nn.Module, SupportsPP):
             ("qkv_proj", "v_proj", "v"),
             ("mlp.gate_up_proj", "mlp.gate_proj", 0),
             ("mlp.gate_up_proj", "mlp.up_proj", 1),
-            ("mlp.local_experts_fixed.gate_up_proj", "mlp.local_experts_fixed.gate_proj", 0),
-            ("mlp.local_experts_fixed.gate_up_proj", "mlp.local_experts_fixed.up_proj", 1),
+            ("mlp.local_experts_fixed.gate_up_proj",
+             "mlp.local_experts_fixed.gate_proj", 0),
+            ("mlp.local_experts_fixed.gate_up_proj",
+             "mlp.local_experts_fixed.up_proj", 1),
         ]
 
         expert_params_mapping = [
             # (param_name, weight_name, expert_id)
             ("ws" if weight_name in ["gate_proj", "up_proj"] else "w2s",
-             f"local_experts_routed.{expert_id}.{weight_name}.weight", expert_id)
-            for expert_id in range(16)
+             f"local_experts_routed.{expert_id}.{weight_name}.weight",
+             expert_id) for expert_id in range(16)
             for weight_name in ["gate_proj", "down_proj", "up_proj"]
         ]
 
         params_dict = dict(self.named_parameters())
-        
+
         for name, loaded_weight in weights:
             if "rotary_emb.inv_freq" in name:
                 continue
@@ -674,7 +698,7 @@ class BaiChuanMoEForCausalLM(nn.Module, SupportsPP):
                     if is_pp_missing_parameter(name, self):
                         continue
 
-                    param = params_dict.get(name, None)
+                    param = params_dict.get(name)
 
                     if name == "lm_head.weight":
                         # do norm
@@ -686,4 +710,3 @@ class BaiChuanMoEForCausalLM(nn.Module, SupportsPP):
                         weight_loader = getattr(param, "weight_loader",
                                                 default_weight_loader)
                         weight_loader(param, loaded_weight)
-

@@ -7,22 +7,10 @@ from dataclasses import dataclass
 from typing import ClassVar, Optional, Union
 
 import torch
-
-# /----------------------------------------------------------------------\
-# Note: Currently `flashinfer+metax` does not support:
-#    - trtllm_batch_context_with_kv_cache
-#    - MultiLevelCascadeAttentionWrapper
-# \----------------------------------------------------------------------/
-
-from flashinfer import (BatchDecodeWithPagedKVCacheWrapper,
-                        BatchPrefillWithPagedKVCacheWrapper,)
-                        #MultiLevelCascadeAttentionWrapper)
-
-from flashinfer.decode import (_get_range_buf, get_seq_lens,)
-                               #trtllm_batch_decode_with_kv_cache)
-#from flashinfer.prefill import trtllm_batch_context_with_kv_cache
-
 import vllm.envs as envs
+from flashinfer import (BatchDecodeWithPagedKVCacheWrapper,
+                        BatchPrefillWithPagedKVCacheWrapper)
+from flashinfer.decode import _get_range_buf, get_seq_lens
 from vllm.attention.backends.abstract import (AttentionBackend, AttentionImpl,
                                               AttentionType)
 from vllm.config import CUDAGraphMode, VllmConfig
@@ -40,6 +28,18 @@ from vllm.v1.attention.backends.utils import (AttentionCGSupport,
                                               infer_global_hyperparameters,
                                               split_decodes_and_prefills)
 from vllm.v1.kv_cache_interface import AttentionSpec
+
+# /----------------------------------------------------------------------\
+# Note: Currently `flashinfer+metax` does not support:
+#    - trtllm_batch_context_with_kv_cache
+#    - MultiLevelCascadeAttentionWrapper
+# \----------------------------------------------------------------------/
+
+#MultiLevelCascadeAttentionWrapper)
+
+#trtllm_batch_decode_with_kv_cache)
+#from flashinfer.prefill import trtllm_batch_context_with_kv_cache
+
 
 FLASHINFER_WORKSPACE_BUFFER_SIZE = 256 * 1024 * 1024
 

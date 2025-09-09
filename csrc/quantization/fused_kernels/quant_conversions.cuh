@@ -15,7 +15,7 @@ namespace vllm {
 static __device__ __forceinline__ int8_t float_to_int8_rn(float const x) {
   // MACA path
   uint32_t dst;
-  dst = (int32_t)(x > 0? x + 0.5: x - 0.5);
+  dst = (int32_t)(x > 0 ? x + 0.5 : x - 0.5);
   dst = (char)(dst > 127 ? 127 : (dst < -128 ? -128 : dst));
   return reinterpret_cast<const int8_t&>(dst);
 }

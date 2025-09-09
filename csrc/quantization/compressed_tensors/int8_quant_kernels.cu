@@ -11,9 +11,9 @@
 
 static inline __device__ int8_t float_to_int8_rn(float x) {
   // CUDA path
-  //uint32_t dst;
-  //asm volatile("cvt.rni.sat.s8.f32 %0, %1;" : "=r"(dst) : "f"(x));
-  //return reinterpret_cast<const int8_t&>(dst);
+  // uint32_t dst;
+  // asm volatile("cvt.rni.sat.s8.f32 %0, %1;" : "=r"(dst) : "f"(x));
+  // return reinterpret_cast<const int8_t&>(dst);
   int32_t dst;
   dst = __float2int_rn(x);
   dst = min(dst, 127);
@@ -175,10 +175,10 @@ __global__ void dynamic_scaled_int8_quant_kernel_sreg_opt(
   int reg_length = blockDim_x * N;
   int length = min(hidden_size, reg_length);
   int index = tid * N;
-  if(index < length) {
+  if (index < length) {
     *(VT*)reg_src0 = *(VT*)(ptr_input + index);
-    #pragma unroll N
-    for(int i = 0; i < N; i++) {
+#pragma unroll N
+    for (int i = 0; i < N; i++) {
       scalar_t val = abs(reg_src0[i]);
       absmax_val = max(absmax_val, val);
     }
@@ -196,13 +196,13 @@ __global__ void dynamic_scaled_int8_quant_kernel_sreg_opt(
   __syncthreads();
   float const tmp_scale = 127.0f / block_absmax_val;
   int8_t* ptr_output = out + token_idx * hidden_size;
-  if(index < length) {
+  if (index < length) {
     VT1 vdst;
     int8_t* ptr_reg = (int8_t*)&vdst;
-    #pragma unroll N
-    for(int i = 0; i < N; i++) {
-      ptr_reg[i] = float_to_int8_rn(
-            static_cast<float>(reg_src0[i]) * tmp_scale);
+#pragma unroll N
+    for (int i = 0; i < N; i++) {
+      ptr_reg[i] =
+          float_to_int8_rn(static_cast<float>(reg_src0[i]) * tmp_scale);
     }
     *(VT1*)(ptr_output + index) = vdst;
   }
@@ -223,13 +223,13 @@ __global__ void dynamic_scaled_int8_quant_kernel_reg_opt(
   int reg_length = 2 * blockDim_x * N;
   int length = min(hidden_size, reg_length);
   int index = 2 * tid * N;
-  if(index < length) {
+  if (index < length) {
     *(VT*)reg_src0 = *(VT*)(ptr_input + index);
     *(VT*)reg_src1 = *(VT*)(ptr_input + index + N);
-    #pragma unroll N
-    for(int i = 0; i < N; i++) {
+#pragma unroll N
+    for (int i = 0; i < N; i++) {
       scalar_t val = abs(reg_src0[i]);
-      absmax_val =  max(val, absmax_val);
+      absmax_val = max(val, absmax_val);
       val = abs(reg_src1[i]);
       absmax_val = max(val, absmax_val);
     }
@@ -247,20 +247,20 @@ __global__ void dynamic_scaled_int8_quant_kernel_reg_opt(
   __syncthreads();
   float const tmp_scale = 127.0f / block_absmax_val;
   int8_t* ptr_output = out + token_idx * hidden_size;
-  if(index < length) {
+  if (index < length) {
     VT1 vdst;
     int8_t* ptr_reg = (int8_t*)&vdst;
     constexpr int ON = 2 * N;
-    #pragma unroll N
-    for(int i = 0; i < N; i++) {
-      ptr_reg[i] = float_to_int8_rn(
-             static_cast<float>(reg_src0[i]) * tmp_scale);
+#pragma unroll N
+    for (int i = 0; i < N; i++) {
+      ptr_reg[i] =
+          float_to_int8_rn(static_cast<float>(reg_src0[i]) * tmp_scale);
     }
     ptr_reg = ptr_reg + N;
-    #pragma unroll N
-    for(int i = 0; i < N; i++) {
-      ptr_reg[i] = float_to_int8_rn(
-            static_cast<float>(reg_src1[i]) * tmp_scale);
+#pragma unroll N
+    for (int i = 0; i < N; i++) {
+      ptr_reg[i] =
+          float_to_int8_rn(static_cast<float>(reg_src1[i]) * tmp_scale);
     }
     *(VT1*)(ptr_output + index) = vdst;
   }
@@ -278,16 +278,16 @@ __global__ void dynamic_scaled_int8_quant_kernel_sm_opt(
   int stride = blockDim_x * N;
   __shared__ float sm_buffer[8064];
   scalar_t const* ptr_input = input + token_idx * hidden_size;
-  for(int i = tid * N; i < hidden_size; i += stride) {
+  for (int i = tid * N; i < hidden_size; i += stride) {
     VT vsrc = *(VT*)(ptr_input + i);
-    scalar_t *ptr_src = (scalar_t*)&vsrc;
+    scalar_t* ptr_src = (scalar_t*)&vsrc;
     float* ptr_sm_buffer = sm_buffer + i;
-    #pragma unroll N
-    for(int j = 0; j < N; j++) {
-        float val = static_cast<float>(ptr_src[j]);
-        ptr_sm_buffer[j] = val;
-        val = val > zero ? val : -val;
-        absmax_val = val > absmax_val ? val : absmax_val;
+#pragma unroll N
+    for (int j = 0; j < N; j++) {
+      float val = static_cast<float>(ptr_src[j]);
+      ptr_sm_buffer[j] = val;
+      val = val > zero ? val : -val;
+      absmax_val = val > absmax_val ? val : absmax_val;
     }
   }
   using BlockReduce = cub::BlockReduce<float, 512>;
@@ -299,19 +299,18 @@ __global__ void dynamic_scaled_int8_quant_kernel_sm_opt(
     block_absmax_val = block_absmax_val_maybe;
     scale[token_idx] = block_absmax_val / 127.0f;
   }
-  
+
   __syncthreads();
 
   float const tmp_scale = 127.0f / block_absmax_val;
   int8_t* ptr_output = out + token_idx * hidden_size;
-  for(int i = tid * N; i < hidden_size; i += stride) {
+  for (int i = tid * N; i < hidden_size; i += stride) {
     VT1 vdst;
     int8_t* ptr_reg = (int8_t*)&vdst;
     float* ptr_sm_buffer = sm_buffer + i;
-    #pragma unroll N
-    for(int j = 0; j < N; j++) {
-        ptr_reg[j] = float_to_int8_rn(
-            ptr_sm_buffer[j] * tmp_scale);
+#pragma unroll N
+    for (int j = 0; j < N; j++) {
+      ptr_reg[j] = float_to_int8_rn(ptr_sm_buffer[j] * tmp_scale);
     }
     *(VT1*)(ptr_output + i) = vdst;
   }
@@ -326,16 +325,16 @@ __launch_bounds__(1024) __global__ void dynamic_scaled_int8_quant_kernel_opt(
   int64_t const token_idx = blockIdx.x;
   float absmax_val = 0.0f;
   int stride = blockDim_x * N;
-  const scalar_t * ptr_input = input + token_idx * hidden_size;
+  const scalar_t* ptr_input = input + token_idx * hidden_size;
 
-  for (int i = tid ; i < hidden_size; i += stride) {
+  for (int i = tid; i < hidden_size; i += stride) {
     VT vsrc = *(VT*)(ptr_input + i);
-    scalar_t *ptr_src = (scalar_t*)&vsrc;
-    #pragma unroll N
-    for(int j = 0; j < N; j++) {
-        float val = static_cast<float>(ptr_src[j]);
-        val = val > 0 ? val : -val;
-        absmax_val = val > absmax_val ? val : absmax_val;
+    scalar_t* ptr_src = (scalar_t*)&vsrc;
+#pragma unroll N
+    for (int j = 0; j < N; j++) {
+      float val = static_cast<float>(ptr_src[j]);
+      val = val > 0 ? val : -val;
+      absmax_val = val > absmax_val ? val : absmax_val;
     }
   }
 
@@ -355,12 +354,11 @@ __launch_bounds__(1024) __global__ void dynamic_scaled_int8_quant_kernel_opt(
   for (int i = tid; i < hidden_size; i += stride) {
     VT vsrc = *(VT*)(ptr_input + i);
     VT1 vdst;
-    scalar_t *ptr_src = (scalar_t*)&vsrc;
+    scalar_t* ptr_src = (scalar_t*)&vsrc;
     int8_t* ptr_dst = (int8_t*)&vdst;
-    #pragma unroll N
-    for(int j = 0; j < N; ++j) {
-        ptr_dst[j] = float_to_int8_rn(
-        static_cast<float>(ptr_src[j]) * tmp_scale);
+#pragma unroll N
+    for (int j = 0; j < N; ++j) {
+      ptr_dst[j] = float_to_int8_rn(static_cast<float>(ptr_src[j]) * tmp_scale);
     }
     *(VT1*)(ptr_output + i) = vdst;
   }
@@ -368,7 +366,7 @@ __launch_bounds__(1024) __global__ void dynamic_scaled_int8_quant_kernel_opt(
 
 template <typename scalar_t, typename scale_t, typename azp_t>
 __global__ void dynamic_scaled_int8_azp_quant_kernel(
-        const scalar_t* __restrict__ input, int8_t* __restrict__ output,
+    const scalar_t* __restrict__ input, int8_t* __restrict__ output,
     scale_t* scale_out, azp_t* azp_out, const int hidden_size) {
   const int tid = threadIdx.x;
   const int stride = blockDim.x;
@@ -472,37 +470,45 @@ void dynamic_scaled_int8_quant(
       input.scalar_type(), "dynamic_scaled_int8_quant_kernel", [&] {
         if (!azp) {
           int n = 16 / sizeof(scalar_t);
-         if(hidden_size <= 4096 && ((hidden_size & (n - 1)) == 0) && n == 8) {
+          if (hidden_size <= 4096 && ((hidden_size & (n - 1)) == 0) && n == 8) {
             int64_t gridsize = num_tokens;
             int blocksize = 512;
-            vllm::dynamic_scaled_int8_quant_kernel_sreg_opt<scalar_t, float, float4, float2>
+            vllm::dynamic_scaled_int8_quant_kernel_sreg_opt<scalar_t, float,
+                                                            float4, float2>
                 <<<gridsize, blocksize, 0, stream>>>(
-                  input.data_ptr<scalar_t>(), out.data_ptr<int8_t>(),
-                  scales.data_ptr<float>(), hidden_size,blocksize);
-          } else if(hidden_size > 4096 &&hidden_size <= 8192 && ((hidden_size & (2*n - 1)) == 0) && n == 8) {
-            int64_t gridsize = num_tokens; int blocksize = 512;
-            vllm::dynamic_scaled_int8_quant_kernel_reg_opt<scalar_t, float, float4, float4>
-                <<<gridsize, blocksize, 0, stream>>>(
-                  input.data_ptr<scalar_t>(), out.data_ptr<int8_t>(),
-                  scales.data_ptr<float>(), hidden_size,blocksize);
-          } else if(hidden_size <= 8064 && (hidden_size & (n - 1)) == 0 && n == 8) {
+                    input.data_ptr<scalar_t>(), out.data_ptr<int8_t>(),
+                    scales.data_ptr<float>(), hidden_size, blocksize);
+          } else if (hidden_size > 4096 && hidden_size <= 8192 &&
+                     ((hidden_size & (2 * n - 1)) == 0) && n == 8) {
             int64_t gridsize = num_tokens;
             int blocksize = 512;
-            vllm::dynamic_scaled_int8_quant_kernel_sm_opt<scalar_t, float, float4, float2>
+            vllm::dynamic_scaled_int8_quant_kernel_reg_opt<scalar_t, float,
+                                                           float4, float4>
                 <<<gridsize, blocksize, 0, stream>>>(
-                  input.data_ptr<scalar_t>(), out.data_ptr<int8_t>(),
-                  scales.data_ptr<float>(), hidden_size,blocksize);
-          } else if (hidden_size > 8064 && ((hidden_size & (n - 1)) == 0 && n == 8)) {
+                    input.data_ptr<scalar_t>(), out.data_ptr<int8_t>(),
+                    scales.data_ptr<float>(), hidden_size, blocksize);
+          } else if (hidden_size <= 8064 && (hidden_size & (n - 1)) == 0 &&
+                     n == 8) {
+            int64_t gridsize = num_tokens;
+            int blocksize = 512;
+            vllm::dynamic_scaled_int8_quant_kernel_sm_opt<scalar_t, float,
+                                                          float4, float2>
+                <<<gridsize, blocksize, 0, stream>>>(
+                    input.data_ptr<scalar_t>(), out.data_ptr<int8_t>(),
+                    scales.data_ptr<float>(), hidden_size, blocksize);
+          } else if (hidden_size > 8064 &&
+                     ((hidden_size & (n - 1)) == 0 && n == 8)) {
             int blocksize = 1024;
-            vllm::dynamic_scaled_int8_quant_kernel_opt<scalar_t, float, float4, float2>
-              <<<grid, blocksize, 0, stream>>>(
-                  input.data_ptr<scalar_t>(), out.data_ptr<int8_t>(),
-                  scales.data_ptr<float>(), hidden_size,blocksize);
+            vllm::dynamic_scaled_int8_quant_kernel_opt<scalar_t, float, float4,
+                                                       float2>
+                <<<grid, blocksize, 0, stream>>>(
+                    input.data_ptr<scalar_t>(), out.data_ptr<int8_t>(),
+                    scales.data_ptr<float>(), hidden_size, blocksize);
           } else {
             vllm::dynamic_scaled_int8_quant_kernel<scalar_t, float>
-              <<<grid, block, 0, stream>>>(
-                  input.data_ptr<scalar_t>(), out.data_ptr<int8_t>(),
-                  scales.data_ptr<float>(), hidden_size);
+                <<<grid, block, 0, stream>>>(
+                    input.data_ptr<scalar_t>(), out.data_ptr<int8_t>(),
+                    scales.data_ptr<float>(), hidden_size);
           }
         } else {
           vllm::dynamic_scaled_int8_azp_quant_kernel<scalar_t, float, int32_t>

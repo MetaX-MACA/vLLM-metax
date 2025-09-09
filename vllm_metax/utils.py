@@ -6,16 +6,11 @@
 # https://github.com/huggingface/transformers/blob/v4.28.0/src/transformers/models/llama/modeling_llama.py
 # Copyright 2024 The vLLM team.
 
-
-
-import vllm
 import torch
-from vllm import envs, logger
-from vllm.logger import init_logger
+from vllm.utils import logger
 
 from vllm_metax import envs as mx_envs
 
-logger = init_logger(__name__)
 
 def import_pymxml():
     """
@@ -47,6 +42,7 @@ def import_pymxml():
     import vllm_metax.third_party.pymxml as pymxml
     return pymxml
 
+
 def find_mccl_library() -> str:
     """
     We either use the library file specified by the `VLLM_NCCL_SO_PATH`
@@ -75,6 +71,6 @@ def find_mccl_library() -> str:
 def vllm_version():
     if mx_envs.VLLM_OFFICIAL_VERSION is not None:
         return mx_envs.VLLM_OFFICIAL_VERSION
-    else: 
+    else:
         import vllm
         return vllm.__version__

@@ -19,7 +19,6 @@ void cutlass_scaled_mm_azp_sm75(torch::Tensor& c, torch::Tensor const& a,
                                 std::optional<torch::Tensor> const& azp,
                                 std::optional<torch::Tensor> const& bias);
 
-
 bool cutlass_scaled_mm_supports_fp8(int64_t cuda_device_capability) {
   return false;
 }
@@ -131,13 +130,11 @@ void cutlass_scaled_mm_azp(torch::Tensor& c, torch::Tensor const& a,
       n = b.size(2);
       batchsize = a.size(0);
     }
-    auto options = torch::TensorOptions()
-                     .dtype(c.dtype())
-                     .device(a.device());
-    torch::Tensor zero_bias = torch::zeros({batchsize,  n}, options);
-    cutlass_scaled_mm_azp_sm75(c, a, b, a_scales, b_scales, azp_adj, azp, zero_bias);
+    auto options = torch::TensorOptions().dtype(c.dtype()).device(a.device());
+    torch::Tensor zero_bias = torch::zeros({batchsize, n}, options);
+    cutlass_scaled_mm_azp_sm75(c, a, b, a_scales, b_scales, azp_adj, azp,
+                               zero_bias);
   } else {
     cutlass_scaled_mm_azp_sm75(c, a, b, a_scales, b_scales, azp_adj, azp, bias);
   }
-
 }

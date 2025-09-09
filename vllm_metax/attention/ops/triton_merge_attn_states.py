@@ -3,7 +3,6 @@
 from typing import Optional
 
 import torch
-
 from vllm.triton_utils import tl, triton
 
 

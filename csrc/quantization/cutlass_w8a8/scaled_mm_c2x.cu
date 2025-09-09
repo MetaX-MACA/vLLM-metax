@@ -14,11 +14,11 @@ void cutlass_scaled_mm_sm75(torch::Tensor& out, torch::Tensor const& a,
   int32_t k = a.size(1);
   int32_t batch_count = 1;
   if (a.dim() == 3 && b.dim() == 3) {
-      // a.size = [batch_size, M, K], b.size = [batch_size, K, N]
-      m = a.size(1);
-      n = b.size(2);
-      k = a.size(2);
-      batch_count = a.size(0);
+    // a.size = [batch_size, M, K], b.size = [batch_size, K, N]
+    m = a.size(1);
+    n = b.size(2);
+    k = a.size(2);
+    batch_count = a.size(0);
   }
 
   using ArchTag = mctlass::arch::Sm80;
@@ -27,12 +27,11 @@ void cutlass_scaled_mm_sm75(torch::Tensor& out, torch::Tensor const& a,
   using ElementC = mctlass::half_t;
   using ElementCompute = float;
   using LayoutA = mctlass::layout::RowMajor;
-  //using LayoutB = mctlass::layout::RowMajor;
+  // using LayoutB = mctlass::layout::RowMajor;
   using LayoutB = mctlass::layout::ColumnMajor;
   using LayoutC = mctlass::layout::RowMajor;
 
-  if (out.dtype() == torch::kBFloat16)
-  {
+  if (out.dtype() == torch::kBFloat16) {
     auto a_ptr = static_cast<ElementA const*>(a.data_ptr());
     auto b_ptr = static_cast<ElementB const*>(b.data_ptr());
     auto c_ptr = static_cast<maca_bfloat16*>(out.data_ptr());
@@ -41,20 +40,12 @@ void cutlass_scaled_mm_sm75(torch::Tensor& out, torch::Tensor const& a,
     auto stream = at::cuda::getCurrentCUDAStream(a.get_device());
     if (bias) {
       mctlass::epilogue::thread::ScaleType::ScaleBiasKind const scale_type =
-      mctlass::epilogue::thread::ScaleType::ScaleAvBvBias;
-      using mctlassGemmScaleOp = mctlassGemmScale<
-        ElementA,
-        LayoutA,
-        ElementB,
-        LayoutB,
-        maca_bfloat16,
-        LayoutC,
-        ElementCompute,
-        ArchTag,
-        scale_type
-      >;
-      maca_bfloat16 *bias_t;
-      bias_t = static_cast<maca_bfloat16 *>(bias.value().data_ptr());
+          mctlass::epilogue::thread::ScaleType::ScaleAvBvBias;
+      using mctlassGemmScaleOp =
+          mctlassGemmScale<ElementA, LayoutA, ElementB, LayoutB, maca_bfloat16,
+                           LayoutC, ElementCompute, ArchTag, scale_type>;
+      maca_bfloat16* bias_t;
+      bias_t = static_cast<maca_bfloat16*>(bias.value().data_ptr());
       mctlassGemmScaleOp mctlass_op;
       mctlass::gemm::GemmCoord problem_size(m, n, k);
       typename mctlassGemmScaleOp::Arguments arguments{
@@ -73,24 +64,14 @@ void cutlass_scaled_mm_sm75(torch::Tensor& out, torch::Tensor const& a,
           k,
           n,
           n,
-          n
-      };
+          n};
       mctlass_op(arguments, NULL, stream);
-    }
-    else{
+    } else {
       mctlass::epilogue::thread::ScaleType::ScaleBiasKind const scale_type =
-      mctlass::epilogue::thread::ScaleType::ScaleAvBv;
-      using mctlassGemmScaleOp = mctlassGemmScale<
-        ElementA,
-        LayoutA,
-        ElementB,
-        LayoutB,
-        maca_bfloat16,
-        LayoutC,
-        ElementCompute,
-        ArchTag,
-        scale_type
-      >;
+          mctlass::epilogue::thread::ScaleType::ScaleAvBv;
+      using mctlassGemmScaleOp =
+          mctlassGemmScale<ElementA, LayoutA, ElementB, LayoutB, maca_bfloat16,
+                           LayoutC, ElementCompute, ArchTag, scale_type>;
       mctlassGemmScaleOp mctlass_op;
       mctlass::gemm::GemmCoord problem_size(m, n, k);
       typename mctlassGemmScaleOp::Arguments arguments{
@@ -109,12 +90,10 @@ void cutlass_scaled_mm_sm75(torch::Tensor& out, torch::Tensor const& a,
           k,
           n,
           n,
-          n
-      };
+          n};
       mctlass_op(arguments, NULL, stream);
     }
-  }
-  else{
+  } else {
     auto a_ptr = static_cast<ElementA const*>(a.data_ptr());
     auto b_ptr = static_cast<ElementB const*>(b.data_ptr());
     auto c_ptr = static_cast<ElementC*>(out.data_ptr());
@@ -123,20 +102,12 @@ void cutlass_scaled_mm_sm75(torch::Tensor& out, torch::Tensor const& a,
     auto stream = at::cuda::getCurrentCUDAStream(a.get_device());
     if (bias) {
       mctlass::epilogue::thread::ScaleType::ScaleBiasKind const scale_type =
-      mctlass::epilogue::thread::ScaleType::ScaleAvBvBias;
-      using mctlassGemmScaleOp = mctlassGemmScale<
-        ElementA,
-        LayoutA,
-        ElementB,
-        LayoutB,
-        ElementC,
-        LayoutC,
-        ElementCompute,
-        ArchTag,
-        scale_type
-      >;
-      ElementC *bias_t;
-      bias_t = static_cast<ElementC *>(bias.value().data_ptr());
+          mctlass::epilogue::thread::ScaleType::ScaleAvBvBias;
+      using mctlassGemmScaleOp =
+          mctlassGemmScale<ElementA, LayoutA, ElementB, LayoutB, ElementC,
+                           LayoutC, ElementCompute, ArchTag, scale_type>;
+      ElementC* bias_t;
+      bias_t = static_cast<ElementC*>(bias.value().data_ptr());
       mctlassGemmScaleOp mctlass_op;
       mctlass::gemm::GemmCoord problem_size(m, n, k);
       typename mctlassGemmScaleOp::Arguments arguments{
@@ -155,24 +126,14 @@ void cutlass_scaled_mm_sm75(torch::Tensor& out, torch::Tensor const& a,
           k,
           n,
           n,
-          n
-      };
+          n};
       mctlass_op(arguments, NULL, stream);
-    }
-    else{
+    } else {
       mctlass::epilogue::thread::ScaleType::ScaleBiasKind const scale_type =
-      mctlass::epilogue::thread::ScaleType::ScaleAvBv;
-      using mctlassGemmScaleOp = mctlassGemmScale<
-        ElementA,
-        LayoutA,
-        ElementB,
-        LayoutB,
-        ElementC,
-        LayoutC,
-        ElementCompute,
-        ArchTag,
-        scale_type
-      >;
+          mctlass::epilogue::thread::ScaleType::ScaleAvBv;
+      using mctlassGemmScaleOp =
+          mctlassGemmScale<ElementA, LayoutA, ElementB, LayoutB, ElementC,
+                           LayoutC, ElementCompute, ArchTag, scale_type>;
       mctlassGemmScaleOp mctlass_op;
       mctlass::gemm::GemmCoord problem_size(m, n, k);
       typename mctlassGemmScaleOp::Arguments arguments{
@@ -191,8 +152,7 @@ void cutlass_scaled_mm_sm75(torch::Tensor& out, torch::Tensor const& a,
           k,
           n,
           n,
-          n
-      };
+          n};
       mctlass_op(arguments, NULL, stream);
     }
   }
@@ -205,7 +165,8 @@ void cutlass_scaled_mm_azp_sm75(torch::Tensor& out, torch::Tensor const& a,
                                 torch::Tensor const& azp_adj,
                                 std::optional<torch::Tensor> const& azp,
                                 std::optional<torch::Tensor> const& bias) {
-#if (MACA_VERSION_MAJOR * 100 + MACA_VERSION_MINOR) >= 231 // MACA version >= 2.31.0.x
+#if (MACA_VERSION_MAJOR * 100 + MACA_VERSION_MINOR) >= \
+    231  // MACA version >= 2.31.0.x
   int32_t m = a.size(0);
   int32_t n = b.size(1);
   int32_t k = a.size(1);
@@ -243,7 +204,8 @@ void cutlass_scaled_mm_azp_sm75(torch::Tensor& out, torch::Tensor const& a,
 
     ElementAccumulator* azp_ptr = NULL;
     auto azp_adj_ptr = azp_adj.data_ptr<ElementAccumulator>();
-    ElementOutput* bias_t = static_cast<ElementOutput*>(bias.value().data_ptr());
+    ElementOutput* bias_t =
+        static_cast<ElementOutput*>(bias.value().data_ptr());
 
     if (azp) {
       azp_ptr = static_cast<ElementAccumulator*>(azp.value().data_ptr());
@@ -270,8 +232,7 @@ void cutlass_scaled_mm_azp_sm75(torch::Tensor& out, torch::Tensor const& a,
           k,
           n,
           n,
-          n
-      };
+          n};
       mctlass_op(arguments, NULL, stream);
     } else {
       mctlass::epilogue::thread::ScaleType::ScaleBiasKind const scale_type =
@@ -297,8 +258,7 @@ void cutlass_scaled_mm_azp_sm75(torch::Tensor& out, torch::Tensor const& a,
           k,
           n,
           n,
-          n
-      };
+          n};
       mctlass_op(arguments, NULL, stream);
     }
   } else {
@@ -313,7 +273,8 @@ void cutlass_scaled_mm_azp_sm75(torch::Tensor& out, torch::Tensor const& a,
 
     ElementAccumulator* azp_ptr = nullptr;
     auto azp_adj_ptr = azp_adj.data_ptr<ElementAccumulator>();
-    ElementOutput* bias_t = static_cast<ElementOutput*>(bias.value().data_ptr());
+    ElementOutput* bias_t =
+        static_cast<ElementOutput*>(bias.value().data_ptr());
 
     if (azp) {
       azp_ptr = static_cast<ElementAccumulator*>(azp.value().data_ptr());
@@ -341,8 +302,7 @@ void cutlass_scaled_mm_azp_sm75(torch::Tensor& out, torch::Tensor const& a,
           k,
           n,
           n,
-          n
-      };
+          n};
       mctlass_op(arguments, NULL, stream);
     } else {
       mctlass::epilogue::thread::ScaleType::ScaleBiasKind const scale_type =
@@ -368,10 +328,9 @@ void cutlass_scaled_mm_azp_sm75(torch::Tensor& out, torch::Tensor const& a,
           k,
           n,
           n,
-          n
-      };
+          n};
       mctlass_op(arguments, NULL, stream);
     }
   }
-#endif //USE_MACA
+#endif  // USE_MACA
 }

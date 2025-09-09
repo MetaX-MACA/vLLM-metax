@@ -2,11 +2,10 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """Attention layer with FlashAttention."""
 from dataclasses import dataclass
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 import torch
-
 from vllm import _custom_ops as ops
 from vllm.attention.backends.abstract import (AttentionBackend, AttentionImpl,
                                               AttentionMetadata, AttentionType,
@@ -16,21 +15,16 @@ from vllm.attention.ops.merge_attn_states import merge_attn_states
 from vllm.attention.utils.fa_utils import (flash_attn_supports_fp8,
                                            get_flash_attn_version)
 
-from vllm import _custom_ops as ops
 reshape_and_cache_flash = ops.reshape_and_cache_flash
 
-from flash_attn import (flash_attn_varlen_func, flash_attn_with_kvcache)
-
+from flash_attn import flash_attn_varlen_func, flash_attn_with_kvcache
 from vllm.config import VllmConfig, get_layers_from_vllm_config
 from vllm.logger import init_logger
 from vllm.utils import cdiv
-from vllm.v1.attention.backends.utils import (AttentionCGSupport,
-                                              AttentionMetadataBuilder,
-                                              CommonAttentionMetadata,
-                                              get_kv_cache_layout,
-                                              reorder_batch_to_split_decodes_and_prefills,
-                                              split_decodes_and_prefills)
-
+from vllm.v1.attention.backends.utils import (
+    AttentionCGSupport, AttentionMetadataBuilder, CommonAttentionMetadata,
+    get_kv_cache_layout, reorder_batch_to_split_decodes_and_prefills,
+    split_decodes_and_prefills)
 from vllm.v1.kv_cache_interface import AttentionSpec
 
 if TYPE_CHECKING:
@@ -248,7 +242,9 @@ class FlashAttentionMetadataBuilder(
     # TODO: Metax Modify
     def reorder_batch(self, input_batch: "InputBatch",
                       scheduler_output: "SchedulerOutput") -> bool:
-        return reorder_batch_to_split_decodes_and_prefills(input_batch, scheduler_output, decode_threshold=1)
+        return reorder_batch_to_split_decodes_and_prefills(input_batch,
+                                                           scheduler_output,
+                                                           decode_threshold=1)
 
     def build(self,
               common_prefix_len: int,
@@ -272,7 +268,6 @@ class FlashAttentionMetadataBuilder(
         num_decodes, num_prefills, num_decode_tokens, num_prefill_tokens = \
             split_decodes_and_prefills(common_attn_metadata)
 
-        
         # /------------------------  Metax Modification -------------------------\
         assert num_decode_tokens + num_prefill_tokens == num_actual_tokens
         assert num_decodes + num_prefills == num_reqs
@@ -301,10 +296,14 @@ class FlashAttentionMetadataBuilder(
         # /------------------------  Metax Modification -------------------------\
         # For handling prefill decode split
         if num_decodes > 0:
-            decode_max_seq_len = int(common_attn_metadata.seq_lens_cpu[:num_decodes].max())
-            decode_query_start_loc = common_attn_metadata.query_start_loc[:num_decodes + 1]
+            decode_max_seq_len = int(
+                common_attn_metadata.seq_lens_cpu[:num_decodes].max())
+            decode_query_start_loc = common_attn_metadata.query_start_loc[:
+                                                                          num_decodes
+                                                                          + 1]
             decode_seq_lens = common_attn_metadata.seq_lens[:num_decodes]
-            decode_block_table_tensor = common_attn_metadata.block_table_tensor[:num_decodes]
+            decode_block_table_tensor = common_attn_metadata.block_table_tensor[:
+                                                                                num_decodes]
         else:
             decode_max_seq_len = 0
             decode_query_start_loc = None
@@ -312,11 +311,15 @@ class FlashAttentionMetadataBuilder(
             decode_block_table_tensor = None
 
         if num_prefills > 0:
-            prefill_max_seq_len = int(common_attn_metadata.seq_lens_cpu[num_decodes:num_reqs].max())
-            prefill_query_start_loc = (common_attn_metadata.query_start_loc[num_decodes:num_reqs + 1] -
-                                       common_attn_metadata.query_start_loc[num_decodes])
-            prefill_seq_lens = common_attn_metadata.seq_lens[num_decodes:num_reqs]
-            prefill_block_table_tensor = common_attn_metadata.block_table_tensor[num_decodes:num_reqs]
+            prefill_max_seq_len = int(
+                common_attn_metadata.seq_lens_cpu[num_decodes:num_reqs].max())
+            prefill_query_start_loc = (
+                common_attn_metadata.query_start_loc[num_decodes:num_reqs + 1]
+                - common_attn_metadata.query_start_loc[num_decodes])
+            prefill_seq_lens = common_attn_metadata.seq_lens[
+                num_decodes:num_reqs]
+            prefill_block_table_tensor = common_attn_metadata.block_table_tensor[
+                num_decodes:num_reqs]
         else:
             prefill_max_seq_len = 0
             prefill_query_start_loc = None
@@ -603,23 +606,26 @@ class FlashAttentionImpl(AttentionImpl):
         if not attn_metadata.use_cascade:
             num_decode_tokens = attn_metadata.num_decode_tokens
             if attn_metadata.num_prefills > 0:
-                cu_prefix_kv_lens = torch.tensor([0] + attn_metadata.prefill_seq_lens.tolist(), 
-                                                 device=attn_metadata.prefill_seq_lens.device, dtype=torch.int32).cumsum(dim=0, dtype=torch.int32)
-                output[num_decode_tokens:num_actual_tokens] = flash_attn_varlen_func(
-                    q=query[num_decode_tokens:num_actual_tokens],
-                    k=key_cache,
-                    v=value_cache,
-                    block_table=attn_metadata.prefill_block_table,
-                    cu_seqlens_q=attn_metadata.prefill_query_start_loc,
-                    cu_seqlens_k=cu_prefix_kv_lens,
-                    max_seqlen_q=attn_metadata.max_query_len,
-                    max_seqlen_k=attn_metadata.prefill_max_seq_len,
-                    softmax_scale=self.scale,
-                    causal=True,
-                    window_size=self.sliding_window,
-                    alibi_slopes=self.alibi_slopes,
-                    softcap=self.logits_soft_cap,
-                )
+                cu_prefix_kv_lens = torch.tensor(
+                    [0] + attn_metadata.prefill_seq_lens.tolist(),
+                    device=attn_metadata.prefill_seq_lens.device,
+                    dtype=torch.int32).cumsum(dim=0, dtype=torch.int32)
+                output[num_decode_tokens:
+                       num_actual_tokens] = flash_attn_varlen_func(
+                           q=query[num_decode_tokens:num_actual_tokens],
+                           k=key_cache,
+                           v=value_cache,
+                           block_table=attn_metadata.prefill_block_table,
+                           cu_seqlens_q=attn_metadata.prefill_query_start_loc,
+                           cu_seqlens_k=cu_prefix_kv_lens,
+                           max_seqlen_q=attn_metadata.max_query_len,
+                           max_seqlen_k=attn_metadata.prefill_max_seq_len,
+                           softmax_scale=self.scale,
+                           causal=True,
+                           window_size=self.sliding_window,
+                           alibi_slopes=self.alibi_slopes,
+                           softcap=self.logits_soft_cap,
+                       )
             if attn_metadata.num_decodes > 0:
                 # Use flash_attn_with_kvcache for normal decoding.
                 decode_query = query[:num_decode_tokens]
@@ -829,9 +835,10 @@ def cascade_attention(
     descale_shape = (cu_prefix_query_lens.shape[0] - 1, key_cache.shape[-2])
 
     # /------------------------  Metax Modification -------------------------\
-    cu_prefix_kv_lens = torch.tensor([0] + prefix_kv_lens.tolist(), 
-                                     device=prefix_kv_lens.device, 
-                                     dtype=torch.int32).cumsum(dim=0, dtype=torch.int32)
+    cu_prefix_kv_lens = torch.tensor([0] + prefix_kv_lens.tolist(),
+                                     device=prefix_kv_lens.device,
+                                     dtype=torch.int32).cumsum(
+                                         dim=0, dtype=torch.int32)
     # \------------------------  Metax Modification -------------------------/
 
     # Process shared prefix.
@@ -852,9 +859,10 @@ def cascade_attention(
 
     descale_shape = (cu_query_lens.shape[0] - 1, key_cache.shape[-2])
     # /------------------------  Metax Modification -------------------------\
-    cu_suffix_kv_lens = torch.tensor([0] + suffix_kv_lens.tolist(), 
-                                     device=suffix_kv_lens.device, 
-                                     dtype=torch.int32).cumsum(dim=0, dtype=torch.int32)
+    cu_suffix_kv_lens = torch.tensor([0] + suffix_kv_lens.tolist(),
+                                     device=suffix_kv_lens.device,
+                                     dtype=torch.int32).cumsum(
+                                         dim=0, dtype=torch.int32)
     # \------------------------  Metax Modification -------------------------/
 
     # Process suffix per query.

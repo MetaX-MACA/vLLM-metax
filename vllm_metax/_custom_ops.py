@@ -1,37 +1,35 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
-import contextlib
 import importlib
 from typing import TYPE_CHECKING, Optional, Union
 
 import torch
 import torch.library
-
 import vllm.envs as envs
 from vllm.logger import init_logger
 from vllm.platforms import current_platform
-from vllm.scalar_type import ScalarType
 
 logger = init_logger(__name__)
 
 if not current_platform.is_tpu() and not current_platform.is_xpu():
     try:
-        import vllm._C
+        import vllm._C  # noqa
     except ImportError as e:
         logger.warning("Failed to import from vllm._C with %r", e)
-
 
 if TYPE_CHECKING:
 
     def register_fake(fn):
         return lambda name: fn
 else:
+
     def register_fake(op_name):
+
         def register(func):
             return func  # 直接返回原函数，不注册
-        return register
 
+        return register
 
 
 # page attention ops
@@ -224,6 +222,7 @@ def batched_rotary_embedding(positions: torch.Tensor, query: torch.Tensor,
                                           cos_sin_cache, is_neox, rot_dim,
                                           cos_sin_cache_offsets)
 
+
 # layer norm ops
 def rms_norm(out: torch.Tensor, input: torch.Tensor, weight: torch.Tensor,
              epsilon: float) -> None:
@@ -275,6 +274,7 @@ def apply_repetition_penalties(logits: torch.Tensor, prompt_mask: torch.Tensor,
         apply_repetition_penalties_torch(logits, prompt_mask, output_mask,
                                          repetition_penalties)
 
+
 # fused quant layer norm ops
 def rms_norm_dynamic_per_token_quant(
     input: torch.Tensor,
@@ -301,22 +301,23 @@ def awq_dequantize(qweight: torch.Tensor, scales: torch.Tensor,
                    zeros: torch.Tensor, split_k_iters: int, thx: int,
                    thy: int) -> torch.Tensor:
     if envs.VLLM_USE_TRITON_AWQ:
-        from vllm.model_executor.layers.quantization.awq_triton import (
-            awq_dequantize_triton)
+        from vllm.model_executor.layers.quantization.awq_triton import \
+            awq_dequantize_triton
         return awq_dequantize_triton(qweight, scales, zeros)
     return torch.ops._C.awq_dequantize(qweight, scales, zeros, split_k_iters,
                                        thx, thy)
 
 
 def awq_gemm(input: torch.Tensor, qweight: torch.Tensor, qzeros: torch.Tensor,
-             scales: torch.Tensor, split_k_iters: int, temp_space: torch.Tensor, 
-             dtype_bf16: bool) -> torch.Tensor:
+             scales: torch.Tensor, split_k_iters: int,
+             temp_space: torch.Tensor, dtype_bf16: bool) -> torch.Tensor:
     if envs.VLLM_USE_TRITON_AWQ:
-        from vllm.model_executor.layers.quantization.awq_triton import (
-            awq_gemm_triton)
+        from vllm.model_executor.layers.quantization.awq_triton import \
+            awq_gemm_triton
         return awq_gemm_triton(input, qweight, scales, qzeros, split_k_iters)
     return torch.ops._C.awq_gemm(input, qweight, scales, qzeros, split_k_iters,
-                                temp_space, dtype_bf16)
+                                 temp_space, dtype_bf16)
+
 
 # awq to gptq 4bit conversion
 def awq_to_gptq_4bit(qweight: torch.Tensor) -> torch.Tensor:
@@ -324,14 +325,15 @@ def awq_to_gptq_4bit(qweight: torch.Tensor) -> torch.Tensor:
         return qweight
     return torch.ops._C.awq_to_gptq_4bit(qweight)
 
+
 # gptq
 def gptq_gemm(a: torch.Tensor, b_q_weight: torch.Tensor,
               b_gptq_qzeros: torch.Tensor, b_gptq_scales: torch.Tensor,
-              b_g_idx: torch.Tensor, use_exllama: bool,
-              bit: int, group_size: int, perm_space: torch.Tensor,
+              b_g_idx: torch.Tensor, use_exllama: bool, bit: int,
+              group_size: int, perm_space: torch.Tensor,
               temp_space: torch.Tensor, dtype_bf16: bool) -> torch.Tensor:
     return torch.ops._C.gptq_gemm(a, b_q_weight, b_gptq_qzeros, b_gptq_scales,
-                                  b_g_idx, use_exllama, bit, group_size, 
+                                  b_g_idx, use_exllama, bit, group_size,
                                   perm_space, temp_space, dtype_bf16)
 
 
@@ -433,11 +435,17 @@ def cutlass_scaled_mm_supports_block_fp8(cuda_device_capability: int) -> bool:
 
 
 # Batch gemm in vllm, support w8a8 int8 quantization
-def cutlass_scaled_batch_mm(a: torch.Tensor, b: torch.Tensor,
-                            scale_a: torch.Tensor, scale_b: torch.Tensor,
-                            out_dtype: torch.dtype, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
+def cutlass_scaled_batch_mm(
+        a: torch.Tensor,
+        b: torch.Tensor,
+        scale_a: torch.Tensor,
+        scale_b: torch.Tensor,
+        out_dtype: torch.dtype,
+        bias: Optional[torch.Tensor] = None) -> torch.Tensor:
     assert (a.shape[0] == b.shape[0] and a.shape[2] == b.shape[1])
-    out = torch.empty((a.shape[0], a.shape[1], b.shape[2]), device = a.device, dtype = out_dtype)
+    out = torch.empty((a.shape[0], a.shape[1], b.shape[2]),
+                      device=a.device,
+                      dtype=out_dtype)
     torch.ops._C.cutlass_scaled_mm(out, a, b, scale_a, scale_b, bias)
     return out
 
@@ -999,6 +1007,7 @@ def ggml_moe_a8_vec(
 def ggml_moe_get_block_size(quant_type: int) -> int:
     return torch.ops._C.ggml_moe_get_block_size(quant_type)
 
+
 # moe
 def moe_sum(input: torch.Tensor, output: torch.Tensor):
     torch.ops._moe_C.moe_sum(input, output)
@@ -1016,17 +1025,20 @@ def moe_align_block_size(topk_ids: torch.Tensor, num_experts: int,
 def topk_softmax(topk_weights: torch.Tensor, topk_ids: torch.Tensor,
                  token_expert_indices: torch.Tensor,
                  gating_output: torch.Tensor) -> None:
-    torch.ops._moe_C.topk_softmax(topk_weights, topk_ids,
-                                  token_expert_indices, gating_output)
+    torch.ops._moe_C.topk_softmax(topk_weights, topk_ids, token_expert_indices,
+                                  gating_output)
+
 
 def fused_moe_kernel(A: torch.Tensor, B: torch.Tensor, C: torch.Tensor,
-                    topk_weights: torch.Tensor, topk_ids: torch.Tensor,
-                    sorted_token_ids: torch.Tensor, expert_ids: torch.Tensor,
-                    num_tokens_post_padded: torch.Tensor, mul_routed_weight: bool, top_k: int, tileConfig: int) -> None:
-    torch.ops._moe_C.fused_moe_kernel(A, B, C,
-                    topk_weights, topk_ids,
-                    sorted_token_ids, expert_ids,
-                    num_tokens_post_padded, mul_routed_weight, top_k, tileConfig)
+                     topk_weights: torch.Tensor, topk_ids: torch.Tensor,
+                     sorted_token_ids: torch.Tensor, expert_ids: torch.Tensor,
+                     num_tokens_post_padded: torch.Tensor,
+                     mul_routed_weight: bool, top_k: int,
+                     tileConfig: int) -> None:
+    torch.ops._moe_C.fused_moe_kernel(A, B, C, topk_weights, topk_ids,
+                                      sorted_token_ids, expert_ids,
+                                      num_tokens_post_padded,
+                                      mul_routed_weight, top_k, tileConfig)
 
 
 def reshape_and_cache(

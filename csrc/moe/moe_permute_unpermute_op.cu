@@ -4,15 +4,15 @@
 #include "core/registration.h"
 
 void moe_permute(const torch::Tensor& input,
-                 const torch::Tensor& topk_ids,                   // [n_token, topk]
+                 const torch::Tensor& topk_ids,  // [n_token, topk]
                  const torch::Tensor& token_expert_indices,
                  const std::optional<torch::Tensor>& expert_map,
                  int64_t n_expert, int64_t n_local_expert, int64_t topk,
                  const std::optional<int64_t>& align_block_size,
                  torch::Tensor& permuted_input,
                  torch::Tensor& expert_first_token_offset,
-                 torch::Tensor& inv_permuted_idx,           // [n_token, topk]
-                 torch::Tensor& permuted_idx,               // [permute_size]
+                 torch::Tensor& inv_permuted_idx,  // [n_token, topk]
+                 torch::Tensor& permuted_idx,      // [permute_size]
                  torch::Tensor& m_indices) {
   TORCH_CHECK(false, "moe_unpermute is not supported on MACA");
 }
@@ -35,9 +35,7 @@ void shuffle_rows(const torch::Tensor& input_tensor,
   TORCH_CHECK(false, "shuffle_rows is not supported on MACA");
 }
 
-bool moe_permute_unpermute_supported() {
-  return false;
-}
+bool moe_permute_unpermute_supported() { return false; }
 
 TORCH_LIBRARY_IMPL_EXPAND(TORCH_EXTENSION_NAME, CUDA, m) {
   m.impl("moe_permute", &moe_permute);

@@ -1,18 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 
-import ctypes
 import importlib.util
 import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 from shutil import which
 
 import torch
-import shutil
 from packaging.version import Version, parse
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
@@ -27,8 +26,8 @@ except ImportError:
     MACA_HOME = None
     USE_MACA = False
 
-
 CMAKE_EXECUTABLE = 'cmake' if not USE_MACA else 'cmake_maca'
+
 
 def load_module_from_path(module_name, path):
     spec = importlib.util.spec_from_file_location(module_name, path)
@@ -43,27 +42,30 @@ logger = logging.getLogger(__name__)
 
 # cannot import envs directly because it depends on vllm,
 #  which is not installed yet
-envs = load_module_from_path('envs', os.path.join(ROOT_DIR, 'vllm_metax', 'envs.py'))
+envs = load_module_from_path('envs',
+                             os.path.join(ROOT_DIR, 'vllm_metax', 'envs.py'))
 
 try:
-    vllm_dist_path = importlib.metadata.distribution("vllm").locate_file("vllm")
+    vllm_dist_path = importlib.metadata.distribution("vllm").locate_file(
+        "vllm")
     logger.info("detected vllm distribution path: %s", vllm_dist_path)
 except importlib.metadata.PackageNotFoundError:
     vllm_dist_path = None
     logger.warning("vllm not installed! You need to install vllm first. ")
 except Exception:
-    vllm_dist_path = None;
+    vllm_dist_path = None
     logger.warning("Error getting vllm distribution path")
 
 VLLM_TARGET_DEVICE = envs.VLLM_TARGET_DEVICE
 
 if not (sys.platform.startswith("linux") or torch.version.cuda is None
-      or os.getenv("VLLM_TARGET_DEVICE") != "cuda"):
+        or os.getenv("VLLM_TARGET_DEVICE") != "cuda"):
     # if cuda or hip is not available and VLLM_TARGET_DEVICE is not set,
     # fallback to cpu
-    assert False, "Plugin only support cuda on linux platform. "
-    
+    raise AssertionError("Plugin only support cuda on linux platform. ")
+
 MAIN_CUDA_VERSION = "12.8"
+
 
 def is_sccache_available() -> bool:
     return which("sccache") is not None
@@ -209,12 +211,12 @@ class cmake_build_ext(build_ext):
         else:
             # Default build tool to whatever cmake picks.
             build_tool = []
-            
+
         # Make sure we use the nvcc from CUDA_HOME
         if _is_cuda() and not USE_MACA:
             cmake_args += [f'-DCMAKE_CUDA_COMPILER={CUDA_HOME}/bin/nvcc']
         if USE_MACA:
-            cmake_args += [f'-DUSE_MACA=1']
+            cmake_args += ['-DUSE_MACA=1']
         subprocess.check_call(
             [CMAKE_EXECUTABLE, ext.cmake_lists_dir, *build_tool, *cmake_args],
             cwd=self.build_temp)
@@ -233,7 +235,8 @@ class cmake_build_ext(build_ext):
         targets = []
 
         def target_name(s: str) -> str:
-            return s.removeprefix("vllm_metax.").removeprefix("vllm_flash_attn.")
+            return s.removeprefix("vllm_metax.").removeprefix(
+                "vllm_flash_attn.")
 
         # Build all the extensions
         for ext in self.extensions:
@@ -249,7 +252,8 @@ class cmake_build_ext(build_ext):
             *[f"--target={name}" for name in targets],
         ]
 
-        subprocess.check_call([CMAKE_EXECUTABLE, *build_args], cwd=self.build_temp)
+        subprocess.check_call([CMAKE_EXECUTABLE, *build_args],
+                              cwd=self.build_temp)
 
         # Install the libraries
         for ext in self.extensions:
@@ -268,7 +272,8 @@ class cmake_build_ext(build_ext):
 
             # prefix here should actually be the same for all components
             install_args = [
-                CMAKE_EXECUTABLE, "--install", ".", "--prefix", prefix, "--component",
+                CMAKE_EXECUTABLE, "--install", ".", "--prefix", prefix,
+                "--component",
                 target_name(ext.name)
             ]
             subprocess.check_call(install_args, cwd=self.build_temp)
@@ -276,6 +281,7 @@ class cmake_build_ext(build_ext):
     def run(self):
         # First, run the standard build_ext command to compile the extensions
         super().run()
+
 
 class repackage_wheel(build_ext):
     """Extracts libraries and other files from an existing wheel."""
@@ -407,8 +413,10 @@ def _is_cuda() -> bool:
     has_cuda = torch.version.cuda is not None
     return (VLLM_TARGET_DEVICE == "cuda" and has_cuda)
 
+
 def _build_custom_ops() -> bool:
     return _is_cuda()
+
 
 def get_nvcc_cuda_version() -> Version:
     """Get the CUDA version from nvcc.
@@ -423,6 +431,7 @@ def get_nvcc_cuda_version() -> Version:
     nvcc_cuda_version = parse(output[release_idx].split(",")[0])
     return nvcc_cuda_version
 
+
 def get_maca_version():
     """
     Returns the MACA SDK Version
@@ -430,14 +439,16 @@ def get_maca_version():
     file_full_path = os.path.join(os.getenv('MACA_PATH'), 'Version.txt')
     if not os.path.isfile(file_full_path):
         return None
-    
-    with open(file_full_path, 'r', encoding='utf-8') as file:
+
+    with open(file_full_path, encoding='utf-8') as file:
         first_line = file.readline().strip()
     return first_line.split(":")[-1]
 
+
 def get_vllm_version() -> str:
     from version_tools import fixed_version_scheme
-    version = get_version(version_scheme=fixed_version_scheme, write_to="vllm_metax/_version.py")
+    version = get_version(version_scheme=fixed_version_scheme,
+                          write_to="vllm_metax/_version.py")
     sep = "+" if "+" not in version else "."  # dev versions might contain +
 
     if _is_cuda():
@@ -452,6 +463,7 @@ def get_vllm_version() -> str:
         raise RuntimeError("Unknown runtime environment")
 
     return version
+
 
 def get_requirements() -> list[str]:
     """Get Python package dependencies from requirements.txt."""
@@ -486,6 +498,7 @@ def get_requirements() -> list[str]:
             "or CPU.")
     return requirements
 
+
 ext_modules = []
 
 if _is_cuda():
@@ -504,7 +517,9 @@ package_data = {
     ]
 }
 
-class custom_install(install):        
+
+class custom_install(install):
+
     def _copy_with_backup(self, src_path: Path, dest_path: Path):
         """
         Copy a file or directory from src_path to dest_path.
@@ -522,11 +537,15 @@ class custom_install(install):
 
         # Backup if target path already exists (file or dir)
         if os.path.exists(dest_full_path):
-            backup_path = dest_full_path.parent / (dest_full_path.name + ".bak")
-            logger.debug(f"{dest_full_path} exists, backing it up to {backup_path}")
+            backup_path = dest_full_path.parent / (dest_full_path.name +
+                                                   ".bak")
+            logger.debug(
+                f"{dest_full_path} exists, backing it up to {backup_path}")
             if os.path.exists(backup_path):
-                logger.debug(f"Backup path {backup_path} already exists, removing it.")
-                if os.path.isdir(backup_path) and not os.path.islink(backup_path):
+                logger.debug(
+                    f"Backup path {backup_path} already exists, removing it.")
+                if os.path.isdir(
+                        backup_path) and not os.path.islink(backup_path):
                     shutil.rmtree(backup_path)
                 else:
                     os.remove(backup_path)
@@ -539,7 +558,7 @@ class custom_install(install):
             shutil.copy2(src_path, dest_full_path)
 
         logger.info(f"Copied {src_path} to {dest_full_path}")
-        
+
     def _copy_files_to_vllm(self, src_path: Path, dest_path: Path):
         try:
             self._copy_with_backup(src_path, dest_path)
@@ -553,16 +572,22 @@ class custom_install(install):
             return
 
         files_to_copy = {
-            "vllm_metax/_C.abi3.so" : vllm_dist_path,
-            "vllm_metax/_moe_C.abi3.so" : vllm_dist_path,
-            "vllm_metax/cumem_allocator.abi3.so" : vllm_dist_path,
+            "vllm_metax/_C.abi3.so":
+            vllm_dist_path,
+            "vllm_metax/_moe_C.abi3.so":
+            vllm_dist_path,
+            "vllm_metax/cumem_allocator.abi3.so":
+            vllm_dist_path,
             # TODO: workaround for torch 2.7 inferscheme, remove when torch >= 2.7
-            "vllm_metax/patch/vllm_substitution/fp8_utils.py" : vllm_dist_path / "model_executor/layers/quantization/utils/fp8_utils.py",
-            "vllm_metax/patch/vllm_substitution/fused_moe.py" : vllm_dist_path / "model_executor/layers/fused_moe/fused_moe.py",
+            "vllm_metax/patch/vllm_substitution/fp8_utils.py":
+            vllm_dist_path /
+            "model_executor/layers/quantization/utils/fp8_utils.py",
+            "vllm_metax/patch/vllm_substitution/fused_moe.py":
+            vllm_dist_path / "model_executor/layers/fused_moe/fused_moe.py",
         }
-        
+
         for src_path, dest_path in files_to_copy.items():
-            source_file =Path(self.build_lib) /  src_path
+            source_file = Path(self.build_lib) / src_path
             self._copy_files_to_vllm(source_file, dest_path)
 
 
@@ -570,7 +595,8 @@ if not ext_modules:
     cmdclass = {}
 else:
     cmdclass = {
-        "build_ext": repackage_wheel if envs.VLLM_USE_PRECOMPILED else cmake_build_ext,
+        "build_ext":
+        repackage_wheel if envs.VLLM_USE_PRECOMPILED else cmake_build_ext,
         "install": custom_install
     }
 

@@ -6,17 +6,16 @@ import functools
 import json
 import os
 from collections.abc import Sequence
-from typing import Any, Callable, Optional, Union, List
+from typing import Any, Callable, List, Optional, Union
 
 import torch
-
 import vllm.envs as envs
 from vllm import _custom_ops as ops
 from vllm.logger import init_logger
-from vllm.model_executor.layers.quantization.utils.quant_utils import (
-    group_broadcast)
-from vllm.model_executor.layers.quantization.utils.w8a8_utils import (
-    CUTLASS_BLOCK_FP8_SUPPORTED)
+from vllm.model_executor.layers.quantization.utils.quant_utils import \
+    group_broadcast
+from vllm.model_executor.layers.quantization.utils.w8a8_utils import \
+    CUTLASS_BLOCK_FP8_SUPPORTED
 from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
 from vllm.utils import cdiv, direct_register_custom_op, has_deep_gemm

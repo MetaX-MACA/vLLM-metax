@@ -14,7 +14,7 @@ Shang and Dang, Xingyu and Han, Song}, journal={arXiv}, year={2023}
 namespace vllm {
 namespace awq {
 
-template<typename VT>
+template <typename VT>
 __device__ uint4 dequantize_s4_to_fp16x2(uint32_t const& source) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 750
   assert(false);
@@ -40,60 +40,90 @@ __device__ uint4 dequantize_s4_to_fp16x2(uint32_t const& source) {
   // Shift right by 8 to now consider elt_45 and elt_67. Issue first to hide RAW
   // dependency if we issue immediately before required.
   const uint32_t top_i4s = i4s >> 8;
-      // >>>> PTX2CPP Success <<<<
-{
-(h[0])=0;
-if((immLut)&0x01)(h[0])|=~(i4s)&~(BOTTOM_MASK)&~(I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x02)(h[0])|=~(i4s)&~(BOTTOM_MASK)& (I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x04)(h[0])|=~(i4s)& (BOTTOM_MASK)&~(I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x08)(h[0])|=~(i4s)& (BOTTOM_MASK)& (I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x10)(h[0])|= (i4s)&~(BOTTOM_MASK)&~(I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x20)(h[0])|= (i4s)&~(BOTTOM_MASK)& (I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x40)(h[0])|= (i4s)& (BOTTOM_MASK)&~(I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x80)(h[0])|= (i4s)& (BOTTOM_MASK)& (I4s_TO_F16s_MAGIC_NUM);
-}
+  // >>>> PTX2CPP Success <<<<
+  {
+    (h[0]) = 0;
+    if ((immLut) & 0x01)
+      (h[0]) |= ~(i4s) & ~(BOTTOM_MASK) & ~(I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x02)
+      (h[0]) |= ~(i4s) & ~(BOTTOM_MASK) & (I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x04)
+      (h[0]) |= ~(i4s) & (BOTTOM_MASK) & ~(I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x08)
+      (h[0]) |= ~(i4s) & (BOTTOM_MASK) & (I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x10)
+      (h[0]) |= (i4s) & ~(BOTTOM_MASK) & ~(I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x20)
+      (h[0]) |= (i4s) & ~(BOTTOM_MASK) & (I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x40)
+      (h[0]) |= (i4s) & (BOTTOM_MASK) & ~(I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x80)
+      (h[0]) |= (i4s) & (BOTTOM_MASK) & (I4s_TO_F16s_MAGIC_NUM);
+  }
 
-    // Extract elt_23 (i4s & 0x00f000f0) | 0x64006400
+  // Extract elt_23 (i4s & 0x00f000f0) | 0x64006400
 
-// >>>> PTX2CPP Success <<<<
-{
-(h[1])=0;
-if((immLut)&0x01)(h[1])|=~(i4s)&~(TOP_MASK)&~(I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x02)(h[1])|=~(i4s)&~(TOP_MASK)& (I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x04)(h[1])|=~(i4s)& (TOP_MASK)&~(I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x08)(h[1])|=~(i4s)& (TOP_MASK)& (I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x10)(h[1])|= (i4s)&~(TOP_MASK)&~(I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x20)(h[1])|= (i4s)&~(TOP_MASK)& (I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x40)(h[1])|= (i4s)& (TOP_MASK)&~(I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x80)(h[1])|= (i4s)& (TOP_MASK)& (I4s_TO_F16s_MAGIC_NUM);
-}
-// >>>> PTX2CPP Success <<<<
-{
-(h[2])=0;
-if((immLut)&0x01)(h[2])|=~(top_i4s)&~(BOTTOM_MASK)&~(I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x02)(h[2])|=~(top_i4s)&~(BOTTOM_MASK)& (I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x04)(h[2])|=~(top_i4s)& (BOTTOM_MASK)&~(I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x08)(h[2])|=~(top_i4s)& (BOTTOM_MASK)& (I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x10)(h[2])|= (top_i4s)&~(BOTTOM_MASK)&~(I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x20)(h[2])|= (top_i4s)&~(BOTTOM_MASK)& (I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x40)(h[2])|= (top_i4s)& (BOTTOM_MASK)&~(I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x80)(h[2])|= (top_i4s)& (BOTTOM_MASK)& (I4s_TO_F16s_MAGIC_NUM);
-}
-    // Extract elt_67 (top_i4s & 0x00f000f0) | 0x64006400
+  // >>>> PTX2CPP Success <<<<
+  {
+    (h[1]) = 0;
+    if ((immLut) & 0x01)
+      (h[1]) |= ~(i4s) & ~(TOP_MASK) & ~(I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x02)
+      (h[1]) |= ~(i4s) & ~(TOP_MASK) & (I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x04)
+      (h[1]) |= ~(i4s) & (TOP_MASK) & ~(I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x08)
+      (h[1]) |= ~(i4s) & (TOP_MASK) & (I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x10)
+      (h[1]) |= (i4s) & ~(TOP_MASK) & ~(I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x20)
+      (h[1]) |= (i4s) & ~(TOP_MASK) & (I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x40)
+      (h[1]) |= (i4s) & (TOP_MASK) & ~(I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x80) (h[1]) |= (i4s) & (TOP_MASK) & (I4s_TO_F16s_MAGIC_NUM);
+  }
+  // >>>> PTX2CPP Success <<<<
+  {
+    (h[2]) = 0;
+    if ((immLut) & 0x01)
+      (h[2]) |= ~(top_i4s) & ~(BOTTOM_MASK) & ~(I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x02)
+      (h[2]) |= ~(top_i4s) & ~(BOTTOM_MASK) & (I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x04)
+      (h[2]) |= ~(top_i4s) & (BOTTOM_MASK) & ~(I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x08)
+      (h[2]) |= ~(top_i4s) & (BOTTOM_MASK) & (I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x10)
+      (h[2]) |= (top_i4s) & ~(BOTTOM_MASK) & ~(I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x20)
+      (h[2]) |= (top_i4s) & ~(BOTTOM_MASK) & (I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x40)
+      (h[2]) |= (top_i4s) & (BOTTOM_MASK) & ~(I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x80)
+      (h[2]) |= (top_i4s) & (BOTTOM_MASK) & (I4s_TO_F16s_MAGIC_NUM);
+  }
+  // Extract elt_67 (top_i4s & 0x00f000f0) | 0x64006400
 
-// >>>> PTX2CPP Success <<<<
-{
-(h[3])=0;
-if((immLut)&0x01)(h[3])|=~(top_i4s)&~(TOP_MASK)&~(I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x02)(h[3])|=~(top_i4s)&~(TOP_MASK)& (I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x04)(h[3])|=~(top_i4s)& (TOP_MASK)&~(I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x08)(h[3])|=~(top_i4s)& (TOP_MASK)& (I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x10)(h[3])|= (top_i4s)&~(TOP_MASK)&~(I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x20)(h[3])|= (top_i4s)&~(TOP_MASK)& (I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x40)(h[3])|= (top_i4s)& (TOP_MASK)&~(I4s_TO_F16s_MAGIC_NUM);
-if((immLut)&0x80)(h[3])|= (top_i4s)& (TOP_MASK)& (I4s_TO_F16s_MAGIC_NUM);
-}
-
+  // >>>> PTX2CPP Success <<<<
+  {
+    (h[3]) = 0;
+    if ((immLut) & 0x01)
+      (h[3]) |= ~(top_i4s) & ~(TOP_MASK) & ~(I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x02)
+      (h[3]) |= ~(top_i4s) & ~(TOP_MASK) & (I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x04)
+      (h[3]) |= ~(top_i4s) & (TOP_MASK) & ~(I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x08)
+      (h[3]) |= ~(top_i4s) & (TOP_MASK) & (I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x10)
+      (h[3]) |= (top_i4s) & ~(TOP_MASK) & ~(I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x20)
+      (h[3]) |= (top_i4s) & ~(TOP_MASK) & (I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x40)
+      (h[3]) |= (top_i4s) & (TOP_MASK) & ~(I4s_TO_F16s_MAGIC_NUM);
+    if ((immLut) & 0x80)
+      (h[3]) |= (top_i4s) & (TOP_MASK) & (I4s_TO_F16s_MAGIC_NUM);
+  }
 
   // I use inline PTX below because I am not sure if the compiler will emit
   // float2half instructions if I use the half2 ctor. In this case, I chose
@@ -112,51 +142,51 @@ if((immLut)&0x80)(h[3])|= (top_i4s)& (TOP_MASK)& (I4s_TO_F16s_MAGIC_NUM);
 
   // Finally, we construct the output numbers.
   // Convert elt_01
-    // >>>> PTX2CPP Success <<<<
-{
-{
-unsigned int __a=(h[0]);
-unsigned int __b=(FP16_TOP_MAGIC_NUM);
-VT __d=__hsub2(*(VT*)&__a,*(VT*)&__b);
-(h[0])=*(unsigned int*)&__d;
-}
-}
+  // >>>> PTX2CPP Success <<<<
+  {
+    {
+      unsigned int __a = (h[0]);
+      unsigned int __b = (FP16_TOP_MAGIC_NUM);
+      VT __d = __hsub2(*(VT*)&__a, *(VT*)&__b);
+      (h[0]) = *(unsigned int*)&__d;
+    }
+  }
 
-    // Convert elt_23
+  // Convert elt_23
 
-// >>>> PTX2CPP Success <<<<
-{
-{
-unsigned int __a=(h[1]);
-unsigned int __b=(ONE_SIXTEENTH);
-unsigned int __c=(NEG_64);
-VT __d=__hfma2(*(VT*)&__a,*(VT*)&__b,*(VT*)&__c);
-(h[1])=*(unsigned int*)&__d;
-}
-}
-    // Convert elt_45
-// >>>> PTX2CPP Success <<<<
-{
-{
-unsigned int __a=(h[2]);
-unsigned int __b=(FP16_TOP_MAGIC_NUM);
-VT __d=__hsub2(*(VT*)&__a,*(VT*)&__b);
-(h[2])=*(unsigned int*)&__d;
-}
-}
+  // >>>> PTX2CPP Success <<<<
+  {
+    {
+      unsigned int __a = (h[1]);
+      unsigned int __b = (ONE_SIXTEENTH);
+      unsigned int __c = (NEG_64);
+      VT __d = __hfma2(*(VT*)&__a, *(VT*)&__b, *(VT*)&__c);
+      (h[1]) = *(unsigned int*)&__d;
+    }
+  }
+  // Convert elt_45
+  // >>>> PTX2CPP Success <<<<
+  {
+    {
+      unsigned int __a = (h[2]);
+      unsigned int __b = (FP16_TOP_MAGIC_NUM);
+      VT __d = __hsub2(*(VT*)&__a, *(VT*)&__b);
+      (h[2]) = *(unsigned int*)&__d;
+    }
+  }
 
-    // Convert elt_67
+  // Convert elt_67
 
-// >>>> PTX2CPP Success <<<<
-{
-{
-unsigned int __a=(h[3]);
-unsigned int __b=(ONE_SIXTEENTH);
-unsigned int __c=(NEG_64);
-VT __d=__hfma2(*(VT*)&__a,*(VT*)&__b,*(VT*)&__c);
-(h[3])=*(unsigned int*)&__d;
-}
-}
+  // >>>> PTX2CPP Success <<<<
+  {
+    {
+      unsigned int __a = (h[3]);
+      unsigned int __b = (ONE_SIXTEENTH);
+      unsigned int __c = (NEG_64);
+      VT __d = __hfma2(*(VT*)&__a, *(VT*)&__b, *(VT*)&__c);
+      (h[3]) = *(unsigned int*)&__d;
+    }
+  }
 
   return result;
 #endif

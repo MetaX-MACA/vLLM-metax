@@ -53,3 +53,262 @@ vllm_collect_env = "vllm_metax:collect_env"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["vllm_metax*"]
+
+[tool.yapfignore]
+ignore_patterns = [
+    ".buildkite/**",
+    "benchmarks/**",
+    "build/**",
+    "examples/**",
+]
+
+[tool.ruff]
+# Allow lines to be as long as 80.
+line-length = 80
+
+[tool.ruff.lint.per-file-ignores]
+"vllm_metax/third_party/**" = ["ALL"]
+"vllm_metax/platform.py" = ["ALL"]
+"vllm_metax/version.py" = ["F401"]
+"vllm_metax/_version.py" = ["ALL"]
+"vllm_metax/v1/**" = ["ALL"]
+"vllm_metax/csrc/**" = ["ALL"]
+"vllm_metax/patch/**" = ["ALL"]
+"vllm_metax/models/**" = ["ALL"]
+"tools/**" = ["ALL"]
+"setup.py" = ["G004"]
+
+[tool.ruff.lint]
+select = [
+    # pycodestyle
+    "E",
+    # Pyflakes
+    "F",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-simplify
+    "SIM",
+    # isort
+    # "I",
+    # flake8-logging-format
+    "G",
+]
+ignore = [
+    # star imports
+    "F405", "F403",
+    # lambda expression assignment
+    "E731",
+    "E501",
+    # Loop control variable not used within loop body
+    "B007",
+    # f-string format
+    "UP032",
+    # Can remove once 3.10+ is the minimum Python version
+    "UP007",
+    "UP006",
+    "UP035"
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "skip_global_cleanup",
+    "core_model: enable this model test in each PR instead of only nightly",
+    "hybrid_model: models that contain mamba layers (including pure SSM and hybrid architectures)",
+    "cpu_model: enable this model test in CPU tests",
+    "split: run this test as part of a split",
+    "distributed: run this test only in distributed GPU tests",
+    "skip_v1: do not run this test with v1",
+    "optional: optional tests that are automatically skipped, include --optional to run them",
+]
+
+[tool.ty.src]
+root = "./vllm"
+respect-ignore-files = true
+
+[tool.ty.environment]
+python = "./.venv"
+
+[tool.typos.files]
+# these files may be written in non english words
+extend-exclude = ["tests/models/fixtures/*", "tests/prompts/*",
+    "benchmarks/sonnet.txt", "tests/lora/data/*", "build/*",
+    "vllm_metax/third_party/*"]
+ignore-hidden = true
+ignore-files = true
+ignore-dot = true
+ignore-vcs = true
+ignore-global = true
+ignore-parent = true
+
+[tool.typos.default]
+binary = false
+check-filename = false
+check-file = true
+unicode = true
+ignore-hex = true
+identifier-leading-digits = false
+locale = "en"
+extend-ignore-identifiers-re = ["NVML_*", ".*Unc.*", ".*_thw",
+    ".*UE8M0.*", ".*[UE4M3|ue4m3].*", ".*eles.*",
+     ".*[Tt]h[rR].*"]
+extend-ignore-words-re = []
+extend-ignore-re = []
+
+[tool.typos.default.extend-identifiers]
+bbc5b7ede = "bbc5b7ede"
+womens_doubles = "womens_doubles"
+v_2nd = "v_2nd"
+# splitted_input = "splitted_input"
+NOOPs = "NOOPs"
+typ = "typ"
+nin_shortcut = "nin_shortcut"
+UperNetDecoder = "UperNetDecoder"
+subtile = "subtile"
+cudaDevAttrMaxSharedMemoryPerBlockOptin = "cudaDevAttrMaxSharedMemoryPerBlockOptin"
+SFOuput = "SFOuput"
+# huggingface transformers repo uses these words
+depthwise_seperable_out_channel = "depthwise_seperable_out_channel"
+DepthWiseSeperableConv1d = "DepthWiseSeperableConv1d"
+depthwise_seperable_CNN = "depthwise_seperable_CNN"
+
+[tool.typos.default.extend-words]
+iy = "iy"
+tendencias = "tendencias"
+# intel cpu features
+tme = "tme"
+dout = "dout"
+Pn = "Pn"
+arange = "arange"
+
+[tool.typos.type.py]
+extend-glob = []
+extend-ignore-identifiers-re = []
+extend-ignore-words-re = []
+extend-ignore-re = []
+
+[tool.typos.type.py.extend-identifiers]
+arange = "arange"
+NDArray = "NDArray"
+EOFError = "EOFError"
+fo = "fo"
+ba = "ba"
+
+[tool.typos.type.py.extend-words]
+
+[tool.typos.type.cpp]
+extend-glob = ["*.cu"]
+extend-ignore-identifiers-re = []
+extend-ignore-words-re = []
+extend-ignore-re = []
+
+[tool.typos.type.cpp.extend-identifiers]
+countr_one = "countr_one"
+k_ot = "k_ot"
+ot = "ot"
+
+[tool.typos.type.cpp.extend-words]
+
+[tool.typos.type.rust]
+extend-glob = []
+extend-ignore-identifiers-re = []
+extend-ignore-words-re = []
+extend-ignore-re = []
+
+[tool.typos.type.rust.extend-identifiers]
+flate2 = "flate2"
+
+[tool.typos.type.rust.extend-words]
+ser = "ser"
+
+[tool.typos.type.lock]
+extend-glob = []
+check-file = false
+extend-ignore-identifiers-re = []
+extend-ignore-words-re = []
+extend-ignore-re = []
+
+[tool.typos.type.lock.extend-identifiers]
+
+[tool.typos.type.lock.extend-words]
+
+[tool.typos.type.jl]
+extend-glob = []
+extend-ignore-identifiers-re = []
+extend-ignore-words-re = []
+extend-ignore-re = []
+
+[tool.typos.type.jl.extend-identifiers]
+
+[tool.typos.type.jl.extend-words]
+modul = "modul"
+egals = "egals"
+usig = "usig"
+egal = "egal"
+
+[tool.typos.type.go]
+extend-glob = []
+extend-ignore-identifiers-re = []
+extend-ignore-words-re = []
+extend-ignore-re = []
+
+[tool.typos.type.go.extend-identifiers]
+flate = "flate"
+
+[tool.typos.type.go.extend-words]
+
+[tool.typos.type.css]
+extend-glob = []
+extend-ignore-identifiers-re = []
+extend-ignore-words-re = []
+extend-ignore-re = []
+
+[tool.typos.type.css.extend-identifiers]
+nd = "nd"
+
+[tool.typos.type.css.extend-words]
+
+[tool.typos.type.man]
+extend-glob = []
+extend-ignore-identifiers-re = []
+extend-ignore-words-re = []
+extend-ignore-re = []
+
+[tool.typos.type.man.extend-identifiers]
+Nd = "Nd"
+
+[tool.typos.type.man.extend-words]
+
+[tool.typos.type.cert]
+extend-glob = []
+check-file = false
+extend-ignore-identifiers-re = []
+extend-ignore-words-re = []
+extend-ignore-re = []
+
+[tool.typos.type.cert.extend-identifiers]
+
+[tool.typos.type.cert.extend-words]
+
+[tool.typos.type.sh]
+extend-glob = []
+extend-ignore-identifiers-re = []
+extend-ignore-words-re = []
+extend-ignore-re = []
+
+[tool.typos.type.sh.extend-identifiers]
+ot = "ot"
+
+[tool.typos.type.sh.extend-words]
+
+[tool.typos.type.vimscript]
+extend-glob = []
+extend-ignore-identifiers-re = []
+extend-ignore-words-re = []
+extend-ignore-re = []
+
+[tool.typos.type.vimscript.extend-identifiers]
+windo = "windo"
+
+[tool.typos.type.vimscript.extend-words]

@@ -4,17 +4,18 @@ from typing import Any, Literal, Optional, Union
 
 import torch
 from torch.nn.parameter import Parameter
+from vllm.model_executor.layers.linear import ReplicatedLinear
 from vllm.model_executor.layers.quantization.base_config import (
     QuantizationConfig, QuantizeMethodBase)
 # yapf: disable
 from vllm.model_executor.parameter import (BasevLLMParameter,
                                            BlockQuantScaleParameter,
-                                           PerTensorScaleParameter)
-
-from vllm.model_executor.layers.linear import ReplicatedLinear
-
-from vllm.model_executor.parameter import (PackedColumnParameter, PackedvLLMParameter,
+                                           PackedColumnParameter,
+                                           PackedvLLMParameter,
+                                           PerTensorScaleParameter,
                                            get_tensor_model_parallel_rank)
+
+
 #vllm/model_executor/layers/linear.py
 class MergedReplicatedLinear(ReplicatedLinear):
     """Replicated linear layer.
@@ -114,7 +115,9 @@ def load_merged_column_weight(self, loaded_weight: torch.Tensor, **kwargs):
 
 
 import vllm.model_executor.layers.linear
+
 vllm.model_executor.layers.linear.MergedReplicatedLinear = MergedReplicatedLinear
 
 import vllm.model_executor.parameter
+
 vllm.model_executor.parameter._ColumnvLLMParameter.load_merged_column_weight = load_merged_column_weight

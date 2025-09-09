@@ -8,7 +8,6 @@
 #  - Thomas Parnell <tpa@zurich.ibm.com>
 
 import torch
-
 from vllm.logger import init_logger
 from vllm.triton_utils import tl, triton
 

@@ -242,7 +242,7 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
     set(VLLM_CUTLASS_SRC_DIR $ENV{VLLM_CUTLASS_SRC_DIR})
   endif()
 
-  # Substitue CUTLASS with MATLASS 
+  # Substitute CUTLASS with MATLASS 
   message(WARNING "Use MACA, Overwrite VLLM_CUTLASS_SRC_DIR.")
   set(VLLM_CUTLASS_SRC_DIR $ENV{MACA_PATH}/include)
 

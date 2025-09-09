@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional
 
 # this line makes it possible to directly load `libcudart.so` using `ctypes`
 import torch  # noqa
-
 import vllm.envs as envs
 from vllm.logger import init_logger
 
@@ -166,8 +165,8 @@ class CudaRTLibrary:
     def cudaIpcGetMemHandle(self,
                             devPtr: ctypes.c_void_p) -> cudaIpcMemHandle_t:
         handle = cudaIpcMemHandle_t()
-        self.CUDART_CHECK(self.funcs["mcIpcGetMemHandle"](
-            ctypes.byref(handle), devPtr))
+        self.CUDART_CHECK(self.funcs["mcIpcGetMemHandle"](ctypes.byref(handle),
+                                                          devPtr))
         return handle
 
     def cudaIpcOpenMemHandle(self,

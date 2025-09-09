@@ -6,7 +6,6 @@ from functools import cache
 from typing import Generator, Optional, Type
 
 import torch
-
 import vllm.envs as envs
 from vllm.attention.backends.abstract import AttentionBackend
 from vllm.logger import init_logger
@@ -117,15 +116,15 @@ def _cached_get_attn_backend(
 ) -> Type[AttentionBackend]:
     if is_blocksparse:
         logger.info("Using BlocksparseFlashAttention backend.")
-        from vllm.attention.backends.blocksparse_attn import (
-            BlocksparseFlashAttentionBackend)
+        from vllm.attention.backends.blocksparse_attn import \
+            BlocksparseFlashAttentionBackend
         return BlocksparseFlashAttentionBackend
 
     # If there are no attention layers (e.g. we are running Mamba),
     # use the placeholder NO_ATTENTION
     if is_attention_free:
-        from vllm.attention.backends.placeholder_attn import (
-            PlaceholderAttentionBackend)
+        from vllm.attention.backends.placeholder_attn import \
+            PlaceholderAttentionBackend
         return PlaceholderAttentionBackend
 
     # Check whether a particular choice of backend was

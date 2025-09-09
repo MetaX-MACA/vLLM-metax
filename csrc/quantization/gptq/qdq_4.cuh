@@ -127,8 +127,10 @@ __forceinline__ __device__ void dequant_4bit_8_gptq(const uint32_t q_0,
     z1z16_1_float2[0] = __half2float(__low2half(z1z16[1]));
     z1z16_1_float2[1] = __half2float(__high2half(z1z16[1]));
     v2f result1, result3;
-    result1 = __builtin_mxc_pk_fma_f32(q1_float2, y1y16_1_float2, z1z16_1_float2);
-    result3 = __builtin_mxc_pk_fma_f32(q3_float2, y1y16_1_float2, z1z16_1_float2);
+    result1 =
+        __builtin_mxc_pk_fma_f32(q1_float2, y1y16_1_float2, z1z16_1_float2);
+    result3 =
+        __builtin_mxc_pk_fma_f32(q3_float2, y1y16_1_float2, z1z16_1_float2);
     dq[1] = __floats2half2_rn(result1[0], result1[1]);
     dq[3] = __floats2half2_rn(result3[0], result3[1]);
   }

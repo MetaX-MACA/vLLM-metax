@@ -11,11 +11,9 @@ from typing import Any, Dict, List, Optional
 # this line makes it possible to directly load `libcudart.so` using `ctypes`
 import torch  # noqa
 import vllm
-from vllm.distributed.device_communicators import cuda_wrapper
 import vllm.envs as envs
+from vllm.distributed.device_communicators import cuda_wrapper
 from vllm.logger import init_logger
-
-
 
 logger = init_logger(__name__)
 
@@ -45,7 +43,8 @@ def find_loaded_library(lib_name) -> Optional[str]:
     shared libraries loaded by the process. We can use this file to find the path of the
     a loaded library.
     """ # noqa
-    logger.info(f"[Plugin] Hooked find_loaded_library -> {find_loaded_library}")
+    logger.info(
+        f"[Plugin] Hooked find_loaded_library -> {find_loaded_library}")
 
     found = False
     with open("/proc/self/maps") as f:
@@ -171,8 +170,8 @@ class CudaRTLibrary:
     def cudaIpcGetMemHandle(self,
                             devPtr: ctypes.c_void_p) -> cudaIpcMemHandle_t:
         handle = cudaIpcMemHandle_t()
-        self.CUDART_CHECK(self.funcs["mcIpcGetMemHandle"](
-            ctypes.byref(handle), devPtr))
+        self.CUDART_CHECK(self.funcs["mcIpcGetMemHandle"](ctypes.byref(handle),
+                                                          devPtr))
         return handle
 
     def cudaIpcOpenMemHandle(self,

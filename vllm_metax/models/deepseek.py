@@ -29,14 +29,12 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 import torch
 from torch import nn
 from transformers import PretrainedConfig
-
 from vllm.attention import Attention, AttentionMetadata
 from vllm.config import CacheConfig, VllmConfig
 from vllm.distributed import (get_pp_group, get_tensor_model_parallel_rank,
                               get_tensor_model_parallel_world_size,
                               tensor_model_parallel_all_reduce)
 from vllm.model_executor.layers.activation import SiluAndMul
-from vllm_metax.model_executor.layers.fused_moe.fused_moe import fused_moe
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.linear import (MergedColumnParallelLinear,
                                                QKVParallelLinear,
@@ -49,14 +47,15 @@ from vllm.model_executor.layers.sampler import SamplerOutput, get_sampler
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     ParallelLMHead, VocabParallelEmbedding)
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
+from vllm.model_executor.models.interfaces import SupportsPP
+from vllm.model_executor.models.utils import (
+    extract_layer_index, is_pp_missing_parameter,
+    make_empty_intermediate_tensors_factory, make_layers, maybe_prefix)
 from vllm.model_executor.sampling_metadata import SamplingMetadata
 from vllm.sequence import IntermediateTensors
 
-from vllm.model_executor.models.interfaces import SupportsPP
-from vllm.model_executor.models.utils import (extract_layer_index, is_pp_missing_parameter,
-                    make_empty_intermediate_tensors_factory, make_layers,
-                    maybe_prefix)
 import vllm_metax.envs as mx_envs
+from vllm_metax.model_executor.layers.fused_moe.fused_moe import fused_moe
 
 
 class DeepseekMLP(nn.Module):
@@ -148,7 +147,8 @@ class DeepseekMoE(nn.Module):
         for data, param in zip(w1s, w1):
             param.data = data
         #self.w1 = self.w1.view(len(w1), *w1s[0].shape)
-        self.w1 = self.w1.view(len(w1), *w1s[0].shape).permute(0, 2, 1).contiguous()
+        self.w1 = self.w1.view(len(w1), *w1s[0].shape).permute(0, 2,
+                                                               1).contiguous()
         for expert, w in zip(self.experts, self.w1):
             expert.gate_up_proj.weight.data = w.permute(1, 0)
 
@@ -158,12 +158,12 @@ class DeepseekMoE(nn.Module):
             param.data = data
 
         self.w2 = self.w2.view(len(w2), *w2s[0].shape)
-            
+
         if mx_envs.MACA_VLLM_USE_TN_2_NN:
-            self.w1 = self.w1.permute(0,2,1).contiguous()   
+            self.w1 = self.w1.permute(0, 2, 1).contiguous()
             for expert, w in zip(self.experts, self.w1):
-                expert.gate_up_proj.weight.data = w.permute(1,0)
-                
+                expert.gate_up_proj.weight.data = w.permute(1, 0)
+
             self.w2 = self.w2.permute(0, 2, 1).contiguous()
             for expert, w in zip(self.experts, self.w2):
                 expert.down_proj.weight.data = w.permute(1, 0)

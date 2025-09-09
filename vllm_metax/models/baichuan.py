@@ -25,7 +25,6 @@ from typing import Iterable, Optional, Set, Tuple, Union
 import torch
 from torch import nn
 from transformers import PretrainedConfig
-
 from vllm.attention import Attention
 from vllm.compilation.decorators import support_torch_compile
 from vllm.config import CacheConfig, VllmConfig
@@ -42,12 +41,13 @@ from vllm.model_executor.layers.rotary_embedding import get_rope
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     ParallelLMHead, VocabParallelEmbedding)
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
+from vllm.model_executor.models.interfaces import (SupportsLoRA, SupportsPP,
+                                                   SupportsQuant)
+from vllm.model_executor.models.utils import (
+    AutoWeightsLoader, is_pp_missing_parameter,
+    make_empty_intermediate_tensors_factory, make_layers)
 from vllm.model_executor.sampling_metadata import SamplingMetadata
 from vllm.sequence import IntermediateTensors
-
-from vllm.model_executor.models.interfaces import SupportsLoRA, SupportsPP, SupportsQuant
-from vllm.model_executor.models.utils import (AutoWeightsLoader, is_pp_missing_parameter,
-                    make_empty_intermediate_tensors_factory, make_layers)
 
 
 def _get_alibi_slopes(total_num_heads: int) -> torch.Tensor:
