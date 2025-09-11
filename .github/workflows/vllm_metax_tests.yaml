@@ -60,6 +60,23 @@ jobs:
           sudo apt-get update -y
           sudo apt install git -y
 
+
+      - name: Collect environment info
+        run: |
+          export MACA_PATH="/opt/maca"
+          export CUDA_PATH="/usr/local/cuda"
+          export CUCC_PATH="${MACA_PATH}/tools/cu-bridge"
+          export PATH="${CUDA_PATH}/bin:${MACA_PATH}/mxgpu_llvm/bin:${MACA_PATH}/bin:${CUCC_PATH}/tools:${CUCC_PATH}/bin:${PATH}"
+          export LD_LIBRARY_PATH="${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu_llvm/lib:${LD_LIBRARY_PATH}"
+          mkdir -p /tmp/collect_env
+          ls -la /dev/dri
+          ls -la /dev/mxcd
+          cd /tmp/collect_env
+          wget -nv https://raw.githubusercontent.com/MetaX-MACA/vLLM-metax/refs/heads/master/vllm_metax/collect_env.py
+          # For security purposes, please feel free to check the contents of collect_env.py before running it.
+          python collect_env.py
+
+
       - name: Checkout vllm repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -112,12 +129,6 @@ jobs:
         run: |
           pip list | grep vllm
           pytest -sv tests/kernels/attention/test_attention_selector.py 
-
-      - name: Collect environment info
-        run: |
-          wget -nv https://raw.githubusercontent.com/MetaX-MACA/vLLM-metax/refs/heads/master/vllm_metax/collect_env.py
-          # For security purposes, please feel free to check the contents of collect_env.py before running it.
-          python collect_env.py
 
       - name: Skip backend tests
         if: ${{ needs.changes.outputs.backend_tracker != 'true' }}

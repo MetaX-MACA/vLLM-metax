@@ -295,7 +295,11 @@ def get_neuron_sdk_version(run_lambda):
 
 
 def get_vllm_version():
-    from vllm import __version__, __version_tuple__
+    try:
+        from vllm import __version__, __version_tuple__
+    except Exception as e:
+        print(e)
+        __version__ = "dev"
 
     if __version__ == "dev":
         return "N/A (dev)"
@@ -566,7 +570,8 @@ def is_xnnpack_available():
 def get_env_vars():
     try:
         from vllm.envs import environment_variables as vllm_envs
-    except ImportError:
+    except Exception as e:
+        print(e)
         vllm_envs = {}
 
     # 尝试导入插件环境变量
