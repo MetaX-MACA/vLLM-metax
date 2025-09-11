@@ -17,6 +17,7 @@ from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 from setuptools.command.install import install
 from setuptools_scm import get_version
+from setuptools_scm.version import ScmVersion
 from torch.utils.cpp_extension import CUDA_HOME
 
 try:
@@ -445,8 +446,11 @@ def get_maca_version():
     return first_line.split(":")[-1]
 
 
+def fixed_version_scheme(version: ScmVersion) -> str:
+    return "0.10.1.1"
+
+
 def get_vllm_version() -> str:
-    from version_tools import fixed_version_scheme
     version = get_version(version_scheme=fixed_version_scheme,
                           write_to="vllm_metax/_version.py")
     sep = "+" if "+" not in version else "."  # dev versions might contain +

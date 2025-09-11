@@ -96,14 +96,14 @@ def register():
 
 def register_quant_configs():
     from vllm_metax.quant_config.awq import MacaAWQConfig  # noqa: F401
-    from vllm_metax.quant_config.awq_marlin import \
-        MacaAWQMarlinConfig  # noqa: F401
+    from vllm_metax.quant_config.awq_marlin import (  # noqa: F401
+        MacaAWQMarlinConfig)
     from vllm_metax.quant_config.gptq import MacaGPTQConfig  # noqa: F401
-    from vllm_metax.quant_config.gptq_marlin import \
-        MacaGPTQMarlinConfig  # noqa: F401
+    from vllm_metax.quant_config.gptq_marlin import (  # noqa: F401
+        MacaGPTQMarlinConfig)
     # HOTFIX: https://github.com/vllm-project/vllm/pull/22797
-    from vllm_metax.quant_config.moe_wna16 import \
-        MacaMoeWNA16Config  # noqa: F401
+    from vllm_metax.quant_config.moe_wna16 import (  # noqa: F401
+        MacaMoeWNA16Config)
 
 
 def register_model():

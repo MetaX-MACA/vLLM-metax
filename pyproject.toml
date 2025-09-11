@@ -59,7 +59,7 @@ ignore_patterns = [
     ".buildkite/**",
     "benchmarks/**",
     "build/**",
-    "examples/**",
+    "examples/**"
 ]
 
 [tool.ruff]
@@ -135,6 +135,17 @@ module = [
 ]
 ignore_missing_imports = true
 
+[tool.isort]
+skip_glob = [
+    ".buildkite/*",
+    "benchmarks/*",
+    "examples/*",
+    "tests/*",
+    "vllm_metax/*"
+]
+use_parentheses = true
+skip_gitignore = true
+
 [tool.pytest.ini_options]
 markers = [
     "skip_global_cleanup",
@@ -148,7 +159,7 @@ markers = [
 ]
 
 [tool.ty.src]
-root = "./vllm"
+root = "./vllm_metax"
 respect-ignore-files = true
 
 [tool.ty.environment]

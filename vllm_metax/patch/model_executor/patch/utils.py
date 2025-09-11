@@ -4,8 +4,8 @@ from typing import Optional
 import torch
 import vllm
 from vllm.logger import init_logger
-from vllm.model_executor.layers.quantization.utils.int8_utils import \
-    per_token_group_quant_int8
+from vllm.model_executor.layers.quantization.utils.int8_utils import (
+    per_token_group_quant_int8)
 from vllm.utils import cdiv
 
 from vllm_metax import _custom_ops as ops

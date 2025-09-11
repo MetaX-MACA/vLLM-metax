@@ -239,8 +239,8 @@ class MacaPlatformBase(Platform):
                     logger.warning(
                         "Triton MLA backend is only supported on V1 engine")
             else:
-                from vllm_metax.attention.backends.flashmla import \
-                    is_flashmla_supported
+                from vllm_metax.attention.ops.flashmla import (
+                    is_flashmla_supported)
                 if not is_flashmla_supported()[0]:
                     logger.warning(
                         "FlashMLA backend is not supported due to %s",
@@ -265,8 +265,8 @@ class MacaPlatformBase(Platform):
             if selected_backend == _Backend.FLASHINFER:
                 logger.info_once("Using FlashInfer backend on V1 engine.")
                 if cls.has_device_capability(100):
-                    from vllm.v1.attention.backends.utils import \
-                        set_kv_cache_layout
+                    from vllm.v1.attention.backends.utils import (
+                        set_kv_cache_layout)
                     set_kv_cache_layout("HND")
                 return FLASHINFER_V1
             elif selected_backend == _Backend.FLASH_ATTN:
@@ -280,8 +280,8 @@ class MacaPlatformBase(Platform):
             if cls.is_device_capability(100):
                 if is_default_backend_supported := is_attn_backend_supported(
                         FLASHINFER_V1, head_size, dtype):
-                    from vllm.v1.attention.backends.utils import \
-                        set_kv_cache_layout
+                    from vllm.v1.attention.backends.utils import (
+                        set_kv_cache_layout)
 
                     logger.info_once(
                         "Using FlashInfer backend with HND KV cache layout on "

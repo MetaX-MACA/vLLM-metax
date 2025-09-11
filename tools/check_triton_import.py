@@ -9,9 +9,8 @@ FORBIDDEN_IMPORT_RE = re.compile(r"^(from|import)\s+triton(\s|\.|$)")
 
 # the way allowed to import triton
 ALLOWED_LINES = {
-    "from vllm.triton_utils import triton",
-    "from vllm.triton_utils import tl",
-    "from vllm.triton_utils import tl, triton",
+    "from vllm.triton_utils import triton", "from vllm.triton_utils import tl",
+    "from vllm.triton_utils import tl, triton", "from from triton.testing"
 }
 
 ALLOWED_FILES = {"vllm/triton_utils/importing.py"}

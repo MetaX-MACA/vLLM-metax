@@ -19,16 +19,16 @@ from vllm.model_executor.layers.fused_moe.fused_moe import (
     fused_topk, get_config_file_name, grouped_topk, should_moe_wna16_use_cuda,
     write_zeros_to_output)
 # yapf: enable
-from vllm.model_executor.layers.fused_moe.moe_align_block_size import \
-    moe_align_block_size
-from vllm.model_executor.layers.fused_moe.prepare_finalize import \
-    MoEPrepareAndFinalizeNoEP
-from vllm.model_executor.layers.fused_moe.topk_weight_and_reduce import \
-    TopKWeightAndReduceNoOP
+from vllm.model_executor.layers.fused_moe.moe_align_block_size import (
+    moe_align_block_size)
+from vllm.model_executor.layers.fused_moe.prepare_finalize import (
+    MoEPrepareAndFinalizeNoEP)
+from vllm.model_executor.layers.fused_moe.topk_weight_and_reduce import (
+    TopKWeightAndReduceNoOP)
 from vllm.model_executor.layers.fused_moe.utils import (
     _resize_cache, moe_kernel_quantize_input)
-from vllm.model_executor.layers.quantization.utils.mxfp4_utils import \
-    dequant_mxfp4
+from vllm.model_executor.layers.quantization.utils.mxfp4_utils import (
+    dequant_mxfp4)
 from vllm.triton_utils import tl, triton
 from vllm.utils import direct_register_custom_op, is_torch_equal_or_newer
 

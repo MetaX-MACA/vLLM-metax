@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 from typing import Optional
 
-from vllm.model_executor.layers.quantization.kernels.scaled_mm.cutlass import \
-    CutlassScaledMMLinearKernel
+from vllm.model_executor.layers.quantization.kernels.scaled_mm.cutlass import (
+    CutlassScaledMMLinearKernel)
 from vllm.model_executor.layers.quantization.kernels.scaled_mm.ScaledMMLinearKernel import (  # noqa: E501
     ScaledMMLinearKernel, ScaledMMLinearLayerConfig)
 from vllm.platforms import PlatformEnum

@@ -95,8 +95,6 @@ pip install dist/*.whl
 - Or, you could *build and install* the plugin via `pip`:
 
 ```bash
-# install requirements for building
-pip install -r requirements/build.txt
 # since we use our local pytorch, add the --no-build-isolation flag 
 # to avoid the conflict with the official pytorch
 pip install . -v --no-build-isolation

@@ -301,8 +301,8 @@ def awq_dequantize(qweight: torch.Tensor, scales: torch.Tensor,
                    zeros: torch.Tensor, split_k_iters: int, thx: int,
                    thy: int) -> torch.Tensor:
     if envs.VLLM_USE_TRITON_AWQ:
-        from vllm.model_executor.layers.quantization.awq_triton import \
-            awq_dequantize_triton
+        from vllm.model_executor.layers.quantization.awq_triton import (
+            awq_dequantize_triton)
         return awq_dequantize_triton(qweight, scales, zeros)
     return torch.ops._C.awq_dequantize(qweight, scales, zeros, split_k_iters,
                                        thx, thy)
@@ -312,8 +312,8 @@ def awq_gemm(input: torch.Tensor, qweight: torch.Tensor, qzeros: torch.Tensor,
              scales: torch.Tensor, split_k_iters: int,
              temp_space: torch.Tensor, dtype_bf16: bool) -> torch.Tensor:
     if envs.VLLM_USE_TRITON_AWQ:
-        from vllm.model_executor.layers.quantization.awq_triton import \
-            awq_gemm_triton
+        from vllm.model_executor.layers.quantization.awq_triton import (
+            awq_gemm_triton)
         return awq_gemm_triton(input, qweight, scales, qzeros, split_k_iters)
     return torch.ops._C.awq_gemm(input, qweight, scales, qzeros, split_k_iters,
                                  temp_space, dtype_bf16)

@@ -5,19 +5,20 @@ from typing import Optional, Union
 import torch
 from torch.nn.parameter import Parameter
 from vllm.model_executor.layers.fused_moe.layer import FusedMoE
-from vllm.model_executor.layers.quantization.base_config import \
-    QuantizeMethodBase
+from vllm.model_executor.layers.quantization.base_config import (
+    QuantizeMethodBase)
 from vllm.model_executor.layers.quantization.gptq import (ExllamaState,
                                                           GPTQConfig)
-from vllm.model_executor.layers.quantization.gptq import \
-    GPTQLinearMethod as vllm_GPTQLinearMethod
-from vllm.model_executor.layers.quantization.utils.gptq_utils import \
-    get_linear_quant_method
+from vllm.model_executor.layers.quantization.gptq import (GPTQLinearMethod as
+                                                          vllm_GPTQLinearMethod
+                                                          )
+from vllm.model_executor.layers.quantization.utils.gptq_utils import (
+    get_linear_quant_method)
 from vllm.utils import direct_register_custom_op
 
 from vllm_metax import _custom_ops as ops
-from vllm_metax.patch.model_executor.patch.hook_register import \
-    register_quantization_config
+from vllm_metax.patch.model_executor.patch.hook_register import (
+    register_quantization_config)
 
 
 @register_quantization_config("gptq")
@@ -31,8 +32,8 @@ class MacaGPTQConfig(GPTQConfig):
     ) -> Optional[Union["GPTQLinearMethod", "QuantizeMethodBase"]]:
         if isinstance(layer, FusedMoE):
             # GPTQ MoE support: fall back to MoeWNA16 for broad compatibility
-            from vllm.model_executor.layers.quantization.moe_wna16 import \
-                MoeWNA16Config
+            from vllm.model_executor.layers.quantization.moe_wna16 import (
+                MoeWNA16Config)
 
             config = {
                 "quant_method": "gptq",

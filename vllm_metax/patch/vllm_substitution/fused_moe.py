@@ -24,18 +24,18 @@ from vllm.model_executor.layers.fused_moe.cutlass_moe import (
 # yapf: enable
 from vllm.model_executor.layers.fused_moe.deep_gemm_moe import (
     _valid_deep_gemm, deep_gemm_moe_fp8)
-from vllm.model_executor.layers.fused_moe.moe_align_block_size import \
-    moe_align_block_size
-from vllm.model_executor.layers.fused_moe.prepare_finalize import \
-    MoEPrepareAndFinalizeNoEP
-from vllm.model_executor.layers.fused_moe.topk_weight_and_reduce import \
-    TopKWeightAndReduceNoOP
+from vllm.model_executor.layers.fused_moe.moe_align_block_size import (
+    moe_align_block_size)
+from vllm.model_executor.layers.fused_moe.prepare_finalize import (
+    MoEPrepareAndFinalizeNoEP)
+from vllm.model_executor.layers.fused_moe.topk_weight_and_reduce import (
+    TopKWeightAndReduceNoOP)
 from vllm.model_executor.layers.fused_moe.utils import (
     _resize_cache, moe_kernel_quantize_input, per_token_group_quant_fp8)
-from vllm.model_executor.layers.quantization.utils.flashinfer_utils import \
-    calculate_tile_tokens_dim
-from vllm.model_executor.layers.quantization.utils.mxfp4_utils import \
-    dequant_mxfp4
+from vllm.model_executor.layers.quantization.utils.flashinfer_utils import (
+    calculate_tile_tokens_dim)
+from vllm.model_executor.layers.quantization.utils.mxfp4_utils import (
+    dequant_mxfp4)
 from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
 from vllm.utils import direct_register_custom_op, is_torch_equal_or_newer
@@ -1204,8 +1204,8 @@ def flashinfer_fused_moe_per_tensor_scale_fp8(
         quant_dtype=torch.float8_e4m3fn,
         per_act_token_quant=False)
 
-    from vllm.utils.flashinfer import \
-        flashinfer_trtllm_fp8_per_tensor_scale_moe
+    from vllm.utils.flashinfer import (
+        flashinfer_trtllm_fp8_per_tensor_scale_moe)
     return flashinfer_trtllm_fp8_per_tensor_scale_moe(
         routing_logits=routing_logits,
         routing_bias=routing_bias,

@@ -7,17 +7,17 @@ from vllm.model_executor.layers.fused_moe.layer import FusedMoE
 from vllm.model_executor.layers.linear import (LinearBase, LinearMethodBase,
                                                UnquantizedLinearMethod)
 from vllm.model_executor.layers.quantization.awq import AWQConfig
-from vllm.model_executor.layers.quantization.awq import \
-    AWQLinearMethod as vllm_AWQLinearMethod
+from vllm.model_executor.layers.quantization.awq import (AWQLinearMethod as
+                                                         vllm_AWQLinearMethod)
 from vllm.model_executor.layers.quantization.awq import (is_layer_skipped_awq,
                                                          logger)
-from vllm.model_executor.layers.quantization.base_config import \
-    QuantizeMethodBase
+from vllm.model_executor.layers.quantization.base_config import (
+    QuantizeMethodBase)
 from vllm.utils import direct_register_custom_op
 
 from vllm_metax import _custom_ops as ops
-from vllm_metax.patch.model_executor.patch.hook_register import \
-    register_quantization_config
+from vllm_metax.patch.model_executor.patch.hook_register import (
+    register_quantization_config)
 
 
 @register_quantization_config("awq")

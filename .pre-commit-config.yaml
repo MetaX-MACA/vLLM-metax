@@ -118,14 +118,6 @@ repos:
     types: [python]
     pass_filenames: false
     additional_dependencies: [regex]
-  # forbid directly import triton
-  - id: forbid-direct-triton-import
-    name: "Forbid direct 'import triton'"
-    entry: python tools/check_triton_import.py
-    language: python
-    types: [python]
-    pass_filenames: false
-    additional_dependencies: [regex]
   # Keep `suggestion` last
   - id: suggestion
     name: Suggestion

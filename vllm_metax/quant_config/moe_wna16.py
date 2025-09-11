@@ -9,14 +9,14 @@ from vllm.model_executor.layers.fused_moe.layer import (
     FusedMoE, FusedMoEConfig, FusedMoEMethodBase, FusedMoeWeightScaleSupported)
 from vllm.model_executor.layers.linear import (LinearBase,
                                                UnquantizedLinearMethod)
-from vllm.model_executor.layers.quantization.base_config import \
-    QuantizeMethodBase
+from vllm.model_executor.layers.quantization.base_config import (
+    QuantizeMethodBase)
 from vllm.model_executor.layers.quantization.moe_wna16 import (
     MoeWNA16Config, is_layer_skipped_quant)
 from vllm.model_executor.utils import set_weight_attrs
 
-from vllm_metax.patch.model_executor.patch.hook_register import \
-    register_quantization_config
+from vllm_metax.patch.model_executor.patch.hook_register import (
+    register_quantization_config)
 
 
 # Remove configs of marlin
@@ -195,8 +195,8 @@ class MoeWNA16Method(FusedMoEMethodBase):
             raise NotImplementedError(
                 "EPLB not supported for `MoeWNA16Method` yet.")
 
-        from vllm_metax.model_executor.layers.fused_moe.fused_moe import \
-            fused_experts
+        from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
+            fused_experts)
         assert activation == "silu", "Only SiLU activation is supported."
         topk_weights, topk_ids = FusedMoE.select_experts(
             hidden_states=x,

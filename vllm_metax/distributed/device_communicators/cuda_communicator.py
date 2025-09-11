@@ -4,8 +4,8 @@ from typing import Optional
 
 import torch
 from torch.distributed import ProcessGroup
-from vllm.distributed.device_communicators.base_device_communicator import \
-    DeviceCommunicatorBase
+from vllm.distributed.device_communicators.base_device_communicator import (
+    DeviceCommunicatorBase)
 
 
 class CudaCommunicator(DeviceCommunicatorBase):
@@ -20,8 +20,8 @@ class CudaCommunicator(DeviceCommunicatorBase):
             # only tp uses custom allreduce
             use_custom_allreduce = False
         else:
-            from vllm_metax.distributed.parallel_state import \
-                _ENABLE_CUSTOM_ALL_REDUCE
+            from vllm_metax.distributed.parallel_state import (
+                _ENABLE_CUSTOM_ALL_REDUCE)
             use_custom_allreduce = _ENABLE_CUSTOM_ALL_REDUCE
         use_pynccl = True
 
@@ -29,10 +29,10 @@ class CudaCommunicator(DeviceCommunicatorBase):
         self.use_custom_allreduce = use_custom_allreduce
 
         # lazy import to avoid documentation build error
-        from vllm_metax.distributed.device_communicators.custom_all_reduce import \
-            CustomAllreduce
-        from vllm_metax.distributed.device_communicators.pynccl import \
-            PyNcclCommunicator
+        from vllm_metax.distributed.device_communicators.custom_all_reduce import (
+            CustomAllreduce)
+        from vllm_metax.distributed.device_communicators.pynccl import (
+            PyNcclCommunicator)
 
         self.pynccl_comm: Optional[PyNcclCommunicator] = None
         if use_pynccl and self.world_size > 1:

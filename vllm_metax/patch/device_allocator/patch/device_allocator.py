@@ -6,7 +6,7 @@ logger = init_logger(__name__)
 
 import vllm.device_allocator.cumem
 
-from vllm_metax.device_allocator.cumem import \
-    CuMemAllocator as mx_CuMemAllocator
+from vllm_metax.device_allocator.cumem import (CuMemAllocator as
+                                               mx_CuMemAllocator)
 
 vllm.device_allocator.cumem.CuMemAllocator = mx_CuMemAllocator
