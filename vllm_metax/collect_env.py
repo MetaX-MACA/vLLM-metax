@@ -15,11 +15,6 @@ import sys
 from collections import namedtuple
 
 import regex as re
-from vllm.envs import environment_variables as vllm_envs
-
-from vllm_metax.envs import environment_variables as plugin_envs
-
-all_envs = vllm_envs | plugin_envs
 
 try:
     import torch
@@ -569,6 +564,19 @@ def is_xnnpack_available():
 
 
 def get_env_vars():
+    try:
+        from vllm.envs import environment_variables as vllm_envs
+    except ImportError:
+        vllm_envs = {}
+
+    # 尝试导入插件环境变量
+    try:
+        from vllm_metax.envs import environment_variables as plugin_envs
+    except ImportError:
+        plugin_envs = {}
+
+    all_envs = vllm_envs | plugin_envs
+
     env_vars = ''
     secret_terms = ('secret', 'token', 'api', 'access', 'password')
     report_prefix = ("TORCH", "NCCL", "PYTORCH", "CUDA", "CUBLAS", "CUDNN",

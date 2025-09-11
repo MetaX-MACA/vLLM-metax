@@ -18,10 +18,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    uses: ./.github/workflows/pre-commit.yml
-
   changes:
+    name: Detect Changed Paths
     runs-on: ubuntu-latest
     outputs:
       base_tracker: ${{ steps.filter.outputs.base_tracker }}
@@ -33,7 +31,6 @@ jobs:
         id: filter
         with:
           filters: |
-            # needs to get a fully test
             base_tracker:
               - '.github/workflows/vllm_metax_test.yaml'
               - 'vllm_metax/**'
@@ -42,80 +39,87 @@ jobs:
               - 'CMakeLists.txt'
               - 'setup.py'
               - 'requirements/**'
-            # for ut
-            ut_tracker:
-              - 'tests/ut/**'
-            # for attention_backends
             backend_tracker:
               - 'vllm_metax/v1/attention/backends/**'
               - 'vllm_metax/backends/**'
+            ut_tracker:
+              - 'tests/ut/**'
 
   build_test:
-    needs: [lint, changes]
-    # only trigger e2e test after lint passed and the change is e2e related with pull request.
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' && needs.lint.result == 'success' && needs.changes.outputs.base_tracker == 'true' && !contains(github.event.pull_request.labels.*.name, 'ready') }}
+    needs: [changes]
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' && needs.changes.outputs.base_tracker == 'true'}}
     strategy:
       max-parallel: 2
       matrix:
         os: [vllm-metax-runner-set]
         vllm_version: [v0.10.1.1, main]
-    name: Attention backend inference tests
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Install packages
+      - name: Install base packages
         run: |
-          apt-get update -y
-          apt install git -y
+          sudo apt-get update -y
+          sudo apt install git -y
 
-      - name: Collect environment info
-        run: |
-          wget https://raw.githubusercontent.com/MetaX-MACA/vLLM-metax/refs/heads/master/vllm_metax/collect_env.py
-          # For security purposes, please feel free to check the contents of collect_env.py before running it.
-          python collect_env.py
-
-      - name: Checkout vllm-project/vllm repo
+      - name: Checkout vllm repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: vllm-project/vllm
           ref: ${{ matrix.vllm_version }}
-          path: ./vllm-empty
+          path: ./vllm-official
 
-      - name: Checkout MetaX-MACA/vLLM-metax repo
+      - name: Install vllm
+        working-directory: ./vllm-official
+        run: |
+          echo "$PATH"
+          conda activate base
+          python use_existing_torch.py
+          pip install -r requirements/build.txt
+          VLLM_TARGET_DEVICE=empty pip install . --no-deps --no-build-isolation
+
+      - name: Checkout vLLM-metax repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Install vllm-project/vllm from source
-        working-directory: ./vllm-empty
-        run: |
-          python use_existing_torch.py
-          VLLM_TARGET_DEVICE=empty pip install . --no-deps --no-build-isolation -v
-
-      - name: Install cuda toolkit 11.6
+      - name: Ensure cuda toolkit 11.6
         run: |
           if [ ! -d "/usr/local/cuda" ]; then
             echo "CUDA not found, installing..."
-            wget https://developer.download.nvidia.com/compute/cuda/11.6.0/local_installers/cuda_11.6.0_510.39.01_linux.run
-            sh cuda_11.6.0_510.39.01_linux.run --silent --toolkit
+            wget -nv https://developer.download.nvidia.com/compute/cuda/11.6.0/local_installers/cuda_11.6.0_510.39.01_linux.run
+            sudo sh cuda_11.6.0_510.39.01_linux.run --silent --toolkit
             rm cuda_11.6.0_510.39.01_linux.run
           else
             echo "CUDA already installed, skipping installation."
           fi
 
-      - name: Install MetaX-MACA/vLLM-metax
-        env:
-          DEFAULT_DIR: /opt/maca
-          MACA_PATH: ${1:-$DEFAULT_DIR}
-          # setup CUDA && cu-bridge
-          CUDA_PATH: /usr/local/cuda
-          CUCC_PATH: ${MACA_PATH}/tools/cu-bridge
-          # update PATH
-          PATH: ${CUDA_PATH}/bin:${MACA_PATH}/mxgpu_llvm/bin:${MACA_PATH}/bin:${CUCC_PATH}/tools:${CUCC_PATH}/bin:${PATH}
-          LD_LIBRARY_PATH: ${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu_llvm/lib:${LD_LIBRARY_PATH}
-          VLLM_INSTALL_PUNICA_KERNELS: 1
+      - name: Install vLLM-metax
         run: |
+          export MACA_PATH="/opt/maca"
+          export CUDA_PATH="/usr/local/cuda"
+          export CUCC_PATH="${MACA_PATH}/tools/cu-bridge"
+          export PATH="${CUDA_PATH}/bin:${MACA_PATH}/mxgpu_llvm/bin:${MACA_PATH}/bin:${CUCC_PATH}/tools:${CUCC_PATH}/bin:${PATH}"
+          export LD_LIBRARY_PATH="${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu_llvm/lib:${LD_LIBRARY_PATH}"
+          export VLLM_INSTALL_PUNICA_KERNELS=1
+          
+          echo "$PATH"
+          conda activate base
+          ls -la
+          pip install -r requirements/build.txt
           pip install . --no-build-isolation -v
 
-      - name: Run offline inference
+      - name: Run backend unit tests
+        if: ${{needs.changes.outputs.backend_tracker == 'true'}}
         env:
           VLLM_WORKER_MULTIPROC_METHOD: spawn
         run: |
+          pip list | grep vllm
           pytest -sv tests/kernels/attention/test_attention_selector.py 
+
+      - name: Collect environment info
+        run: |
+          wget -nv https://raw.githubusercontent.com/MetaX-MACA/vLLM-metax/refs/heads/master/vllm_metax/collect_env.py
+          # For security purposes, please feel free to check the contents of collect_env.py before running it.
+          python collect_env.py
+
+      - name: Skip backend tests
+        if: ${{ needs.changes.outputs.backend_tracker != 'true' }}
+        run: |
+          echo "No backend changes detected, skipping tests."

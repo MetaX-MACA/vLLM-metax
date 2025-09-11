@@ -433,7 +433,7 @@ def get_nvcc_cuda_version() -> Version:
     return nvcc_cuda_version
 
 
-def get_maca_version():
+def get_maca_version() -> Version:
     """
     Returns the MACA SDK Version
     """
@@ -443,7 +443,7 @@ def get_maca_version():
 
     with open(file_full_path, encoding='utf-8') as file:
         first_line = file.readline().strip()
-    return first_line.split(":")[-1]
+    return parse(first_line.split(":")[-1])
 
 
 def fixed_version_scheme(version: ScmVersion) -> str:
@@ -459,7 +459,7 @@ def get_vllm_version() -> str:
         if envs.VLLM_USE_PRECOMPILED:
             version += f"{sep}precompiled"
         else:
-            maca_version_str = get_maca_version()
+            maca_version_str = str(get_maca_version())
             torch_version = torch.__version__
             major_minor_version = ".".join(torch_version.split(".")[:2])
             version += f"{sep}maca{maca_version_str}{sep}torch{major_minor_version}"
