@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       base_tracker: ${{ steps.filter.outputs.base_tracker }}
-      backend_tracker: ${{ steps.filter.outputs.attn_backend_tracker }}
+      backend_tracker: ${{ steps.filter.outputs.backend_tracker }}
       ut_tracker: ${{ steps.filter.outputs.ut_tracker }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -53,7 +53,7 @@ jobs:
   build_test:
     needs: [lint, changes]
     # only trigger e2e test after lint passed and the change is e2e related with pull request.
-    if: ${{ github.event_name == 'pull_request' && needs.lint.result == 'success' && needs.changes.outputs.base_tracker == 'true' && !contains(github.event.pull_request.labels.*.name, 'ready') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' && needs.lint.result == 'success' && needs.changes.outputs.base_tracker == 'true' && !contains(github.event.pull_request.labels.*.name, 'ready') }}
     strategy:
       max-parallel: 2
       matrix:
