@@ -335,6 +335,10 @@ class MacaPlatformBase(Platform):
         return False
 
     @classmethod
+    def opaque_attention_op(cls) -> bool:
+        return True
+
+    @classmethod
     def get_static_graph_wrapper_cls(cls) -> str:
         return "vllm.compilation.cuda_graph.CUDAGraphWrapper"
 
@@ -384,6 +388,12 @@ class MacaPlatformBase(Platform):
             from vllm.attention.utils.fa_utils import flash_attn_supports_fp8
             supported = flash_attn_supports_fp8()
         return supported
+
+    @classmethod
+    def check_if_supports_dtype(cls, torch_dtype: torch.dtype):
+        if torch_dtype == torch.float8_e4m3fn or \
+            torch_dtype == torch.float8_e5m2:  # noqa
+            raise ValueError("FP8 is not supported on GPUs ")
 
     @classmethod
     def pre_register_and_update(cls,

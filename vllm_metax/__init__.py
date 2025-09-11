@@ -68,8 +68,6 @@ def post_installation():
         "patch/vllm_substitution/fp8_utils.py":
         vllm_dist_path /
         "model_executor/layers/quantization/utils/fp8_utils.py",
-        "patch/vllm_substitution/fused_moe.py":
-        vllm_dist_path / "model_executor/layers/fused_moe/fused_moe.py",
     }
 
     for src_path, dest_path in files_to_copy.items():
@@ -101,7 +99,6 @@ def register_quant_configs():
     from vllm_metax.quant_config.gptq import MacaGPTQConfig  # noqa: F401
     from vllm_metax.quant_config.gptq_marlin import (  # noqa: F401
         MacaGPTQMarlinConfig)
-    # HOTFIX: https://github.com/vllm-project/vllm/pull/22797
     from vllm_metax.quant_config.moe_wna16 import (  # noqa: F401
         MacaMoeWNA16Config)
 

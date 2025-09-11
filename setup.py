@@ -586,8 +586,6 @@ class custom_install(install):
             "vllm_metax/patch/vllm_substitution/fp8_utils.py":
             vllm_dist_path /
             "model_executor/layers/quantization/utils/fp8_utils.py",
-            "vllm_metax/patch/vllm_substitution/fused_moe.py":
-            vllm_dist_path / "model_executor/layers/fused_moe/fused_moe.py",
         }
 
         for src_path, dest_path in files_to_copy.items():
