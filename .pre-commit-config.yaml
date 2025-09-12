@@ -94,9 +94,8 @@ repos:
         SIGNOFF="Signed-off-by: $(git config user.name) <$(git config user.email)>"
         FILE="$(git rev-parse --git-path COMMIT_EDITMSG)"
 
-        if ! grep -Fq "$SIGNOFF" "$FILE"; then
-          echo "" >> "$FILE"
-          echo "$SIGNOFF" >> "$FILE"
+        if ! grep -Fxq "$SIGNOFF" "$FILE"; then
+          printf "\n%s\n" "$SIGNOFF" >> "$FILE"
         fi
     language: system
     verbose: true
