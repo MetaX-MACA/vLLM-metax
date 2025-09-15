@@ -396,6 +396,10 @@ class MacaPlatformBase(Platform):
             raise ValueError("FP8 is not supported on GPUs ")
 
     @classmethod
+    def support_hybrid_kv_cache(cls) -> bool:
+        return True
+
+    @classmethod
     def pre_register_and_update(cls,
                                 parser: Optional[FlexibleArgumentParser] = None
                                 ) -> None:

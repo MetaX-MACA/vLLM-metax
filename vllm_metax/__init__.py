@@ -68,6 +68,10 @@ def post_installation():
         "patch/vllm_substitution/fp8_utils.py":
         vllm_dist_path /
         "model_executor/layers/quantization/utils/fp8_utils.py",
+        # workaround for Qwen3-Next
+        # for get_available_device: set cuda
+        "patch/vllm_substitution/utils.py":
+        vllm_dist_path / "model_executor/layers/fla/ops/utils.py",
     }
 
     for src_path, dest_path in files_to_copy.items():
