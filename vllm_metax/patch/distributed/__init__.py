@@ -1,3 +1,3 @@
 # SPDX-License-Identifier: Apache-2.0
 
-from vllm_metax.patch.distributed import patch
+from . import (cuda_wrapper_patch, pynccl_wrapper_patch, utils_patch)

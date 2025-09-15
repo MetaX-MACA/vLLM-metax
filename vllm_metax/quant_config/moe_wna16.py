@@ -12,7 +12,7 @@ from vllm.model_executor.layers.quantization.base_config import (
 from vllm.model_executor.layers.quantization.moe_wna16 import (
     MoeWNA16Config, is_layer_skipped_quant, MoeWNA16Method)
 
-from vllm_metax.patch.model_executor.patch.hook_register import (
+from vllm_metax.patch.model_executor.hook_register import (
     register_quantization_config)
 
 
