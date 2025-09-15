@@ -19,7 +19,3 @@ def register_model():
 
     ModelRegistry.register_model("DeepSeekMTPModel",
                                  "vllm_metax.models.deepseek_mtp:DeepSeekMTP")
-
-    ModelRegistry.register_model(
-        "DeepseekV3ForCausalLM",
-        "vllm_metax.models.deepseek_v2:DeepseekV3ForCausalLM")
