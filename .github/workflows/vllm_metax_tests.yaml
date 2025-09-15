@@ -59,6 +59,7 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt install git -y
+          pip install uv
 
       - name: Checkout vllm repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -99,9 +100,7 @@ jobs:
           export LD_LIBRARY_PATH="${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu_llvm/lib:${LD_LIBRARY_PATH}"
           export VLLM_INSTALL_PUNICA_KERNELS=1
           
-          echo "$PATH"
           conda activate base
-          ls -la
           pip install -r requirements/build.txt
           pip install . --no-build-isolation -v
 
@@ -112,7 +111,6 @@ jobs:
           cd /tmp/collect_env
           wget -nv https://raw.githubusercontent.com/MetaX-MACA/vLLM-metax/refs/heads/master/vllm_metax/collect_env.py
           # For security purposes, please feel free to check the contents of collect_env.py before running it.
-          conda activate base
           python collect_env.py
           '
   
