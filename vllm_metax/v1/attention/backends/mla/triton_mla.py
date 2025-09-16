@@ -1,19 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
-from typing import Optional
+from typing import Optional, Union
 
 import torch
+
 from vllm import envs
-from vllm.attention.backends.abstract import (AttentionType,
+from vllm.attention.backends.abstract import (AttentionLayer, AttentionType,
                                               is_quantized_kv_cache)
+from vllm_metax.attention.ops.triton_decode_attention import decode_attention_fwd
+from vllm.attention.ops.triton_flash_attention import triton_attention
 from vllm.logger import init_logger
 from vllm.platforms import current_platform
 from vllm.triton_utils import HAS_TRITON
 
-from vllm_metax.attention.ops.triton_decode_attention import (
-    decode_attention_fwd)
-from vllm_metax.attention.ops.triton_flash_attention import triton_attention
 from vllm_metax.v1.attention.backends.mla.common import (MLACommonBackend,
                                                          MLACommonImpl,
                                                          MLACommonMetadata)
@@ -124,20 +124,22 @@ class TritonMLAImpl(MLACommonImpl[MLACommonMetadata]):
 
     def _forward_decode(
         self,
-        q_nope: torch.Tensor,
-        q_pe: torch.Tensor,
+        q: Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]],
         kv_c_and_k_pe_cache: torch.Tensor,
         attn_metadata: MLACommonMetadata,
-    ) -> torch.Tensor:
+        layer: AttentionLayer,
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
         assert kv_c_and_k_pe_cache.numel() > 0
         assert attn_metadata.decode is not None
 
         if self.kv_cache_dtype.startswith("fp8"):
             raise NotImplementedError("FP8 Triton MLA not yet supported")
 
-        B = q_nope.shape[0]
+        if type(q) is tuple:
+            q = torch.cat(q, dim=-1)
 
-        q = torch.cat([q_nope, q_pe], dim=-1)
+        assert isinstance(q, torch.Tensor)
+        B = q.shape[0]
         o = torch.zeros(B,
                         self.num_heads,
                         self.kv_lora_rank,
@@ -171,4 +173,4 @@ class TritonMLAImpl(MLACommonImpl[MLACommonMetadata]):
                              attn_metadata.decode.seq_lens, attn_logits,
                              num_kv_splits, self.scale, PAGE_SIZE)
 
-        return self._v_up_proj(o)
+        return o, None

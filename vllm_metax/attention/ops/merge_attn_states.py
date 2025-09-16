@@ -3,9 +3,11 @@
 from typing import Optional
 
 import torch
+
 from vllm.platforms import current_platform
 
 
+# yapf: disable
 def merge_attn_states(
     output: torch.Tensor,
     prefix_output: torch.Tensor,

@@ -2,10 +2,11 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """Attention layer with FlashAttention."""
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional, ClassVar
+from typing import Optional, ClassVar
 
 import numpy as np
 import torch
+
 from vllm import _custom_ops as ops
 from vllm.attention.backends.abstract import (AttentionBackend, AttentionImpl,
                                               AttentionMetadata, AttentionType,
@@ -15,21 +16,20 @@ from vllm.attention.ops.merge_attn_states import merge_attn_states
 from vllm.attention.utils.fa_utils import (flash_attn_supports_fp8,
                                            get_flash_attn_version)
 
-reshape_and_cache_flash = ops.reshape_and_cache_flash
-
 from flash_attn import flash_attn_varlen_func, flash_attn_with_kvcache
+
+reshape_and_cache_flash = ops.reshape_and_cache_flash
 from vllm.config import VllmConfig, get_layers_from_vllm_config
 from vllm.logger import init_logger
 from vllm.utils import cdiv
-from vllm.v1.attention.backends.utils import (
-    AttentionCGSupport, AttentionMetadataBuilder, CommonAttentionMetadata,
-    get_kv_cache_layout, reorder_batch_to_split_decodes_and_prefills,
-    split_decodes_and_prefills)
+# yapf: disable
+from vllm.v1.attention.backends.utils import (AttentionCGSupport,
+                                              AttentionMetadataBuilder,
+                                              CommonAttentionMetadata,
+                                              get_kv_cache_layout,
+                                              reorder_batch_to_split_decodes_and_prefills,
+                                              split_decodes_and_prefills)
 from vllm.v1.kv_cache_interface import AttentionSpec
-
-if TYPE_CHECKING:
-    from vllm.v1.core.sched.output import SchedulerOutput
-    from vllm.v1.worker.gpu_input_batch import InputBatch
 
 logger = init_logger(__name__)
 
@@ -45,8 +45,8 @@ class MacaFlashAttentionBackend(AttentionBackend):
     def get_supported_dtypes(cls) -> list[torch.dtype]:
         return [torch.float16, torch.bfloat16]
 
-    @staticmethod
-    def get_supported_head_sizes() -> list[int]:
+    @classmethod
+    def get_supported_head_sizes(cls) -> list[int]:
         return [32, 64, 80, 96, 112, 128, 160, 192, 224, 256]
 
     @classmethod
@@ -184,7 +184,7 @@ class FlashAttentionMetadataBuilder(
     # work for mixed prefill-decode and uniform-decode. But for non-spec decodes
     # the graphs would not work for mixed prefill-decode; sorta the inverse
     # of UNIFORM_SINGLE_TOKEN_DECODE.
-    # Theres probably a better way to describe this using `AttentionCGSupport`
+    # There's probably a better way to describe this using `AttentionCGSupport`
     # but for now just set it to `UNIFORM_BATCH` to get use to drop down
     # to FULL_AND_PIECEWISE.
     # TODO(luka, lucas): audit FA2 as part of:
@@ -196,12 +196,11 @@ class FlashAttentionMetadataBuilder(
 
     def __init__(self, kv_cache_spec: AttentionSpec, layer_names: list[str],
                  vllm_config: VllmConfig, device: torch.device):
-        self.vllm_config = vllm_config
+        super().__init__(kv_cache_spec, layer_names, vllm_config, device)
         self.model_config = vllm_config.model_config
         self.parallel_config = vllm_config.parallel_config
         self.cache_config = vllm_config.cache_config
         self.compilation_config = vllm_config.compilation_config
-        self.device = device
 
         self.num_heads_q = self.model_config.get_num_attention_heads(
             self.parallel_config)
@@ -259,7 +258,7 @@ class FlashAttentionMetadataBuilder(
         num_reqs = common_attn_metadata.num_reqs
         num_actual_tokens = common_attn_metadata.num_actual_tokens
         max_query_len = common_attn_metadata.max_query_len
-        max_seq_len = int(common_attn_metadata.seq_lens_cpu.max())
+        max_seq_len = common_attn_metadata.max_seq_len
         query_start_loc = common_attn_metadata.query_start_loc
         seq_lens = common_attn_metadata.seq_lens
         seq_lens_cpu = common_attn_metadata.seq_lens_cpu
@@ -488,13 +487,6 @@ class FlashAttentionImpl(AttentionImpl):
 
         MacaFlashAttentionBackend.validate_head_size(head_size)
 
-        if attn_type not in [
-                AttentionType.DECODER, AttentionType.ENCODER_ONLY
-        ]:
-            raise NotImplementedError("Encoder/decoder cross-attention "
-                                      "is not implemented for "
-                                      "FlashAttentionImpl")
-
         self.attn_type = attn_type
         self.vllm_flash_attn_version = get_flash_attn_version()
         if is_quantized_kv_cache(self.kv_cache_dtype) \
@@ -528,7 +520,8 @@ class FlashAttentionImpl(AttentionImpl):
             query: shape = [num_tokens, num_heads, head_size]
             key: shape = [num_tokens, num_kv_heads, head_size]
             value: shape = [num_tokens, num_kv_heads, head_size]
-            kv_cache = [2, num_blocks, block_size, num_kv_heads, head_size]
+            kv_cache: shape =
+                [2, num_blocks, block_size, num_kv_heads, head_size]
             attn_metadata: Metadata for attention.
         Returns:
             shape = [num_tokens, num_heads * head_size]
@@ -561,7 +554,7 @@ class FlashAttentionImpl(AttentionImpl):
         num_actual_tokens = attn_metadata.num_actual_tokens
 
         # Handle encoder attention differently - no KV cache needed
-        if attn_type in (AttentionType.ENCODER_ONLY, ):
+        if attn_type in (AttentionType.ENCODER_ONLY, AttentionType.ENCODER):
             # For encoder attention,
             # we use direct Q, K, V tensors without caching
             return self._forward_encoder_attention(query[:num_actual_tokens],
@@ -573,7 +566,11 @@ class FlashAttentionImpl(AttentionImpl):
         # For decoder and cross-attention, use KV cache as before
         key_cache, value_cache = kv_cache.unbind(0)
 
-        if self.kv_sharing_target_layer_name is None:
+        # key and value may be None in the case of cross attention. They are
+        # calculated once based on the output from the encoder and then cached
+        # in KV cache.
+        if (self.kv_sharing_target_layer_name is None and key is not None
+                and value is not None):
             # Reshape the input keys and values and store them in the cache.
             # Skip this if sharing KV cache with an earlier attention layer.
             # NOTE(woosuk): Here, key and value are padded while slot_mapping is
