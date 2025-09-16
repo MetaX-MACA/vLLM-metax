@@ -462,7 +462,7 @@ def get_vllm_version() -> str:
             maca_version_str = str(get_maca_version())
             torch_version = torch.__version__
             major_minor_version = ".".join(torch_version.split(".")[:2])
-            version += f"{sep}maca{maca_version_str}{sep}torch{major_minor_version}"
+            version += f"{sep}maca{maca_version_str}.torch{major_minor_version}"
     else:
         raise RuntimeError("Unknown runtime environment")
 
