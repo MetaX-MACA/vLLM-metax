@@ -36,7 +36,7 @@ pymxml = import_pymxml()
 torch.backends.cuda.enable_cudnn_sdp(False)
 
 
-def with_mcml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
+def with_mxml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
 
     @wraps(fn)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
@@ -55,7 +55,7 @@ class MacaPlatformBase(Platform):
     device_type: str = "cuda"
     dispatch_key: str = "CUDA"
     ray_device_key: str = "GPU"
-    dist_backend: str = "mccl"
+    dist_backend: str = "nccl"
     device_control_env_var: str = "CUDA_VISIBLE_DEVICES"
 
     supported_quantization: list[str] = [
@@ -221,43 +221,37 @@ class MacaPlatformBase(Platform):
                              kv_cache_dtype, block_size, use_v1, use_mla,
                              has_sink) -> str:
         if use_mla:
-            TRITON_MLA_V1 = "vllm_metax.v1.attention.backends.mla.triton_mla." \
-                            "MacaTritonMLABackend"  # noqa: E501
-            FLASHMLA_V1 = "vllm_metax.v1.attention.backends.mla.flashmla." \
-                            "MacaFlashMLABackend"  # noqa: E501
-            # TODO(lucas): refactor to be more concise
-            #  we should probably consider factoring out V1 here
-            if selected_backend == _Backend.CUTLASS_MLA or (
-                    cls.is_device_capability(100) and selected_backend is None
-                    and block_size == 128):
-                logger.warning("Cutlass MLA backend is not supported on Maca")
-            if selected_backend == _Backend.TRITON_MLA or block_size != 64:
+            from vllm_metax.attention.ops.flashmla import (
+                is_flashmla_supported)
+            use_cutlassmla = _Backend.CUTLASS_MLA or (
+                cls.is_device_capability(100) and selected_backend is None
+                and block_size == 128)
+            use_flashmla = selected_backend in [
+                _Backend.FLASHMLA, _Backend.FLASHMLA_VLLM_V1
+            ] or (selected_backend is None and is_flashmla_supported()[0])
+            use_triton = selected_backend == _Backend.TRITON_MLA or (
+                selected_backend is None)
+
+            def _get_version(name, import_suffix) -> str:
                 if use_v1:
-                    logger.info_once("Using Triton MLA backend on V1 engine.")
-                    return TRITON_MLA_V1
+                    logger.info_once(f"Using {name} backend on V1 engine.")
+                    return f"vllm_metax.v1.attention.backends.mla.{import_suffix}"
                 else:
-                    logger.warning(
-                        "Triton MLA backend is only supported on V1 engine")
-            else:
-                from vllm_metax.attention.ops.flashmla import (
-                    is_flashmla_supported)
-                if not is_flashmla_supported()[0]:
-                    logger.warning(
-                        "FlashMLA backend is not supported due to %s",
-                        is_flashmla_supported()[1])
-                elif block_size != 64:
+                    raise AssertionError(
+                        f"{name} backend is only supported on V1 engine")
+
+            if use_flashmla:
+                if block_size != 64:
                     logger.warning(
                         "FlashMLA backend is not supported for block size %d"
                         " (currently only supports block size 64).",
                         block_size)
                 else:
-                    if use_v1:
-                        logger.info_once(
-                            "Using FlashMLA backend on V1 engine.")
-                        return FLASHMLA_V1
-                    else:
-                        logger.warning(
-                            "FlashMLA backend is only supported on V1 engine")
+                    return _get_version("Maca FlashMLA",
+                                        "flashmla.MacaFlashMLABackend")
+            if use_triton:
+                return _get_version("Maca Triton MLA",
+                                    "triton_mla.MacaTritonMLABackend")
         if use_v1:
             FLASHINFER_V1 = "vllm_metax.v1.attention.backends.flashinfer.MacaFlashInferBackend"  # noqa: E501
             FLASH_ATTN_V1 = "vllm_metax.v1.attention.backends.flash_attn.MacaFlashAttentionBackend"  # noqa: E501
@@ -413,7 +407,7 @@ class MacaPlatformBase(Platform):
 class MxmlPlatform(MacaPlatformBase):
 
     @classmethod
-    @with_mcml_context
+    @with_mxml_context
     def get_device_capability(cls,
                               device_id: int = 0
                               ) -> Optional[DeviceCapability]:
@@ -426,7 +420,7 @@ class MxmlPlatform(MacaPlatformBase):
             return None
 
     @classmethod
-    @with_mcml_context
+    @with_mxml_context
     def has_device_capability(
         cls,
         capability: Union[tuple[int, int], int],
@@ -438,26 +432,26 @@ class MxmlPlatform(MacaPlatformBase):
             return False
 
     @classmethod
-    @with_mcml_context
+    @with_mxml_context
     def get_device_name(cls, device_id: int = 0) -> str:
         return "Device 4000"
 
     @classmethod
-    @with_mcml_context
+    @with_mxml_context
     def get_device_uuid(cls, device_id: int = 0) -> str:
         physical_device_id = cls.device_id_to_physical_device_id(device_id)
         handle = pymxml.nvmlDeviceGetHandleByIndex(physical_device_id)
         return pymxml.nvmlDeviceGetUUID(handle)
 
     @classmethod
-    @with_mcml_context
+    @with_mxml_context
     def get_device_total_memory(cls, device_id: int = 0) -> int:
         physical_device_id = cls.device_id_to_physical_device_id(device_id)
         handle = pymxml.nvmlDeviceGetHandleByIndex(physical_device_id)
         return int(pymxml.nvmlDeviceGetMemoryInfo(handle).total)
 
     @classmethod
-    @with_mcml_context
+    @with_mxml_context
     def is_fully_connected(cls, physical_device_ids: list[int]) -> bool:
         """
         query if the set of gpus are fully connected by nvlink (1 hop)
@@ -485,11 +479,12 @@ class MxmlPlatform(MacaPlatformBase):
 
     @classmethod
     def _get_physical_device_name(cls, device_id: int = 0) -> str:
-        handle = pymxml.nvmlDeviceGetHandleByIndex(device_id)
-        return pymxml.nvmlDeviceGetName(handle)
+        return "Device 4000"
+        # handle = pymxml.nvmlDeviceGetHandleByIndex(device_id)
+        # return pymxml.nvmlDeviceGetName(handle)
 
     @classmethod
-    @with_mcml_context
+    @with_mxml_context
     def log_warnings(cls):
         device_ids: int = pymxml.nvmlDeviceGetCount()
         if device_ids > 1:
