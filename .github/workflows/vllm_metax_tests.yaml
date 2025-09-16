@@ -52,7 +52,7 @@ jobs:
       max-parallel: 2
       matrix:
         os: [vllm-metax-runner-set]
-        vllm_version: [v0.10.1.1, main]
+        vllm_version: [v0.10.2, main]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Install base packages
