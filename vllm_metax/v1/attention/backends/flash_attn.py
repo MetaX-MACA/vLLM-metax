@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """Attention layer with FlashAttention."""
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, ClassVar
 
 import numpy as np
 import torch
@@ -191,6 +191,8 @@ class FlashAttentionMetadataBuilder(
     #  https://github.com/vllm-project/vllm/issues/22945
     cudagraph_support = AttentionCGSupport.ALWAYS \
         if get_flash_attn_version() == 3 else AttentionCGSupport.UNIFORM_BATCH
+
+    reorder_batch_threshold: ClassVar[int] = 1
 
     def __init__(self, kv_cache_spec: AttentionSpec, layer_names: list[str],
                  vllm_config: VllmConfig, device: torch.device):
