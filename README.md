@@ -32,6 +32,7 @@ All the required components are pre-installed in docker image.
 |v0.8.5          |maca2.33.1.13 | vllm:maca.ai2.33.1.13-torch2.6-py310-ubuntu22.04-amd64 |
 |v0.9.1          |maca3.0.0.5   | vllm:maca.ai3.0.0.5-torch2.6-py310-ubuntu22.04-amd64 |
 |v0.10.1.1 (dev only)|maca3.0.0.5(dev only)| vllm:maca.ai3.0.0.5-torch2.6-py310-ubuntu22.04-amd64 (dev only)|
+|v0.10.2(dev only)|maca3.0.0.5(dev only)| vllm:maca.ai3.0.0.5-torch2.6-py310-ubuntu22.04-amd64 (dev only)|
 
 > Note: All the vllm tests are based on the related maca version. Using incorresponding version of maca for vllm may cause unexpected bugs or errors. This is not garanteed.
 
@@ -39,7 +40,7 @@ All the required components are pre-installed in docker image.
 
 ### install vllm
 ```bash
-pip install vllm==0.10.1.1 --no-deps
+pip install vllm==0.10.2 --no-deps
 ```
 
 ### install vllm-metax
