@@ -347,3 +347,23 @@ extend-ignore-re = []
 windo = "windo"
 
 [tool.typos.type.vimscript.extend-words]
+
+[tool.uv.pip]
+index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+extra-index-url = ["https://pypi.org/simple"]
+
+[tool.uv] 
+no-build-isolation-package = [
+    "torch", "torchaudio", "torchvision",
+    "xformers",
+    "lm_eval", 
+    "causal_conv1d", 
+    "dropout_layer_norm",
+    "flash_attn",
+    "flash-linear-attention",
+    "flash_mla",
+    "flashinfer",
+    "fused_dense_lib",
+    "mamba_ssm",
+    "rotary_emb",
+]
