@@ -49,6 +49,7 @@ jobs:
     needs: [changes]
     if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' && needs.changes.outputs.base_tracker == 'true'}}
     strategy:
+      fail-fast: false
       max-parallel: 2
       matrix:
         os: [vllm-metax-runner-set]
@@ -67,6 +68,13 @@ jobs:
           repository: vllm-project/vllm
           ref: ${{ matrix.vllm_version }}
           path: ./vllm-official
+
+      - name: Extra setup for vllm
+        if: ${{ matrix.vllm_version == 'v0.10.2' }}
+        working-directory: ./vllm-official
+        run: |
+          rm use_existing_torch.py
+          wget -nv https://raw.githubusercontent.com/vllm-project/vllm/refs/heads/main/use_existing_torch.py
 
       - name: Install vllm
         working-directory: ./vllm-official
