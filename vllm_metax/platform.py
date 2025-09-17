@@ -252,7 +252,14 @@ class MacaPlatformBase(Platform):
             if use_triton:
                 return _get_version("Maca Triton MLA",
                                     "triton_mla.MacaTritonMLABackend")
+            # default mla
+            logger.warning(
+                "Selected MLA backend is not valid, falling back to Triton MLA."
+            )
+            return _get_version("Maca Triton MLA",
+                                "triton_mla.MacaTritonMLABackend")
         if use_v1:
+            assert not use_mla
             FLASHINFER_V1 = "vllm_metax.v1.attention.backends.flashinfer.MacaFlashInferBackend"  # noqa: E501
             FLASH_ATTN_V1 = "vllm_metax.v1.attention.backends.flash_attn.MacaFlashAttentionBackend"  # noqa: E501
 
