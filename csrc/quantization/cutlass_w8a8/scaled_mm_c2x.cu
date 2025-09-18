@@ -165,8 +165,6 @@ void cutlass_scaled_mm_azp_sm75(torch::Tensor& out, torch::Tensor const& a,
                                 torch::Tensor const& azp_adj,
                                 std::optional<torch::Tensor> const& azp,
                                 std::optional<torch::Tensor> const& bias) {
-#if (MACA_VERSION_MAJOR * 100 + MACA_VERSION_MINOR) >= \
-    231  // MACA version >= 2.31.0.x
   int32_t m = a.size(0);
   int32_t n = b.size(1);
   int32_t k = a.size(1);
@@ -332,5 +330,4 @@ void cutlass_scaled_mm_azp_sm75(torch::Tensor& out, torch::Tensor const& a,
       mctlass_op(arguments, NULL, stream);
     }
   }
-#endif  // USE_MACA
 }
