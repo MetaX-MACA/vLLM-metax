@@ -204,7 +204,6 @@ from vllm.attention.backends.abstract import (AttentionBackend, AttentionLayer,
 from vllm.attention.backends.utils import get_mla_dims
 from vllm.attention.ops.common import cp_lse_ag_out_rs
 from vllm.attention.ops.merge_attn_states import merge_attn_states
-from vllm.attention.utils.fa_utils import get_flash_attn_version
 from vllm.config import VllmConfig
 from vllm.distributed.parallel_state import get_dcp_group, is_global_first_rank
 from vllm.logger import init_logger

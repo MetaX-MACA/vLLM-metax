@@ -13,8 +13,8 @@ from vllm.attention.backends.abstract import (AttentionBackend, AttentionImpl,
                                               is_quantized_kv_cache)
 from vllm.attention.layer import Attention
 from vllm.attention.ops.merge_attn_states import merge_attn_states
-from vllm.attention.utils.fa_utils import (flash_attn_supports_fp8,
-                                           get_flash_attn_version)
+from vllm_metax.attention.utils.fa_utils import (flash_attn_supports_fp8,
+                                                 get_flash_attn_version)
 
 from flash_attn import flash_attn_varlen_func, flash_attn_with_kvcache
 
