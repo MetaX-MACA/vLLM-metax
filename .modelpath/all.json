@@ -1,0 +1,15 @@
+{
+    "deepseek-r1-awq-l4": "/data/models/DeepSeek/DeepSeek-R1-AWQ-L4",
+    "deepseek-r1-bf16-w8a8-l4": "/data/models/DeepSeek/DeepSeek-R1-BF16-W8A8-L4",
+    "deepseek-v2-lite": "/data/models/DeepSeek/DeepSeek-V2-Lite",
+    "qwen3-30b-a3b": "/data/models/Qwen3/Qwen3-30B-A3B",
+    "qwen3-30b-gptq": "/data/models/Qwen3/Qwen3-30B-A3B-GPTQ-W8A8",
+    "qwen3-32b": "/data/models/Qwen3/Qwen3-32B",
+    "qwen3-32b-w8a8": "/data/models/Qwen3/Qwen3-32B.w8a8",
+
+    "deepseek-r1-awq": "/data/models/DeepSeek/DeepSeek-R1-AWQ",
+    "deepseek-r1-bf16": "/data/models/DeepSeek/DeepSeek-R1-BF16", 
+    "deepseek-r1-bf16-w8a8": "/data/models/DeepSeek/DeepSeek-R1-BF16_W8A8",
+    "deepseek-v3-bf16": "/data/models/DeepSeek/DeepSeek-V3-BF16", 
+    "deepseek-v3-bf16-w8a8": "/data/models/DeepSeek/DeepSeek-V3-BF16_W8A8"
+}
