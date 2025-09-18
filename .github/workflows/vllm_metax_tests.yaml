@@ -1,13 +1,13 @@
-name: 'test'
+name: "test"
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - 'master'
+      - "master"
   pull_request:
     branches:
-      - 'master'
+      - "master"
 
 defaults:
   run:
@@ -23,7 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       base_tracker: ${{ steps.filter.outputs.base_tracker }}
-      backend_tracker: ${{ steps.filter.outputs.backend_tracker }}
+      attn_backend_tracker: ${{ steps.filter.outputs.attn_backend_tracker }}
+      quantization_tracker: ${{ steps.filter.outputs.quantization_tracker }}
       ut_tracker: ${{ steps.filter.outputs.ut_tracker }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -39,9 +40,11 @@ jobs:
               - 'CMakeLists.txt'
               - 'setup.py'
               - 'requirements/**'
-            backend_tracker:
+            attn_backend_tracker:
               - 'vllm_metax/v1/attention/backends/**'
               - 'vllm_metax/backends/**'
+            quantization_tracker:
+              - 'vllm_metax/quant_config'
             ut_tracker:
               - 'tests/ut/**'
 
@@ -107,12 +110,37 @@ jobs:
           export PATH="${CUDA_PATH}/bin:${MACA_PATH}/mxgpu_llvm/bin:${MACA_PATH}/bin:${CUCC_PATH}/tools:${CUCC_PATH}/bin:${PATH}"
           export LD_LIBRARY_PATH="${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu_llvm/lib:${LD_LIBRARY_PATH}"
           export VLLM_INSTALL_PUNICA_KERNELS=1
-          
+
           conda activate base
           pip install -r requirements/build.txt
           pip install . --no-build-isolation -v
 
+      - name: Run basic tests
+        if: ${{needs.changes.outputs.attn_backend_tracker == 'true'}}
+        env:
+          VLLM_WORKER_MULTIPROC_METHOD: spawn
+          VLLM_MODEL_REDIRECT_PATH: ".modelpath/all.json"
+        run: |
+          # -------------- e2e -----------------------
+          python tests/e2e/workflow/test_offline_inference_basic.py
+          
+          # -------------- unit tests -----------------------
+          #TODO: add unit tests
+
+      - name: Run attention backend tests
+        if: ${{needs.changes.outputs.attn_backend_tracker == 'true'}}
+        env:
+          VLLM_WORKER_MULTIPROC_METHOD: spawn
+          VLLM_MODEL_REDIRECT_PATH: ".modelpath/all.json"
+        run: |
+          # -------------- e2e -----------------------
+          python tests/e2e/workflow/test_offline_inference_attn_backend.py
+
+          # -------------- unit tests -----------------------
+          pytest -sv tests/kernels/attention/test_attention_selector.py
+
       - name: Collect environment info
+        if: failure()
         run: |
           sudo bash -c '
           mkdir -p /tmp/collect_env
@@ -121,16 +149,3 @@ jobs:
           # For security purposes, please feel free to check the contents of collect_env.py before running it.
           python collect_env.py
           '
-  
-      - name: Run backend unit tests
-        if: ${{needs.changes.outputs.backend_tracker == 'true'}}
-        env:
-          VLLM_WORKER_MULTIPROC_METHOD: spawn
-        run: |
-          pip list | grep vllm
-          pytest -sv tests/kernels/attention/test_attention_selector.py 
-
-      - name: Skip backend tests
-        if: ${{ needs.changes.outputs.backend_tracker != 'true' }}
-        run: |
-          echo "No backend changes detected, skipping tests."
