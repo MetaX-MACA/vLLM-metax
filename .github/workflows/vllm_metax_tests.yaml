@@ -122,8 +122,8 @@ jobs:
           VLLM_MODEL_REDIRECT_PATH: ".modelpath/all.json"
         run: |
           # -------------- e2e -----------------------
-          python tests/e2e/workflow/test_offline_inference_basic.py
-          
+          pytest tests/e2e/workflow/test_offline_inference_basic.py
+
           # -------------- unit tests -----------------------
           #TODO: add unit tests
 
@@ -134,7 +134,7 @@ jobs:
           VLLM_MODEL_REDIRECT_PATH: ".modelpath/all.json"
         run: |
           # -------------- e2e -----------------------
-          python tests/e2e/workflow/test_offline_inference_attn_backend.py
+          pytest tests/e2e/workflow/test_offline_inference_attn_backend.py
 
           # -------------- unit tests -----------------------
           pytest -sv tests/kernels/attention/test_attention_selector.py
