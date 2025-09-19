@@ -134,7 +134,7 @@ def test_env(
                        CudaPlatform()):
                 if use_mla:
                     if name == "FLASHMLA" and block_size == 64:
-                        from vllm.attention.backends.flashmla import (
+                        from vllm_metax.attention.ops.flashmla import (
                             is_flashmla_supported)
 
                         # only on cuda platforms with specific capability.

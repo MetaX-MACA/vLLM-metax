@@ -1,13 +1,13 @@
-name: 'test'
+name: "test"
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - 'master'
+      - "master"
   pull_request:
     branches:
-      - 'master'
+      - "master"
 
 defaults:
   run:
@@ -23,7 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       base_tracker: ${{ steps.filter.outputs.base_tracker }}
-      backend_tracker: ${{ steps.filter.outputs.backend_tracker }}
+      attn_backend_tracker: ${{ steps.filter.outputs.attn_backend_tracker }}
+      quantization_tracker: ${{ steps.filter.outputs.quantization_tracker }}
       ut_tracker: ${{ steps.filter.outputs.ut_tracker }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -39,16 +40,19 @@ jobs:
               - 'CMakeLists.txt'
               - 'setup.py'
               - 'requirements/**'
-            backend_tracker:
+            attn_backend_tracker:
               - 'vllm_metax/v1/attention/backends/**'
               - 'vllm_metax/backends/**'
+            quantization_tracker:
+              - 'vllm_metax/quant_config'
             ut_tracker:
               - 'tests/ut/**'
 
-  build_test:
+  e2e_test:
     needs: [changes]
     if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' && needs.changes.outputs.base_tracker == 'true'}}
     strategy:
+      fail-fast: false
       max-parallel: 2
       matrix:
         os: [vllm-metax-runner-set]
@@ -59,6 +63,26 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt install git -y
+          conda activate base
+          pip install uv
+
+      - name: Validate GPU/Env/Permissions/Groups
+        run: |
+          echo "==== GPU Device Permission ===="
+          ls -l /dev/dri* || echo "No /dev/dri* found"
+          echo "==== User Info ===="
+          id
+          whoami
+          echo "==== User Groups ===="
+          groups
+          getent group video || echo "No 'video' group found"
+          getent group docker || echo "No 'docker' group found"
+          echo "==== Env Vars ===="
+          echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+          echo "PATH=$PATH"
+          echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+          echo "==== Python CUDA/Torch ===="
+          python -c "import torch; print('torch.cuda.is_available:', torch.cuda.is_available())"
 
       - name: Checkout vllm repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -67,14 +91,21 @@ jobs:
           ref: ${{ matrix.vllm_version }}
           path: ./vllm-official
 
+      - name: Extra setup for vllm
+        if: ${{ matrix.vllm_version == 'v0.10.2' }}
+        working-directory: ./vllm-official
+        run: |
+          rm use_existing_torch.py
+          wget -nv https://raw.githubusercontent.com/vllm-project/vllm/refs/heads/main/use_existing_torch.py
+
       - name: Install vllm
         working-directory: ./vllm-official
         run: |
           echo "$PATH"
           conda activate base
-          python use_existing_torch.py
+          python use_existing_torch.py > /dev/null
           pip install -r requirements/build.txt
-          VLLM_TARGET_DEVICE=empty pip install . --no-deps --no-build-isolation
+          VLLM_TARGET_DEVICE=empty pip install . --no-build-isolation
 
       - name: Checkout vLLM-metax repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -98,33 +129,42 @@ jobs:
           export PATH="${CUDA_PATH}/bin:${MACA_PATH}/mxgpu_llvm/bin:${MACA_PATH}/bin:${CUCC_PATH}/tools:${CUCC_PATH}/bin:${PATH}"
           export LD_LIBRARY_PATH="${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu_llvm/lib:${LD_LIBRARY_PATH}"
           export VLLM_INSTALL_PUNICA_KERNELS=1
-          
-          echo "$PATH"
+
           conda activate base
-          ls -la
           pip install -r requirements/build.txt
           pip install . --no-build-isolation -v
 
+      - name: Run basic tests
+        if: ${{needs.changes.outputs.base_tracker == 'true'}}
+        env:
+          VLLM_WORKER_MULTIPROC_METHOD: spawn
+          VLLM_MODEL_REDIRECT_PATH: ".modelpath/cicd.json"
+        run: |
+          # -------------- e2e -----------------------
+          pytest tests/e2e/workflow/test_offline_inference_basic.py
+
+          # -------------- unit tests -----------------------
+          #TODO: add unit tests
+
+      - name: Run attention backend tests
+        if: ${{needs.changes.outputs.attn_backend_tracker == 'true'}}
+        env:
+          VLLM_WORKER_MULTIPROC_METHOD: spawn
+          VLLM_MODEL_REDIRECT_PATH: ".modelpath/cicd.json"
+        run: |
+          # -------------- e2e -----------------------
+          pytest tests/e2e/workflow/test_offline_inference_attn_backend.py
+
+          # -------------- unit tests -----------------------
+          pytest -sv tests/kernels/attention/test_attention_selector.py
+
       - name: Collect environment info
+        if: failure()
         run: |
           sudo bash -c '
           mkdir -p /tmp/collect_env
           cd /tmp/collect_env
           wget -nv https://raw.githubusercontent.com/MetaX-MACA/vLLM-metax/refs/heads/master/vllm_metax/collect_env.py
           # For security purposes, please feel free to check the contents of collect_env.py before running it.
-          conda activate base
           python collect_env.py
           '
-  
-      - name: Run backend unit tests
-        if: ${{needs.changes.outputs.backend_tracker == 'true'}}
-        env:
-          VLLM_WORKER_MULTIPROC_METHOD: spawn
-        run: |
-          pip list | grep vllm
-          pytest -sv tests/kernels/attention/test_attention_selector.py 
-
-      - name: Skip backend tests
-        if: ${{ needs.changes.outputs.backend_tracker != 'true' }}
-        run: |
-          echo "No backend changes detected, skipping tests."

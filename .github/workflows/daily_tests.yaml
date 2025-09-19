@@ -1,0 +1,102 @@
+name: "e2e daily test"
+
+on:
+    workflow_dispatch:
+    push:
+        tags:
+            - "v*"
+    schedule:
+        # Runs every 6 hours
+        -   cron: "0 */6 * * *"
+
+defaults:
+    run:
+        shell: bash -el {0}
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    e2e_daily_test:
+        strategy:
+            fail-fast: false
+            max-parallel: 2
+            matrix:
+                os: [vllm-metax-runner-set]
+                vllm_version: [v0.10.2, main]
+        runs-on: ${{ matrix.os }}
+        steps:
+            -   name: Install base packages
+                run: |
+                    sudo apt-get update -y
+                    sudo apt install git -y
+                    pip install uv
+
+            -   name: Checkout vllm repo
+                uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+                with:
+                    repository: vllm-project/vllm
+                    ref: ${{ matrix.vllm_version }}
+                    path: ./vllm-official
+
+            -   name: Extra setup for vllm
+                if: ${{ matrix.vllm_version == 'v0.10.2' }}
+                working-directory: ./vllm-official
+                run: |
+                    rm use_existing_torch.py
+                    wget -nv https://raw.githubusercontent.com/vllm-project/vllm/refs/heads/main/use_existing_torch.py
+
+            -   name: Install vllm
+                working-directory: ./vllm-official
+                run: |
+                    echo "$PATH"
+                    conda activate base
+                    python use_existing_torch.py
+                    pip install -r requirements/build.txt
+                    VLLM_TARGET_DEVICE=empty pip install . --no-deps --no-build-isolation
+
+            -   name: Checkout vLLM-metax repo
+                uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+            -   name: Ensure cuda toolkit 11.6
+                run: |
+                    if [ ! -d "/usr/local/cuda" ]; then
+                        echo "CUDA not found, installing..."
+                        wget -nv https://developer.download.nvidia.com/compute/cuda/11.6.0/local_installers/cuda_11.6.0_510.39.01_linux.run
+                        sudo sh cuda_11.6.0_510.39.01_linux.run --silent --toolkit
+                        rm cuda_11.6.0_510.39.01_linux.run
+                    else
+                        echo "CUDA already installed, skipping installation."
+                    fi
+
+            -   name: Install vLLM-metax
+                run: |
+                    export MACA_PATH="/opt/maca"
+                    export CUDA_PATH="/usr/local/cuda"
+                    export CUCC_PATH="${MACA_PATH}/tools/cu-bridge"
+                    export PATH="${CUDA_PATH}/bin:${MACA_PATH}/mxgpu_llvm/bin:${MACA_PATH}/bin:${CUCC_PATH}/tools:${CUCC_PATH}/bin:${PATH}"
+                    export LD_LIBRARY_PATH="${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu_llvm/lib:${LD_LIBRARY_PATH}"
+                    export VLLM_INSTALL_PUNICA_KERNELS=1
+
+                    conda activate base
+                    pip install -r requirements/build.txt
+                    pip install . --no-build-isolation -v
+
+            -   name: Run e2e tests
+                env:
+                    VLLM_MODEL_REDIRECT_PATH: ".modelpath/all.json"
+                run: |
+                    pytest tests/e2e/workflow/test_offline_inference_all.py
+                    #TODO: add unit tests
+
+            -   name: Collect environment info
+                if: failure()
+                run: |
+                    sudo bash -c '
+                        mkdir -p /tmp/collect_env
+                        cd /tmp/collect_env
+                        wget -nv https://raw.githubusercontent.com/MetaX-MACA/vLLM-metax/refs/heads/master/vllm_metax/collect_env.py
+                        # For security purposes, please feel free to check the contents of collect_env.py before running it.
+                        python collect_env.py
+                    '
