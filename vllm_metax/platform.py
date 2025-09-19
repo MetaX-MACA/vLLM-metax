@@ -262,6 +262,7 @@ class MacaPlatformBase(Platform):
             assert not use_mla
             FLASHINFER_V1 = "vllm_metax.v1.attention.backends.flashinfer.MacaFlashInferBackend"  # noqa: E501
             FLASH_ATTN_V1 = "vllm_metax.v1.attention.backends.flash_attn.MacaFlashAttentionBackend"  # noqa: E501
+            TRITON_ATTN_VLLM_V1 = "vllm_metax.v1.attention.backends.triton_attn.MacaTritonAttentionBackend"  # noqa: E501
 
             if selected_backend == _Backend.FLASHINFER:
                 logger.info_once("Using FlashInfer backend on V1 engine.")
@@ -299,6 +300,9 @@ class MacaPlatformBase(Platform):
 
             # FlashAttention is the default for SM 8.0+ GPUs
             if cls.has_device_capability(80):
+                if has_sink:
+                    logger.info_once("Using Triton backend on V1 engine.")
+                    return TRITON_ATTN_VLLM_V1
                 if is_default_backend_supported := is_attn_backend_supported(
                         FLASH_ATTN_V1, head_size, dtype,
                         allow_import_error=False):
