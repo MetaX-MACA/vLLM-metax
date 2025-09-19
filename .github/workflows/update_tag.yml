@@ -15,23 +15,23 @@ jobs:
 
       - name: Extract clean tag from branch name
         run: |
-          BRANCH_NAME="${GITHUB_REF##*/}"   # e.g. v1.2.4-dev
-          CLEAN_TAG=$(echo "$BRANCH_NAME" | sed -E 's/-(dev|release)$//')  # -> v1.2.4
-          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
-          echo "TAG_NAME=$CLEAN_TAG" >> $GITHUB_ENV
-          echo "Branch: $BRANCH_NAME -> Tag: $CLEAN_TAG"
+            BRANCH_NAME="${GITHUB_REF##*/}"   # e.g. v1.2.4-dev
+            CLEAN_TAG=$(echo "$BRANCH_NAME" | sed -E 's/-(dev|release)$//')  # -> v1.2.4
+            echo "BRANCH_NAME=$BRANCH_NAME" >> "$GITHUB_ENV"
+            echo "TAG_NAME=$CLEAN_TAG" >> "$GITHUB_ENV"
+            echo "Branch: $BRANCH_NAME -> Tag: $CLEAN_TAG"
 
       - name: Create or update Git tag
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          git tag -f "${TAG_NAME}"
-          git push origin "${TAG_NAME}" --force
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            
+            git tag -f "${TAG_NAME}"
+            git push origin "${TAG_NAME}" --force
 
       - name: Create GitHub Release (for release branches only)
         if: endsWith(env.BRANCH_NAME, '-release')
-        uses: softprops/action-gh-release@v1
+          uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_NAME }}
           name: Release ${{ env.TAG_NAME }}
