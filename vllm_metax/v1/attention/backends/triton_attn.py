@@ -262,7 +262,7 @@ class TritonAttentionImpl(AttentionImpl):
             else:
                 logger.info_once(
                     "Using vllm unified attention for TritonAttentionImpl")
-                from vllm.attention.ops.triton_unified_attention import (
+                from vllm_metax.attention.ops.triton_unified_attention import (
                     unified_attention)
                 self.unified_attention = unified_attention
 

@@ -6,7 +6,7 @@ from typing import Optional
 import pytest
 import torch
 
-from vllm.attention.ops.triton_unified_attention import unified_attention
+from vllm_metax.attention.ops.triton_unified_attention import unified_attention
 from vllm.platforms import current_platform
 
 NUM_HEADS = [(4, 4), (8, 2)]
