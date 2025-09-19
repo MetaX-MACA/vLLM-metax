@@ -105,6 +105,8 @@ def register_quant_configs():
         MacaGPTQMarlinConfig)
     from vllm_metax.quant_config.moe_wna16 import (  # noqa: F401
         MacaMoeWNA16Config)
+    from vllm_metax.quant_config.compressed_tensors import (  # noqa: F401
+        MacaCompressedTensorsConfig)
 
 
 def register_model():

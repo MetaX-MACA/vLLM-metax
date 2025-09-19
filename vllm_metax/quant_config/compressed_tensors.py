@@ -67,7 +67,7 @@ class MacaCompressedTensorsConfig(CompressedTensorsConfig):
         if isinstance(layer, Attention):
             return CompressedTensorsKVCacheMethod(self)
         if isinstance(layer, FusedMoE):
-            return CompressedTensorsMoEMethod.get_moe_method(self, layer)
+            return MacaCompressedTensorsMoEMethod.get_moe_method(self, layer)
         return None
 
 
