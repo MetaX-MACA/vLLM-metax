@@ -6,25 +6,24 @@ import torch
 from compressed_tensors.quantization import (QuantizationStrategy)
 
 from vllm.model_executor.layers.fused_moe import FusedMoE
-from vllm.model_executor.layers.linear import (LinearBase, LinearMethodBase,
+from vllm.model_executor.layers.linear import (LinearBase,
                                                UnquantizedLinearMethod)
 from vllm.model_executor.layers.quantization.base_config import (  # noqa: E501
     QuantizeMethodBase)
 from vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors_moe import (  # noqa: E501
     CompressedTensorsMoEMethod)
-from vllm.model_executor.layers.quantization.compressed_tensors.transform.linear import (  # noqa: E501
-    CompressedTensorsLinearTransformMethod, get_linear_transform_schemes)
 from vllm.model_executor.layers.quantization.compressed_tensors.utils import (
-    find_matched_target)
+    find_matched_target, should_ignore_layer)
+
+from vllm_metax.patch.model_executor.patch.hook_register import (
+    register_quantization_config)
 
 from vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors import (
-    CompressedTensorsConfig, CompressedTensorsLinearMethod,
-    CompressedTensorsKVCacheMethod)
+    logger, CompressedTensorsConfig, CompressedTensorsKVCacheMethod,
+    CompressedTensorsLinearMethod)
 from vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors_moe import (
-    logger, CompressedTensorsWNA16MoEMethod, CompressedTensorsW4A4MoeMethod,
+    CompressedTensorsWNA16MoEMethod, CompressedTensorsW4A4MoeMethod,
     CompressedTensorsW8A8Fp8MoEMethod, CompressedTensorsW8A8Int8MoEMethod)
-from vllm_metax.patch.model_executor.hook_register import (
-    register_quantization_config)
 
 from compressed_tensors.quantization import (ActivationOrdering)
 
@@ -43,27 +42,18 @@ class MacaCompressedTensorsConfig(CompressedTensorsConfig):
     ) -> Optional["QuantizeMethodBase"]:
         from vllm.attention.layer import Attention  # Avoid circular import
 
+        # Check if the layer is skipped for quantization.
+        # TODO (@robertgshaw2): support module names
+        if should_ignore_layer(prefix,
+                               ignore=self.ignore,
+                               fused_mapping=self.packed_modules_mapping):
+            return UnquantizedLinearMethod()
         if isinstance(layer, LinearBase):
-            # collect schemes
-            quant_scheme = self.get_scheme(layer=layer, layer_name=prefix)
-            input_tfms, output_tfms = get_linear_transform_schemes(
-                layer, prefix, self.transform_config,
-                self.packed_modules_mapping)
-
-            # choose quantization method
-            quant_method: LinearMethodBase = UnquantizedLinearMethod()
-            if quant_scheme is not None:
-                layer.scheme = quant_scheme
-                quant_method = CompressedTensorsLinearMethod(self)
-
-            # choose transform method
-            if any((input_tfms, output_tfms)):
-                return CompressedTensorsLinearTransformMethod.from_schemes(
-                    quant_method, input_tfms, output_tfms)
-
-            else:
-                return quant_method
-
+            scheme = self.get_scheme(layer=layer, layer_name=prefix)
+            if scheme is None:
+                return UnquantizedLinearMethod()
+            layer.scheme = scheme
+            return CompressedTensorsLinearMethod(self)
         if isinstance(layer, Attention):
             return CompressedTensorsKVCacheMethod(self)
         if isinstance(layer, FusedMoE):
