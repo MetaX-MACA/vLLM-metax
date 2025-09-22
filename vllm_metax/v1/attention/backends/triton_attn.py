@@ -6,6 +6,7 @@ from functools import cache
 from typing import ClassVar, Optional
 
 import torch
+
 from vllm import _custom_ops as ops
 from vllm import envs
 from vllm.attention.backends.abstract import (AttentionBackend, AttentionImpl,
@@ -131,7 +132,7 @@ class TritonAttentionMetadataBuilder(
         return attn_metadata
 
 
-class MacaTritonAttentionBackend(AttentionBackend):
+class TritonAttentionBackend(AttentionBackend):
 
     accept_output_buffer: bool = True
 
@@ -231,7 +232,7 @@ class TritonAttentionImpl(AttentionImpl):
 
         self.num_queries_per_kv = self.num_heads // self.num_kv_heads
 
-        MacaTritonAttentionBackend.validate_head_size(head_size)
+        TritonAttentionBackend.validate_head_size(head_size)
 
         if attn_type != AttentionType.DECODER:
             raise NotImplementedError("Encoder self-attention and "
@@ -255,7 +256,7 @@ class TritonAttentionImpl(AttentionImpl):
             else:
                 logger.info_once(
                     "Using vllm unified attention for TritonAttentionImpl")
-                from vllm.attention.ops.triton_unified_attention import (
+                from vllm_metax.attention.ops.triton_unified_attention import (
                     unified_attention)
                 self.unified_attention = unified_attention
 

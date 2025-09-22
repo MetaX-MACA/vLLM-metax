@@ -188,7 +188,7 @@ def test_env(
                                                    block_size,
                                                    False,
                                                    use_mla=use_mla)
-                        assert backend.get_name() == "FLASH_ATTN_VLLM_V1", (
+                        assert backend.get_name() == "FLEX_ATTENTION", (
                             "Should fallback to FlexAttention if head size is "
                             "not supported by FlashAttention")
 
@@ -219,7 +219,7 @@ def test_fp32_fallback(
                        CudaPlatform()):
                 backend = get_attn_backend(16, torch.float32, torch.float32,
                                            16, False)
-            assert (backend.get_name() == "FLASH_ATTN_VLLM_V1"
+            assert (backend.get_name() == "FLEX_ATTENTION"
                     if use_v1 else "XFORMERS")
 
 

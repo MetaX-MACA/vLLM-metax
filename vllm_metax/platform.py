@@ -258,56 +258,87 @@ class MacaPlatformBase(Platform):
                     else:
                         logger.warning(
                             "FlashMLA backend is only supported on V1 engine")
+
+            # If this point is reached, no valid backend has been selected or found
+            if selected_backend is None:
+                raise ValueError(
+                    "No valid MLA backend could be found for this configuration."
+                )  # noqa: E501
+            else:
+                raise ValueError(
+                    f"{selected_backend.name} is not a valid backend for this configuration."
+                )  # noqa: E501
+
         if use_v1:
             FLASHINFER_V1 = "vllm_metax.v1.attention.backends.flashinfer.MacaFlashInferBackend"  # noqa: E501
+            FLEX_ATTENTION_V1 = "vllm_metax.v1.attention.backends.flex_attention.FlexAttentionBackend"  # noqa: E501
             FLASH_ATTN_V1 = "vllm_metax.v1.attention.backends.flash_attn.MacaFlashAttentionBackend"  # noqa: E501
+            TRITON_ATTN_VLLM_V1 = "vllm_metax.v1.attention.backends.triton_attn.MacaTritonAttentionBackend"  # noqa: E501
+            TREE_ATTN_V1 = "vllm_metax.v1.attention.backends.tree_attn.TreeAttentionBackend"  # noqa: E501
 
             if selected_backend == _Backend.FLASHINFER:
                 logger.info_once("Using FlashInfer backend on V1 engine.")
-                if cls.has_device_capability(100):
-                    from vllm.v1.attention.backends.utils import (
-                        set_kv_cache_layout)
-                    set_kv_cache_layout("HND")
+                from vllm.v1.attention.backends.utils import (
+                    set_kv_cache_layout)
+                set_kv_cache_layout("HND")
                 return FLASHINFER_V1
+            elif selected_backend == _Backend.FLEX_ATTENTION:
+                logger.info_once("Using FlexAttention backend on V1 engine.")
+                return FLEX_ATTENTION_V1
+            elif selected_backend == _Backend.TRITON_ATTN_VLLM_V1:
+                logger.info_once("Using Triton backend on V1 engine.")
+                return TRITON_ATTN_VLLM_V1
             elif selected_backend == _Backend.FLASH_ATTN:
                 logger.info_once("Using Flash Attention backend on V1 engine.")
                 return FLASH_ATTN_V1
+            elif selected_backend == _Backend.TREE_ATTN:
+                logger.info_once("Using Tree Attention backend on V1 engine.")
+                return TREE_ATTN_V1
 
             from vllm.attention.selector import is_attn_backend_supported
 
             # Default backends for V1 engine
             # Prefer FlashInfer for Blackwell GPUs if installed
-            if cls.is_device_capability(100):
-                if is_default_backend_supported := is_attn_backend_supported(
-                        FLASHINFER_V1, head_size, dtype):
-                    from vllm.v1.attention.backends.utils import (
-                        set_kv_cache_layout)
+            if is_default_backend_supported := is_attn_backend_supported(
+                    FLASHINFER_V1, head_size, dtype):
+                from vllm.v1.attention.backends.utils import (
+                    set_kv_cache_layout)
 
-                    logger.info_once(
-                        "Using FlashInfer backend with HND KV cache layout on "
-                        "V1 engine by default for Blackwell (SM 10.0) GPUs.")
-                    set_kv_cache_layout("HND")
+                logger.info_once(
+                    "Using FlashInfer backend with HND KV cache layout on "
+                    "V1 engine by default for MetaX GPUs.")
+                set_kv_cache_layout("HND")
 
-                    return FLASHINFER_V1
+                return FLASHINFER_V1
 
-                if not is_default_backend_supported.can_import:
-                    logger.warning_once(
-                        "FlashInfer failed to import for V1 engine on "
-                        "Blackwell (SM 10.0) GPUs; it is recommended to "
-                        "install FlashInfer for better performance.")
+            if not is_default_backend_supported.can_import:
+                logger.warning_once(
+                    "FlashInfer failed to import for V1 engine on "
+                    "MetaX GPUs; it is recommended to "
+                    "install FlashInfer for better performance.")
 
             # FlashAttention is the default for SM 8.0+ GPUs
-            if cls.has_device_capability(80):
-                if is_default_backend_supported := is_attn_backend_supported(
-                        FLASH_ATTN_V1, head_size, dtype,
-                        allow_import_error=False):
-                    logger.info_once("Using Flash Attention backend on "
-                                     "V1 engine.")
-                    return FLASH_ATTN_V1
+            if has_sink:
+                logger.info_once("Using Triton backend on V1 engine.")
+                return TRITON_ATTN_VLLM_V1
+            if is_default_backend_supported := is_attn_backend_supported(
+                    FLASH_ATTN_V1, head_size, dtype, allow_import_error=False):
+                logger.info_once("Using Flash Attention backend on "
+                                 "V1 engine.")
+                return FLASH_ATTN_V1
+            else:
+                use_flex_attention_reason = {}
+                if not is_default_backend_supported.head_size:
+                    use_flex_attention_reason["head_size"] = head_size
+                if not is_default_backend_supported.dtype:
+                    use_flex_attention_reason["dtype"] = dtype
 
-            assert not is_default_backend_supported
-
-            return FLASH_ATTN_V1
+                logger.info_once(
+                    "Using FlexAttention backend for %s on V1 engine.",
+                    ", ".join(f"{k}={v}"
+                              for k, v in use_flex_attention_reason.items()),
+                )
+                return FLEX_ATTENTION_V1
 
         # Backends for V0 engine
         else:

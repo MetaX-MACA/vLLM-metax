@@ -205,7 +205,7 @@ class NCCLLibrary:
         self.NCCL_CHECK(self._funcs["mcclAllReduce"](sendbuff, recvbuff, count,
                                                      datatype, op, comm,
                                                      stream))
-    
+
     def ncclReduce(self, sendbuff: buffer_type, recvbuff: buffer_type,
                    count: int, datatype: int, op: int, root: int,
                    comm: ncclComm_t, stream: cudaStream_t) -> None:
@@ -217,7 +217,7 @@ class NCCLLibrary:
         self.NCCL_CHECK(self._funcs["mcclReduce"](sendbuff, recvbuff, count,
                                                   datatype, op, root, comm,
                                                   stream))
-    
+
     def ncclReduceScatter(self, sendbuff: buffer_type, recvbuff: buffer_type,
                           count: int, datatype: int, op: int, comm: ncclComm_t,
                           stream: cudaStream_t) -> None:
