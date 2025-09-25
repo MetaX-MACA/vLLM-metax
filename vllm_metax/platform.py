@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Callable, List, Optional, TypeVar, Union
 
 import torch
 # import custom ops, trigger op registration
-import vllm._C  # noqa
 import vllm.envs as envs
 from torch.distributed import PrefixStore, ProcessGroup
 from torch.distributed.distributed_c10d import is_nccl_available
@@ -51,7 +50,7 @@ def with_mxml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
 
 class MacaPlatformBase(Platform):
     _enum = PlatformEnum.OOT
-    device_name: str = "Metax"
+    device_name: str = "maca"
     device_type: str = "cuda"
     dispatch_key: str = "CUDA"
     ray_device_key: str = "GPU"
@@ -215,6 +214,22 @@ class MacaPlatformBase(Platform):
         torch.cuda.empty_cache()
         torch.cuda.reset_peak_memory_stats(device)
         return torch.cuda.max_memory_allocated(device)
+
+    @classmethod
+    def get_vit_attn_backend(cls, head_size: int,
+                             dtype: torch.dtype) -> _Backend:
+        if dtype not in (torch.float16, torch.bfloat16):
+            return _Backend.XFORMERS
+
+        FLASH_ATTN_V1 = "vllm.v1.attention.backends.flash_attn.FlashAttentionBackend"  # noqa: E501
+        from vllm.attention.selector import is_attn_backend_supported
+        is_default_fa_supported = is_attn_backend_supported(
+            FLASH_ATTN_V1, head_size, dtype, allow_import_error=False)
+        if is_default_fa_supported:
+            return _Backend.FLASH_ATTN
+        else:
+            # Fallback to XFORMERS
+            return _Backend.XFORMERS
 
     @classmethod
     def get_attn_backend_cls(cls, selected_backend, head_size, dtype,
@@ -399,17 +414,10 @@ class MacaPlatformBase(Platform):
         return cuda_device_count_stateless()
 
     @classmethod
-    def is_kv_cache_dtype_supported(cls, kv_cache_dtype: str) -> bool:
+    def is_kv_cache_dtype_supported(cls, kv_cache_dtype: str,
+                                    model_config: "ModelConfig") -> bool:
         fp8_attention = kv_cache_dtype.startswith("fp8")
-        will_use_fa = (not envs.is_set("VLLM_ATTENTION_BACKEND")
-                       ) or envs.VLLM_ATTENTION_BACKEND == "FLASH_ATTN_VLLM_V1"
-        supported = False
-        if cls.is_device_capability(100):
-            supported = True
-        elif fp8_attention and will_use_fa:
-            from vllm.attention.utils.fa_utils import flash_attn_supports_fp8
-            supported = flash_attn_supports_fp8()
-        return supported
+        return (not fp8_attention)
 
     @classmethod
     def check_if_supports_dtype(cls, torch_dtype: torch.dtype):
@@ -419,6 +427,10 @@ class MacaPlatformBase(Platform):
 
     @classmethod
     def support_hybrid_kv_cache(cls) -> bool:
+        return True
+
+    @classmethod
+    def support_static_graph_mode(cls) -> bool:
         return True
 
     @classmethod
@@ -548,8 +560,8 @@ class NonMxmlMetaxPlatform(MacaPlatformBase):
     @classmethod
     def is_fully_connected(cls, physical_device_ids: List[int]) -> bool:
         logger.exception(
-            "NVLink detection not possible, as context support was"
-            " not found. Assuming no NVLink available.")
+            "MetaXLink detection not possible, as context support was"
+            " not found. Assuming no MetaXLink available.")
         return False
 
 
