@@ -1433,7 +1433,7 @@ class MLACommonImpl(MLAAttentionImpl[M], Generic[M]):
         assert attn_metadata.prefill is not None
         assert self.dcp_world_size is not None
 
-        has_context = attn_metadata.prefill.chunked_context is not None
+        has_context = False
         kv_nope = self.kv_b_proj(kv_c_normed)[0].view(\
             -1, self.num_heads, self.qk_nope_head_dim + self.v_head_dim)
         k_nope, v = kv_nope\
@@ -1606,6 +1606,10 @@ class MLACommonImpl(MLAAttentionImpl[M], Generic[M]):
 
             # recorect dcp attn_out with lse.
             if self.dcp_world_size > 1:
+                assert lse is not None, (
+                    "For a mla backend want to enable"
+                    "DCP, it is mandatory that the corresponding decode attn"
+                    "kernel return the softmax lse.")
                 attn_out = cp_lse_ag_out_rs(attn_out, lse, get_dcp_group())
 
             # v_up projection
