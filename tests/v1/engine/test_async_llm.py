@@ -20,7 +20,7 @@ from vllm.utils import set_default_torch_num_threads
 from vllm.v1.engine.async_llm import AsyncLLM
 from vllm.v1.metrics.loggers import LoggingStatLogger
 
-if not current_platform.is_cuda():
+if not current_platform.is_out_of_tree():
     pytest.skip(reason="V1 currently only supported on CUDA.",
                 allow_module_level=True)
 
