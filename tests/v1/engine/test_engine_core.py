@@ -21,7 +21,7 @@ from vllm.v1.outputs import ModelRunnerOutput
 
 from ...utils import create_new_process_for_each_test, multi_gpu_test
 
-if not current_platform.is_cuda():
+if not current_platform.is_out_of_tree():
     pytest.skip(reason="V1 currently only supported on CUDA.",
                 allow_module_level=True)
 
