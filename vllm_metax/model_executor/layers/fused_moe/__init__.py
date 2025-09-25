@@ -14,5 +14,5 @@ def get_config() -> Optional[dict[str, Any]]:
 if HAS_TRITON:
     # import to register the custom ops
     from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
-        fused_experts, fused_moe)
-    __all__ = ["fused_moe", "fused_experts"]
+        fused_experts)
+    __all__ = ["fused_experts"]
