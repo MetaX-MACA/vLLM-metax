@@ -671,7 +671,7 @@ def test_engine_core_proc_instantiation_cuda_empty(
         m.setattr(EngineCoreProc, "startup_handshake", mock_startup_handshake)
 
         vllm_config = EngineArgs(
-            model="deepseek-ai/DeepSeek-V2-Lite",
+            model=maybe_model_redirect("deepseek-ai/DeepSeek-V2-Lite"),
             trust_remote_code=True).create_engine_config()
         engine_core_proc = EngineCoreProc(
             vllm_config=vllm_config,
