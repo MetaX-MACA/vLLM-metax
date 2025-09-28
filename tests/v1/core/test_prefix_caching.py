@@ -21,7 +21,7 @@ from vllm.v1.core.kv_cache_utils import (BlockHash, BlockHashWithGroupId,
 from vllm.v1.kv_cache_interface import (FullAttentionSpec, KVCacheConfig,
                                         KVCacheGroupSpec, SlidingWindowSpec)
 
-init_none_hash(0)
+init_none_hash(0) # To avoid the error: name 'NONE_HASH' is not defined
 
 def make_request(
     request_id: str,
