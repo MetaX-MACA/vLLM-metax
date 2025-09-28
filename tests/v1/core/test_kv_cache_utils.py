@@ -894,7 +894,7 @@ def test_allocate_with_lookahead():
 
 def test_get_kv_cache_config():
     # pass max_model_len to pass check_enough_kv_cache_memory
-    model_config = ModelConfig(max_model_len=16)
+    model_config = ModelConfig(model=maybe_model_redirect("Qwen/Qwen3-0.6B"), max_model_len=16)
     vllm_config = VllmConfig(model_config=model_config)
 
     mem_per_block_per_layer = 16 * 2 * 64 * 4 * 2
