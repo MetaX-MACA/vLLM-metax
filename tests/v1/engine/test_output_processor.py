@@ -20,6 +20,7 @@ from vllm.v1.engine import EngineCoreRequest
 from vllm.v1.engine.output_processor import (OutputProcessor,
                                              RequestOutputCollector)
 from vllm.v1.metrics.stats import IterationStats
+from vllm.transformers_utils.utils import maybe_model_redirect
 
 
 def _ref_convert_id_to_token(
@@ -526,7 +527,7 @@ def test_stop_token(include_stop_str_in_output: bool,
         dummy_test_vectors: dummy engine core outputs and other data structures
     """
     model_id = dummy_test_vectors.tokenizer.name_or_path
-    if model_id != 'meta-llama/Llama-3.2-1B':
+    if model_id != maybe_model_redirect("meta-llama/Llama-3.2-1B"):
         raise AssertionError("Test requires meta-llama/Llama-3.2-1B but "
                              f"{model_id} is in use.")
     do_logprobs = num_sample_logprobs is not None
