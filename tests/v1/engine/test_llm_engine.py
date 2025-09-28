@@ -10,11 +10,13 @@ import pytest
 from vllm import LLM
 from vllm.sampling_params import GuidedDecodingParams, SamplingParams
 from vllm.v1.metrics.reader import Counter, Gauge, Histogram, Metric, Vector
+#
+from vllm.transformers_utils.utils import maybe_model_redirect
 
 if TYPE_CHECKING:
     from tests.conftest import VllmRunner
-
-MODEL = "facebook/opt-125m"
+#
+MODEL = maybe_model_redirect("facebook/opt-125m")
 DTYPE = "half"
 
 
@@ -215,7 +217,7 @@ def test_engine_metrics(vllm_runner, monkeypatch, example_prompts):
         assert len(num_accepted_tokens_per_pos[0].values) == 5
 
 
-@pytest.mark.parametrize("model", ["meta-llama/Llama-3.2-1B-Instruct"])
+@pytest.mark.parametrize("model", [maybe_model_redirect("meta-llama/Llama-3.2-1B-Instruct")])
 def test_skip_tokenizer_initialization(model: str,
                                        monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("VLLM_USE_V1", "1")
