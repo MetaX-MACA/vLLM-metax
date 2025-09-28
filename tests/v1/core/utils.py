@@ -16,12 +16,13 @@ from vllm.v1.kv_cache_interface import (FullAttentionSpec, KVCacheConfig,
                                         KVCacheGroupSpec)
 from vllm.v1.request import Request
 from vllm.v1.structured_output import StructuredOutputManager
+from vllm.transformers_utils.utils import maybe_model_redirect
 
 EOS_TOKEN_ID = 50256
 
 
 def create_scheduler(
-    model: str = "facebook/opt-125m",
+    model: str = maybe_model_redirect("facebook/opt-125m"),
     max_num_seqs: int = 16,
     max_num_batched_tokens: int = 8192,
     enable_prefix_caching: Optional[bool] = None,
