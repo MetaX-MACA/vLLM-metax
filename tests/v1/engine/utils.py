@@ -20,7 +20,7 @@ NUM_SAMPLE_LOGPROBS_UNDER_TEST = 5
 # Number of prompt logprobs to request when testing prompt logprobs
 NUM_PROMPT_LOGPROBS_UNDER_TEST = 7
 
-TOKENIZER_NAME = "meta-llama/Llama-3.2-1B"
+TOKENIZER_NAME = "llama-3.2-1b"
 
 FULL_STRINGS = [
     "My name is Robert from Neural Magic and I love working on vLLM so much!",
