@@ -91,9 +91,25 @@ def collect_env() -> None:
     collect_env_main()
 
 
+########### platform plugin ###########
 def register():
     """Register the METAX platform."""
     return "vllm_metax.platform.MacaPlatform"
+
+
+########### general plugins ###########
+def register_patch():
+    import vllm_metax.patch  # noqa: F401
+
+
+def register_ops():
+    register_patch()
+    import vllm_metax.ops  # noqa: F401
+
+
+def register_model():
+    from .models import register_model
+    register_model()
 
 
 def register_quant_configs():
@@ -107,16 +123,3 @@ def register_quant_configs():
         MacaMoeWNA16Config)
     from vllm_metax.quant_config.compressed_tensors import (  # noqa: F401
         MacaCompressedTensorsConfig)
-
-
-def register_model():
-    import vllm_metax.patch  # noqa: F401
-
-    register_quant_configs()
-
-    from .models import register_model
-    register_model()
-
-
-def register_ops():
-    import vllm_metax.ops  # noqa: F401

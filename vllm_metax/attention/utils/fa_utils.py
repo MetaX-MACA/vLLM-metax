@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 from typing import Optional
 
-from vllm_metax import _custom_ops as ops
+from vllm import _custom_ops as ops
 
 reshape_and_cache_flash = ops.reshape_and_cache_flash
 

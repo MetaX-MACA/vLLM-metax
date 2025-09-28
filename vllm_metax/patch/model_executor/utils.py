@@ -9,6 +9,7 @@ from vllm.model_executor.layers.quantization.utils.int8_utils import (
 from vllm.utils import cdiv
 
 from vllm_metax import _custom_ops as ops
+from vllm.model_executor.layers.fused_moe import utils
 
 logger = init_logger(__name__)
 
@@ -45,4 +46,4 @@ def _int8_quantize(
     return A, A_scale
 
 
-vllm.model_executor.layers.fused_moe.utils._int8_quantize = _int8_quantize
+utils._int8_quantize = _int8_quantize
