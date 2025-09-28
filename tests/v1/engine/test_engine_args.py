@@ -10,6 +10,7 @@ from vllm.config import VllmConfig
 from vllm.engine.arg_utils import EngineArgs
 from vllm.usage.usage_lib import UsageContext
 from vllm.utils import FlexibleArgumentParser
+from vllm.transformers_utils.utils import maybe_model_redirect
 
 if not envs.VLLM_USE_V1:
     pytest.skip(
@@ -20,8 +21,10 @@ if not envs.VLLM_USE_V1:
 
 def test_prefix_caching_from_cli():
     parser = EngineArgs.add_cli_args(FlexibleArgumentParser())
-    args = parser.parse_args([])
-    vllm_config = EngineArgs.from_cli_args(args=args).create_engine_config()
+    args = parser.parse_args(["--model", maybe_model_redirect("Qwen/Qwen3-0.6B")])
+    engine_args = EngineArgs.from_cli_args(args=args)
+    vllm_config = engine_args.create_engine_config()
+    # vllm_config = EngineArgs.from_cli_args(args=args).create_engine_config()
     assert (vllm_config.cache_config.enable_prefix_caching
             ), "V1 turns on prefix caching by default."
 
@@ -55,7 +58,7 @@ def test_prefix_caching_from_cli():
 
 
 def test_defaults_with_usage_context():
-    engine_args = EngineArgs(model="facebook/opt-125m")
+    engine_args = EngineArgs(model=maybe_model_redirect("facebook/opt-125m"))
     vllm_config: VllmConfig = engine_args.create_engine_config(
         UsageContext.LLM_CLASS)
 
@@ -74,7 +77,7 @@ def test_defaults_with_usage_context():
     assert vllm_config.scheduler_config.max_num_seqs == default_max_num_seqs
     assert vllm_config.scheduler_config.max_num_batched_tokens == default_llm_tokens  # noqa: E501
 
-    engine_args = EngineArgs(model="facebook/opt-125m")
+    engine_args = EngineArgs(model=maybe_model_redirect("facebook/opt-125m"))
     vllm_config = engine_args.create_engine_config(
         UsageContext.OPENAI_API_SERVER)
     assert vllm_config.scheduler_config.max_num_seqs == default_max_num_seqs
