@@ -32,13 +32,12 @@ from vllm.v1.executor.abstract import Executor
 
 from ...distributed.conftest import MockSubscriber
 from ...utils import create_new_process_for_each_test
-from vllm.transformers_utils.utils import maybe_model_redirect
 
 if not current_platform.is_out_of_tree():
     pytest.skip(reason="V1 currently only supported on CUDA.",
                 allow_module_level=True)
 
-MODEL_NAME = maybe_model_redirect("meta-llama/Llama-3.2-1B-Instruct")
+MODEL_NAME = "llama-3.2-1b-instruct"
 TOKENIZER = AutoTokenizer.from_pretrained(MODEL_NAME)
 PROMPT = "Hello my name is Robert and I love quantization kernels"
 PROMPT_TOKENS = TOKENIZER(PROMPT).input_ids
@@ -671,7 +670,7 @@ def test_engine_core_proc_instantiation_cuda_empty(
         m.setattr(EngineCoreProc, "startup_handshake", mock_startup_handshake)
 
         vllm_config = EngineArgs(
-            model=maybe_model_redirect("deepseek-ai/DeepSeek-V2-Lite"),
+            model="deepSeek-v2-lite",
             trust_remote_code=True).create_engine_config()
         engine_core_proc = EngineCoreProc(
             vllm_config=vllm_config,
