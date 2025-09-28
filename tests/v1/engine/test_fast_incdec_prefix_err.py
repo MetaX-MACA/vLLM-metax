@@ -10,7 +10,6 @@ from vllm.v1.engine.detokenizer import IncrementalDetokenizer
 
 #increase
 from vllm import LLM
-from vllm.transformers_utils.utils import maybe_model_redirect
 
 # ruff: noqa: E501
 
@@ -25,11 +24,7 @@ def test_fast_inc_detok_invalid_utf8_err_case():
     Thanks to reproducer from @fpaupier:
     https://gist.github.com/fpaupier/0ed1375bd7633c5be6c894b1c7ac1be3.
     """
-    #llm=LLM(model="google/gemma-3-1b-it"，enforce_eager=True,tensor_parallel_size=1)
-    #tokenizer=llm.get_tokenizer()
-
-    model_name = maybe_model_redirect("google/gemma-3-1b-it")
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained("gemma-3-1b-it")
 
     # Create a test request
     prompt_token_ids = [107, 4606, 236787, 107]
