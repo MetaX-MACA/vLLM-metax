@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+# Follow https://github.com/vllm-project/vllm/pull/24159 to fix this issue
 
 from transformers import AutoTokenizer
 
