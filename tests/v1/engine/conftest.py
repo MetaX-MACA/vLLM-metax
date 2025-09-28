@@ -17,6 +17,7 @@ from vllm.transformers_utils.tokenizer_group import init_tokenizer_from_configs
 from ...distributed.conftest import publisher_config, random_port  # noqa: F401
 
 from tests.v1.engine.utils import FULL_STRINGS  # isort: skip
+from vllm.transformers_utils.utils import maybe_model_redirect
 
 EngineCoreSampleLogprobsType = list[tuple[torch.Tensor, torch.Tensor]]
 EngineCorePromptLogprobsType = tuple[torch.Tensor, torch.Tensor]
@@ -28,9 +29,9 @@ def _build_test_vectors_no_logprobs() -> DummyOutputProcessorTestVectors:
     Returns:
       DummyOutputProcessorTestVectors instance with no logprobs
     """
-
-    tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_NAME)
-    vllm_config = EngineArgs(model=TOKENIZER_NAME).create_engine_config()
+    model_name = maybe_model_redirect("google/gemma-3-1b-it")
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    vllm_config = EngineArgs(model=model_name).create_engine_config()
     # Tokenize prompts under test & create dummy generated tokens
     prompt_tokens = [
         tokenizer(text).input_ids[:PROMPT_LEN] for text in FULL_STRINGS
