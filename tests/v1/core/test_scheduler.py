@@ -20,7 +20,7 @@ from vllm.v1.structured_output import StructuredOutputManager
 from vllm.v1.structured_output.request import StructuredOutputRequest
 
 from .utils import EOS_TOKEN_ID, create_requests, create_scheduler
-
+from vllm.transformers_utils.utils import maybe_model_redirect
 
 def test_add_requests():
     scheduler = create_scheduler()
@@ -89,7 +89,7 @@ def test_schedule(enable_prefix_caching: Optional[bool],
 
 
 def test_schedule_multimodal_requests():
-    scheduler = create_scheduler(model="llava-hf/llava-1.5-7b-hf")
+    scheduler = create_scheduler(model=maybe_model_redirect("llava-hf/llava-1.5-7b-hf"))
     mm_positions = [[PlaceholderRange(offset=i, length=100)]
                     for i in range(10)]
     requests = create_requests(
@@ -121,7 +121,7 @@ def test_schedule_partial_requests():
        there is insufficient encoder budget.
     """
     scheduler = create_scheduler(
-        model="llava-hf/llava-1.5-7b-hf",
+        model=maybe_model_redirect("llava-hf/llava-1.5-7b-hf"),
         max_num_batched_tokens=1024,
     )
     mm_positions = [[PlaceholderRange(offset=100, length=600)]
@@ -182,7 +182,7 @@ def test_schedule_partial_requests():
 def test_no_mm_input_chunking():
     # Disable multimodal input chunking.
     scheduler = create_scheduler(
-        model="llava-hf/llava-1.5-7b-hf",
+        model=maybe_model_redirect("llava-hf/llava-1.5-7b-hf"),
         max_num_batched_tokens=1024,
         disable_chunked_mm_input=True,
         max_model_len=2048,
@@ -227,7 +227,7 @@ def test_no_mm_input_chunking():
     # of a max_num_batched_tokens for the mm input.
     with pytest.raises(ValueError):
         _ = create_scheduler(
-            model="llava-hf/llava-1.5-7b-hf",
+            model=maybe_model_redirect("llava-hf/llava-1.5-7b-hf"),
             max_num_batched_tokens=100,
             disable_chunked_mm_input=True,
         )
@@ -242,7 +242,7 @@ def test_schedule_concurrent_partial_requests(enable_prefix_caching: bool):
 
     """
     scheduler = create_scheduler(
-        model="facebook/opt-125m",
+        model=maybe_model_redirect("facebook/opt-125m"),
         max_num_batched_tokens=1024,
         long_prefill_token_threshold=400,
         enable_prefix_caching=enable_prefix_caching,
@@ -1213,7 +1213,7 @@ def test_memory_leak():
 
 
 def create_scheduler_with_priority(
-    model: str = "facebook/opt-125m",
+    model: str = maybe_model_redirect("facebook/opt-125m"),
     max_num_seqs: int = 16,
     max_num_batched_tokens: int = 8192,
     enable_prefix_caching: Optional[bool] = None,
