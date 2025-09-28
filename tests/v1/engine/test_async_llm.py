@@ -19,18 +19,17 @@ from vllm.sampling_params import RequestOutputKind
 from vllm.utils import set_default_torch_num_threads
 from vllm.v1.engine.async_llm import AsyncLLM
 from vllm.v1.metrics.loggers import LoggingStatLogger
-from vllm.transformers_utils.utils import maybe_model_redirect
 
 if not current_platform.is_out_of_tree():
     pytest.skip(reason="V1 currently only supported on CUDA.",
                 allow_module_level=True)
 
 TEXT_ENGINE_ARGS = AsyncEngineArgs(
-    model=maybe_model_redirect("meta-llama/Llama-3.2-1B-Instruct"),
+    model="llama-3.2-1b-instruct",
     enforce_eager=True,
 )
 
-VISION_ENGINE_ARGS = AsyncEngineArgs(model=maybe_model_redirect("Qwen/Qwen2-VL-2B-Instruct"),
+VISION_ENGINE_ARGS = AsyncEngineArgs(model="qwen2-vl-2b-instruct"),
                                      enforce_eager=True)
 
 TEXT_PROMPT = "Hello my name is Robert and"
