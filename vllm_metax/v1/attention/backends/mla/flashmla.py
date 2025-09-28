@@ -12,7 +12,6 @@ from vllm_metax.attention.ops.flashmla import (flash_mla_with_kvcache,
                                                is_flashmla_supported)
 from vllm.config import VllmConfig
 from vllm.logger import init_logger
-from vllm.platforms.cuda import CudaPlatform
 from vllm_metax.v1.attention.backends.mla.common import (
     MLACommonBackend, MLACommonDecodeMetadata, MLACommonImpl,
     MLACommonMetadata, MLACommonMetadataBuilder)

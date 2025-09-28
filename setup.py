@@ -575,21 +575,7 @@ class custom_install(install):
         if not vllm_dist_path:
             return
 
-        files_to_copy = {
-            "vllm_metax/_C.abi3.so":
-            vllm_dist_path,
-            "vllm_metax/_moe_C.abi3.so":
-            vllm_dist_path,
-            "vllm_metax/cumem_allocator.abi3.so":
-            vllm_dist_path,
-            # TODO: workaround for torch 2.7 inferscheme, remove when torch >= 2.7
-            "vllm_metax/patch/vllm_substitution/fp8_utils.py":
-            vllm_dist_path /
-            "model_executor/layers/quantization/utils/fp8_utils.py",
-            # for get_available_device: set cuda
-            "vllm_metax/patch/vllm_substitution/utils.py":
-            vllm_dist_path / "model_executor/layers/fla/ops/utils.py",
-        }
+        files_to_copy = {}
 
         for src_path, dest_path in files_to_copy.items():
             source_file = Path(self.build_lib) / src_path

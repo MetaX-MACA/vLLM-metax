@@ -92,6 +92,14 @@ class MacaPlatformBase(Platform):
         return True
 
     @classmethod
+    def import_general_kernels(cls) -> None:
+        import vllm_metax._C  # noqa
+
+    @classmethod
+    def import_moe_kernels(cls) -> None:
+        import vllm_metax._moe_C
+
+    @classmethod
     def is_async_output_supported(cls, enforce_eager: Optional[bool]) -> bool:
         if enforce_eager and not envs.VLLM_USE_V1:
             logger.warning(
@@ -242,7 +250,7 @@ class MacaPlatformBase(Platform):
                 cls.is_device_capability(100) and selected_backend is None
                 and block_size == 128)
             use_flashmla = selected_backend in [
-                _Backend.FLASHMLA, _Backend.FLASHMLA_VLLM_V1
+                _Backend.FLASHMLA, _Backend.FLASHMLA
             ] or (selected_backend is None and is_flashmla_supported()[0])
             use_triton = selected_backend == _Backend.TRITON_MLA or (
                 selected_backend is None)
@@ -291,7 +299,7 @@ class MacaPlatformBase(Platform):
             elif selected_backend == _Backend.FLEX_ATTENTION:
                 logger.info_once("Using FlexAttention backend on V1 engine.")
                 return FLEX_ATTENTION_V1
-            elif selected_backend == _Backend.TRITON_ATTN_VLLM_V1:
+            elif selected_backend == _Backend.TRITON_ATTN:
                 logger.info_once("Using Triton backend on V1 engine.")
                 return TRITON_ATTN_VLLM_V1
             elif selected_backend == _Backend.FLASH_ATTN:
@@ -438,6 +446,7 @@ class MacaPlatformBase(Platform):
                                 parser: Optional[FlexibleArgumentParser] = None
                                 ) -> None:
         logger.info("[hook] platform:pre_register_and_update...")
+        import vllm_metax.patch  # noqa: F401
 
 
 # NVML utils

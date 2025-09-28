@@ -40,8 +40,10 @@ Homepage="https://github.com/MetaX-MACA/vLLM-metax"
 metax = "vllm_metax:register"
 
 [project.entry-points."vllm.general_plugins"]
+metax_A_patch = "vllm_metax:register_patch"
+metax_enhanced_ops = "vllm_metax:register_ops"
+metax_enhanced_quant_conf = "vllm_metax:register_quant_configs"
 metax_enhanced_model = "vllm_metax:register_model"
-metax_custom_ops = "vllm_metax:register_ops"
 
 [project.entry-points."console_scripts"]
 vllm_metax_init = "vllm_metax:post_installation"
