@@ -24,7 +24,6 @@ from vllm.v1.kv_cache_interface import (FullAttentionSpec, KVCacheConfig,
                                         SlidingWindowSpec)
 from vllm.v1.metrics.stats import PrefixCacheStats
 from vllm.v1.request import Request
-from vllm.transformers_utils.utils import maybe_model_redirect
 
 # yapf: enable
 
@@ -727,8 +726,8 @@ def test_is_kv_cache_type_uniform():
 
 @pytest.mark.parametrize(
     ("model_id", "max_model_len", "want_estimated_max_len"), [
-        (maybe_model_redirect("Qwen/Qwen1.5-7B"), 16385, 16384),
-        (maybe_model_redirect("Qwen/Qwen1.5-7B"), 16383, 16383),
+        ("qwen1.5-7b", 16385, 16384),
+        ("qwen1.5-7b", 16383, 16383),
     ])
 def test_estimate_max_model_len(model_id, max_model_len,
                                 want_estimated_max_len):
@@ -765,7 +764,7 @@ def test_estimate_max_model_len(model_id, max_model_len,
 
 def test_get_max_concurrency_for_kv_cache_config():
     # Create a VllmConfig
-    model_id = maybe_model_redirect("Qwen/Qwen1.5-7B")
+    model_id = "qwen1.5-7b"
     max_model_len = 16384
     model_config = ModelConfig(
         model_id,
@@ -894,7 +893,7 @@ def test_allocate_with_lookahead():
 
 def test_get_kv_cache_config():
     # pass max_model_len to pass check_enough_kv_cache_memory
-    model_config = ModelConfig(model=maybe_model_redirect("Qwen/Qwen3-0.6B"), max_model_len=16)
+    model_config = ModelConfig(model="qwen3-0.6b", max_model_len=16)
     vllm_config = VllmConfig(model_config=model_config)
 
     mem_per_block_per_layer = 16 * 2 * 64 * 4 * 2
