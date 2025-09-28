@@ -5,11 +5,11 @@ import os
 import pytest
 
 from vllm import LLM
-
+from vllm.transformers_utils.utils import maybe_model_redirect
 if os.getenv("VLLM_USE_V1", "0") != "1":
     pytest.skip("Test package requires V1", allow_module_level=True)
 
-MODEL = "meta-llama/Llama-3.2-1B"
+MODEL = maybe_model_redirect("meta-llama/Llama-3.2-1B")
 PROMPT = "Hello my name is Robert and I"
 
 
