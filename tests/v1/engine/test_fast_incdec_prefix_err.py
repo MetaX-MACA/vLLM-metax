@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
+# The modification based on https://github.com/vllm-project/vllm/pull/24159 can passed
 from transformers import AutoTokenizer
 
 from vllm.sampling_params import SamplingParams
