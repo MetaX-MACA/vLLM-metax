@@ -7,7 +7,6 @@ from transformers import AutoTokenizer
 
 from tests.v1.engine.utils import (NUM_PROMPT_LOGPROBS_UNDER_TEST,
                                    NUM_SAMPLE_LOGPROBS_UNDER_TEST, PROMPT_LEN,
-                                   TOKENIZER_NAME,
                                    DummyOutputProcessorTestVectors,
                                    generate_dummy_prompt_logprobs_tensors,
                                    generate_dummy_sample_logprobs)
