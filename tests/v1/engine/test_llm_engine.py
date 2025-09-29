@@ -218,7 +218,8 @@ def test_engine_metrics(vllm_runner, monkeypatch, example_prompts):
         assert len(num_accepted_tokens_per_pos[0].values) == 5
 
 
-@pytest.mark.parametrize("model", [maybe_model_redirect("meta-llama/Llama-3.2-1B-Instruct")])
+@pytest.mark.parametrize(
+    "model", [maybe_model_redirect("meta-llama/Llama-3.2-1B-Instruct")])
 def test_skip_tokenizer_initialization(model: str,
                                        monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("VLLM_USE_V1", "1")
