@@ -29,7 +29,7 @@ TEXT_ENGINE_ARGS = AsyncEngineArgs(
     enforce_eager=True,
 )
 
-VISION_ENGINE_ARGS = AsyncEngineArgs(model="qwen2-vl-2b-instruct"),
+VISION_ENGINE_ARGS = AsyncEngineArgs(model="qwen2-vl-2b-instruct",
                                      enforce_eager=True)
 
 TEXT_PROMPT = "Hello my name is Robert and"
