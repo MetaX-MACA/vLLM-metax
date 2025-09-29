@@ -9,7 +9,6 @@ from vllm.v1.engine import EngineCoreRequest
 from vllm.v1.engine.detokenizer import IncrementalDetokenizer
 
 #increase
-from vllm import LLM
 
 # ruff: noqa: E501
 
