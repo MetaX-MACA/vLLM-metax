@@ -21,6 +21,7 @@ from vllm.v1.structured_output.request import StructuredOutputRequest
 
 from .utils import EOS_TOKEN_ID, create_requests, create_scheduler
 
+
 def test_add_requests():
     scheduler = create_scheduler()
     requests = create_requests(num_requests=10)
