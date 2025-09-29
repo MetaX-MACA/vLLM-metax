@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+
+# Change "if not is_greedy" in vllm/v1/sample/rejection_sampler.py to "if is_greedy is None"
 from __future__ import annotations
 
 import random
