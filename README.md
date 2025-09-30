@@ -47,9 +47,10 @@ Currently we only support building in docker.
 **clone repository and install from source**:
 ```bash
 # clone vllm-metax
-git clone  --depth 1 --branch v0.10.2 https://github.com/vllm-project/vllm && cd vllm
+git clone  --depth 1 --branch main https://github.com/vllm-project/vllm && cd vllm
 
 # install build requirements
+python use_existing_torch.py
 pip install -r requirements/build.txt
 VLLM_TARGET_DEVICE=empty pip install -v . --no-build-isolation
 ```
@@ -122,3 +123,4 @@ pip install . -v --no-build-isolation
 ```bash
 $ vllm_metax_init
 ```
+
