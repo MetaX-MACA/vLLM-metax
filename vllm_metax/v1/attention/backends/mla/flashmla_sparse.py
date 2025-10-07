@@ -20,9 +20,9 @@ from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
 from vllm.utils import cdiv
 from vllm_metax.v1.attention.backends.mla.common import MLACommonBaseImpl
-from vllm.v1.attention.backends.utils import (AttentionCGSupport,
-                                              AttentionMetadataBuilder,
-                                              CommonAttentionMetadata)
+from vllm_metax.v1.attention.backends.utils import (AttentionCGSupport,
+                                                    AttentionMetadataBuilder,
+                                                    CommonAttentionMetadata)
 from vllm.v1.kv_cache_interface import AttentionSpec
 
 if TYPE_CHECKING:

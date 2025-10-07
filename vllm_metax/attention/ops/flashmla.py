@@ -143,6 +143,24 @@ def flash_mla_with_kvcache(
     return out, softmax_lse
 
 
+def flash_mla_sparse_prefill_fake(
+    q: torch.Tensor,
+    kv: torch.Tensor,
+    indices: torch.Tensor,
+    sm_scale: float,
+    d_v: int = 512,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    s_q, h_q, _ = q.shape
+    device = q.device
+
+    # Generate fake output tensors with the correct shape and device
+    output = torch.zeros(s_q, h_q, d_v, dtype=q.dtype, device=device)
+    max_logits = torch.zeros(s_q, h_q, dtype=torch.float32, device=device)
+    lse = torch.zeros(s_q, h_q, dtype=torch.float32, device=device)
+
+    return output, max_logits, lse
+
+
 def flash_mla_sparse_prefill(
     q: torch.Tensor,
     kv: torch.Tensor,
@@ -169,6 +187,7 @@ def flash_mla_sparse_prefill(
     - max_logits:  [s_q, h_q], float
     - lse: [s_q, h_q], float, 2-based log-sum-exp
     """
+    return flash_mla_sparse_prefill_fake(q, kv, indices, sm_scale, d_v)
     # TODO: MetaX flash_mla support
     results = flash_mla.sparse_prefill_fwd(q, kv, indices, sm_scale, d_v)
     return results

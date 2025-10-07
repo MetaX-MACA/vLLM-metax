@@ -32,8 +32,7 @@ class MacaGPTQConfig(GPTQConfig):
     ) -> Optional[Union["GPTQLinearMethod", "QuantizeMethodBase"]]:
         if isinstance(layer, FusedMoE):
             # GPTQ MoE support: fall back to MoeWNA16 for broad compatibility
-            from vllm.model_executor.layers.quantization.moe_wna16 import (
-                MoeWNA16Config)
+            from vllm_metax.quant_config.moe_wna16 import MacaMoeWNA16Config
 
             config = {
                 "quant_method": "gptq",
@@ -42,7 +41,7 @@ class MacaGPTQConfig(GPTQConfig):
                 "sym": True,  # GPTQ typically uses symmetric quantization
                 "lm_head": False,
             }
-            return MoeWNA16Config.from_config(config).get_quant_method(
+            return MacaMoeWNA16Config.from_config(config).get_quant_method(
                 layer, prefix)
 
         return get_linear_quant_method(self, layer, prefix, GPTQLinearMethod)
