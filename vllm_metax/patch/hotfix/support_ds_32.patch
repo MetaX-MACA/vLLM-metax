@@ -1,0 +1,26 @@
+diff --git a/vllm/v1/worker/gpu_model_runner.py b/vllm/v1/worker/gpu_model_runner.py
+index a438c7777..46801efb6 100644
+--- a/vllm/v1/worker/gpu_model_runner.py
++++ b/vllm/v1/worker/gpu_model_runner.py
+@@ -40,7 +40,7 @@ from vllm.model_executor.layers.attention_layer_base import AttentionLayerBase
+ from vllm.model_executor.layers.mamba.abstract import MambaBase
+ from vllm.model_executor.layers.rotary_embedding import MRotaryEmbedding
+ from vllm.model_executor.model_loader import TensorizerLoader, get_model_loader
+-from vllm.model_executor.models.deepseek_v2 import DeepseekV32IndexerCache
++from vllm_metax.model_executor.models.deepseek_v2 import DeepseekV32IndexerCache
+ # yapf conflicts with isort for this block
+ # yapf: disable
+ from vllm.model_executor.models.interfaces import (SupportsMultiModal,
+diff --git a/vllm/v1/worker/utils.py b/vllm/v1/worker/utils.py
+index 3e0dbda59..46fec11c4 100644
+--- a/vllm/v1/worker/utils.py
++++ b/vllm/v1/worker/utils.py
+@@ -308,6 +308,8 @@ def bind_kv_cache(
+                 # case. Some test code depends on runner_kv_caches, but
+                 # not in a way that's impacted by ignoring this.
+                 pass
++            elif current_platform.device_name == "maca":
++                pass
+             else:
+                 raise NotImplementedError
+         layer_name = layer_names[0]
