@@ -64,10 +64,6 @@ def post_installation():
         vllm_dist_path,
         "cumem_allocator.abi3.so":
         vllm_dist_path,
-        # TODO: workaround for torch 2.7 inferscheme, remove when torch >= 2.7
-        "patch/vllm_substitution/fp8_utils.py":
-        vllm_dist_path /
-        "model_executor/layers/quantization/utils/fp8_utils.py",
         # workaround for Qwen3-Next
         # for get_available_device: set cuda
         "patch/vllm_substitution/utils.py":
