@@ -11,18 +11,18 @@ from vllm import _custom_ops as ops
 from vllm.attention.backends.abstract import (AttentionBackend, AttentionLayer,
                                               AttentionMetadata)
 from vllm.attention.backends.utils import get_mla_dims
-from vllm.attention.ops.flashmla import (flash_mla_sparse_prefill,
-                                         flash_mla_with_kvcache,
-                                         get_mla_metadata)
+from vllm_metax.attention.ops.flashmla import (flash_mla_sparse_prefill,
+                                               flash_mla_with_kvcache,
+                                               get_mla_metadata)
 from vllm.config import VllmConfig
 from vllm.logger import init_logger
 from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
 from vllm.utils import cdiv
 from vllm_metax.v1.attention.backends.mla.common import MLACommonBaseImpl
-from vllm_metax.v1.attention.backends.utils import (AttentionCGSupport,
-                                                    AttentionMetadataBuilder,
-                                                    CommonAttentionMetadata)
+from vllm.v1.attention.backends.utils import (AttentionCGSupport,
+                                              AttentionMetadataBuilder,
+                                              CommonAttentionMetadata)
 from vllm.v1.kv_cache_interface import AttentionSpec
 
 if TYPE_CHECKING:

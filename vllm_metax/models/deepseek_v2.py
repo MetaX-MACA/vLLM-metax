@@ -67,9 +67,10 @@ from vllm.model_executor.models.utils import sequence_parallel_chunk
 from vllm.platforms import current_platform
 from vllm.sequence import IntermediateTensors
 from vllm.utils import cdiv, direct_register_custom_op
-from vllm.utils.deep_gemm import fp8_mqa_logits, fp8_paged_mqa_logits
+from deep_gemm import bf16_mqa_logits, bf16_paged_mqa_logits
 from vllm_metax.v1.attention.backends.mla.indexer import (
-    DeepseekV32IndexerBackend, DeepseekV32IndexerMetadata)
+    MacaDeepseekV32IndexerBackend as DeepseekV32IndexerBackend,
+    DeepseekV32IndexerMetadata)
 from vllm.v1.kv_cache_interface import KVCacheSpec, MLAAttentionSpec
 
 from vllm.model_executor.models.interfaces import MixtureOfExperts, SupportsLoRA, SupportsPP
@@ -534,8 +535,8 @@ def sparse_attn_indexer(
     hidden_states: torch.Tensor,
     k_cache_prefix: str,
     kv_cache: torch.Tensor,
-    q_fp8: torch.Tensor,
-    k: torch.Tensor,
+    q_bf16: torch.Tensor,
+    k_bf16: torch.Tensor,
     weights: torch.Tensor,
     quant_block_size: int,
     scale_fmt: Optional[str],
@@ -554,8 +555,8 @@ def sparse_attn_indexer(
             hidden_states,
             k_cache_prefix,
             kv_cache,
-            q_fp8,
-            k,
+            q_bf16,
+            k_bf16,
             weights,
             quant_block_size,
             scale_fmt,
@@ -572,35 +573,21 @@ def sparse_attn_indexer(
     has_prefill = attn_metadata.num_prefills > 0
     num_decode_tokens = attn_metadata.num_decode_tokens
 
-    # ops.indexer_k_quant_and_cache(
-    #     k,
-    #     kv_cache,
-    #     slot_mapping,
-    #     quant_block_size,
-    #     scale_fmt,
-    # )
+    ops.indexer_k_quant_and_cache(
+        k_bf16,
+        kv_cache,
+        slot_mapping,
+        quant_block_size,
+        scale_fmt,
+    )
 
     topk_indices_buffer[:hidden_states.shape[0]] = -1
     if has_prefill:
         prefill_metadata = attn_metadata.prefill
         for chunk in prefill_metadata.chunks:
-            k_fp8 = torch.empty([chunk.total_seq_lens, head_dim],
-                                device=k.device,
-                                dtype=torch.float8_e4m3fn)
-            k_scale = torch.empty([chunk.total_seq_lens, 1],
-                                  device=k.device,
-                                  dtype=torch.float32)
-            cp_gather_indexer_k_quant_cache(
-                kv_cache,
-                k_fp8,
-                k_scale,
-                chunk.block_table,
-                chunk.cu_seq_lens,
-                chunk.num_reqs,
-            )
-            logits = fp8_mqa_logits(
-                q_fp8[chunk.token_start:chunk.token_end],
-                (k_fp8, k_scale),
+            logits = bf16_mqa_logits(
+                q_bf16[chunk.token_start:chunk.token_end],
+                k_bf16,
                 weights[chunk.token_start:chunk.token_end],
                 chunk.cu_seqlen_ks,
                 chunk.cu_seqlen_ke,
@@ -632,27 +619,27 @@ def sparse_attn_indexer(
             # decode_threshold since we unstrictly split
             # prefill and decode by decode_threshold
             # (currently set to 1 + speculative tokens)
-            padded_q_fp8_decode_tokens = pack_seq_triton(
-                q_fp8[:num_decode_tokens], decode_lens)
+            padded_q_bf16_decode_tokens = pack_seq_triton(
+                q_bf16[:num_decode_tokens], decode_lens)
         else:
-            padded_q_fp8_decode_tokens = q_fp8[:num_decode_tokens].reshape(
-                decode_lens.shape[0], -1, *q_fp8.shape[1:])
+            padded_q_bf16_decode_tokens = q_bf16[:num_decode_tokens].reshape(
+                decode_lens.shape[0], -1, *q_bf16.shape[1:])
         # TODO: move and optimize below logic with triton kernels
-        batch_size = padded_q_fp8_decode_tokens.shape[0]
-        next_n = padded_q_fp8_decode_tokens.shape[1]
+        batch_size = padded_q_bf16_decode_tokens.shape[0]
+        next_n = padded_q_bf16_decode_tokens.shape[1]
         assert batch_size == decode_metadata.seq_lens.shape[0]
         num_padded_tokens = batch_size * next_n
-        logits = fp8_paged_mqa_logits(
-            padded_q_fp8_decode_tokens,
+        logits = bf16_paged_mqa_logits(
+            padded_q_bf16_decode_tokens,
             kv_cache,
             weights[:num_padded_tokens],
             decode_metadata.seq_lens,
             decode_metadata.block_table,
             decode_metadata.schedule_metadata,
-            max_model_len=max_model_len,
+            max_context_len=max_model_len,
         )
         # padded query len
-        current_device = padded_q_fp8_decode_tokens.device
+        current_device = padded_q_bf16_decode_tokens.device
         padded_num_tokens = batch_size * next_n
         positions = torch.arange(max_model_len,
                                  device=current_device).unsqueeze(0).expand(
@@ -661,7 +648,7 @@ def sparse_attn_indexer(
                                    device=current_device) // next_n
         next_n_offset = torch.arange(
             padded_num_tokens,
-            device=padded_q_fp8_decode_tokens.device) % next_n
+            device=padded_q_bf16_decode_tokens.device) % next_n
         index_end_pos = (decode_metadata.seq_lens[row_indices] - next_n +
                          next_n_offset).unsqueeze(1)
         # index_end_pos: [B * N, 1]
@@ -690,7 +677,7 @@ def sparse_attn_indexer_fake(
     hidden_states: torch.Tensor,
     k_cache_prefix: str,
     kv_cache: torch.Tensor,
-    q_fp8: torch.Tensor,
+    q: torch.Tensor,
     k: torch.Tensor,
     weights: torch.Tensor,
     quant_block_size: int,
@@ -704,11 +691,10 @@ def sparse_attn_indexer_fake(
     # profile run
     # NOTE(Chen): create the max possible flattened_kv. So that
     # profile_run can get correct memory usage.
-    _flattened_kv = torch.empty([total_seq_lens, head_dim + 4],
+    _flattened_kv = torch.empty([total_seq_lens, head_dim],
                                 device=k.device,
-                                dtype=torch.uint8)
-    _k_fp8 = _flattened_kv[..., :head_dim].view(
-        torch.float8_e4m3fn).contiguous()
+                                dtype=torch.bfloat16)
+    _k = _flattened_kv[..., :head_dim].view(torch.bfloat16).contiguous()
     _k_scale = _flattened_kv[..., head_dim:].view(torch.float32).contiguous()
     return topk_indices_buffer
 
@@ -720,29 +706,6 @@ direct_register_custom_op(
     fake_impl=sparse_attn_indexer_fake,
     dispatch_key=current_platform.dispatch_key,
 )
-
-
-def per_token_group_quant_fp8_fake(
-    x: torch.Tensor,
-    group_size: int,
-    eps: float = 1e-10,
-    dtype: Optional[torch.dtype] = None,
-    column_major_scales: bool = False,
-    out_q: Optional[torch.Tensor] = None,
-    use_ue8m0: Optional[bool] = None,
-) -> tuple[torch.Tensor, torch.Tensor]:
-
-    dtype = current_platform.fp8_dtype() if dtype is None else dtype
-    if column_major_scales:
-        shape = (x.shape[-1] // group_size, ) + x.shape[:-1]
-        x_s = torch.empty(shape, device=x.device,
-                          dtype=torch.float32).permute(-1, -2)
-    else:
-        shape = x.shape[:-1] + (x.shape[-1] // group_size, )
-        x_s = torch.empty(shape, device=x.device, dtype=torch.float32)
-
-    x_q = torch.empty_like(x, device=x.device, dtype=dtype)
-    return x_q, x_s
 
 
 class Indexer(nn.Module):
@@ -784,6 +747,7 @@ class Indexer(nn.Module):
                                              prefix=f"{prefix}.weights_proj")
         self.softmax_scale = self.head_dim**-0.5
 
+        # MetaX use bfloat16
         self.scale_fmt = "ue8m0"
         self.quant_block_size = 128  # TODO: get from config
         self.topk_indices_buffer = topk_indices_buffer
@@ -791,15 +755,13 @@ class Indexer(nn.Module):
         # NOTE: (zyongye) we use fp8 naive cache,
         #       where we store value in fp8 and scale in fp32
         #       per self.quant_block_size element
-        self.k_cache = DeepseekV32IndexerCache(
-            head_dim=self.head_dim +
-            self.head_dim // self.quant_block_size * 4,
-            dtype=torch.uint8,
-            prefix=f"{prefix}.k_cache",
-            cache_config=cache_config)
+        self.k_cache = DeepseekV32IndexerCache(head_dim=self.head_dim,
+                                               dtype=torch.bfloat16,
+                                               prefix=f"{prefix}.k_cache",
+                                               cache_config=cache_config)
         self.max_model_len = vllm_config.model_config.max_model_len
         self.prefix = prefix
-        from vllm.v1.attention.backends.mla.indexer import (
+        from vllm_metax.v1.attention.backends.mla.indexer import (
             get_max_prefill_buffer_size)
         self.max_total_seq_len = get_max_prefill_buffer_size(vllm_config)
 
@@ -820,25 +782,29 @@ class Indexer(nn.Module):
         k = torch.cat([k_pe.squeeze(1), k_nope], dim=-1)
 
         # we only quant q here since k quant is fused with cache insertion
-        q = q.view(-1, self.head_dim)
-        q_fp8, q_scale = per_token_group_quant_fp8_fake(
-            q,
-            self.quant_block_size,
-            column_major_scales=False,
-            use_ue8m0=self.scale_fmt is not None)
-        q_fp8 = q_fp8.view(-1, self.n_head, self.head_dim)
-        q_scale = q_scale.view(-1, self.n_head, 1)
+        # q = q.view(-1, self.head_dim)
 
+        # q_fp8, q_scale = per_token_group_quant_fp8_fake(
+        #     q,
+        #     self.quant_block_size,
+        #     column_major_scales=False,
+        #     use_ue8m0=self.scale_fmt is not None)
+        # q_fp8 = q_fp8.view(-1, self.n_head, self.head_dim)
+        # q_scale = q_scale.view(-1, self.n_head, 1)
+
+        q = q.view(-1, self.n_head, self.head_dim)
         weights, _ = self.weights_proj(hidden_states)
         weights = weights.unsqueeze(
-            -1) * q_scale * self.softmax_scale * self.n_head**-0.5
+            -1) * self.softmax_scale * self.n_head**-0.5
         weights = weights.squeeze(-1)
 
+        assert (q.dtype == torch.bfloat16)
+        assert (k.dtype == torch.bfloat16)
         return torch.ops.vllm.mx_sparse_attn_indexer(
             hidden_states,
             self.k_cache.prefix,
             self.k_cache.kv_cache[0],
-            q_fp8,
+            q,
             k,
             weights,
             self.quant_block_size,
