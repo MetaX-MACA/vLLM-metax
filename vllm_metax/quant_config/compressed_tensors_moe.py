@@ -14,7 +14,8 @@ class MacaCompressedTensorsMoEMethod(CompressedTensorsMoEMethod):
         quant_config: "CompressedTensorsConfig",  # type: ignore # noqa E501
         layer: torch.nn.Module
     ) -> "CompressedTensorsMoEMethod":
-        moe_method = super().get_moe_method(quant_config, layer)
+        moe_method = CompressedTensorsMoEMethod.get_moe_method(
+            quant_config, layer)
         if isinstance(moe_method, CompressedTensorsWNA16MoEMethod):
             moe_method = MacaCompressedTensorsWNA16MoEMethod(
                 quant_config, layer.moe_config)
