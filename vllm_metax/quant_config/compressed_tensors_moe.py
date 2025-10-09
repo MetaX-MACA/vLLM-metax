@@ -60,7 +60,7 @@ class MacaCompressedTensorsW8A8Int8MoEMethod(CompressedTensorsW8A8Int8MoEMethod
 
         from vllm_metax.model_executor.layers.fused_moe import fused_experts
 
-        topk_weights, topk_ids = FusedMoE.select_experts(
+        topk_weights, topk_ids, _ = FusedMoE.select_experts(
             hidden_states=x,
             router_logits=router_logits,
             use_grouped_topk=use_grouped_topk,
@@ -83,14 +83,10 @@ class MacaCompressedTensorsW8A8Int8MoEMethod(CompressedTensorsW8A8Int8MoEMethod
             inplace=True,
             activation=activation,
             apply_router_weight_on_input=apply_router_weight_on_input,
-            use_int8_w8a8=True,
-            per_channel_quant=True,
             global_num_experts=global_num_experts,
             expert_map=expert_map,
-            w1_scale=layer.w13_weight_scale,
-            w2_scale=layer.w2_weight_scale,
-            a1_scale=layer.w13_input_scale,
-            a2_scale=layer.w2_input_scale)
+            quant_config=self.moe_quant_config,
+        )
 
 
 class MacaCompressedTensorsWNA16MoEMethod(CompressedTensorsWNA16MoEMethod):
@@ -126,7 +122,7 @@ class MacaCompressedTensorsWNA16MoEMethod(CompressedTensorsWNA16MoEMethod):
 
         from vllm_metax.model_executor.layers.fused_moe import fused_experts
 
-        topk_weights, topk_ids = FusedMoE.select_experts(
+        topk_weights, topk_ids, _ = FusedMoE.select_experts(
             hidden_states=x,
             router_logits=router_logits,
             use_grouped_topk=use_grouped_topk,
@@ -148,13 +144,8 @@ class MacaCompressedTensorsWNA16MoEMethod(CompressedTensorsWNA16MoEMethod):
             topk_ids=topk_ids,
             inplace=True,
             activation=activation,
-            use_int4_w4a16=self.num_bits == 4,
-            use_int8_w8a16=self.num_bits == 8,
-            global_num_experts=global_num_experts,
             apply_router_weight_on_input=apply_router_weight_on_input,
+            global_num_experts=global_num_experts,
             expert_map=expert_map,
-            w1_scale=layer.w13_weight_scale,
-            w2_scale=layer.w2_weight_scale,
-            w1_zp=None,
-            w2_zp=None,
-            block_shape=[0, self.group_size])
+            quant_config=self.moe_quant_config,
+        )

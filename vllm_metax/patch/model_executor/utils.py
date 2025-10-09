@@ -8,7 +8,7 @@ from vllm.model_executor.layers.quantization.utils.int8_utils import (
     per_token_group_quant_int8)
 from vllm.utils import cdiv
 
-from vllm_metax import _custom_ops as ops
+from vllm import _custom_ops as ops
 from vllm.model_executor.layers.fused_moe import utils
 
 logger = init_logger(__name__)
