@@ -43,3 +43,14 @@ def fused_moe_kernel(A: torch.Tensor, B: torch.Tensor, C: torch.Tensor,
                                       sorted_token_ids, expert_ids,
                                       num_tokens_post_padded,
                                       mul_routed_weight, top_k, tileConfig)
+
+
+def indexer_k_quant_and_cache(k: torch.Tensor, kv_cache: torch.Tensor,
+                              slot_mapping: torch.Tensor,
+                              quant_block_size: int,
+                              kv_cache_dtype: str) -> None:
+    if k.dtype in (torch.bfloat16, torch.float16):
+        torch.ops._C_cache_ops.indexer_k_cache(k, kv_cache, slot_mapping)
+    else:
+        torch.ops._C_cache_ops.indexer_k_quant_and_cache(
+            k, kv_cache, slot_mapping, quant_block_size, kv_cache_dtype)

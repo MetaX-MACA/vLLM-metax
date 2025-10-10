@@ -57,6 +57,13 @@ void cp_gather_cache(
     int64_t batch_size, std::optional<torch::Tensor> seq_starts = std::nullopt);
 
 // Indexer K quantization and cache function
+void indexer_k_cache(
+    torch::Tensor& k,            // [num_tokens, head_dim]
+    torch::Tensor& kv_cache,     // [num_blocks, block_size, cache_stride]
+    torch::Tensor& slot_mapping  // [num_tokens]
+);
+
+// Indexer K quantization and cache function
 void indexer_k_quant_and_cache(
     torch::Tensor& k,             // [num_tokens, head_dim]
     torch::Tensor& kv_cache,      // [num_blocks, block_size, cache_stride]

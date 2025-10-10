@@ -80,6 +80,7 @@ from vllm.model_executor.models.utils import (
 
 if current_platform.is_cuda_alike():
     from vllm import _custom_ops as ops
+    from vllm_metax import _custom_ops as mx_ops
 elif current_platform.is_xpu():
     from vllm._ipex_ops import ipex_ops as ops
 
@@ -573,7 +574,7 @@ def sparse_attn_indexer(
     has_prefill = attn_metadata.num_prefills > 0
     num_decode_tokens = attn_metadata.num_decode_tokens
 
-    ops.indexer_k_quant_and_cache(
+    mx_ops.indexer_k_quant_and_cache(
         k_bf16,
         kv_cache,
         slot_mapping,

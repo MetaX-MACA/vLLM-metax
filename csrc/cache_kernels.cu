@@ -866,6 +866,71 @@ __global__ void indexer_k_quant_and_cache_kernel(
   float2 k_val = (reinterpret_cast<const float2*>(
       k))[(token_idx * head_dim + head_dim_idx) / VEC_SIZE];
   scalar_t* k_val_ptr = reinterpret_cast<scalar_t*>(&k_val);
+  float amax = 0.0f;
+  for (int i = 0; i < VEC_SIZE; i++) {
+    amax = fmaxf(amax, fabsf(float(k_val_ptr[i])));
+  }
+#ifndef USE_ROCM
+  __syncwarp();
+#endif
+
+  // Reduced amax
+  for (int mask = 16; mask > 0; mask /= 2) {
+#ifdef USE_ROCM
+    amax = fmaxf(amax, __shfl_xor_sync(uint64_t(-1), amax, mask));
+#else
+    amax = fmaxf(amax, __shfl_xor_sync(unsigned(-1), amax, mask));
+#endif
+  }
+#ifndef USE_ROCM
+  __syncwarp();
+#endif
+  float scale = fmaxf(amax, 1e-4) / 448.0f;
+  if (use_ue8m0) {
+    scale = exp2f(ceilf(log2f(scale)));
+  }
+
+  const int64_t dst_offset = block_idx * cache_block_size * cache_stride +
+                             block_offset * head_dim + head_dim_idx;
+  for (int i = 0; i < VEC_SIZE; i++) {
+    kv_cache[dst_offset + i] =
+        fp8::scaled_convert<cache_t, scalar_t, kv_dt>(k_val_ptr[i], scale);
+  }
+  if (threadIdx.x == 0) {
+    const int64_t dst_scale_idx =
+        block_idx * cache_block_size * cache_stride +
+        cache_block_size * head_dim +
+        (block_offset * head_dim + head_dim_idx) * 4 / quant_block_size;
+    reinterpret_cast<float*>(kv_cache)[dst_scale_idx / 4] = scale;
+  }
+}
+
+template <typename scalar_t, typename cache_t>
+__global__ void indexer_k_cache_kernel(
+    const scalar_t* __restrict__ k,  // [num_tokens, head_dim]
+    cache_t* __restrict__ kv_cache,  // [num_blocks, block_size, cache_stride]
+    const int64_t* __restrict__ slot_mapping,  // [num_tokens]
+    const int head_dim,                        // dimension of each head
+    const int cache_block_size,                // cache block size
+    const int cache_stride  // stride for each token in kv_cache
+) {
+  constexpr int VEC_SIZE = 4;
+  const int64_t token_idx = blockIdx.x;
+  const int64_t head_dim_idx = (blockIdx.y * blockDim.y * blockDim.x +
+                                threadIdx.y * blockDim.x + threadIdx.x) *
+                               VEC_SIZE;
+  const int64_t slot_idx = slot_mapping[token_idx];
+  const int64_t block_idx = slot_idx / cache_block_size;
+  const int64_t block_offset = slot_idx % cache_block_size;
+
+  // NOTE: slot_idx can be -1 if the token is padded
+  if (slot_idx < 0 || (head_dim_idx >= head_dim)) {
+    return;
+  }
+
+  float2 k_val = (reinterpret_cast<const float2*>(
+      k))[(token_idx * head_dim + head_dim_idx) / VEC_SIZE];
+  scalar_t* k_val_ptr = reinterpret_cast<scalar_t*>(&k_val);
 
   const int64_t dst_offset = block_idx * cache_block_size * cache_stride +
                              block_offset * head_dim + head_dim_idx;
@@ -979,10 +1044,43 @@ void indexer_k_quant_and_cache(
               "head_dim must be divisible by quant_block_size");
 
   constexpr int vec_size = 4;
-  dim3 grid(num_tokens, (head_dim + vec_size - 1) / vec_size);
+  dim3 grid(num_tokens, (head_dim + quant_block_size * vec_size - 1) /
+                            (quant_block_size * vec_size));
   dim3 block(32, vec_size);
   const at::cuda::OptionalCUDAGuard device_guard(device_of(k));
   const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
-  DISPATCH_BY_KV_CACHE_DTYPE(k.dtype(), "auto", CALL_INDEXER_K_QUANT_AND_CACHE);
+  DISPATCH_BY_KV_CACHE_DTYPE(k.dtype(), "fp8_e4m3",
+                             CALL_INDEXER_K_QUANT_AND_CACHE);
+}
+
+// Macro to dispatch the kernel based on the data type.
+#define CALL_INDEXER_K_CACHE(KV_T, CACHE_T, KV_DTYPE)                      \
+  vllm::indexer_k_cache_kernel<KV_T, CACHE_T><<<grid, block, 0, stream>>>( \
+      reinterpret_cast<KV_T*>(k.data_ptr()),                               \
+      reinterpret_cast<CACHE_T*>(kv_cache.data_ptr()),                     \
+      slot_mapping.data_ptr<int64_t>(), head_dim, cache_block_size,        \
+      cache_stride);
+
+void indexer_k_cache(
+    torch::Tensor& k,            // [num_tokens, head_dim]
+    torch::Tensor& kv_cache,     // [num_blocks, block_size, cache_stride]
+    torch::Tensor& slot_mapping  // [num_tokens]
+) {
+  int num_tokens = k.size(0);
+  int head_dim = k.size(1);
+  int cache_block_size = kv_cache.size(1);
+  int cache_stride = kv_cache.size(2);
+
+  TORCH_CHECK(k.device() == kv_cache.device(),
+              "k and kv_cache must be on the same device");
+  TORCH_CHECK(k.device() == slot_mapping.device(),
+              "k and slot_mapping must be on the same device");
+
+  constexpr int vec_size = 4;
+  dim3 grid(num_tokens, (head_dim + vec_size - 1) / vec_size);
+  dim3 block(32, vec_size);
+  const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+
+  DISPATCH_BY_KV_CACHE_DTYPE(k.dtype(), "auto", CALL_INDEXER_K_CACHE);
 }
