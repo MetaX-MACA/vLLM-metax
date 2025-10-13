@@ -92,6 +92,7 @@ class EagleProposer:
         # [batch_size, max_num_blocks_per_req]
         block_table: torch.Tensor,
         sampling_metadata: SamplingMetadata,
+        eagle_attn_metadata: FlashAttentionMetadata,
     ) -> torch.Tensor:
         num_tokens = target_token_ids.shape[0]
         batch_size = next_token_ids.shape[0]
@@ -118,7 +119,8 @@ class EagleProposer:
             max_seq_len = seq_lens.max().item()
             max_num_tokens = (cu_num_tokens[1:] -
                               cu_num_tokens[:-1]).max().item()
-            attn_metadata = FlashAttentionMetadata(
+            attn_type = type(eagle_attn_metadata)
+            attn_metadata = attn_type(
                 num_actual_tokens=num_tokens,
                 max_query_len=max_num_tokens,
                 query_start_loc=cu_num_tokens,
@@ -126,12 +128,24 @@ class EagleProposer:
                 seq_lens=seq_lens,
                 block_table=block_table,
                 slot_mapping=target_slot_mapping,
-                # TODO(woosuk): Support cascade attention.
+                # # TODO(woosuk): Support cascade attention.
                 use_cascade=False,
                 common_prefix_len=0,
                 cu_prefix_query_lens=None,
                 prefix_kv_lens=None,
                 suffix_kv_lens=None,
+                num_decodes=0,
+                num_decode_tokens=0,
+                decode_query_start_loc=None,
+                decode_max_seq_len=0,
+                decode_seq_lens=None,
+                decode_block_table=None,
+                num_prefills=batch_size,
+                num_prefill_tokens=num_tokens,
+                prefill_query_start_loc=cu_num_tokens,
+                prefill_max_seq_len=max_num_tokens,
+                prefill_seq_lens=seq_lens,
+                prefill_block_table=block_table
             )
         elif self.method == "deepseek_mtp":
             query_lens = cu_num_tokens[1:] - cu_num_tokens[:-1]
@@ -207,6 +221,18 @@ class EagleProposer:
         attn_metadata.num_actual_tokens = batch_size
         attn_metadata.max_query_len = 1
         attn_metadata.query_start_loc = self.arange[:batch_size + 1]
+        # start decoding
+        attn_metadata.prefill_block_table = None
+        attn_metadata.prefill_max_seq_len = 0
+        attn_metadata.prefill_query_start_loc = None
+        attn_metadata.prefill_seq_lens = None
+        attn_metadata.num_prefill_tokens = 0
+        attn_metadata.num_prefills = 0
+        attn_metadata.num_decodes = batch_size
+        attn_metadata.num_decode_tokens = batch_size
+        attn_metadata.decode_query_start_loc = attn_metadata.query_start_loc
+        attn_metadata.decode_block_table = attn_metadata.block_table
+
         for _ in range(self.num_speculative_tokens - 1):
             # Update the inputs.
             # cast to int32 is crucial when eagle model is compiled.
@@ -248,6 +274,9 @@ class EagleProposer:
             # padding tokens.
             attn_metadata.slot_mapping.masked_fill_(exceeds_max_model_len,
                                                     PADDING_SLOT_ID)
+            
+            attn_metadata.decode_max_seq_len = attn_metadata.max_seq_len
+            attn_metadata.decode_seq_lens = attn_metadata.seq_lens
 
             # copy inputs to buffer for cudagraph
             self.input_ids[:batch_size] = input_ids
@@ -263,8 +292,15 @@ class EagleProposer:
                     self.positions[:input_batch_size],
                     self.hidden_states[:input_batch_size],
                 )
-            hidden_states = hidden_states[:batch_size]
-            logits = self.model.compute_logits(last_hidden_states[:batch_size],
+            hidden_states = torch.narrow(hidden_states, 
+                                         dim=0, 
+                                         start=0, 
+                                         length=batch_size)
+            last_hidden_states = torch.narrow(last_hidden_states, 
+                                              dim=0, 
+                                              start=0, 
+                                              length=batch_size)
+            logits = self.model.compute_logits(last_hidden_states,
                                                None)
 
             # TODO(wenlong): get more than one token for tree attention

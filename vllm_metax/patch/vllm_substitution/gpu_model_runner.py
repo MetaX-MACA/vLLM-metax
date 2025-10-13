@@ -1515,6 +1515,7 @@ class GPUModelRunner(LoRAModelRunnerMixin):
                 cu_num_tokens=cu_num_tokens,
                 block_table=block_table,
                 sampling_metadata=sampling_metadata,
+                eagle_attn_metadata=eagle_attn_metadata
             )
             spec_token_ids = draft_token_ids.tolist()
 
