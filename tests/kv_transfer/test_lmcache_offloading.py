@@ -81,7 +81,7 @@ def create_test_prompts(num_prompts=10, num_tokens=1000):
     return prompts
 
 
-def initialize_llm(model_name="/pde_ai/models/llm/Qwen/Qwen3-0.6B",
+def initialize_llm(model_name="Qwen/Qwen3-0.6B",
                    max_len=20480,
                    enable_lmcache=True):
     """
