@@ -222,7 +222,7 @@ class MacaPlatformBase(Platform):
         if dtype not in (torch.float16, torch.bfloat16):
             return _Backend.XFORMERS
 
-        FLASH_ATTN_V1 = "vllm.v1.attention.backends.flash_attn.FlashAttentionBackend"  # noqa: E501
+        FLASH_ATTN_V1 = "vllm_metax.v1.attention.backends.flash_attn.MacaFlashAttentionBackend"  # noqa: E501
         from vllm.attention.selector import is_attn_backend_supported
         is_default_fa_supported = is_attn_backend_supported(
             FLASH_ATTN_V1, head_size, dtype, allow_import_error=False)
