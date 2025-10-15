@@ -101,6 +101,7 @@ jobs:
 
             -   name: Install test requirements
                 run: |
+                    python use_existing_torch.py
                     pip install -r requirements/test.txt
 
             -   name: Run e2e tests
