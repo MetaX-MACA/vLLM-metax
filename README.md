@@ -52,15 +52,6 @@ pip install vllm==0.10.1.1 --no-deps
 git clone  --depth 1 --branch [branch-name] [vllm-metax-repo-url] && cd vllm-metax
 ```
 
-**install cuda toolkit**:
-
-```bash
-# build vllm on maca needs cuda 11.6
-wget https://developer.download.nvidia.com/compute/cuda/11.6.0/local_installers/cuda_11.6.0_510.39.01_linux.run && \
-    sh cuda_11.6.0_510.39.01_linux.run --silent --toolkit && \
-    rm cuda_11.6.0_510.39.01_linux.run
-```
-
 **setup env variables**:
 
 ```
@@ -68,12 +59,11 @@ wget https://developer.download.nvidia.com/compute/cuda/11.6.0/local_installers/
 DEFAULT_DIR="/opt/maca"
 export MACA_PATH=${1:-$DEFAULT_DIR}
 
-# setup CUDA && cu-bridge
-export CUDA_PATH=/usr/local/cuda
+# setup cu-bridge
 export CUCC_PATH=${MACA_PATH}/tools/cu-bridge
 
 # update PATH
-export PATH=${CUDA_PATH}/bin:${MACA_PATH}/mxgpu_llvm/bin:${MACA_PATH}/bin:${CUCC_PATH}/tools:${CUCC_PATH}/bin:${PATH}
+export PATH=${MACA_PATH}/mxgpu_llvm/bin:${MACA_PATH}/bin:${CUCC_PATH}/tools:${CUCC_PATH}/bin:${PATH}
 export LD_LIBRARY_PATH=${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu_llvm/lib:${LD_LIBRARY_PATH}
 
 export VLLM_INSTALL_PUNICA_KERNELS=1
