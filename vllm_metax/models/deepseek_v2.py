@@ -479,7 +479,6 @@ class DeepseekV32IndexerCache(torch.nn.Module, AttentionLayerBase):
 def cp_gather_indexer_k_quant_cache(
     kv_cache,  # [num_blocks, block_size, head_dim + 1]
     dst_value,  # [cu_seq_lens[-1], head_dim]
-    dst_scale,  # [cu_seq_lens[-1], 4]
     block_table,  # [batch_size, num_blocks]
     cu_seq_lens,  # [batch_size + 1, ]
     batch_size,
@@ -489,7 +488,6 @@ def cp_gather_indexer_k_quant_cache(
     kv_cache = kv_cache.view(num_blocks, -1)
 
     expected_value = []
-    expected_scale = []
     for b in range(batch_size):
         s = cu_seq_lens[b + 1] - cu_seq_lens[b]
         if s == 0:
@@ -498,14 +496,11 @@ def cp_gather_indexer_k_quant_cache(
         blocks = block_table[b, :tot]
 
         value = []
-        scale = []
         full_block = torch.arange(tot - 1,
                                   device=kv_cache.device,
                                   dtype=torch.int32)
         non_remaining_value = kv_cache[blocks[full_block], :block_size *
                                        head_dim].view(-1, head_dim)
-        non_remaining_scale = kv_cache[blocks[full_block],
-                                       block_size * head_dim:].view(-1, 4)
 
         remaining = s - (tot - 1) * block_size
 
@@ -514,22 +509,12 @@ def cp_gather_indexer_k_quant_cache(
             kv_cache[blocks[-1], :remaining * head_dim].view(-1, head_dim)
         ],
                           dim=0)
-        scale = torch.cat([
-            non_remaining_scale,
-            kv_cache[blocks[-1], block_size * head_dim:block_size * head_dim +
-                     remaining * 4].view(-1, 4)
-        ],
-                          dim=0)
 
         expected_value.append(value)
-        expected_scale.append(scale)
 
     gather_value = torch.cat(expected_value, dim=0).view(-1, head_dim)
-    gather_scale = torch.cat(expected_scale, dim=0).view(-1, 4)
-    gather_value = gather_value.view(torch.float8_e4m3fn)
-    gather_scale = gather_scale.view(torch.float32)
+    gather_value = gather_value.view(torch.bfloat16)
     dst_value.copy_(gather_value)
-    dst_scale.copy_(gather_scale)
 
 
 def sparse_attn_indexer(
@@ -586,9 +571,19 @@ def sparse_attn_indexer(
     if has_prefill:
         prefill_metadata = attn_metadata.prefill
         for chunk in prefill_metadata.chunks:
+            _k_bf16 = torch.empty([chunk.total_seq_lens, head_dim],
+                                device=k_bf16.device,
+                                dtype=torch.bfloat16)
+            cp_gather_indexer_k_quant_cache(
+                kv_cache,
+                _k_bf16,
+                chunk.block_table,
+                chunk.cu_seq_lens,
+                chunk.num_reqs,
+            )
             logits = bf16_mqa_logits(
                 q_bf16[chunk.token_start:chunk.token_end],
-                k_bf16,
+                _k_bf16,
                 weights[chunk.token_start:chunk.token_end],
                 chunk.cu_seqlen_ks,
                 chunk.cu_seqlen_ke,

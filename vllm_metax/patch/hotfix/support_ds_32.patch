@@ -11,6 +11,32 @@ index ef0b7353e..54a3bcef7 100644
      ]
  
      def compute_hash(self) -> str:
+diff --git a/vllm/v1/sample/rejection_sampler.py b/vllm/v1/sample/rejection_sampler.py
+index 8f0b38ecb..fc8f16f26 100644
+--- a/vllm/v1/sample/rejection_sampler.py
++++ b/vllm/v1/sample/rejection_sampler.py
+@@ -451,7 +451,7 @@ def rejection_greedy_sample_kernel(
+         is_greedy = True
+     else:
+         is_greedy = tl.load(is_greedy_ptr + req_idx)
+-    if not is_greedy:
++    if is_greedy is None:
+         # Early exit for non-greedy sampling requests.
+         return
+ 
+diff --git a/vllm/v1/spec_decode/eagle.py b/vllm/v1/spec_decode/eagle.py
+index 06f963b09..9ee8d5acd 100644
+--- a/vllm/v1/spec_decode/eagle.py
++++ b/vllm/v1/spec_decode/eagle.py
+@@ -17,7 +17,7 @@ from vllm.forward_context import set_forward_context
+ from vllm.logger import init_logger
+ from vllm.model_executor.model_loader import get_model
+ from vllm.model_executor.models import supports_multimodal
+-from vllm.model_executor.models.deepseek_v2 import DeepseekV32IndexerCache
++from vllm_metax.models.deepseek_v2 import DeepseekV32IndexerCache
+ from vllm.model_executor.models.llama_eagle3 import Eagle3LlamaForCausalLM
+ from vllm.platforms import current_platform
+ from vllm.utils import is_pin_memory_available
 diff --git a/vllm/v1/worker/gpu_model_runner.py b/vllm/v1/worker/gpu_model_runner.py
 index a438c7777..61d8a41dc 100644
 --- a/vllm/v1/worker/gpu_model_runner.py
