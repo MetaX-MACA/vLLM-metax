@@ -67,7 +67,7 @@ from vllm.model_executor.models.utils import sequence_parallel_chunk
 from vllm.platforms import current_platform
 from vllm.sequence import IntermediateTensors
 from vllm.utils import cdiv, direct_register_custom_op
-from deep_gemm import bf16_mqa_logits, bf16_paged_mqa_logits
+from vllm_metax.utils.deep_gemm import bf16_mqa_logits, bf16_paged_mqa_logits
 from vllm_metax.v1.attention.backends.mla.indexer import (
     MacaDeepseekV32IndexerBackend as DeepseekV32IndexerBackend,
     DeepseekV32IndexerMetadata)
