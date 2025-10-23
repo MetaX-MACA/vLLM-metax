@@ -207,7 +207,7 @@ def flash_mla_sparse_prefill(
     """
     # TODO: MetaX flash_mla support
     # /------------------------  Metax Modification -------------------------\
-    results = torch_flash_mla_sparse_prefill(q, kv, indices, sm_scale, d_v)
+    results = flash_mla.flash_mla_sparse_fwd(q, kv, indices, sm_scale, d_v)
     # \------------------------- Metax Modification -------------------------/
     return results
 

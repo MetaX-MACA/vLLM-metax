@@ -101,13 +101,14 @@ jobs:
 
             -   name: Install test requirements
                 run: |
+                    python use_existing_torch.py
                     pip install -r requirements/test.txt
 
             -   name: Run e2e tests
                 env:
                     VLLM_MODEL_REDIRECT_PATH: ".modelpath/cicd.json"
                 run: |
-                    pytest tests/e2e/workflow/test_offline_inference_all.py
+                    pytest tests/e2e/test_offline_inference_all.py
                     #TODO: add unit tests
 
             -   name: Collect environment info

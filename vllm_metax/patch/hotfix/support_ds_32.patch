@@ -1,5 +1,18 @@
+diff --git a/vllm/config/compilation.py b/vllm/config/compilation.py
+index ef0b7353e..54a3bcef7 100644
+--- a/vllm/config/compilation.py
++++ b/vllm/config/compilation.py
+@@ -360,7 +360,7 @@ class CompilationConfig:
+         "vllm.linear_attention",
+         "vllm.plamo2_mamba_mixer",
+         "vllm.gdn_attention",
+-        "vllm.sparse_attn_indexer",
++        "vllm.mx_sparse_attn_indexer",
+     ]
+ 
+     def compute_hash(self) -> str:
 diff --git a/vllm/v1/worker/gpu_model_runner.py b/vllm/v1/worker/gpu_model_runner.py
-index a438c7777..46801efb6 100644
+index a438c7777..61d8a41dc 100644
 --- a/vllm/v1/worker/gpu_model_runner.py
 +++ b/vllm/v1/worker/gpu_model_runner.py
 @@ -40,7 +40,7 @@ from vllm.model_executor.layers.attention_layer_base import AttentionLayerBase
@@ -7,7 +20,7 @@ index a438c7777..46801efb6 100644
  from vllm.model_executor.layers.rotary_embedding import MRotaryEmbedding
  from vllm.model_executor.model_loader import TensorizerLoader, get_model_loader
 -from vllm.model_executor.models.deepseek_v2 import DeepseekV32IndexerCache
-+from vllm_metax.model_executor.models.deepseek_v2 import DeepseekV32IndexerCache
++from vllm_metax.models.deepseek_v2 import DeepseekV32IndexerCache
  # yapf conflicts with isort for this block
  # yapf: disable
  from vllm.model_executor.models.interfaces import (SupportsMultiModal,

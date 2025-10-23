@@ -51,6 +51,7 @@ metax_enhanced_model = "vllm_metax:register_model"
 
 [tool.setuptools_scm]
 # no extra settings needed, presence enables setuptools-scm
+local_scheme = "node-and-date"
 
 [tool.setuptools.packages.find]
 where = ["."]
