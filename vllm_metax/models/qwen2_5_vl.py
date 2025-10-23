@@ -68,6 +68,7 @@ from vllm.transformers_utils.config import uses_mrope
 from vllm.utils import is_pin_memory_available
 from vllm.utils.tensor_schema import TensorSchema, TensorShape
 
+
 from vllm.model_executor.models.interfaces import (MultiModalEmbeddings, SupportsLoRA,
                          SupportsMultiModal, SupportsMultiModalPruning,
                          SupportsPP, SupportsQuant)
@@ -77,6 +78,7 @@ from vllm.model_executor.models.qwen2_vl import (Qwen2VLMultiModalProcessor, Qwe
 from vllm.model_executor.models.utils import (AutoWeightsLoader, WeightsMapper, cast_overflow_tensors,
                     init_vllm_registered_model, maybe_prefix,
                     merge_multimodal_embeddings)
+
 from vllm.model_executor.models.vision import get_vit_attn_backend, run_dp_sharded_mrope_vision_model
 
 logger = init_logger(__name__)

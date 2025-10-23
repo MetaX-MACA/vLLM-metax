@@ -65,6 +65,8 @@ export MACA_PATH="/opt/maca"
 
 # cu-bridge
 export CUCC_PATH="${MACA_PATH}/tools/cu-bridge"
+export CUDA_PATH=/root/cu-bridge/CUDA_DIR
+export CUCC_CMAKE_ENTRY=2
 
 # update PATH
 export PATH=${MACA_PATH}/mxgpu_llvm/bin:${MACA_PATH}/bin:${CUCC_PATH}/tools:${CUCC_PATH}/bin:${PATH}

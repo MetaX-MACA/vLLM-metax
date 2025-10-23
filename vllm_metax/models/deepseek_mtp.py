@@ -6,7 +6,8 @@ from typing import Optional
 import torch
 import torch.nn as nn
 from transformers import PretrainedConfig
-from vllm.config import CacheConfig, ModelConfig, VllmConfig
+
+from vllm.config import VllmConfig
 from vllm.model_executor.layers.fused_moe import FusedMoE
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.logits_processor import LogitsProcessor
@@ -14,12 +15,12 @@ from vllm.model_executor.layers.quantization import QuantizationConfig
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     ParallelLMHead, VocabParallelEmbedding)
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
-from vllm.model_executor.models.deepseek_v2 import (
-    DeepseekV2DecoderLayer, get_spec_layer_idx_from_weight_name)
+from vllm.sequence import IntermediateTensors
+
+from vllm_metax.models.deepseek_v2 import (DeepseekV2DecoderLayer,
+                          get_spec_layer_idx_from_weight_name)
 from vllm.model_executor.models.interfaces import SupportsPP
 from vllm.model_executor.models.utils import maybe_prefix
-from vllm.model_executor.sampling_metadata import SamplingMetadata
-from vllm.sequence import IntermediateTensors
 
 
 class SharedHead(nn.Module):
@@ -41,24 +42,31 @@ class SharedHead(nn.Module):
 
 class DeepSeekMultiTokenPredictorLayer(nn.Module):
 
-    def __init__(
-        self,
-        config: PretrainedConfig,
-        prefix: str,
-        model_config: ModelConfig,
-        cache_config: Optional[CacheConfig] = None,
-        quant_config: Optional[QuantizationConfig] = None,
-    ) -> None:
+    def __init__(self, vllm_config: VllmConfig, prefix: str) -> None:
         super().__init__()
+
+        config = vllm_config.model_config.hf_config
+        quant_config = vllm_config.quant_config
 
         self.enorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.hnorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.eh_proj = nn.Linear(config.hidden_size * 2,
                                  config.hidden_size,
                                  bias=False)
+
+        self.is_v32 = hasattr(config, "index_topk")
+        if self.is_v32:
+            topk_tokens = config.index_topk
+            topk_indices_buffer = torch.empty(
+                vllm_config.scheduler_config.max_num_batched_tokens,
+                topk_tokens,
+                dtype=torch.int32,
+                device="cuda")
+        else:
+            topk_indices_buffer = None
         self.shared_head = SharedHead(config=config, quant_config=quant_config)
-        self.mtp_block = DeepseekV2DecoderLayer(config, prefix, model_config,
-                                                cache_config, quant_config)
+        self.mtp_block = DeepseekV2DecoderLayer(vllm_config, prefix,
+                                                topk_indices_buffer)
 
     def forward(
         self,
@@ -94,13 +102,8 @@ class DeepSeekMultiTokenPredictor(nn.Module):
         # to map the exact layer index from weights
         self.layers = torch.nn.ModuleDict({
             str(idx):
-            DeepSeekMultiTokenPredictorLayer(
-                config,
-                f"{prefix}.layers.{idx}",
-                model_config=vllm_config.model_config,
-                cache_config=vllm_config.cache_config,
-                quant_config=vllm_config.quant_config,
-            )
+            DeepSeekMultiTokenPredictorLayer(vllm_config,
+                                             f"{prefix}.layers.{idx}")
             for idx in range(self.mtp_start_layer_idx,
                              self.mtp_start_layer_idx + self.num_mtp_layers)
         })
@@ -108,7 +111,6 @@ class DeepSeekMultiTokenPredictor(nn.Module):
             config.vocab_size,
             config.hidden_size,
         )
-
         self.logits_processor = LogitsProcessor(config.vocab_size)
 
     def forward(
@@ -133,15 +135,13 @@ class DeepSeekMultiTokenPredictor(nn.Module):
     def compute_logits(
         self,
         hidden_states: torch.Tensor,
-        sampling_metadata: SamplingMetadata,
         spec_step_idx: int = 0,
     ) -> torch.Tensor:
         current_step_idx = (spec_step_idx % self.num_mtp_layers)
         mtp_layer = self.layers[str(self.mtp_start_layer_idx +
                                     current_step_idx)]
         logits = self.logits_processor(mtp_layer.shared_head.head,
-                                       mtp_layer.shared_head(hidden_states),
-                                       sampling_metadata)
+                                       mtp_layer.shared_head(hidden_states))
         return logits
 
 
@@ -158,30 +158,29 @@ class DeepSeekMTP(nn.Module, SupportsPP):
         self,
         input_ids: torch.Tensor,
         positions: torch.Tensor,
-        previous_hidden_states: torch.Tensor,
+        hidden_states: torch.Tensor,
         intermediate_tensors: Optional[IntermediateTensors] = None,
         inputs_embeds: Optional[torch.Tensor] = None,
         spec_step_idx: int = 0,
     ) -> torch.Tensor:
-        hidden_states = self.model(input_ids, positions,
-                                   previous_hidden_states, inputs_embeds,
-                                   spec_step_idx)
+        hidden_states = self.model(input_ids, positions, hidden_states,
+                                   inputs_embeds, spec_step_idx)
         return hidden_states
 
     def compute_logits(
         self,
         hidden_states: torch.Tensor,
-        sampling_metadata: SamplingMetadata,
         spec_step_idx: int = 0,
     ) -> Optional[torch.Tensor]:
-        return self.model.compute_logits(hidden_states, sampling_metadata,
-                                         spec_step_idx)
+        return self.model.compute_logits(hidden_states, spec_step_idx)
 
     def load_weights(self, weights: Iterable[tuple[str,
                                                    torch.Tensor]]) -> set[str]:
         stacked_params_mapping = [
             ("gate_up_proj", "gate_proj", 0),
             ("gate_up_proj", "up_proj", 1),
+            ("fused_qkv_a_proj", "q_a_proj", 0),
+            ("fused_qkv_a_proj", "kv_a_proj_with_mqa", 1),
         ]
 
         expert_params_mapping = FusedMoE.make_expert_params_mapping(
@@ -211,14 +210,18 @@ class DeepSeekMTP(nn.Module, SupportsPP):
                 # for mlp.experts[0].gate_gate_up_proj, which breaks load.
                 if (("mlp.experts." in name) and name not in params_dict):
                     continue
-                name = name.replace(weight_name, param_name)
+                name_mapped = name.replace(weight_name, param_name)
+
+                # QKV fusion is optional, fall back to normal
+                # weight loading if it's not enabled
+                if ((param_name == "fused_qkv_a_proj")
+                        and name_mapped not in params_dict):
+                    continue
+                else:
+                    name = name_mapped
+
                 # Skip loading extra bias for GPTQ models.
                 if name.endswith(".bias") and name not in params_dict:
-                    continue
-                # According to DeepSeek-V3 Technical Report, MTP modules
-                # shares embedding layer. We only load the first weights.
-                if (spec_layer != self.model.mtp_start_layer_idx
-                        and ".layers" not in name):
                     continue
 
                 param = params_dict[name]
@@ -243,6 +246,12 @@ class DeepSeekMTP(nn.Module, SupportsPP):
                 else:
                     # Skip loading extra bias for GPTQ models.
                     if name.endswith(".bias") and name not in params_dict:
+                        continue
+
+                    # According to DeepSeek-V3 Technical Report, MTP modules
+                    # shares embedding layer. We only load the first weights.
+                    if (spec_layer != self.model.mtp_start_layer_idx
+                            and ".layers" not in name):
                         continue
 
                     param = params_dict[name]

@@ -112,33 +112,33 @@ class NCCLLibrary:
         Function("mcclGroupStart", ncclResult_t, []),
         # ncclResult_t ncclGroupEnd();
         Function("mcclGroupEnd", ncclResult_t, []),
-        # ncclResult_t ncclCommWindowRegister(
-        #   ncclComm_t comm, void* buff, size_t size,
-        #   ncclWindow_t* win, int winFlags);
-        Function(
-            "mcclCommWindowRegister",
-            ncclResult_t,
-            [
-                ncclComm_t,
-                buffer_type,
-                ctypes.c_size_t,
-                ctypes.POINTER(ncclWindow_t),
-                ctypes.c_int,
-            ],
-        ),
-        # ncclResult_t ncclCommWindowDeregister(
-        #   ncclComm_t comm, ncclWindow_t win);
-        Function("mcclCommWindowDeregister", ncclResult_t,
-                 [ncclComm_t, ncclWindow_t]),
+        # # ncclResult_t ncclCommWindowRegister(
+        # #   ncclComm_t comm, void* buff, size_t size,
+        # #   ncclWindow_t* win, int winFlags);
+        # Function(
+        #     "mcclCommWindowRegister",
+        #     ncclResult_t,
+        #     [
+        #         ncclComm_t,
+        #         buffer_type,
+        #         ctypes.c_size_t,
+        #         ctypes.POINTER(ncclWindow_t),
+        #         ctypes.c_int,
+        #     ],
+        # ),
+        # # ncclResult_t ncclCommWindowDeregister(
+        # #   ncclComm_t comm, ncclWindow_t win);
+        # Function("mcclCommWindowDeregister", ncclResult_t,
+        #          [ncclComm_t, ncclWindow_t]),
     ]
 
     # class attribute to store the mapping from the path to the library
     # to avoid loading the same library multiple times
-    path_to_library_cache: Dict[str, Any] = {}
+    path_to_library_cache: dict[str, Any] = {}
 
     # class attribute to store the mapping from library path
     #  to the corresponding dictionary
-    path_to_dict_mapping: Dict[str, Dict[str, Any]] = {}
+    path_to_dict_mapping: dict[str, dict[str, Any]] = {}
 
     def __init__(self, so_file: Optional[str] = None):
 
@@ -162,7 +162,7 @@ class NCCLLibrary:
             raise e
 
         if so_file not in NCCLLibrary.path_to_dict_mapping:
-            _funcs: Dict[str, Any] = {}
+            _funcs: dict[str, Any] = {}
             for func in NCCLLibrary.exported_functions:
                 f = getattr(self.lib, func.name)
                 f.restype = func.restype
@@ -290,13 +290,13 @@ class NCCLLibrary:
     def ncclCommWindowRegister(self, comm: ncclComm_t, buff: buffer_type,
                                size: int, win_flags: int) -> ncclWindow_t:
         window = ncclWindow_t()
-        self.NCCL_CHECK(self._funcs["mcclCommWindowRegister"](
-            comm, buff, size, ctypes.byref(window), win_flags))
+        # self.NCCL_CHECK(self._funcs["mcclCommWindowRegister"](
+        #     comm, buff, size, ctypes.byref(window), win_flags))
         return window
 
     def ncclCommWindowDeregister(self, comm: ncclComm_t,
                                  window: ncclWindow_t) -> None:
-        self.NCCL_CHECK(self._funcs["mcclCommWindowDeregister"](comm, window))
-
+        # self.NCCL_CHECK(self._funcs["mcclCommWindowDeregister"](comm, window))
+        return
 
 vllm.distributed.device_communicators.pynccl_wrapper.NCCLLibrary = NCCLLibrary
