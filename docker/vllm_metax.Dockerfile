@@ -5,6 +5,7 @@ ARG PIP_EXTRA_INDEX_URL=https://repos.metax-tech.com/r/maca-pypi/simple
 ARG UV_TRUSTED_HOST=repos.metax-tech.com
 ARG UV_INDEX_URL=${PIP_INDEX_URL}
 ARG UV_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}
+ARG CU_BRIDGE_VERSION=3.1.0
 
 #################### BASE BUILD IMAGE ####################
 FROM ${BUILD_BASE_IMAGE} AS base
@@ -17,8 +18,6 @@ ARG UV_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}
 ARG UV_TRUSTED_HOST
 
 # Install system dependencies and uv, then create Python virtual environment
-# Our internal build pipeline uses conda. Here we use uv instead. 
-# This is NOT fully tested!
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     $HOME/.local/bin/uv venv /opt/venv --python ${PYTHON_VERSION} && \
     rm -f /usr/bin/python3 /usr/bin/python3-config /usr/bin/pip && \
@@ -36,17 +35,6 @@ ENV UV_INDEX_STRATEGY="unsafe-best-match"
 # Use copy mode to avoid hardlink failures with Docker cache mounts
 ENV UV_LINK_MODE=copy
 
-# The following packages need subscription, so we just SKIP them. 
-# NOT fully tested, but should not cause big problems.
-# `lapack-devel librdmacm-utils libibverbs-utils`
-
-RUN yum makecache && yum install -y \
-    wget zip unzip tar tzdata vim git \
-    openblas-devel make cmake patch \
-    ninja-build gcc gcc-c++ \
-    procps-ng libxml2 libXau \
-    libibverbs librdmacm libibumad \
-    && yum clean all
 
 WORKDIR /workspace
 
@@ -59,6 +47,17 @@ COPY requirements/constraints.txt requirements/constraints.txt
 RUN uv pip install --python /opt/venv/bin/python3 -r requirements/maca.txt \
     --extra-index-url ${UV_EXTRA_INDEX_URL} --trusted-host ${UV_TRUSTED_HOST}
 
+# The following packages need subscription, so we just SKIP them. 
+# `lapack-devel librdmacm-utils libibverbs-utils`
+
+RUN yum makecache && yum install -y \
+    wget zip unzip tar tzdata vim git \
+    openblas-devel make cmake patch \
+    ninja-build gcc gcc-c++ \
+    procps-ng libxml2 libXau \
+    libibverbs librdmacm libibumad \
+    && yum clean all
+
 # Installing Metax-Driver
 RUN printf "[metax-centos]\n\
 name=Maca Driver Yum Repository\n\
@@ -66,15 +65,13 @@ baseurl=https://repos.metax-tech.com/r/metax-driver-centos-$(uname -m)/\n\
 enabled=1\n\
 gpgcheck=0" > /etc/yum.repos.d/metax-driver-centos.repo
 
-
 # would install the newest 3.1.0.x release
 # Metax-Driver mainly contains vbios and kmd file, which are not needed in a container.
 # Here we want to get the mx-smi management tool. 
 # kernel version mismatch errors are ignored
 RUN yum makecache && \
     yum install -y metax-driver mxgvm && \
-    yum clean all
-
+    yum clean all && rm -rf /var/cache/yum /tmp/*
 
 # Installing MACA SDK
 RUN printf "[maca-sdk]\n\
@@ -85,15 +82,15 @@ gpgcheck=0" > /etc/yum.repos.d/maca-sdk-rpm.repo
 
 RUN yum makecache && \
     yum install -y maca_sdk && \
-    yum clean all
-
+    yum clean all && rm -rf /var/cache/yum /tmp/*
 
 ## Install cu-bridge
+ARG CU_BRIDGE_VERSION
 RUN cd /tmp/ && \
     export MACA_PATH=/opt/maca && \
-    curl -o 3.1.0.zip -LsSf https://gitee.com/metax-maca/cu-bridge/repository/archive/3.1.0.zip && \
-    unzip 3.1.0.zip && \
-    mv cu-bridge-3.1.0 cu-bridge && \
+    curl -o ${CU_BRIDGE_VERSION}.zip -LsSf https://gitee.com/metax-maca/cu-bridge/repository/archive/${CU_BRIDGE_VERSION}.zip && \
+    unzip ${CU_BRIDGE_VERSION}.zip && \
+    mv cu-bridge-${CU_BRIDGE_VERSION} cu-bridge && \
     chmod 755 cu-bridge -Rf && \
     cd cu-bridge && \
     mkdir build && cd ./build && \
@@ -122,7 +119,6 @@ FROM base AS build
 ARG PIP_INDEX_URL UV_INDEX_URL
 ARG PIP_EXTRA_INDEX_URL UV_EXTRA_INDEX_URL
 
-COPY requirements/build.txt requirements/build.txt
 
 RUN uv pip install numpy==1.26.4
 RUN uv pip install /opt/maca/share/mxsml/pymxsml-*.whl
@@ -132,15 +128,20 @@ RUN git clone --depth 1 --branch v0.11.0 https://github.com/vllm-project/vllm &&
     cd vllm && \
     python use_existing_torch.py && \
     uv pip install -r requirements/build.txt && \
-    VLLM_TARGET_DEVICE=empty uv pip install -v . --no-build-isolation && \
+    VLLM_TARGET_DEVICE=empty python -m build -w -n && \
+    mkdir -p /workspace/wheels/ && \
+    cp dist/vllm-*.whl /workspace/wheels/ && \
     cd .. && rm -rf vllm
 
 # install vllm-metax
+COPY requirements/build.txt requirements/build.txt
+
 COPY . vllm-metax
 WORKDIR /workspace/vllm-metax
 RUN uv pip install -r requirements/build.txt && \
     python -m build -w && \
-    uv pip install dist/vllm_metax-*.whl
+    mkdir -p /workspace/wheels/ && \
+    cp dist/vllm_metax-*.whl /workspace/wheels/
 
 # We need this to copy .so files to vllm's location
 # Remove when master support (might be v0.11.1)
@@ -151,10 +152,7 @@ RUN vllm_metax_init
 
 # Currently, skipped ray patch
 
-# RUN uv pip install click==8.2.1 ray==2.46.0
-
 # COPY ray-patch.zip /tmp/
-
 # RUN cd /tmp && unzip ray-patch.zip && \
 #     mv ray-patch /workspace && \
 #     cd /workspace/ray-patch/ray_patch && \
@@ -163,3 +161,14 @@ RUN vllm_metax_init
 #     python apply_ray_patch.py mx_ray_2.46.batch && \
 #     if [ -f "/opt/conda/bin/ray" ]; then ln -sf /opt/conda/bin/ray /bin/ray; fi
 #################### WHEEL BUILD IMAGE ####################
+
+
+#################### FINAL IMAGE ####################
+FROM base AS final
+
+WORKDIR /workspace
+
+COPY --from=build /workspace/wheels/ /workspace/wheels/
+RUN uv pip install wheels/vllm-*.whl && \
+    uv pip install wheels/vllm_metax-*.whl
+#################### FINAL IMAGE ####################
