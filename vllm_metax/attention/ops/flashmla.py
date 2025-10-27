@@ -22,12 +22,32 @@ else:
 # \------------------------  Metax Modification -------------------------/
 
 
-def is_flashmla_supported() -> Tuple[bool, Optional[str]]:
+def _is_flashmla_available() -> tuple[bool, str | None]:
     """
     Return: is_supported_flag, unsupported_reason (optional).
     """
     if not _flashmla_AVAILABLE:
         return False, "flash_mla is not available"
+    return True, None
+
+
+def is_flashmla_dense_supported() -> tuple[bool, str | None]:
+    """
+    Return: is_supported_flag, unsupported_reason (optional).
+    """
+    is_available, maybe_reason = _is_flashmla_available()
+    if not is_available:
+        return False, maybe_reason
+    return True, None
+
+
+def is_flashmla_sparse_supported() -> tuple[bool, str | None]:
+    """
+    Return: is_supported_flag, unsupported_reason (optional).
+    """
+    is_available, maybe_reason = _is_flashmla_available()
+    if not is_available:
+        return False, maybe_reason
     return True, None
 
 

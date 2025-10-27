@@ -28,5 +28,9 @@ def flash_attn_supports_fp8() -> bool:
     return False
 
 
+def flash_attn_supports_mla():
+    return False
+
+
 def is_flash_attn_varlen_func_available() -> bool:
     return True

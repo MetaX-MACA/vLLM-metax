@@ -404,6 +404,7 @@ def _is_cuda() -> bool:
 def _build_custom_ops() -> bool:
     return _is_cuda()
 
+
 def get_maca_version() -> Version:
     """
     Returns the MACA SDK Version
@@ -560,12 +561,6 @@ class custom_install(install):
             return
 
         files_to_copy = {
-            "vllm_metax/_C.abi3.so":
-            vllm_dist_path,
-            "vllm_metax/_moe_C.abi3.so":
-            vllm_dist_path,
-            "vllm_metax/cumem_allocator.abi3.so":
-            vllm_dist_path,
             # for get_available_device: set cuda
             "vllm_metax/patch/vllm_substitution/utils.py":
             vllm_dist_path / "model_executor/layers/fla/ops/utils.py",
