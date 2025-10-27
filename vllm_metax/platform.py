@@ -231,6 +231,8 @@ class MacaPlatformBase(Platform):
             ] or (selected_backend is None and is_flashmla_supported()[0])
             use_triton = selected_backend == _Backend.TRITON_MLA or (
                 selected_backend is None)
+            use_flashinfermla = selected_backend == _Backend.FLASHINFER_MLA or (
+                selected_backend is None and block_size in [32, 64])
 
             def _get_version(name, import_suffix) -> str:
                 if use_v1:
@@ -252,6 +254,20 @@ class MacaPlatformBase(Platform):
             if use_triton:
                 return _get_version("Maca Triton MLA",
                                     "triton_mla.MacaTritonMLABackend")
+            if use_flashinfermla:
+                if use_v1:
+                    from vllm.v1.attention.backends.utils import (
+                        set_kv_cache_layout)
+                    set_kv_cache_layout("HND")
+                    logger.info_once(
+                        "Using FlashInfer MLA backend on V1 engine.")
+                    return ("vllm_metax.v1.attention.backends.mla."
+                            "flashinfer_mla.MacaFlashInferMLABackend")
+                else:
+                    logger.warning(
+                        "FlashInfer MLA backend is only supported on V1 engine"
+                    )
+
             # default mla
             logger.warning(
                 "Selected MLA backend is not valid, falling back to Triton MLA."
@@ -398,7 +414,7 @@ class MacaPlatformBase(Platform):
         if cls.is_device_capability(100):
             supported = True
         elif fp8_attention and will_use_fa:
-            from vllm.attention.utils.fa_utils import flash_attn_supports_fp8
+            from vllm_metax.attention.utils.fa_utils import flash_attn_supports_fp8
             supported = flash_attn_supports_fp8()
         return supported
 
