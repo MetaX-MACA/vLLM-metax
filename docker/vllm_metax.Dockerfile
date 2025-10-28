@@ -26,9 +26,6 @@ RUN dnf install python${PYTHON_VERSION}-pip && \
     python --version && \
     uv self version
 
-# Activate virtual environment and add uv to PATH
-ENV VIRTUAL_ENV="/opt/venv"
-ENV PATH="$VIRTUAL_ENV/bin:/root/.local/bin:$PATH"
 
 ENV UV_INDEX_STRATEGY="unsafe-best-match"
 
