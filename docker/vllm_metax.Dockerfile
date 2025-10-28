@@ -41,7 +41,7 @@ COPY requirements/maca.txt requirements/maca.txt
 COPY requirements/maca_private.txt requirements/maca_private.txt
 COPY requirements/constraints.txt requirements/constraints.txt
 
-RUN uv pip install --python /opt/venv/bin/python3 -r requirements/maca.txt \
+RUN uv pip install -r requirements/maca.txt \
     --extra-index-url ${UV_EXTRA_INDEX_URL} --trusted-host ${UV_TRUSTED_HOST}
 
 # The following packages need subscription, so we just SKIP them. 
