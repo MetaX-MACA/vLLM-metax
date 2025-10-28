@@ -6,6 +6,7 @@ ARG UV_TRUSTED_HOST=repos.metax-tech.com
 ARG UV_INDEX_URL=${PIP_INDEX_URL}
 ARG UV_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}
 ARG CU_BRIDGE_VERSION=3.1.0
+ARG VLLM_VERSION=0.11.0
 
 #################### BASE BUILD IMAGE ####################
 FROM ${BUILD_BASE_IMAGE} AS base
@@ -18,12 +19,14 @@ ARG UV_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}
 ARG UV_TRUSTED_HOST
 
 ENV VIRTUAL_ENV=/opt/venv
-ENV PATH=${VIRTUAL_ENV}/bin:$PATH
-RUN dnf install python${PYTHON_VERSION}-pip && \
-    dnf clean all && \
-    python${PYTHON_VERSION} -m pip install --no-cache uv && \
-    uv venv --python=${PYTHON_VERSION} && \
-    python --version && \
+ENV PATH="/opt/venv/bin:/root/.local/bin:$PATH"
+RUN dnf -y install python3-pip && \
+    dnf clean all
+
+RUN python3 -m pip install --no-cache uv && \
+    uv venv /opt/venv --python=${PYTHON_VERSION}
+
+RUN python3 --version && \
     uv self version
 
 
@@ -41,7 +44,8 @@ COPY requirements/maca.txt requirements/maca.txt
 COPY requirements/maca_private.txt requirements/maca_private.txt
 COPY requirements/constraints.txt requirements/constraints.txt
 
-RUN uv pip install -r requirements/maca.txt \
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install -r requirements/maca.txt \
     --extra-index-url ${UV_EXTRA_INDEX_URL} --trusted-host ${UV_TRUSTED_HOST}
 
 # The following packages need subscription, so we just SKIP them. 
@@ -116,34 +120,39 @@ FROM base AS build
 ARG PIP_INDEX_URL UV_INDEX_URL
 ARG PIP_EXTRA_INDEX_URL UV_EXTRA_INDEX_URL
 
-
-RUN uv pip install numpy==1.26.4
-RUN uv pip install /opt/maca/share/mxsml/pymxsml-*.whl
-
+ARG VLLM_VERSION
 # install vllm (or build from source)
-RUN git clone --depth 1 --branch v0.11.0 https://github.com/vllm-project/vllm && \
+RUN git clone --depth 1 --branch v${VLLM_VERSION} https://github.com/vllm-project/vllm
+
+RUN --mount=type=cache,target=/root/.cache/uv \
     cd vllm && \
-    python use_existing_torch.py && \
+    python3 use_existing_torch.py && \
     uv pip install -r requirements/build.txt && \
-    VLLM_TARGET_DEVICE=empty python -m build -w -n && \
-    mkdir -p /workspace/wheels/ && \
-    cp dist/vllm-*.whl /workspace/wheels/ && \
+    VLLM_TARGET_DEVICE=empty uv pip install . -v --no-build-isolation && \
     cd .. && rm -rf vllm
 
-# install vllm-metax
+# install vllm-metax build dependencies
 COPY requirements/build.txt requirements/build.txt
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install -r requirements/build.txt
+
+# RUN uv pip install numpy==1.26.4
+RUN uv pip install /opt/maca/share/mxsml/pymxsml-*.whl
 
 COPY . vllm-metax
 WORKDIR /workspace/vllm-metax
-RUN uv pip install -r requirements/build.txt && \
-    python -m build -w && \
-    mkdir -p /workspace/wheels/ && \
-    cp dist/vllm_metax-*.whl /workspace/wheels/
+
+# if USE_SCCACHE is set, use sccache to speed up compilation
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install . -v \
+    --extra-index-url ${UV_EXTRA_INDEX_URL} --trusted-host ${UV_TRUSTED_HOST}
 
 # We need this to copy .so files to vllm's location
 # Remove when master support (might be v0.11.1)
+RUN uv pip list | grep vllm
 RUN vllm_metax_init
 
+WORKDIR /workspace
 
 ## Install ray
 
@@ -158,14 +167,3 @@ RUN vllm_metax_init
 #     python apply_ray_patch.py mx_ray_2.46.batch && \
 #     if [ -f "/opt/conda/bin/ray" ]; then ln -sf /opt/conda/bin/ray /bin/ray; fi
 #################### WHEEL BUILD IMAGE ####################
-
-
-#################### FINAL IMAGE ####################
-FROM base AS final
-
-WORKDIR /workspace
-
-COPY --from=build /workspace/wheels/ /workspace/wheels/
-RUN uv pip install wheels/vllm-*.whl && \
-    uv pip install wheels/vllm_metax-*.whl
-#################### FINAL IMAGE ####################
