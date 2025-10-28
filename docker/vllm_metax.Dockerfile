@@ -17,14 +17,14 @@ ARG UV_INDEX_URL=${PIP_INDEX_URL}
 ARG UV_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}
 ARG UV_TRUSTED_HOST
 
-# Install system dependencies and uv, then create Python virtual environment
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
-    $HOME/.local/bin/uv venv /opt/venv --python ${PYTHON_VERSION} && \
-    rm -f /usr/bin/python3 /usr/bin/python3-config /usr/bin/pip && \
-    ln -s /opt/venv/bin/python3 /usr/bin/python3 && \
-    ln -s /opt/venv/bin/python3-config /usr/bin/python3-config && \
-    ln -s /opt/venv/bin/pip /usr/bin/pip && \
-    python3 --version && python3 -m pip --version
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH=${VIRTUAL_ENV}/bin:$PATH
+RUN dnf install python${PYTHON_VERSION}-pip && \
+    dnf clean all && \
+    python${PYTHON_VERSION} -m pip install --no-cache uv && \
+    uv venv --python=${PYTHON_VERSION} && \
+    python --version && \
+    uv self version
 
 # Activate virtual environment and add uv to PATH
 ENV VIRTUAL_ENV="/opt/venv"
