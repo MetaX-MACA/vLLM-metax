@@ -1,22 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-from typing import Optional
 
 import torch
 
 from vllm.platforms import current_platform
 
 
-# yapf: disable
 def merge_attn_states(
     output: torch.Tensor,
     prefix_output: torch.Tensor,
     prefix_lse: torch.Tensor,
     suffix_output: torch.Tensor,
     suffix_lse: torch.Tensor,
-    output_lse: Optional[torch.Tensor] = None,
+    output_lse: torch.Tensor | None = None,
 ) -> None:
-
     # NOTE(DefTruth): Currently, custom merge_attn_states CUDA kernel
     # is not support for FP8 dtype, fallback to use Triton kernel.
     def supported_dtypes(o: torch.Tensor) -> bool:
@@ -33,14 +30,20 @@ def merge_attn_states(
         return headdim % 8 == 0
 
     # /------------------------  Metax Modification -------------------------\
-    if (current_platform.is_out_of_tree() and supported_dtypes(output)
-            and supported_headdim(output)):
+    if (
+        current_platform.is_out_of_tree()
+        and supported_dtypes(output)
+        and supported_headdim(output)
+    ):
         # \------------------------  Metax Modification -------------------------/
         from vllm._custom_ops import merge_attn_states
-        return merge_attn_states(output, prefix_output, prefix_lse,
-                                 suffix_output, suffix_lse, output_lse)
+
+        return merge_attn_states(
+            output, prefix_output, prefix_lse, suffix_output, suffix_lse, output_lse
+        )
     else:
-        from vllm.attention.ops.triton_merge_attn_states import (
-            merge_attn_states)
-        return merge_attn_states(output, prefix_output, prefix_lse,
-                                 suffix_output, suffix_lse, output_lse)
+        from vllm.attention.ops.triton_merge_attn_states import merge_attn_states
+
+        return merge_attn_states(
+            output, prefix_output, prefix_lse, suffix_output, suffix_lse, output_lse
+        )
