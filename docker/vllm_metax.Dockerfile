@@ -6,7 +6,8 @@ ARG UV_TRUSTED_HOST=repos.metax-tech.com
 ARG UV_INDEX_URL=${PIP_INDEX_URL}
 ARG UV_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}
 ARG CU_BRIDGE_VERSION=3.1.0
-ARG VLLM_VERSION=0.11.0
+# may need passing a particular vllm version during build
+ARG VLLM_VERSION
 
 #################### BASE BUILD IMAGE ####################
 FROM ${BUILD_BASE_IMAGE} AS base
@@ -122,7 +123,7 @@ ARG PIP_EXTRA_INDEX_URL UV_EXTRA_INDEX_URL
 
 ARG VLLM_VERSION
 # install vllm (or build from source)
-RUN git clone --depth 1 --branch v${VLLM_VERSION} https://github.com/vllm-project/vllm
+RUN git clone --depth 1 --branch ${VLLM_VERSION} https://github.com/vllm-project/vllm
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     cd vllm && \
@@ -147,12 +148,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install . -v \
     --extra-index-url ${UV_EXTRA_INDEX_URL} --trusted-host ${UV_TRUSTED_HOST}
 
+RUN rm -rf vllm-metax
+
 # We need this to copy .so files to vllm's location
 # Remove when master support (might be v0.11.1)
-RUN uv pip list | grep vllm
 RUN vllm_metax_init
 
 WORKDIR /workspace
+
 
 ## Install ray
 
