@@ -632,7 +632,7 @@ def sparse_attn_indexer(
             decode_metadata.seq_lens,
             decode_metadata.block_table,
             decode_metadata.schedule_metadata,
-            max_context_len=max_model_len,
+            max_model_len,
         )
         # padded query len
         current_device = padded_q_bf16_decode_tokens.device
