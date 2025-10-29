@@ -51,23 +51,10 @@ metax_enhanced_model = "vllm_metax:register_model"
 
 [tool.setuptools_scm]
 # no extra settings needed, presence enables setuptools-scm
-local_scheme = "node-and-date"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["vllm_metax*"]
-
-[tool.yapfignore]
-ignore_patterns = [
-    ".buildkite/**",
-    "benchmarks/**",
-    "build/**",
-    "examples/**"
-]
-
-[tool.ruff]
-# Allow lines to be as long as 80.
-line-length = 80
 
 [tool.ruff.lint.per-file-ignores]
 "vllm_metax/third_party/**" = ["ALL"]
@@ -108,11 +95,10 @@ ignore = [
     "B007",
     # f-string format
     "UP032",
-    # Can remove once 3.10+ is the minimum Python version
-    "UP007",
-    "UP006",
-    "UP035"
 ]
+
+[tool.ruff.format]
+docstring-code-format = true
 
 [tool.mypy]
 plugins = ['pydantic.mypy']
@@ -120,41 +106,14 @@ ignore_missing_imports = true
 check_untyped_defs = true
 follow_imports = "silent"
 
-# After fixing type errors resulting from follow_imports: "skip" -> "silent",
-# move the directory here and remove it from tools/mypy.sh
-files = [
-    "vllm_metax/*.py",
-]
-# TODO(woosuk): Include the code from Megatron and HuggingFace.
-exclude = [
-    'vllm_metax/distributed/.*\.py$',
-    # Ignore triton kernels in ops.
-    'vllm_metax/attention/ops/.*\.py$'
-]
-
-[[tool.mypy.overrides]]
-module = [
-    "vllm.*",
-]
-ignore_missing_imports = true
-
-[tool.isort]
-skip_glob = [
-    ".buildkite/*",
-    "benchmarks/*",
-    "examples/*",
-    "tests/*",
-    "vllm_metax/*"
-]
-use_parentheses = true
-skip_gitignore = true
-
 [tool.pytest.ini_options]
 markers = [
+    "slow_test",
     "skip_global_cleanup",
     "core_model: enable this model test in each PR instead of only nightly",
     "hybrid_model: models that contain mamba layers (including pure SSM and hybrid architectures)",
     "cpu_model: enable this model test in CPU tests",
+    "cpu_test: mark test as CPU-only test",
     "split: run this test as part of a split",
     "distributed: run this test only in distributed GPU tests",
     "skip_v1: do not run this test with v1",
@@ -234,6 +193,8 @@ fo = "fo"
 ba = "ba"
 
 [tool.typos.type.py.extend-words]
+ba = "ba"
+nd = "nd"
 
 [tool.typos.type.cpp]
 extend-glob = ["*.cu"]
@@ -351,22 +312,5 @@ windo = "windo"
 
 [tool.typos.type.vimscript.extend-words]
 
-[tool.uv.pip]
-index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-extra-index-url = ["https://pypi.org/simple"]
-
-[tool.uv] 
-no-build-isolation-package = [
-    "torch", "torchaudio", "torchvision",
-    "xformers",
-    "lm_eval", 
-    "causal_conv1d", 
-    "dropout_layer_norm",
-    "flash_attn",
-    "flash-linear-attention",
-    "flash_mla",
-    "flashinfer",
-    "fused_dense_lib",
-    "mamba_ssm",
-    "rotary_emb",
-]
+[tool.uv]
+no-build-isolation-package = ["torch"]

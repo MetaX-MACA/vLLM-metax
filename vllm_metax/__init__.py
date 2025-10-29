@@ -58,12 +58,6 @@ def post_installation():
     print(f"vLLM_plugin Dist Location: [{plugin_dist_path}]")
 
     files_to_copy = {
-        "_C.abi3.so":
-        vllm_dist_path,
-        "_moe_C.abi3.so":
-        vllm_dist_path,
-        "cumem_allocator.abi3.so":
-        vllm_dist_path,
         # workaround for Qwen3-Next
         # for get_available_device: set cuda
         "patch/vllm_substitution/utils.py":
