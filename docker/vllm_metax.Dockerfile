@@ -124,21 +124,24 @@ ARG PIP_EXTRA_INDEX_URL UV_EXTRA_INDEX_URL
 ARG VLLM_VERSION
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    VLLM_TARGET_DEVICE=empty uv pip install --no-binary=vllm vllm==${VLLM_VERSION}
+    VLLM_TARGET_DEVICE=empty UV_EXTRA_INDEX_URL=https://repos.metax-tech.com/r/maca-pypi/simple \
+    UV_INDEX_STRATEGY=unsafe-best-match \
+    UV_OVERRIDE=requirements/maca_private.txt \
+    uv pip install --no-binary=vllm vllm==${VLLM_VERSION}
 
 # install vllm-metax build dependencies
 COPY requirements/build.txt requirements/build.txt
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install -r requirements/build.txt
 
-RUN uv pip install numpy==1.26.4 /opt/maca/share/mxsml/pymxsml-*.whl
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install numpy==1.26.4 /opt/maca/share/mxsml/pymxsml-*.whl
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,src=.,target=/workspace/vllm-metax \
+    --mount=type=bind,src=.,target=/workspace/vllm-metax,rw \
     cd /workspace/vllm-metax && \
     uv pip install \
         --extra-index-url ${UV_EXTRA_INDEX_URL} \
-        --no-build-isolation -v \
         . -v && \
         vllm_metax_init
 
