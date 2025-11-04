@@ -18,7 +18,7 @@ from vllm.model_executor.model_loader.weight_utils import default_weight_loader
 from vllm.sequence import IntermediateTensors
 
 from vllm_metax.models.deepseek_v2 import (DeepseekV2DecoderLayer,
-                          get_spec_layer_idx_from_weight_name)
+                                           get_spec_layer_idx_from_weight_name)
 from vllm.model_executor.models.interfaces import SupportsPP
 from vllm.model_executor.models.utils import maybe_prefix
 

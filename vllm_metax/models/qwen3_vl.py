@@ -71,8 +71,10 @@ from vllm.sequence import IntermediateTensors
 from vllm.transformers_utils.config import uses_mrope
 from vllm.utils import is_list_of
 
-from vllm.model_executor.models.interfaces import (MultiModalEmbeddings, SupportsLoRA,
-                         SupportsMultiModal, SupportsPP)
+from vllm.model_executor.models.interfaces import (MultiModalEmbeddings,
+                                                   SupportsLoRA,
+                                                   SupportsMultiModal,
+                                                   SupportsPP)
 from .qwen2_5_vl import (Qwen2_5_VisionAttention,
                          Qwen2_5_VisionRotaryEmbedding,
                          Qwen2_5_VLImageEmbeddingInputs, Qwen2_5_VLImageInputs,
@@ -81,8 +83,15 @@ from .qwen2_5_vl import (Qwen2_5_VisionAttention,
                          Qwen2_5_VLVideoPixelInputs)
 from vllm.model_executor.models.qwen2_vl import Qwen2VLProcessingInfo
 from vllm.model_executor.models.qwen3 import Qwen3ForCausalLM, Qwen3Model
+<<<<<<< HEAD
 from vllm.model_executor.models.utils import (AutoWeightsLoader, PPMissingLayer, WeightsMapper,
                     maybe_prefix, merge_multimodal_embeddings)
+=======
+from vllm.model_executor.models.utils import (AutoWeightsLoader,
+                                              PPMissingLayer, WeightsMapper,
+                                              maybe_prefix,
+                                              merge_multimodal_embeddings)
+>>>>>>> upstream/master
 from vllm.model_executor.models.vision import get_vit_attn_backend, run_dp_sharded_mrope_vision_model
 
 logger = init_logger(__name__)

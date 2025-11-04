@@ -67,7 +67,7 @@ from vllm.model_executor.models.utils import sequence_parallel_chunk
 from vllm.platforms import current_platform
 from vllm.sequence import IntermediateTensors
 from vllm.utils import cdiv, direct_register_custom_op
-from deep_gemm import bf16_mqa_logits, bf16_paged_mqa_logits
+from vllm_metax.utils.deep_gemm import bf16_mqa_logits, bf16_paged_mqa_logits
 from vllm_metax.v1.attention.backends.mla.indexer import (
     MacaDeepseekV32IndexerBackend as DeepseekV32IndexerBackend,
     DeepseekV32IndexerMetadata)
@@ -572,8 +572,8 @@ def sparse_attn_indexer(
         prefill_metadata = attn_metadata.prefill
         for chunk in prefill_metadata.chunks:
             _k_bf16 = torch.empty([chunk.total_seq_lens, head_dim],
-                                device=k_bf16.device,
-                                dtype=torch.bfloat16)
+                                  device=k_bf16.device,
+                                  dtype=torch.bfloat16)
             cp_gather_indexer_k_quant_cache(
                 kv_cache,
                 _k_bf16,

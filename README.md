@@ -82,40 +82,29 @@ git clone  --depth 1 --branch [branch-name] [vllm-metax-repo-url] && cd vllm-met
 ```
 There are two ways to build the plugin:
 
-- if you want to build the binary distribution :
+> build on *released* docker image
+> we need to add `-no-build-isolation` flag (or an equivalent one) during package building. 
+> Since all the requirements are already pre-installed in released docker image.
+
+- if you want to build the binary distribution:
 
 ```bash
 # install requirements for building
+python use_existing_metax.py
 pip install -r requirements/build.txt
 # build wheels
-python setup.py bdist_wheel
+python -m build -w -n
 # install wheels
 pip install dist/*.whl
 ```
 
-- Or, you could *build and install* the plugin via `pip`:
+- Or, install directly:
 
 ```bash
 # install requirements for building
+python use_existing_metax.py
 pip install -r requirements/build.txt
 # since we use our local pytorch, add the --no-build-isolation flag 
 # to avoid the conflict with the official pytorch
 pip install . -v --no-build-isolation
 ```
-
-> ***Note***: plugin would copy the `.so` files to the vllm_dist_path, which is the `vllm` under `pip show vllm | grep Location` by default.
->
-> If you :
->
-> - ***Skipped the building step*** and installed the binary distribution `.whl` from somewhere else(e.g. pypi).
->
-> - Or ***reinstalled*** the official vllm
->
-> You need **manually** executing the following command to initialize the plugin after the plugin installation:
-
-```bash
-$ vllm_metax_init
-```
-
-
-

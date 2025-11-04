@@ -92,6 +92,10 @@ class MacaPlatformBase(Platform):
         return True
 
     @classmethod
+    def is_sleep_mode_available(cls) -> bool:
+        return True
+
+    @classmethod
     def is_fully_connected(cls, device_ids: list[int]) -> bool:
         raise NotImplementedError
 

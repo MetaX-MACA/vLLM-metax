@@ -299,4 +299,5 @@ class NCCLLibrary:
         # self.NCCL_CHECK(self._funcs["mcclCommWindowDeregister"](comm, window))
         return
 
+
 vllm.distributed.device_communicators.pynccl_wrapper.NCCLLibrary = NCCLLibrary
