@@ -20,6 +20,15 @@ def register_model():
     ModelRegistry.register_model(
         "Qwen2_5_VLForConditionalGeneration",
         "vllm_metax.models.qwen2_5_vl:Qwen2_5_VLForConditionalGeneration")
+
+    ModelRegistry.register_model(
+        "Qwen3VLMoeForConditionalGeneration",
+        "vllm_metax.models.qwen3_vl_moe:Qwen3VLMoeForConditionalGeneration")
+
+    ModelRegistry.register_model(
+        "Qwen3MoeForCausalLM",
+        "vllm_metax.models.qwen3_moe:Qwen3MoeForCausalLM")
+
     ModelRegistry.register_model(
         "Qwen3VLForConditionalGeneration",
         "vllm_metax.models.qwen3_vl:Qwen3VLForConditionalGeneration")
