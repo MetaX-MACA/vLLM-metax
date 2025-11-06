@@ -36,7 +36,7 @@ export VLLM_INSTALL_PUNICA_KERNELS=1
 Clone vllm project:
 
 ```bash 
-git clone  --depth 1 --branch main https://github.com/vllm-project/vllm
+git clone  --depth 1 --branch v0.11.0 https://github.com/vllm-project/vllm
 cd vllm
 ```
 
@@ -75,6 +75,18 @@ Optionally, build a portable wheel which you can then install elsewhere:
 python -m build -w -n
 pip install dist/*.whl
 ``` 
+
+!!! note
+    vllm-metax need to manually copy the .so files to vllm's site-package folder.
+
+    This additional behavior has been fixed and removed in v0.11.1 or newer. But **before v0.11.1**, you may still need execute the command: 
+
+    ```bash
+    vllm_metax_init
+    ```
+
+    after your installation. And It's also **not recommended** to install plugin via editable mode. (This is usually unstable for library copy)
+
 
 ## Set up using UV (experimental)
 
