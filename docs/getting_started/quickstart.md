@@ -15,7 +15,7 @@ You could get the docker image at [MetaX develop community](https://developer.me
 |v0.11.0         |maca3.2.x.x   | not released |
 |master          |maca3.2.x.x.  | not released |
 
-> Note: All the vllm tests are based on the related maca version. Using incorresponding version of maca for vllm may cause unexpected bugs or errors. This is not garanteed.
+> Note: All the vllm tests are based on the related maca version. Using a non-corresponding version of maca for vllm may cause unexpected bugs or errors. Correct functionality is not guaranteed.
 
 ## Prerequisites
 
