@@ -122,37 +122,31 @@ ARG PIP_INDEX_URL UV_INDEX_URL
 ARG PIP_EXTRA_INDEX_URL UV_EXTRA_INDEX_URL
 
 ARG VLLM_VERSION
-# install vllm (or build from source)
-RUN git clone --depth 1 --branch ${VLLM_VERSION} https://github.com/vllm-project/vllm
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    cd vllm && \
-    python3 use_existing_torch.py && \
-    uv pip install -r requirements/build.txt && \
-    VLLM_TARGET_DEVICE=empty uv pip install . -v --no-build-isolation && \
-    cd .. && rm -rf vllm
+    VLLM_TARGET_DEVICE=empty UV_EXTRA_INDEX_URL=https://repos.metax-tech.com/r/maca-pypi/simple \
+    UV_INDEX_STRATEGY=unsafe-best-match \
+    UV_OVERRIDE=requirements/maca_private.txt \
+    uv pip install --no-binary=vllm vllm==${VLLM_VERSION}
 
 # install vllm-metax build dependencies
 COPY requirements/build.txt requirements/build.txt
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install -r requirements/build.txt
 
-# RUN uv pip install numpy==1.26.4
-RUN uv pip install /opt/maca/share/mxsml/pymxsml-*.whl
-
-COPY . vllm-metax
-WORKDIR /workspace/vllm-metax
-
-# if USE_SCCACHE is set, use sccache to speed up compilation
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install . -v \
-    --extra-index-url ${UV_EXTRA_INDEX_URL} --trusted-host ${UV_TRUSTED_HOST}
+    uv pip install numpy==1.26.4 /opt/maca/share/mxsml/pymxsml-*.whl
 
-RUN rm -rf vllm-metax
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,src=.,target=/workspace/vllm-metax,rw \
+    cd /workspace/vllm-metax && \
+    uv pip install \
+        --extra-index-url ${UV_EXTRA_INDEX_URL} \
+        . -v && \
+        vllm_metax_init
 
-# We need this to copy .so files to vllm's location
-# Remove when master support (might be v0.11.1)
-RUN vllm_metax_init
+# We need `vllm_metax_init` to copy .so files to vllm's location.
+# This can be removed once when master supports loading of external `.so`s   (might be v0.11.1)
 
 WORKDIR /workspace
 
