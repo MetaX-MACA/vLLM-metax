@@ -3,14 +3,18 @@
 ## Requirements
 
 - OS: Linux
-- Python: 3.10 -- 3.12
+- Python: 3.10
+- MACA：3.2.x.x
+- PyTorch：2.6
+
+> Note: We recommend using the official container images to build and run the development environment. You can get from [maca-pytorch:3.2.1.4-torch2.6-py310-ubuntu24.04-amd64](https://developer.metax-tech.com/softnova/docker)
 
 ## Set up using pip (without UV)
 
 ### Build wheel from source
 
 !!! note
-    If using pip, all the build and installation steps are based on *corresponding docker images*. You can find them on [quick start](../quickstart.md).
+    If using pip, all the build and installation steps are based on *corresponding docker images*. You can find them on [MetaX Dev Site](https://developer.metax-tech.com/softnova/docker).
     We need to add `-no-build-isolation` flag (or an equivalent one) during package building, since all the requirements are already pre-installed in released docker image.
 
 #### Setup environment variables
@@ -31,9 +35,10 @@ export LD_LIBRARY_PATH=${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu
 export VLLM_INSTALL_PUNICA_KERNELS=1
 ```
 
-#### Build vllm
 
-Clone vllm project:
+#### Build vLLM engine wothout device
+
+Clone vllm and checkout v0.11.0 tag:
 
 ```bash 
 git clone  --depth 1 --branch v0.11.0 https://github.com/vllm-project/vllm
@@ -48,7 +53,14 @@ pip install -r requirements/build.txt
 VLLM_TARGET_DEVICE=empty pip install -v . --no-build-isolation
 ```
 
-#### Build plugin
+#### Build MACA GPU plugin
+
+Clone vLLM-MetaX and checkout v0.11.0-dev branch:
+
+```bash
+git clone  --depth 1 --branch v0.11.0-dev https://github.com/MetaX-MACA/vLLM-metax
+cd vLLM-metax
+```
 
 Install the build requirments first:
 
