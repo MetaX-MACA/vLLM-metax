@@ -15,7 +15,8 @@ You could get the docker image at [MetaX develop community](https://developer.me
 |v0.11.0         |maca3.2.x.x   | not released |
 |master          |maca3.2.x.x.  | not released |
 
-> Note: All the vllm tests are based on the related maca version. Using a non-corresponding version of maca for vllm may cause unexpected bugs or errors. Correct functionality is not guaranteed.
+!!! important: 
+    All the vllm tests are based on the related maca version. Using a non-corresponding version of maca for vllm may cause unexpected bugs or errors. Correct functionality is not guaranteed.
 
 ## Prerequisites & Setup environment variables
 
@@ -24,29 +25,8 @@ To use vLLM MetaX, you need to install the MetaX Hardware Backend Plugin first, 
 !!! note
     By default, vLLM downloads models from [Hugging Face](https://huggingface.co/). If you would like to use models from [ModelScope](https://www.modelscope.cn), set the environment variable `VLLM_USE_MODELSCOPE` before initializing the engine.
 
-    ```shell
-    pip install modelscope
-    export VLLM_USE_MODELSCOPE=True
-    ```
-
-### Setup environment variables
-
 ```bash
-# setup MACA path
-export MACA_PATH="/opt/maca"
-
-# setup cu-bridge path
-export CUCC_PATH="${MACA_PATH}/tools/cu-bridge"
-export CUDA_PATH=/root/cu-bridge/CUDA_DIR
-export CUCC_CMAKE_ENTRY=2
-
-# update PATH ENV
-export PATH=${MACA_PATH}/mxgpu_llvm/bin:${MACA_PATH}/bin:${CUCC_PATH}/tools:${CUCC_PATH}/bin:${PATH}
-export LD_LIBRARY_PATH=${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu_llvm/lib:${LD_LIBRARY_PATH}
-
-export VLLM_INSTALL_PUNICA_KERNELS=1
-
-# use modelscope download models
+pip install modelscope
 export VLLM_USE_MODELSCOPE=True
 ```
 
@@ -62,23 +42,14 @@ python -c "from vllm import LLM; llm = LLM('facebook/opt-125m'); print('Engine i
 
 ## Offline Batched Inference
 
-With vLLM installed, you can start generating texts for list of input prompts (i.e. offline batch inferencing). See the example script: [examples/offline_inference/basic/basic.py](../../examples/offline_inference/basic/basic.py)
-
-The first line of this example imports the classes [LLM][vllm.LLM] and [SamplingParams][vllm.SamplingParams]:
-
-- [LLM][vllm.LLM] is the main class for running offline inference with vLLM engine.
-- [SamplingParams][vllm.SamplingParams] specifies the parameters for the sampling process.
+!!! note
+    Ref: [vllm's Offline Batched Inference](https://docs.vllm.ai/en/latest/getting_started/quickstart/#offline-batched-inference)
 
 ```python
 from vllm import LLM, SamplingParams
 ```
 
 The next section defines a list of input prompts and sampling parameters for text generation. The [sampling temperature](https://arxiv.org/html/2402.05201v1) is set to `0.8` and the [nucleus sampling probability](https://en.wikipedia.org/wiki/Top-p_sampling) is set to `0.95`. You can find more information about the sampling parameters [here](../api/README.md#inference-parameters).
-
-!!! important
-    By default, vLLM will use sampling parameters recommended by model creator by applying the `generation_config.json` from the Hugging Face model repository if it exists. In most cases, this will provide you with the best results by default if [SamplingParams][vllm.SamplingParams] is not specified.
-
-    However, if vLLM's default sampling parameters are preferred, please set `generation_config="vllm"` when creating the [LLM][vllm.LLM] instance.
 
 ```python
 prompts = [
@@ -147,22 +118,16 @@ for output in outputs:
 
 ## OpenAI-Compatible Server
 
-vLLM can be deployed as a server that implements the OpenAI API protocol. This allows vLLM to be used as a drop-in replacement for applications using OpenAI API.
-By default, it starts the server at `http://localhost:8000`. You can specify the address with `--host` and `--port` arguments. The server currently hosts one model at a time and implements endpoints such as [list models](https://platform.openai.com/docs/api-reference/models/list), [create chat completion](https://platform.openai.com/docs/api-reference/chat/completions/create), and [create completion](https://platform.openai.com/docs/api-reference/completions/create) endpoints.
+!!! note
+    Ref: [vllm's OpenAI-Compatible Server](https://docs.vllm.ai/en/latest/getting_started/quickstart/#openai-compatible-server)
+
+By default, it starts the server at `http://localhost:8000`. You can specify the address with `--host` and `--port` arguments. 
 
 Run the following command to start the vLLM server with the [Qwen2.5-1.5B-Instruct](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct) model:
 
 ```bash
 vllm serve Qwen/Qwen2.5-1.5B-Instruct
 ```
-
-!!! note
-    By default, the server uses a predefined chat template stored in the tokenizer.
-    You can learn about overriding it [here](../serving/openai_compatible_server.md#chat-template).
-!!! important
-    By default, the server applies `generation_config.json` from the huggingface model repository if it exists. This means the default values of certain sampling parameters can be overridden by those recommended by the model creator.
-
-    To disable this behavior, please pass `--generation-config vllm` when launching the server.
 
 This server can be queried in the same format as OpenAI API. For example, to list the models:
 
