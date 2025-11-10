@@ -43,7 +43,6 @@ Clone vllm and checkout v0.11.0 tag:
 ```bash 
 git clone  --depth 1 --branch v0.11.0 https://github.com/vllm-project/vllm
 cd vllm
-git switch -c v0.11.0
 ```
 
 Build with *empty device*:
