@@ -4,28 +4,28 @@
 # Metax PyPI source
 --extra-index-url https://repos.metax-tech.com/r/maca-pypi/simple
 
-torch==2.6.0+metax3.1.0.4
-torchaudio==2.4.1+metax3.1.0.4
-torchvision==0.15.1+metax3.1.0.4
-triton==3.0.0+metax3.1.0.4
-xformers==0.0.22+metax3.1.0.4torch2.6
+torch==2.6.0+metax3.2.1.3
+torchaudio==2.4.1+metax3.2.1.3
+torchvision==0.15.1+metax3.2.1.3
+triton==3.0.0+metax3.2.1.3
+xformers==0.0.22+metax3.2.1.3torch2.6
 
-apex==0.1+metax3.1.0.4
-causal_conv1d==1.5.0.post8+metax3.1.0.4torch2.6
-dropout_layer_norm==0.1+metax3.1.0.4torch2.6
+apex==0.1+metax3.2.1.3
+causal_conv1d==1.5.0.post8+metax3.2.1.3torch2.6
+dropout_layer_norm==0.1+metax3.2.1.3torch2.6
 
 # attention
-flash_attn==2.6.3+metax3.1.0.4torch2.6
-flash_linear_attention==0.1+metax3.1.0.4torch2.6
-flash_mla==1.0.1+metax3.1.0.4torch2.6
-flashinfer==0.2.2.post1+metax3.1.0.4torch2.6
-fused_dense_lib==2.6.3+metax3.1.0.4torch2.6
-mamba_ssm==2.2.4+metax3.1.0.4torch2.6
-mctlassEx==0.1.1+metax3.1.0.4torch2.6
+flash_attn==2.6.3+metax3.2.1.3torch2.6
+flash_linear_attention==0.1+metax3.2.1.3torch2.6
+flash_mla==1.0.1+metax3.2.1.3torch2.6
+flashinfer==0.2.6+metax3.2.1.3torch2.6
+fused_dense_lib==2.6.3+metax3.2.1.3torch2.6
+mamba_ssm==2.2.4+metax3.2.1.3torch2.6
+mctlassEx==0.1.1+metax3.2.1.3torch2.6
 
-rotary_emb==0.1+metax3.1.0.4torch2.6
-sageattention==2.0.1+metax3.1.0.4torch2.6
-spconv==2.1.0+metax3.1.0.4torch2.6
-xentropy_cuda_lib==0.1+metax3.1.0.4torch2.6
+rotary_emb==0.1+metax3.2.1.3torch2.6
+sageattention==2.0.1+metax3.2.1.3torch2.6
+spconv==2.1.0+metax3.2.1.3torch2.6
+xentropy_cuda_lib==0.1+metax3.2.1.3torch2.6
 
 # uv pip install -r requirements/maca.txt -c requirements/constraints.txt  --index-strategy unsafe-best-match --extra-index-url https://repos.metax-tech.com/r/maca-pypi/simple --trusted-host repos.metax-tech.com --dry-run
