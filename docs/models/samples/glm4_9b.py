@@ -73,7 +73,7 @@ if __name__ == '__main__':
     tokenizer = AutoTokenizer.from_pretrained(checkpoint_path)
 
     # Process messages for GLM-4 format if needed
-    processed_messages = process_glm4_messages(messages) if any(isinstance(msg.get('content'), list) for msg in messages) else messages
+    processed_messages = process_glm4_messages(messages)
 
     # Prepare inputs for the model
     inputs = [prepare_inputs_for_vllm(processed_messages, tokenizer)]
