@@ -5,9 +5,11 @@ ARG PIP_EXTRA_INDEX_URL=https://repos.metax-tech.com/r/maca-pypi/simple
 ARG UV_TRUSTED_HOST=repos.metax-tech.com
 ARG UV_INDEX_URL=${PIP_INDEX_URL}
 ARG UV_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}
-ARG CU_BRIDGE_VERSION=3.1.0
+
 # may need passing a particular vllm version during build
 ARG VLLM_VERSION
+ARG MACA_VERSION
+ARG CU_BRIDGE_VERSION=${MACA_VERSION}
 
 #################### BASE BUILD IMAGE ####################
 FROM ${BUILD_BASE_IMAGE} AS base
@@ -60,6 +62,8 @@ RUN yum makecache && yum install -y \
     libibverbs librdmacm libibumad \
     && yum clean all
 
+ARG MACA_VERSION
+
 # Installing Metax-Driver
 RUN printf "[metax-centos]\n\
 name=Maca Driver Yum Repository\n\
@@ -72,7 +76,7 @@ gpgcheck=0" > /etc/yum.repos.d/metax-driver-centos.repo
 # Here we want to get the mx-smi management tool. 
 # kernel version mismatch errors are ignored
 RUN yum makecache && \
-    yum install -y metax-driver mxgvm && \
+    yum install -y metax-driver-${MACA_VERSION}* mxgvm && \
     yum clean all && rm -rf /var/cache/yum /tmp/*
 
 # Installing MACA SDK
@@ -83,11 +87,11 @@ enabled=1\n\
 gpgcheck=0" > /etc/yum.repos.d/maca-sdk-rpm.repo
 
 RUN yum makecache && \
-    yum install -y maca_sdk && \
+    yum install -y maca_sdk-${MACA_VERSION}* && \
     yum clean all && rm -rf /var/cache/yum /tmp/*
 
 ## Install cu-bridge
-ARG CU_BRIDGE_VERSION
+ARG CU_BRIDGE_VERSION=3.1.0
 RUN cd /tmp/ && \
     export MACA_PATH=/opt/maca && \
     curl -o ${CU_BRIDGE_VERSION}.zip -LsSf https://gitee.com/metax-maca/cu-bridge/repository/archive/${CU_BRIDGE_VERSION}.zip && \
