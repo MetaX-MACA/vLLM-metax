@@ -45,6 +45,7 @@ Here the plugin would list all the **tested** model on Maca.
 | `Qwen3ForCausalLM` | Qwen3 | `Qwen/Qwen3-8B`, etc. | ✅︎ | ✅︎ |
 | `Qwen3MoeForCausalLM` | Qwen3MoE | `Qwen/Qwen3-30B-A3B`, etc. | ✅︎ | ✅︎ |
 | `Qwen3NextForCausalLM` | Qwen3NextMoE | `Qwen/Qwen3-Next-80B-A3B-Instruct`, etc. | ✅︎ | ✅︎ |
+| `Fairseq2LlamaForCausalLM` | Llama(fairseq2 format) | `mgleize/fairseq2-dummy-Llama-3.2-1B`, etc. | ✅ | ✅ |
 
 ## List of Multimodal Language Models
 
