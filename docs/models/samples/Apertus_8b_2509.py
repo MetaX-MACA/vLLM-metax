@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 This example demonstrates how to use apertus-8b-2509 model with vLLM.
-This model weight is randomly initialized and is only for testing purposes.
 
 Requirements:
 - vLLM: v0.11.0 or higher
