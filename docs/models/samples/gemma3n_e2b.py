@@ -5,6 +5,7 @@ Requirements:
 - vLLM: v0.11.0 or higher
 - vLLM-metax: v0.11.0 or higher
 - MACA SDK: 3.2.x.x or higher
+- timm: run `pip install timm`
 """
 
 from vllm import LLM, SamplingParams
