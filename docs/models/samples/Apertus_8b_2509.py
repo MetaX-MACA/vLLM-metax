@@ -47,7 +47,7 @@ def load_prompts(args) -> List[str]:
 def main():
     # Add some args to make program configurable from command line
     parser = argparse.ArgumentParser(description="Minimal offline inference with vLLM (batch prompts, simplified)")
-    parser.add_argument("--model", default="facebook/opt-125m",
+    parser.add_argument("--model", default="swiss-ai/Apertus-8B-2509",
                         help="Model name or local directory. If not provided, a small demo model is used. You can replace with e.g. meta-llama/Llama-3.2-1B-Instruct")
     parser.add_argument("-p", "--prompt", action="append",
                         help="Repeatable; provide multiple prompts by specifying multiple times")
