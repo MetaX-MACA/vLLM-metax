@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-This example demonstrates how to use gemma-3-1b-it model with vLLM.
+This example demonstrates how to use gemma-2b model with vLLM.
 Requirements:
 - vLLM: v0.11.0 or higher
 - vLLM-metax: v0.11.0 or higher
