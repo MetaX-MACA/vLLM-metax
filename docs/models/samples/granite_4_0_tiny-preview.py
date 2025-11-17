@@ -38,6 +38,7 @@ def main():
     llm = LLM(
         model=args.model,
         dtype="auto",
+        # WARNING: `trust_remote_code=True` is a security risk as it allows for arbitrary code execution from the model's repository. Only use this with models you trust.
         trust_remote_code=True,
         tensor_parallel_size=1,
         gpu_memory_utilization=0.90,
