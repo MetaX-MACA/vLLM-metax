@@ -38,7 +38,7 @@ def main():
     llm = LLM(
         model=args.model,
         dtype="auto",
-        trust_remote_code=True, # enable this to allow custom model code
+        trust_remote_code=True,  # DANGER: This is a security risk. Only enable for trusted models.
         gpu_memory_utilization=0.90,
     )
 
