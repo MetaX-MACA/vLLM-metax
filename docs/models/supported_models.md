@@ -45,7 +45,7 @@ Here the plugin would list all the **tested** model on Maca.
 | `Qwen3ForCausalLM` | Qwen3 | `Qwen/Qwen3-8B`, etc. | ✅︎ | ✅︎ |
 | `Qwen3MoeForCausalLM` | Qwen3MoE | `Qwen/Qwen3-30B-A3B`, etc. | ✅︎ | ✅︎ |
 | `Qwen3NextForCausalLM` | Qwen3NextMoE | `Qwen/Qwen3-Next-80B-A3B-Instruct`, etc. | ✅︎ | ✅︎ |
-| `BambaForCausalLM` | Bamba | `ibm-ai-platform/Bamba-9B`,`ibm-ai-platform/Bamba-9B-fp8` etc. | ✅︎ | ✅︎ |
+| `BambaForCausalLM` | Bamba | `ibm-ai-platform/Bamba-9B`, etc. | ✅︎ | ✅︎ |
 
 ## List of Multimodal Language Models
 
