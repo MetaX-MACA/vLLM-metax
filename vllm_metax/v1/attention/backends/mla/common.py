@@ -451,7 +451,7 @@ def use_flashinfer_prefill() -> bool:
 
 
 def use_cudnn_prefill() -> bool:
-    logger.info("cudnn prefill is not supported on Maca.")
+    logger.info_once("cudnn prefill is not supported on Maca.")
     return False
     # /------------------------  Metax Modification -------------------------\
     return (
@@ -465,7 +465,7 @@ def use_cudnn_prefill() -> bool:
 
 def use_trtllm_ragged_deepseek_prefill() -> bool:
     """Check if TRT-LLM ragged DeepSeek prefill should be used."""
-    logger.info("TRT-LLM ragged DeepSeek prefill is not supported on Maca.")
+    logger.info_once("TRT-LLM ragged DeepSeek prefill is not supported on Maca.")
     return False
     # /------------------------  Metax Modification -------------------------\
     return (

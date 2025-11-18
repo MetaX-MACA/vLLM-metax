@@ -216,24 +216,6 @@ class MacaPlatformBase(Platform):
             )
             compilation_config.cudagraph_mode = CUDAGraphMode.NONE
 
-        # Reduce the cudagraph capture sizes on Maca to avoid OOM issues
-        compilation_config.max_cudagraph_capture_size = 256
-        compilation_config.cudagraph_capture_sizes = [
-            size
-            for size in compilation_config.cudagraph_capture_sizes
-            if size <= compilation_config.max_cudagraph_capture_size
-        ]
-        compilation_config.compile_sizes = [
-            size
-            for size in compilation_config.compile_sizes
-            if size <= compilation_config.max_cudagraph_capture_size
-        ]
-        compilation_config.bs_to_padded_graph_size = [
-            size
-            for size in compilation_config.bs_to_padded_graph_size
-            if size <= compilation_config.max_cudagraph_capture_size
-        ]
-
         # Disable cascade attention for Maca platform currently
         if vllm_config.model_config is not None:
             model_config.disable_cascade_attn = True
