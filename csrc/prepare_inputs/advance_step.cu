@@ -1,3 +1,4 @@
+// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 /*
  * The goal of this GPU kernel is to advance input tensors on the GPU directly
  * PR: https://github.com/vllm-project/vllm/pull/6338

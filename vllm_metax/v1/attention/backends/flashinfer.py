@@ -1,3 +1,4 @@
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 """Attention layer with FlashInfer."""
 from __future__ import annotations
