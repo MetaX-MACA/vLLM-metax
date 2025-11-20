@@ -1,3 +1,4 @@
+// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 /**
  * This is a standalone test for custom allreduce.
  * To compile, make sure you have MPI and NCCL installed in your system.

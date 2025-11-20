@@ -1,3 +1,4 @@
+// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 #include "allspark_utils.cuh"
 #include <torch/all.h>
 #include "core/registration.h"

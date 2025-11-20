@@ -1,3 +1,4 @@
+// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 #include "cuda_utils.h"
 #ifdef USE_ROCM
   #include <hip/hip_runtime.h>
