@@ -404,6 +404,7 @@ def _is_cuda() -> bool:
 def _build_custom_ops() -> bool:
     return _is_cuda()
 
+
 def get_maca_version() -> Version:
     """
     Returns the MACA SDK Version
