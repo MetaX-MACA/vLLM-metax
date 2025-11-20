@@ -1,3 +1,4 @@
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 """This file is a pure Python wrapper for the cudart library.
 It avoids the need to compile a separate shared library, and is

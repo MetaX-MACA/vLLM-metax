@@ -1,3 +1,4 @@
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 # TODO: hotfix for subprocess while unpickle, remove after torch2.8 is released
 from vllm_metax.patch.hotfix import patch_utils  # noqa: F401
