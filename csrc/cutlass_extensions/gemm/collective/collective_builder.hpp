@@ -1,4 +1,6 @@
-// Modified from: cutlass/gemm/collective/builders/sm90_gmma_builder.inl
+// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights
+// Reserved. Modified from:
+// cutlass/gemm/collective/builders/sm90_gmma_builder.inl
 // clang-format off
 #pragma once
 
