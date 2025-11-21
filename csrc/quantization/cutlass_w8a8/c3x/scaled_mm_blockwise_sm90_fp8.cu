@@ -1,3 +1,4 @@
+// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 
 #include "scaled_mm_kernels.hpp"
 #include "scaled_mm_blockwise_sm90_fp8_dispatch.cuh"

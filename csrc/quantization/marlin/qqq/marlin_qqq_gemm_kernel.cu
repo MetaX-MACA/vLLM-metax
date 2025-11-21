@@ -1,3 +1,4 @@
+// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 /*
  * Adapted from
  * https://github.com/IST-DASLab/marlin/blob/master/marlin/marlin_cuda_kernel.cu
