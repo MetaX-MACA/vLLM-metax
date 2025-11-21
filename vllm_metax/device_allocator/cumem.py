@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
 # cumem-based pytorch pluggable allocator to implement sleep mode.
 # other approaches tried but failed:
 # - cuda-python package binding

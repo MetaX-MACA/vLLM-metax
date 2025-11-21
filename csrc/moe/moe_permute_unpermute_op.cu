@@ -1,3 +1,4 @@
+// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
 #include <c10/core/ScalarType.h>
 #include <torch/all.h>
 #include <ATen/cuda/CUDAContext.h>

@@ -49,7 +49,6 @@ vllm_collect_env = "vllm_metax:collect_env"
 
 [tool.setuptools_scm]
 # no extra settings needed, presence enables setuptools-scm
-local_scheme = "node-and-date"
 
 [tool.setuptools.packages.find]
 where = ["."]

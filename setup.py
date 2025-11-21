@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
 
 import importlib.util
 import json
@@ -121,7 +122,21 @@ class cmake_build_ext(build_ext):
             except AttributeError:
                 num_jobs = os.cpu_count()
 
-        nvcc_threads = 1
+        nvcc_threads = None
+        if _is_cuda() and get_nvcc_cuda_version() >= Version("11.2"):
+            # `nvcc_threads` is either the value of the NVCC_THREADS
+            # environment variable (if defined) or 1.
+            # when it is set, we reduce `num_jobs` to avoid
+            # overloading the system.
+            nvcc_threads = envs.NVCC_THREADS
+            if nvcc_threads is not None:
+                nvcc_threads = int(nvcc_threads)
+                logger.info(
+                    "Using NVCC_THREADS=%d as the number of nvcc threads.",
+                    nvcc_threads)
+            else:
+                nvcc_threads = 1
+            num_jobs = max(1, num_jobs // nvcc_threads)
 
         return num_jobs, nvcc_threads
 
@@ -405,6 +420,20 @@ def _build_custom_ops() -> bool:
     return _is_cuda()
 
 
+def get_nvcc_cuda_version() -> Version:
+    """Get the CUDA version from nvcc.
+
+    Adapted from https://github.com/NVIDIA/apex/blob/8b7a1ff183741dd8f9b87e7bafd04cfde99cea28/setup.py
+    """
+    assert CUDA_HOME is not None, "CUDA_HOME is not set"
+    nvcc_output = subprocess.check_output([CUDA_HOME + "/bin/nvcc", "-V"],
+                                          universal_newlines=True)
+    output = nvcc_output.split()
+    release_idx = output.index("release") + 1
+    nvcc_cuda_version = parse(output[release_idx].split(",")[0])
+    return nvcc_cuda_version
+
+
 def get_maca_version() -> Version:
     """
     Returns the MACA SDK Version
@@ -421,7 +450,6 @@ def get_maca_version() -> Version:
 def fixed_version_scheme(version: ScmVersion) -> str:
     return "0.10.2"
 
-
 def always_hash(version: ScmVersion) -> str:
     """
     Always include short commit hash and current date (YYYYMMDD)
@@ -432,7 +460,6 @@ def always_hash(version: ScmVersion) -> str:
         short_hash = version.node[:7]  # short commit id
         return f"g{short_hash}.d{date_str}"
     return f"unknown.{date_str}"
-
 
 def get_vllm_version() -> str:
     version = get_version(version_scheme=fixed_version_scheme,

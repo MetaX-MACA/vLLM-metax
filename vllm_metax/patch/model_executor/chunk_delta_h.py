@@ -2,6 +2,8 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 # SPDX-FileCopyrightText: Songlin Yang, Yu Zhang
 #
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
+#
 # This file contains code copied from the flash-linear-attention project.
 # The original source code was licensed under the MIT license and included
 # the following copyright notice:

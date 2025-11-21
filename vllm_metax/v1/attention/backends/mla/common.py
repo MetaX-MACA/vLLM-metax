@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
 """
 # MLA Common Components
 
@@ -1433,7 +1434,8 @@ class MLACommonImpl(MLAAttentionImpl[M], Generic[M]):
         assert attn_metadata.prefill is not None
         assert self.dcp_world_size is not None
 
-        has_context = False
+        # has_context = False
+        has_context = attn_metadata.prefill.chunked_context is not None
         kv_nope = self.kv_b_proj(kv_c_normed)[0].view(\
             -1, self.num_heads, self.qk_nope_head_dim + self.v_head_dim)
         k_nope, v = kv_nope\

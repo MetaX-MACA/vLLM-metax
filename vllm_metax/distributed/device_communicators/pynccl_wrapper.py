@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
 
 # This file is a pure Python wrapper for the NCCL library.
 # The main purpose is to use NCCL combined with CUDA graph.

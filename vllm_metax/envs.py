@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
 
 import os
 from typing import TYPE_CHECKING, Any, Callable, Optional
@@ -75,6 +76,14 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # if set, enable loading weight by transpose
     "MACA_VLLM_USE_TN_2_NN":
     lambda: os.environ.get("MACA_VLLM_USE_TN_2_NN", "0") == "1",
+
+    # if set, enable mutlass python api, only support scaled_mm and moe_w8a8 int8
+    "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API":
+    lambda: bool(int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_PYTHON_API", "0"))),
+
+    # if set, enable cutlass moe on stage2, only support bf16
+    "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE":
+    lambda: bool(int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE", "0"))),
 }
 
 # end-env-vars-definition

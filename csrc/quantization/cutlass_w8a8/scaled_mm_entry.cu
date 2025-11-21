@@ -1,9 +1,26 @@
+// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
 #include <cudaTypedefs.h>
 
 #include <c10/cuda/CUDAGuard.h>
 #include <torch/all.h>
 
 #include "cutlass_extensions/common.hpp"
+
+
+void cutlass_moe_mm_sm75(torch::Tensor& out, torch::Tensor const& a, torch::Tensor const& b,
+                         torch::Tensor const& moe_weight,
+                         torch::Tensor const& token_ids, torch::Tensor const& expert_ids, 
+                         torch::Tensor const& num_tokens_post_padded, int64_t num_valid_tokens, 
+                         int64_t topk, bool mul_routed_weight);
+
+int64_t cutlass_moe_mm_gemm_kernel_m_w8a8_sm75(int64_t num_valid_tokens, int64_t N, int64_t K, int64_t group);
+
+void cutlass_moe_mm_w8a8_sm75(torch::Tensor const& a, torch::Tensor const& b, torch::Tensor& c,
+  torch::Tensor const& a_scales, torch::Tensor const& b_scales, torch::Tensor const& moe_weight,
+  torch::Tensor const& token_ids, torch::Tensor const& expert_ids, 
+  torch::Tensor const& num_tokens_post_padded, 
+  int64_t N, int64_t K, int64_t EM, int64_t num_valid_tokens, int64_t topk, bool mul_routed_weight);
+
 
 void cutlass_scaled_mm_sm75(torch::Tensor& c, torch::Tensor const& a,
                             torch::Tensor const& b,
@@ -31,11 +48,45 @@ bool cutlass_group_gemm_supported(int64_t cuda_device_capability) {
   return false;
 }
 
+int64_t cutlass_moe_mm_gemm_kernel_m_w8a8(int64_t num_valid_tokens, 
+                                          int64_t N, int64_t K, int64_t group) {
+  return cutlass_moe_mm_gemm_kernel_m_w8a8_sm75(num_valid_tokens, N, K, group);
+}
+
+void cutlass_moe_mm_w8a8(torch::Tensor const& a, torch::Tensor const& b, torch::Tensor& c,
+  torch::Tensor const& a_scales, torch::Tensor const& b_scales, torch::Tensor const& moe_weight,
+  torch::Tensor const& token_ids, torch::Tensor const& expert_ids, 
+  torch::Tensor const& num_tokens_post_padded, 
+  int64_t N, int64_t K, int64_t EM, int64_t num_valid_tokens, int64_t topk, bool mul_routed_weight) {
+
+  cutlass_moe_mm_w8a8_sm75(a, b, c, a_scales, b_scales, moe_weight, token_ids, expert_ids,
+                           num_tokens_post_padded, N, K, EM, num_valid_tokens, topk, mul_routed_weight);
+}
+
 void cutlass_scaled_mm(torch::Tensor& c, torch::Tensor const& a,
                        torch::Tensor const& b, torch::Tensor const& a_scales,
                        torch::Tensor const& b_scales,
                        std::optional<torch::Tensor> const& bias) {
   cutlass_scaled_mm_sm75(c, a, b, a_scales, b_scales, bias);
+}
+
+void cutlass_moe_bf16_mm(
+  torch::Tensor& out, torch::Tensor const& a, torch::Tensor const& b,
+  torch::Tensor const& moe_weight,
+  torch::Tensor const& token_ids, torch::Tensor const& expert_ids, 
+  torch::Tensor const& num_tokens_post_padded, int64_t num_valid_tokens, 
+  int64_t topk, bool mul_routed_weight) {
+
+#ifdef USE_MACA
+  cutlass_moe_mm_sm75(out, a, b, moe_weight, token_ids, expert_ids, 
+                      num_tokens_post_padded, num_valid_tokens, 
+                      topk, mul_routed_weight);
+  
+  return;
+#endif
+TORCH_CHECK_NOT_IMPLEMENTED(
+      false,
+      "No compiled cutlass_moe_bf16_mm for current ops");
 }
 
 void cutlass_moe_mm(

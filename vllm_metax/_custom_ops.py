@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
+import contextlib
 import importlib
 from typing import TYPE_CHECKING, Optional, Union
 
@@ -9,6 +10,9 @@ import torch.library
 import vllm.envs as envs
 from vllm.logger import init_logger
 from vllm.platforms import current_platform
+from vllm.utils import direct_register_custom_op
+
+from vllm_metax import envs as mx_envs
 
 logger = init_logger(__name__)
 
@@ -31,6 +35,11 @@ else:
 
         return register
 
+mctlass_op = None
+with contextlib.suppress(ImportError):
+    if mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API and mctlass_op is None:
+        import mctlassEx
+        mctlass_op = mctlassEx.mctlassExHandleWrapper()
 
 # page attention ops
 def paged_attention_v1(
@@ -446,9 +455,136 @@ def cutlass_scaled_batch_mm(
     out = torch.empty((a.shape[0], a.shape[1], b.shape[2]),
                       device=a.device,
                       dtype=out_dtype)
-    torch.ops._C.cutlass_scaled_mm(out, a, b, scale_a, scale_b, bias)
+    # use python api
+    if mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API:
+        torch.ops.vllm.mctlassEx_w8a8_scaled_mm_azp(out, a, b, scale_a, scale_b, bias)
+    else:
+        torch.ops._C.cutlass_scaled_mm(out, a, b, scale_a, scale_b, bias)
+    return out
+def mctlassEx_fused_moe_get_kernel_m(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor, topk: int) -> int:
+    return mctlass_op.mctlass_fuse_moe_get_kernel_m(a, b, c, topk)
+
+def mctlassEx_fused_moe_gemm(a: torch.Tensor,
+                        b: torch.Tensor,
+                        c: torch.Tensor,
+                        a_scales: torch.Tensor,
+                        b_scales: torch.Tensor,
+                        topk_weights: torch.Tensor,
+                        token_ids: torch.Tensor,
+                        expert_ids: torch.Tensor,
+                        num_tokens_post_padded: torch.Tensor,
+                        EM: int,
+                        topk: int,
+                        mul_routed_weight: bool) -> torch.Tensor:
+    # TODO: need mctlass to fix it 
+    stream = torch.cuda.current_stream().cuda_stream
+    c1 = c.view(-1, c.size(-1)).contiguous()
+    mctlass_op.mctlass_fuse_moe_gemm(a, b, c1, a_scales, b_scales, 
+                                     topk_weights, token_ids, 
+                                     expert_ids, num_tokens_post_padded, EM, topk, 
+                                     mul_routed_weight, stream)
+    return c1.reshape(c.shape)
+
+def mctlassEx_fused_moe_gemm_fake(a: torch.Tensor,
+                        b: torch.Tensor,
+                        c: torch.Tensor,
+                        a_scales: torch.Tensor,
+                        b_scales: torch.Tensor,
+                        topk_weights: torch.Tensor,
+                        token_ids: torch.Tensor,
+                        expert_ids: torch.Tensor,
+                        num_tokens_post_padded: torch.Tensor,
+                        EM: int,
+                        topk: int,
+                        mul_routed_weight: bool) -> torch.Tensor:
+    return c
+    
+direct_register_custom_op(
+    op_name="mctlassEx_fused_moe_gemm",
+    op_func=mctlassEx_fused_moe_gemm,
+    mutates_args=[],
+    fake_impl=mctlassEx_fused_moe_gemm_fake,
+    tags=(torch.Tag.needs_fixed_stride_order, ),
+)
+
+def cutlass_moe_mm_gemm_kernel_m_w8a8(num_valid_tokens: int, N: int, K: int, group: int) -> int:
+    return torch.ops._C.cutlass_moe_mm_gemm_kernel_m_w8a8(num_valid_tokens, N, K, group)
+
+def cutlass_moe_mm_w8a8(a: torch.Tensor,
+                        b: torch.Tensor,
+                        c: torch.Tensor,
+                        a_scales: torch.Tensor,
+                        b_scales: torch.Tensor,
+                        moe_weight: torch.Tensor,
+                        token_ids: torch.Tensor,
+                        expert_ids: torch.Tensor,
+                        num_tokens_post_padded: torch.Tensor,
+                        N: int,
+                        K: int,
+                        EM: int,
+                        num_valid_tokens: int,
+                        topk: int,
+                        mul_routed_weight: bool
+                        ) -> torch.Tensor:
+    
+    # TODO: mctlass need to fix it 
+    if False and mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API: 
+        torch.ops.vllm.mctlassEx_fused_moe_gemm(a, b, c, a_scales, b_scales,
+                        moe_weight, token_ids, expert_ids, num_tokens_post_padded,
+                        EM, topk, mul_routed_weight)
+    else:
+        torch.ops._C.cutlass_moe_mm_w8a8(a, b, c, a_scales, b_scales,
+                        moe_weight, token_ids, expert_ids, num_tokens_post_padded,
+                        N, K, EM, num_valid_tokens, topk, mul_routed_weight)
+
+
+
+def cutlass_moe_bf16_mm(out: torch.Tensor,
+                        a: torch.Tensor,
+                        b: torch.Tensor,
+                        moe_weight: torch.Tensor,
+                        token_ids: torch.Tensor, 
+                        expert_ids: torch.Tensor, 
+                        num_tokens_post_padded: torch.Tensor, 
+                        num_valid_tokens: int, 
+                        topk: int, 
+                        mul_routed_weight: bool) -> torch.Tensor:
+
+    return torch.ops._C.cutlass_moe_bf16_mm(out, a, b, moe_weight, token_ids, expert_ids, 
+                        num_tokens_post_padded, num_valid_tokens, topk, mul_routed_weight)
+
+def mctlassEx_w8a8_scaled_mm_azp(
+                      out: torch.Tensor,
+                      a: torch.Tensor,
+                      b: torch.Tensor,
+                      scale_a: torch.Tensor,
+                      scale_b: torch.Tensor,
+                      bias: Optional[torch.Tensor] = None, 
+                      azp_adj: Optional[torch.Tensor] = None,
+                      azp: Optional[torch.Tensor] = None) -> torch.Tensor:
+    stream = torch.cuda.current_stream().cuda_stream
+    mctlass_op.mctlass_w8a8_scaled_mm_azp( a, b, out, scale_a, scale_b.T, 
+                                          bias, azp_adj, azp, stream)
+    return out
+    
+def mctlassEx_w8a8_scaled_mm_azp_fake(
+                      out: torch.Tensor,
+                      a: torch.Tensor,
+                      b: torch.Tensor,
+                      scale_a: torch.Tensor,
+                      scale_b: torch.Tensor,
+                      bias: Optional[torch.Tensor] = None, 
+                      azp_adj: Optional[torch.Tensor] = None,
+                      azp: Optional[torch.Tensor] = None) -> torch.Tensor:
     return out
 
+direct_register_custom_op(
+    op_name="mctlassEx_w8a8_scaled_mm_azp",
+    op_func=mctlassEx_w8a8_scaled_mm_azp,
+    mutates_args=[],
+    fake_impl=mctlassEx_w8a8_scaled_mm_azp_fake,
+    tags=(torch.Tag.needs_fixed_stride_order, ),
+)
 
 def cutlass_scaled_mm(a: torch.Tensor,
                       b: torch.Tensor,
@@ -495,7 +631,10 @@ def cutlass_scaled_mm(a: torch.Tensor,
 
     out = torch.empty((m, n), dtype=out_dtype, device=a.device)
 
-    torch.ops._C.cutlass_scaled_mm(out, a, b, scale_a, scale_b, bias)
+    if mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API:
+        torch.ops.vllm.mctlassEx_w8a8_scaled_mm_azp(out, a, b, scale_a, scale_b, bias)
+    else:
+        torch.ops._C.cutlass_scaled_mm(out, a, b, scale_a, scale_b, bias)
 
     return out
 
@@ -523,7 +662,10 @@ def cutlass_scaled_mm_azp(a: torch.Tensor,
     n = b.shape[1]
     out = torch.empty((m, n), dtype=out_dtype, device=a.device)
 
-    torch.ops._C.cutlass_scaled_mm_azp(out, a, b, scale_a, scale_b, azp_adj,
+    if False and mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API: # not supported for now
+        torch.ops.vllm.mctlassEx_w8a8_scaled_mm_azp(out, a, b, scale_a, scale_b, bias, azp_adj, azp)
+    else:
+        torch.ops._C.cutlass_scaled_mm_azp(out, a, b, scale_a, scale_b, azp_adj,
                                        azp, bias)
     return out
 
@@ -1109,6 +1251,36 @@ def gather_cache(src_cache: torch.Tensor,
                  seq_starts: Optional[torch.Tensor] = None) -> None:
     torch.ops._C_cache_ops.gather_cache(src_cache, dst, block_table,
                                         cu_seq_lens, batch_size, seq_starts)
+
+def convert_fp8(output: torch.Tensor,
+                input: torch.Tensor,
+                scale: float = 1.0,
+                kv_dtype: str = "fp8") -> None:
+    torch.ops._C_cache_ops.convert_fp8(output, input, scale, kv_dtype)
+
+
+def gather_and_maybe_dequant_cache(
+        src_cache: torch.Tensor,
+        dst: torch.Tensor,
+        block_table: torch.Tensor,
+        cu_seq_lens: torch.Tensor,
+        batch_size: int,
+        kv_cache_dtype: str,
+        scale: torch.Tensor,
+        seq_starts: Optional[torch.Tensor] = None) -> None:
+    torch.ops._C_cache_ops.gather_and_maybe_dequant_cache(
+        src_cache, dst, block_table, cu_seq_lens, batch_size, kv_cache_dtype,
+        scale, seq_starts)
+
+
+def cp_gather_cache(src_cache: torch.Tensor,
+                    dst: torch.Tensor,
+                    block_table: torch.Tensor,
+                    cu_seq_lens: torch.Tensor,
+                    batch_size: int,
+                    seq_starts: Optional[torch.Tensor] = None) -> None:
+    torch.ops._C_cache_ops.cp_gather_cache(src_cache, dst, block_table,
+                                           cu_seq_lens, batch_size, seq_starts)
 
 
 def get_device_attribute(attribute: int, device: int) -> int:

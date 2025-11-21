@@ -1,3 +1,4 @@
+// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
 #pragma once
 
 #include <optional>
@@ -201,11 +202,26 @@ void cutlass_scaled_fp4_mm(torch::Tensor& D, torch::Tensor const& A,
                            torch::Tensor const& B, torch::Tensor const& A_sf,
                            torch::Tensor const& B_sf,
                            torch::Tensor const& alpha);
-
+int64_t cutlass_moe_mm_gemm_kernel_m_w8a8(int64_t num_valid_tokens,
+                                          int64_t N, int64_t K, int64_t group);
+void cutlass_moe_mm_w8a8(torch::Tensor const& a, torch::Tensor const& b, torch::Tensor& c,
+    torch::Tensor const& a_scales, torch::Tensor const& b_scales, torch::Tensor const& moe_weight,
+    torch::Tensor const& token_ids, torch::Tensor const& expert_ids,
+    torch::Tensor const& num_tokens_post_padded,
+    int64_t N, int64_t K, int64_t EM, int64_t num_valid_tokens, int64_t topk, bool mul_routed_weight);
+    
 void cutlass_scaled_mm(torch::Tensor& out, torch::Tensor const& a,
                        torch::Tensor const& b, torch::Tensor const& a_scales,
                        torch::Tensor const& b_scales,
                        std::optional<torch::Tensor> const& bias);
+
+
+void cutlass_moe_bf16_mm(
+    torch::Tensor& out, torch::Tensor const& a, torch::Tensor const& b,
+    torch::Tensor const& moe_weight,
+    torch::Tensor const& token_ids, torch::Tensor const& expert_ids, 
+    torch::Tensor const& num_tokens_post_padded, int64_t num_valid_tokens, 
+    int64_t topk, bool mul_routed_weight);
 
 void cutlass_moe_mm(
     torch::Tensor& out_tensors, torch::Tensor const& a_tensors,
