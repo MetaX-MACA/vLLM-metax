@@ -41,11 +41,12 @@ void convert_fp8(torch::Tensor& dst_cache, torch::Tensor& src_cache,
                  const double scale, const std::string& kv_cache_dtype);
 
 // void gather_cache(
-//     torch::Tensor const& src_cache,    // [NUM_BLOCKS, BLOCK_SIZE, ENTRIES...]
-//     torch::Tensor const& dst,          // [TOT_TOKENS, ENTRIES...]
-//     torch::Tensor const& block_table,  // [BATCH, BLOCK_INDICES]
+//     torch::Tensor const& src_cache,    // [NUM_BLOCKS, BLOCK_SIZE,
+//     ENTRIES...] torch::Tensor const& dst,          // [TOT_TOKENS,
+//     ENTRIES...] torch::Tensor const& block_table,  // [BATCH, BLOCK_INDICES]
 //     torch::Tensor const& cu_seq_lens,  // [BATCH+1]
-//     int64_t batch_size, std::optional<torch::Tensor> seq_starts = std::nullopt);
+//     int64_t batch_size, std::optional<torch::Tensor> seq_starts =
+//     std::nullopt);
 
 // TODO(hc): cp_gather_cache need support scaled kvcahe in the future.
 void cp_gather_cache(
@@ -63,7 +64,6 @@ void gather_and_maybe_dequant_cache(
     int64_t batch_size, const std::string& kv_cache_dtype,
     torch::Tensor const& scale,
     std::optional<torch::Tensor> seq_starts = std::nullopt);
-
 
 // Indexer K quantization and cache function
 void indexer_k_cache(

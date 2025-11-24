@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 from collections.abc import Iterable
 from typing import Optional
 
@@ -19,8 +19,8 @@ from vllm.model_executor.model_loader.weight_utils import default_weight_loader
 from vllm.model_executor.sampling_metadata import SamplingMetadata
 from vllm.sequence import IntermediateTensors
 
-from vllm.model_executor.models.deepseek_v2 import (DeepseekV2DecoderLayer,
-                          get_spec_layer_idx_from_weight_name)
+from vllm.model_executor.models.deepseek_v2 import (
+    DeepseekV2DecoderLayer, get_spec_layer_idx_from_weight_name)
 from vllm.model_executor.models.interfaces import SupportsPP
 from vllm.model_executor.models.utils import maybe_prefix
 

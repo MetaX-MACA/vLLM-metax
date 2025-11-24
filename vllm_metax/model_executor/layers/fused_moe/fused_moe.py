@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 """Fused MoE kernel."""
 import functools
 import json
@@ -836,7 +836,7 @@ def get_moe_configs(
     """
 
     # TODO(m01016): We need to offer a better way to distinguish between the
-    # Qwen3 and non-Qwen3 configs. E.g. we could checking model type and set 
+    # Qwen3 and non-Qwen3 configs. E.g. we could checking model type and set
     # its config folder by envs.VLLM_TUNED_CONFIG_FOLDER, this could be down
     # in platform.py by update env related config.
 
@@ -858,7 +858,8 @@ def get_moe_configs(
         config_file_paths.append(user_defined_config_file_path)
 
     default_config_file_path_with_H = os.path.join(
-        os.path.dirname(os.path.realpath(__file__)), "configs", json_file_name_with_H)
+        os.path.dirname(os.path.realpath(__file__)), "configs",
+        json_file_name_with_H)
     default_config_file_path = os.path.join(
         os.path.dirname(os.path.realpath(__file__)), "configs", json_file_name)
     config_file_paths.append(default_config_file_path_with_H)
@@ -1845,10 +1846,11 @@ def fused_experts_impl(
             quant_dtype=qtype,
             per_act_token_quant=per_channel_quant,
             block_shape=block_shape)
-        
+
         if use_int8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
             # TODO: need fix
-            if False and mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API:
+            if False:
+                # if mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API:
                 kernel_m = ops.mctlassEx_fused_moe_get_kernel_m(curr_hidden_states, w1,
                                                              intermediate_cache1, top_k_num)
             else:
@@ -1858,7 +1860,7 @@ def fused_experts_impl(
             # override kernel_m to config["BLOCK_SIZE_M"]
             stage1_config["BLOCK_SIZE_M"] = kernel_m
             stage2_config["BLOCK_SIZE_M"] = kernel_m
-            
+
 
         sorted_token_ids, expert_ids, num_tokens_post_padded = (
             moe_align_block_size(curr_topk_ids, stage1_config['BLOCK_SIZE_M'],

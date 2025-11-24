@@ -40,10 +40,14 @@ from vllm.transformers_utils.tokenizer import AnyTokenizer
 from vllm.utils import set_default_torch_num_threads
 from vllm.utils.tensor_schema import TensorSchema, TensorShape
 
-from vllm.model_executor.models.interfaces import (MultiModalEmbeddings, SupportsLoRA,
-                         SupportsMultiModal, SupportsPP)
-from vllm.model_executor.models.utils import (AutoWeightsLoader, flatten_bn, init_vllm_registered_model,
-                         maybe_prefix, merge_multimodal_embeddings)
+from vllm.model_executor.models.interfaces import (MultiModalEmbeddings,
+                                                   SupportsLoRA,
+                                                   SupportsMultiModal,
+                                                   SupportsPP)
+from vllm.model_executor.models.utils import (AutoWeightsLoader, flatten_bn,
+                                              init_vllm_registered_model,
+                                              maybe_prefix,
+                                              merge_multimodal_embeddings)
 
 IMG_START = '<img>'
 IMG_END = '</img>'

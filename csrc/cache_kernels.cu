@@ -550,7 +550,8 @@ void concat_and_cache_mla(
 //     const int32_t block_size, const int32_t entry_size,
 //     const int64_t block_table_stride, const int64_t cache_block_stride,
 //     const int64_t cache_entry_stride, const int64_t dst_entry_stride,
-//     const int32_t* __restrict__ seq_starts) {  // Optional: starting offsets per
+//     const int32_t* __restrict__ seq_starts) {  // Optional: starting offsets
+//     per
 //                                                // batch
 
 //   const int64_t bid = blockIdx.x;  // Batch ID
@@ -610,8 +611,8 @@ void concat_and_cache_mla(
 //   if (partial_block_size) {
 //     auto block_id = batch_block_table[full_blocks_end];
 //     auto block_start_ptr = src_cache + block_id * cache_block_stride;
-//     auto block_dst_ptr = dst + full_blocks_end * block_size * dst_entry_stride;
-//     for (int eid = 0; eid < partial_block_size; ++eid) {
+//     auto block_dst_ptr = dst + full_blocks_end * block_size *
+//     dst_entry_stride; for (int eid = 0; eid < partial_block_size; ++eid) {
 //       copy_entry(block_start_ptr + eid * cache_entry_stride,
 //                  block_dst_ptr + eid * dst_entry_stride);
 //     }
@@ -619,7 +620,6 @@ void concat_and_cache_mla(
 // }
 
 // }  // namespace vllm
-
 
 namespace vllm {
 
