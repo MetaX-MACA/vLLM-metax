@@ -235,20 +235,26 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
   ops.impl("awq_to_gptq_4bit", torch::kCUDA, &awq_to_gptq_4bit);
 
   // CUTLASS moe gemm
-  ops.def("cutlass_moe_mm_gemm_kernel_m_w8a8(int num_valid_tokens, int N, int K, int group) -> int");
-  ops.impl("cutlass_moe_mm_gemm_kernel_m_w8a8", &cutlass_moe_mm_gemm_kernel_m_w8a8);
+  ops.def(
+      "cutlass_moe_mm_gemm_kernel_m_w8a8(int num_valid_tokens, int N, int K, "
+      "int group) -> int");
+  ops.impl("cutlass_moe_mm_gemm_kernel_m_w8a8",
+           &cutlass_moe_mm_gemm_kernel_m_w8a8);
 
   ops.def(
-    "cutlass_moe_mm_w8a8(Tensor a, Tensor b, Tensor c, Tensor a_scales, Tensor b_scales, Tensor moe_weight,"
-                        "Tensor token_ids, Tensor expert_ids, Tensor num_tokens_post_padded,"
-                        "int N, int K, int EM, int num_valid_tokens, int topk, bool mul_routed_weight) -> ()");
+      "cutlass_moe_mm_w8a8(Tensor a, Tensor b, Tensor c, Tensor a_scales, "
+      "Tensor b_scales, Tensor moe_weight,"
+      "Tensor token_ids, Tensor expert_ids, Tensor num_tokens_post_padded,"
+      "int N, int K, int EM, int num_valid_tokens, int topk, bool "
+      "mul_routed_weight) -> ()");
   ops.impl("cutlass_moe_mm_w8a8", torch::kCUDA, &cutlass_moe_mm_w8a8);
-  
+
   ops.def(
-    "cutlass_moe_bf16_mm(Tensor! out, Tensor a, Tensor b,"
-                        "Tensor moe_weight,"
-                        "Tensor token_ids, Tensor expert_ids, Tensor num_tokens_post_padded, int num_valid_tokens,"
-                        "int topk, bool mul_routed_weight) -> ()");
+      "cutlass_moe_bf16_mm(Tensor! out, Tensor a, Tensor b,"
+      "Tensor moe_weight,"
+      "Tensor token_ids, Tensor expert_ids, Tensor num_tokens_post_padded, int "
+      "num_valid_tokens,"
+      "int topk, bool mul_routed_weight) -> ()");
   ops.impl("cutlass_moe_bf16_mm", torch::kCUDA, &cutlass_moe_bf16_mm);
 
   // CUTLASS w8a8 GEMM, supporting symmetric per-tensor or per-row/column
@@ -424,12 +430,12 @@ TORCH_LIBRARY_EXPAND(CONCAT(TORCH_EXTENSION_NAME, _cache_ops), cache_ops) {
       "                     Tensor scale) -> ()");
   cache_ops.impl("concat_and_cache_mla", torch::kCUDA, &concat_and_cache_mla);
 
-//   // Gather cache blocks from src_cache to dst.
-//   cache_ops.def(
-//       "gather_cache(Tensor src_cache, Tensor! dst, Tensor block_table, "
-//       "Tensor cu_seq_lens, int batch_size, Tensor? seq_starts) -> ()");
-//   cache_ops.impl("gather_cache", torch::kCUDA, &gather_cache);
-// Convert the key and value cache to fp8 data type.
+  //   // Gather cache blocks from src_cache to dst.
+  //   cache_ops.def(
+  //       "gather_cache(Tensor src_cache, Tensor! dst, Tensor block_table, "
+  //       "Tensor cu_seq_lens, int batch_size, Tensor? seq_starts) -> ()");
+  //   cache_ops.impl("gather_cache", torch::kCUDA, &gather_cache);
+  // Convert the key and value cache to fp8 data type.
   cache_ops.def(
       "convert_fp8(Tensor! dst_cache, Tensor src_cache, float scale, "
       "str kv_cache_dtype) -> ()");

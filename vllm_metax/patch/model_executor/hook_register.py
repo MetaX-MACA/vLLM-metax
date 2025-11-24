@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 from vllm.model_executor.layers.quantization import (
     _CUSTOMIZED_METHOD_TO_QUANT_CONFIG, QUANTIZATION_METHODS,
     QuantizationConfig, register_quantization_config)

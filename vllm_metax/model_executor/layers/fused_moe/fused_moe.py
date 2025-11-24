@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 """Fused MoE kernel."""
 import functools
 import json
@@ -836,7 +836,7 @@ def get_moe_configs(
     """
 
     # TODO(m01016): We need to offer a better way to distinguish between the
-    # Qwen3 and non-Qwen3 configs. E.g. we could checking model type and set 
+    # Qwen3 and non-Qwen3 configs. E.g. we could checking model type and set
     # its config folder by envs.VLLM_TUNED_CONFIG_FOLDER, this could be down
     # in platform.py by update env related config.
 
@@ -858,7 +858,8 @@ def get_moe_configs(
         config_file_paths.append(user_defined_config_file_path)
 
     default_config_file_path_with_H = os.path.join(
-        os.path.dirname(os.path.realpath(__file__)), "configs", json_file_name_with_H)
+        os.path.dirname(os.path.realpath(__file__)), "configs",
+        json_file_name_with_H)
     default_config_file_path = os.path.join(
         os.path.dirname(os.path.realpath(__file__)), "configs", json_file_name)
     config_file_paths.append(default_config_file_path_with_H)
@@ -1845,7 +1846,7 @@ def fused_experts_impl(
             quant_dtype=qtype,
             per_act_token_quant=per_channel_quant,
             block_shape=block_shape)
-        
+
         if use_int8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
             if mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API:
                 kernel_m = ops.mctlassEx_fused_moe_get_kernel_m(curr_hidden_states, w1,
@@ -1857,13 +1858,13 @@ def fused_experts_impl(
             # override kernel_m to config["BLOCK_SIZE_M"]
             stage1_config["BLOCK_SIZE_M"] = kernel_m
             stage2_config["BLOCK_SIZE_M"] = kernel_m
-            
+
 
         sorted_token_ids, expert_ids, num_tokens_post_padded = (
             moe_align_block_size(curr_topk_ids, stage1_config['BLOCK_SIZE_M'],
                                  global_num_experts, expert_map))
         # ┌------------------------  Metax Modification -------------------------┐
-        use_fused_moe_kernel_on_stage1 = (
+        use_fused_moe_kernel_on_stage1 = (  # noqa: F841
             stage1_config['BLOCK_SIZE_M'] == 128 and
             not use_int8_w8a8 and
             topk_ids.shape[1] in (1, 2) and
@@ -1871,7 +1872,7 @@ def fused_experts_impl(
             w1.shape[1] % 4 == 0 and
             w1.shape[2] % 8 == 0
         )
-        if False and use_fused_moe_kernel_on_stage1:
+        if False: # and use_fused_moe_kernel_on_stage1:
             ops.fused_moe_kernel(curr_hidden_states, w1, intermediate_cache1,
                                  curr_topk_weights, curr_topk_ids,
                                  sorted_token_ids, expert_ids,
@@ -1943,7 +1944,7 @@ def fused_experts_impl(
             w2.shape[2] % 8 == 0
         )
 
-        use_fused_moe_kernel_on_stage2 = (
+        use_fused_moe_kernel_on_stage2 = ( # noqa: F841
             stage2_config['BLOCK_SIZE_M'] == 128 and
             not use_int8_w8a8 and
             w2.shape[1] % 4 == 0 and
@@ -1963,7 +1964,7 @@ def fused_experts_impl(
                                     curr_topk_ids.numel(),
                                     1,
                                     True)
-        elif False and use_fused_moe_kernel_on_stage2:
+        elif False: # and use_fused_moe_kernel_on_stage2:
             ops.fused_moe_kernel(intermediate_cache2,
                                 w2,
                                 intermediate_cache3,

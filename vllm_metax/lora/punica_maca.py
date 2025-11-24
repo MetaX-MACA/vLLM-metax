@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 import torch
 
 from vllm.lora.ops.triton_ops.utils import _get_lora_a_ptr
@@ -7,11 +7,12 @@ from vllm.lora.ops.triton_ops.utils import _get_lora_b_ptr
 from vllm.triton_utils import triton
 from vllm.lora.ops.triton_ops.lora_shrink_op import _lora_shrink_kernel, _lora_shrink_fake
 from vllm.utils import direct_register_custom_op
-from vllm.lora.ops.triton_ops.lora_expand_op import _lora_expand_kernel,_lora_expand_fake
+from vllm.lora.ops.triton_ops.lora_expand_op import _lora_expand_kernel, _lora_expand_fake
 from vllm.lora.punica_wrapper.punica_gpu import PunicaWrapperGPU
 from vllm.platforms import current_platform
 
 from typing import TypedDict, Optional
+
 
 class RuntimeConfig(TypedDict):
     pipeline: str
@@ -22,7 +23,6 @@ class RuntimeConfig(TypedDict):
 
 @torch.inference_mode()
 def _mx_lora_expand(
-
     inputs: torch.Tensor,  # shape [num_slices, num_tokens, lora_rank]
     lora_b_weights: list[
         torch.Tensor],  # shape [num_lora, hidden_size, lora_rank]
@@ -126,42 +126,41 @@ def _mx_lora_expand(
         MAX_LORAS,
     )
 
-    _lora_expand_kernel[grid](
-        inputs,
-        lora_ptr_tensor,
-        output_tensor,
-        M,
-        MAX_N,
-        K,
-        token_indices_sorted_by_lora_ids,
-        num_tokens_per_lora,
-        lora_token_start_loc,
-        lora_ids,
-        slice_start_tensor,
-        inputs.stride(0),
-        inputs.stride(1),
-        inputs.stride(2),
-        lora_strides_d0_tensor,
-        lora_strides_d1_tensor,
-        lora_strides_d2_tensor,
-        output_tensor.stride(0),
-        output_tensor.stride(1),
-        hidden_sizes_tensor,
-        BLOCK_M,
-        BLOCK_N,
-        BLOCK_K,
-        EVEN_K,
-        ADD_INPUTS,
-        CAST_TYPE,
-        NUM_SLICES,
-        same_stride,
-        num_warps=NUM_WARPS,
-        num_ctas=NUM_CTAS,
-        num_stages=NUM_STAGES,
-        **config2
-    )
+    _lora_expand_kernel[grid](inputs,
+                              lora_ptr_tensor,
+                              output_tensor,
+                              M,
+                              MAX_N,
+                              K,
+                              token_indices_sorted_by_lora_ids,
+                              num_tokens_per_lora,
+                              lora_token_start_loc,
+                              lora_ids,
+                              slice_start_tensor,
+                              inputs.stride(0),
+                              inputs.stride(1),
+                              inputs.stride(2),
+                              lora_strides_d0_tensor,
+                              lora_strides_d1_tensor,
+                              lora_strides_d2_tensor,
+                              output_tensor.stride(0),
+                              output_tensor.stride(1),
+                              hidden_sizes_tensor,
+                              BLOCK_M,
+                              BLOCK_N,
+                              BLOCK_K,
+                              EVEN_K,
+                              ADD_INPUTS,
+                              CAST_TYPE,
+                              NUM_SLICES,
+                              same_stride,
+                              num_warps=NUM_WARPS,
+                              num_ctas=NUM_CTAS,
+                              num_stages=NUM_STAGES,
+                              **config2)
 
     return
+
 
 try:
     direct_register_custom_op(
@@ -268,37 +267,35 @@ def _mx_lora_shrink(
         # thread blocks exit early.
         MAX_LORAS,
     )
-    _lora_shrink_kernel[grid](
-        inputs,
-        lora_ptr_tensor,
-        output_tensor,
-        M,
-        N,
-        K,
-        token_indices_sorted_by_lora_ids,
-        num_tokens_per_lora,
-        lora_token_start_loc,
-        lora_ids,
-        scaling,
-        inputs.stride(0),
-        inputs.stride(1),
-        lora_strides_d0,
-        lora_strides_d1,
-        lora_strides_d2,
-        output_tensor.stride(0),
-        output_tensor.stride(1),
-        output_tensor.stride(2),
-        BLOCK_M,
-        BLOCK_N,
-        BLOCK_K,
-        EVEN_K,
-        SPLIT_K,
-        NUM_SLICES,
-        num_warps=NUM_WARPS,
-        num_ctas=NUM_CTAS,
-        num_stages=NUM_STAGES,
-        **config2
-    )
+    _lora_shrink_kernel[grid](inputs,
+                              lora_ptr_tensor,
+                              output_tensor,
+                              M,
+                              N,
+                              K,
+                              token_indices_sorted_by_lora_ids,
+                              num_tokens_per_lora,
+                              lora_token_start_loc,
+                              lora_ids,
+                              scaling,
+                              inputs.stride(0),
+                              inputs.stride(1),
+                              lora_strides_d0,
+                              lora_strides_d1,
+                              lora_strides_d2,
+                              output_tensor.stride(0),
+                              output_tensor.stride(1),
+                              output_tensor.stride(2),
+                              BLOCK_M,
+                              BLOCK_N,
+                              BLOCK_K,
+                              EVEN_K,
+                              SPLIT_K,
+                              NUM_SLICES,
+                              num_warps=NUM_WARPS,
+                              num_ctas=NUM_CTAS,
+                              num_stages=NUM_STAGES,
+                              **config2)
 
     return
 
@@ -316,7 +313,9 @@ try:
 except AttributeError:
     mx_lora_shrink = _mx_lora_shrink
 
+
 class MXPunicaWrapperGPU(PunicaWrapperGPU):
+
     def add_shrink(self, y: torch.Tensor, x: torch.Tensor,
                    lora_a_stacked: tuple[torch.Tensor,
                                          ...], scale: float, **kwargs):
@@ -421,7 +420,6 @@ class MXPunicaWrapperGPU(PunicaWrapperGPU):
             add_inputs=add_inputs,
         )
 
-    
     def add_lora_linear(self,
                         y: torch.Tensor,
                         x: torch.Tensor,
@@ -520,14 +518,14 @@ class MXPunicaWrapperGPU(PunicaWrapperGPU):
             # We set the buffer to be float32 by default, refer to:
             # https://github.com/triton-lang/triton/issues/1387
             buffer = torch.zeros((x.size(0), r),
-                                    dtype=torch.float32,
-                                    device=x.device)
+                                 dtype=torch.float32,
+                                 device=x.device)
 
         mx_lora_shrink(x, [lora_a_stacked], buffer.unsqueeze(dim=0),
-                    *self.prompt_mapping_meta.meta_args(x.size(0)), scale)
+                       *self.prompt_mapping_meta.meta_args(x.size(0)), scale)
 
         mx_lora_expand(buffer.unsqueeze(dim=0), [lora_b_stacked],
-                    y,
-                    *self.prompt_mapping_meta.meta_args(buffer.size(0)),
-                    add_inputs=True)
+                       y,
+                       *self.prompt_mapping_meta.meta_args(buffer.size(0)),
+                       add_inputs=True)
         y = y.view_as(y_org)

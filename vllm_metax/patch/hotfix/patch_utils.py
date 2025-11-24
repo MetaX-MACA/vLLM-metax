@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
-# TODO(m01016): This is a ad-hoc patch for torch 2.6 to support 
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
+# TODO(m01016): This is a ad-hoc patch for torch 2.6 to support
 # the build-in type `list`, which is supported in torch 2.8.
 # remove the patch when torch 2.8 is released.
 from typing import Callable, List, Optional
@@ -59,7 +59,7 @@ def maca_direct_register_custom_op(
         if v == Optional[list[int]]:
             op_func.__annotations__[k] = Optional[List[int]]
         if v == list[torch.Tensor]:
-           op_func.__annotations__[k] = List[torch.Tensor]
+            op_func.__annotations__[k] = List[torch.Tensor]
         if v == Optional[list[torch.Tensor]]:
             op_func.__annotations__[k] = Optional[List[torch.Tensor]]
         # TODO: add more type convert here if needed.
