@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
+
+import glob
+
+requires_files = glob.glob('requirements/*.txt')
+requires_files += ["pyproject.toml"]
+for file in requires_files:
+    print(f">>> cleaning {file}")
+    with open(file) as f:
+        lines = f.readlines()
+    if "+metax" in "".join(lines).lower():
+        print("removed:")
+        with open(file, 'w') as f:
+            for line in lines:
+                if '+metax' not in line.lower():
+                    f.write(line)
+                else:
+                    print(line.strip())
+    print(f"<<< done cleaning {file}")
+    print()

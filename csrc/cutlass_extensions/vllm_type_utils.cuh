@@ -1,3 +1,4 @@
+// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
 #include "cutlass/bfloat16.h"
 #include "cutlass/half.h"
 #include "cuda_bf16.h"
