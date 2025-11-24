@@ -1,4 +1,5 @@
 // clang-format off
+// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
 // adapted from https://github.com/state-spaces/mamba/blob/main/csrc/selective_scan/selective_scan_fwd_kernel.cuh
 #include <torch/all.h>
 #include <ATen/cuda/CUDAContext.h>

@@ -1,3 +1,4 @@
+// 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved. 
 /*
  * This file contains the CUDA kernels for the fused quantized layernorm.
  * The kernels correspond to the kernels in layernorm_kernels.cu, except they
