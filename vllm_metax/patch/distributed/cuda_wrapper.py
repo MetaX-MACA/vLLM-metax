@@ -1,4 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
+"""For compatibility with the Metax platform, use the MACA API 
+functions (e.g., mcSetDevice, mcDeviceSynchronize).
+"""
 """This file is a pure Python wrapper for the cudart library.
 It avoids the need to compile a separate shared library, and is
 convenient for use when we just need to call a few functions.
@@ -43,7 +46,9 @@ def find_loaded_library(lib_name) -> Optional[str]:
     shared libraries loaded by the process. We can use this file to find the path of the
     a loaded library.
     """  # noqa
+    # /------------------------  Metax Modification -------------------------\
     logger.info(f"[Plugin] Hooked find_loaded_library -> {find_loaded_library}")
+    # \------------------------- Metax Modification -------------------------/
 
     found = False
     with open("/proc/self/maps") as f:
@@ -66,6 +71,8 @@ def find_loaded_library(lib_name) -> Optional[str]:
 
 
 class CudaRTLibrary:
+    # /------------------------  Metax Modification -------------------------\
+    # use maca
     exported_functions = [
         # ​cudaError_t cudaSetDevice ( int  device )
         Function("mcSetDevice", cudaError_t, [ctypes.c_int]),
@@ -104,6 +111,7 @@ class CudaRTLibrary:
             [ctypes.POINTER(ctypes.c_void_p), cudaIpcMemHandle_t, ctypes.c_uint],
         ),
     ]
+    # \------------------------- Metax Modification -------------------------/
 
     # class attribute to store the mapping from the path to the library
     # to avoid loading the same library multiple times
@@ -114,6 +122,8 @@ class CudaRTLibrary:
     path_to_dict_mapping: Dict[str, Dict[str, Any]] = {}
 
     def __init__(self, so_file: Optional[str] = None):
+        # /------------------------  Metax Modification -------------------------\
+        # use libmcruntime
         if so_file is None:
             so_file = find_loaded_library("libmcruntime")
             if so_file is None:
@@ -122,6 +132,7 @@ class CudaRTLibrary:
                 "libcudart is not loaded in the current process, "
                 "try setting VLLM_CUDART_SO_PATH"
             )
+        # \------------------------- Metax Modification -------------------------/
         if so_file not in CudaRTLibrary.path_to_library_cache:
             lib = ctypes.CDLL(so_file)
             CudaRTLibrary.path_to_library_cache[so_file] = lib
@@ -142,6 +153,8 @@ class CudaRTLibrary:
             error_str = self.cudaGetErrorString(result)
             raise RuntimeError(f"CUDART error: {error_str}")
 
+    # /------------------------  Metax Modification -------------------------\
+    # use Metax maca
     def cudaGetErrorString(self, error: cudaError_t) -> str:
         return self.funcs["mcGetErrorString"](error).decode("utf-8")
 
@@ -186,6 +199,6 @@ class CudaRTLibrary:
             )
         )
         return devPtr
-
+    # \------------------------- Metax Modification -------------------------/
 
 vllm.distributed.device_communicators.cuda_wrapper.CudaRTLibrary = CudaRTLibrary

@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-
+"""For compatibility with the Metax platform, use the MACA API 
+functions (e.g., mcclGetVersion, mcclGetUniqueId, mcclAllReduce).
+"""
 import ctypes
 import platform
 from typing import Any, Dict, Optional
@@ -26,6 +28,8 @@ logger = init_logger(__name__)
 
 
 class NCCLLibrary:
+    # /------------------------  Metax Modification -------------------------\
+    # use maca
     exported_functions = [
         # const char* ncclGetErrorString(ncclResult_t result)
         Function("mcclGetErrorString", ctypes.c_char_p, [ncclResult_t]),
@@ -194,6 +198,7 @@ class NCCLLibrary:
         # Function("mcclCommWindowDeregister", ncclResult_t,
         #          [ncclComm_t, ncclWindow_t]),
     ]
+    # \------------------------- Metax Modification -------------------------/
 
     # class attribute to store the mapping from the path to the library
     # to avoid loading the same library multiple times
@@ -204,8 +209,10 @@ class NCCLLibrary:
     path_to_dict_mapping: dict[str, dict[str, Any]] = {}
 
     def __init__(self, so_file: Optional[str] = None):
+    # /------------------------  Metax Modification -------------------------\
+    # use maca find_mccl_library
         so_file = so_file or find_mccl_library()
-
+    # \------------------------- Metax Modification -------------------------/
         try:
             if so_file not in NCCLLibrary.path_to_dict_mapping:
                 lib = ctypes.CDLL(so_file)
@@ -224,7 +231,8 @@ class NCCLLibrary:
                 platform.platform(),
             )
             raise e
-
+    # /------------------------  Metax Modification -------------------------\
+    # use maca 
         if so_file not in NCCLLibrary.path_to_dict_mapping:
             _funcs: dict[str, Any] = {}
             for func in NCCLLibrary.exported_functions:
@@ -234,7 +242,10 @@ class NCCLLibrary:
                 _funcs[func.name] = f
             NCCLLibrary.path_to_dict_mapping[so_file] = _funcs
         self._funcs = NCCLLibrary.path_to_dict_mapping[so_file]
+    # \------------------------- Metax Modification -------------------------/
 
+    # /------------------------  Metax Modification -------------------------\
+    # use maca (e.g., mcclGetErrorString, mcclGetVersion, mcclAllReduce)
     def ncclGetErrorString(self, result: ncclResult_t) -> str:
         return self._funcs["mcclGetErrorString"](result).decode("utf-8")
 
@@ -427,6 +438,6 @@ class NCCLLibrary:
     def ncclCommWindowDeregister(self, comm: ncclComm_t, window: ncclWindow_t) -> None:
         # self.NCCL_CHECK(self._funcs["mcclCommWindowDeregister"](comm, window))
         return
-
+    # \------------------------- Metax Modification -------------------------/
 
 vllm.distributed.device_communicators.pynccl_wrapper.NCCLLibrary = NCCLLibrary
