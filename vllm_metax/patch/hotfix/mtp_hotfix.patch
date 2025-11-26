@@ -1,0 +1,231 @@
+diff --git a/vllm/v1/spec_decode/eagle.py b/vllm/v1/spec_decode/eagle.py
+index 75a4140fd..a268ea0dd 100644
+--- a/vllm/v1/spec_decode/eagle.py
++++ b/vllm/v1/spec_decode/eagle.py
+@@ -65,6 +65,7 @@ class EagleProposer:
+         self.dtype = vllm_config.model_config.dtype
+         self.max_model_len = vllm_config.model_config.max_model_len
+         self.block_size = vllm_config.cache_config.block_size
++        self.dp_rank = vllm_config.parallel_config.data_parallel_rank
+         self.num_speculative_tokens = self.speculative_config.num_speculative_tokens
+         self.max_num_tokens = vllm_config.scheduler_config.max_num_batched_tokens
+         self.token_arange_np = np.arange(self.max_num_tokens)
+@@ -262,12 +263,24 @@ class EagleProposer:
+             assert draft_indexer_metadata is not None
+             per_layer_attn_metadata[layer_name] = draft_indexer_metadata
+ 
++        num_tokens_dp_padded, num_tokens_across_dp = self._pad_batch_across_dp(
++            num_tokens_unpadded=num_tokens,
++            num_tokens_padded=num_tokens,
++        )
++
+         cudagraph_runtime_mode = CUDAGraphMode.NONE
+-        if self.use_cuda_graph and num_tokens <= self.cudagraph_batch_sizes[-1]:
+-            num_input_tokens = self.vllm_config.pad_for_cudagraph(num_tokens)
++        if (
++            self.use_cuda_graph
++            and num_tokens_dp_padded
++            <= self.cudagraph_batch_sizes[-1]
++        ):
++            num_input_tokens = self.vllm_config.pad_for_cudagraph(num_tokens_dp_padded)
+             cudagraph_runtime_mode = CUDAGraphMode.PIECEWISE
+         else:
+-            num_input_tokens = num_tokens
++            num_input_tokens = num_tokens_dp_padded
++        if num_tokens_across_dp is not None:
++            num_tokens_across_dp[self.dp_rank] = num_input_tokens
++
+         # copy inputs to buffer for cudagraph
+         self._set_positions(num_tokens, target_positions)
+         self.hidden_states[:num_tokens] = target_hidden_states
+@@ -291,6 +304,7 @@ class EagleProposer:
+             per_layer_attn_metadata,
+             self.vllm_config,
+             num_tokens=num_input_tokens,
++            num_tokens_across_dp=num_tokens_across_dp,
+             cudagraph_runtime_mode=cudagraph_runtime_mode,
+         ):
+             ret_hidden_states = self.model(
+@@ -353,12 +367,23 @@ class EagleProposer:
+         # Generate the remaining draft tokens.
+         draft_token_ids_list = [draft_token_ids]
+ 
+-        if self.use_cuda_graph and batch_size <= self.cudagraph_batch_sizes[-1]:
+-            input_batch_size = self.vllm_config.pad_for_cudagraph(batch_size)
++        batch_size_dp_padded, batch_size_across_dp = self._pad_batch_across_dp(
++            num_tokens_unpadded=batch_size,
++            num_tokens_padded=batch_size,
++        )
++
++        if (
++            self.use_cuda_graph
++            and batch_size_dp_padded
++            <= self.cudagraph_batch_sizes[-1]
++        ):
++            input_batch_size = self.vllm_config.pad_for_cudagraph(batch_size_dp_padded)
+             cudagraph_runtime_mode = CUDAGraphMode.PIECEWISE
+         else:
+-            input_batch_size = batch_size
++            input_batch_size = batch_size_dp_padded
+             cudagraph_runtime_mode = CUDAGraphMode.NONE
++        if batch_size_across_dp is not None:
++            batch_size_across_dp[self.dp_rank] = input_batch_size
+ 
+         common_attn_metadata.num_actual_tokens = batch_size
+         common_attn_metadata.max_query_len = 1
+@@ -458,6 +483,7 @@ class EagleProposer:
+                 per_layer_attn_metadata,
+                 self.vllm_config,
+                 num_tokens=input_batch_size,
++                num_tokens_across_dp=batch_size_across_dp,
+                 cudagraph_runtime_mode=cudagraph_runtime_mode,
+             ):
+                 ret_hidden_states = self.model(
+@@ -1055,33 +1081,56 @@ class EagleProposer:
+         self,
+         num_tokens: int,
+         use_cudagraphs=True,
++        is_graph_capturing=False,
+     ) -> None:
+         # Determine if CUDA graphs should be used for this run.
+         cudagraphs_enabled = use_cudagraphs and self.use_cuda_graph
+-        if cudagraphs_enabled and num_tokens <= self.cudagraph_batch_sizes[-1]:
+-            num_tokens = self.vllm_config.pad_for_cudagraph(num_tokens)
+ 
+-        with set_forward_context(
+-            None,
+-            self.vllm_config,
+-            num_tokens=num_tokens,
+-            cudagraph_runtime_mode=(
+-                CUDAGraphMode.PIECEWISE if cudagraphs_enabled else CUDAGraphMode.NONE
+-            ),
++        # FIXME: when using tree-based specdec, adjust number of forward-passes
++        # according to the depth of the tree.
++        for fwd_idx in range(
++            self.num_speculative_tokens if not is_graph_capturing else 1
+         ):
+-            if self.supports_mm_inputs:
+-                input_ids = None
+-                inputs_embeds = self.inputs_embeds[:num_tokens]
+-            else:
+-                input_ids = self.input_ids[:num_tokens]
+-                inputs_embeds = None
++            if fwd_idx <= 1:
++                num_tokens_dp_padded, num_tokens_across_dp = self._pad_batch_across_dp(
++                    num_tokens_unpadded=num_tokens,
++                    num_tokens_padded=num_tokens,
++                )
++                if (
++                    cudagraphs_enabled
++                    and num_tokens_dp_padded
++                    <= self.cudagraph_batch_sizes[-1]
++                ):
++                    num_input_tokens = self.vllm_config.pad_for_cudagraph(
++                        num_tokens_dp_padded
++                    )
++                else:
++                    num_input_tokens = num_tokens_dp_padded
++                if num_tokens_across_dp is not None:
++                    num_tokens_across_dp[self.dp_rank] = num_input_tokens
+ 
+-            self.model(
+-                input_ids=input_ids,
+-                positions=self._get_positions(num_tokens),
+-                hidden_states=self.hidden_states[:num_tokens],
+-                inputs_embeds=inputs_embeds,
+-            )
++            with set_forward_context(
++                None,
++                self.vllm_config,
++                num_tokens=num_input_tokens,
++                num_tokens_across_dp=num_tokens_across_dp,
++                cudagraph_runtime_mode=CUDAGraphMode.PIECEWISE
++                if cudagraphs_enabled
++                else CUDAGraphMode.NONE,
++            ):
++                if self.supports_mm_inputs:
++                    input_ids = None
++                    inputs_embeds = self.inputs_embeds[:num_input_tokens]
++                else:
++                    input_ids = self.input_ids[:num_input_tokens]
++                    inputs_embeds = None
++
++                self.model(
++                    input_ids=input_ids,
++                    positions=self._get_positions(num_input_tokens),
++                    hidden_states=self.hidden_states[:num_input_tokens],
++                    inputs_embeds=inputs_embeds,
++                )
+ 
+     def _get_attention_metadata_builder(self) -> AttentionMetadataBuilder:
+         """Find and return the attention metadata builders for EAGLE layers.
+@@ -1131,6 +1180,28 @@ class EagleProposer:
+             == 1
+         ), "All eagle layers should belong to the same kv cache group"
+ 
++    def _pad_batch_across_dp(
++        self,
++        num_tokens_unpadded: int,
++        num_tokens_padded: int,
++    ) -> tuple[int, torch.Tensor]:
++        from vllm.v1.worker.dp_utils import coordinate_batch_across_dp
++        # TODO(Flechman): support DBO ubatching
++        ubatch_slices, num_toks_across_dp = coordinate_batch_across_dp(
++            num_tokens_unpadded=num_tokens_unpadded,
++            parallel_config=self.vllm_config.parallel_config,
++            allow_microbatching=False,
++            allow_dp_padding=self.use_cuda_graph,
++            num_tokens_padded=num_tokens_padded,
++            uniform_decode=None,
++            num_scheduled_tokens_per_request=None,
++        )
++        assert ubatch_slices is None, "DBO ubatching not implemented for EAGLE"
++
++        num_tokens_dp_padded = num_tokens_padded
++        if num_toks_across_dp is not None:
++            num_tokens_dp_padded = int(num_toks_across_dp[self.dp_rank].item())
++        return num_tokens_dp_padded, num_toks_across_dp
+ 
+ # NOTE(woosuk): Currently, the below code is not used and we always use argmax
+ # to sample the draft tokens. We will use this after we find a way to manage
+diff --git a/vllm/v1/worker/gpu_model_runner.py b/vllm/v1/worker/gpu_model_runner.py
+index 9403b5756..776bbc03f 100644
+--- a/vllm/v1/worker/gpu_model_runner.py
++++ b/vllm/v1/worker/gpu_model_runner.py
+@@ -3418,6 +3418,7 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
+         create_mixed_batch: bool = False,
+         remove_lora: bool = True,
+         activate_lora: bool = False,
++        is_graph_capturing: bool = False,
+     ) -> tuple[torch.Tensor, torch.Tensor]:
+         """
+         Run a dummy forward pass to warm up/profile run or capture the
+@@ -3651,7 +3652,7 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
+             if self.speculative_config and self.speculative_config.use_eagle():
+                 assert isinstance(self.drafter, EagleProposer)
+                 use_cudagraphs = (
+-                    cudagraph_runtime_mode == CUDAGraphMode.PIECEWISE
++                    cudagraph_runtime_mode.has_mode(CUDAGraphMode.PIECEWISE)
+                     and not self.speculative_config.enforce_eager
+                 )
+ 
+@@ -3663,8 +3664,9 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
+                     use_cudagraphs = False
+ 
+                 self.drafter.dummy_run(
+-                    num_tokens,
++                    num_tokens_after_padding,
+                     use_cudagraphs=use_cudagraphs,
++                    is_graph_capturing=is_graph_capturing,
+                 )
+ 
+         # This is necessary to avoid blocking DP.
+@@ -4096,6 +4098,7 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
+                 skip_eplb=True,
+                 remove_lora=False,
+                 activate_lora=activate_lora,
++                is_graph_capturing=True,
+             )
+         self.maybe_remove_all_loras(self.lora_config)
+ 
+
