@@ -684,6 +684,7 @@ def invoke_fused_moe_kernel(A: torch.Tensor,
     assert topk_weights is not None or not mul_routed_weight
     assert topk_weights is None or topk_weights.stride(1) == 1
     assert sorted_token_ids.stride(0) == 1
+    
     if use_fp8_w8a8 or use_int8_w8a8:
         assert B_scale is not None
         assert block_shape is None or triton.cdiv(
