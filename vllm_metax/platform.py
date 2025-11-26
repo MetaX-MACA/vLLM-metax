@@ -679,7 +679,7 @@ MacaPlatform.log_warnings()
 
 # Note: Put all env Override here for Maca platform
 envs.VLLM_USE_FLASHINFER_SAMPLER = False
-envs.VLLM_USE_STANDALONE_COMPILE = False
+# envs.VLLM_USE_STANDALONE_COMPILE = False
 envs.VLLM_USE_TRTLLM_ATTENTION = False
 envs.VLLM_USE_CUDNN_PREFILL = False
 envs.VLLM_USE_TRTLLM_RAGGED_DEEPSEEK_PREFILL = False
