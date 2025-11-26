@@ -27,9 +27,9 @@ def register_model():
         "vllm_metax.models.qwen3_vl:Qwen3VLForConditionalGeneration",
     )
 
-    ModelRegistry.register_model(
-        "DeepSeekMTPModel", "vllm_metax.models.deepseek_mtp:DeepSeekMTP"
-    )
+    # ModelRegistry.register_model(
+    #     "DeepSeekMTPModel", "vllm_metax.models.deepseek_mtp:DeepSeekMTP"
+    # )
 
     ModelRegistry.register_model(
         "DeepseekV2ForCausalLM", "vllm_metax.models.deepseek_v2:DeepseekV2ForCausalLM"
