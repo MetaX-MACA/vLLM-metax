@@ -8,6 +8,8 @@
 # Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
 # ruff: noqa: E501
 
+import torch
+
 from vllm.triton_utils import tl, triton
 from vllm.model_executor.layers.fla.ops.op import exp
 from vllm.model_executor.layers.fla.ops.utils import use_cuda_graph
@@ -16,6 +18,7 @@ from vllm.model_executor.layers.fla.ops.utils import use_cuda_graph
 @triton.heuristics(
     {
         "USE_G": lambda args: args["g"] is not None,
+        "USE_GK": lambda args: args["gk"] is not None,
         "USE_INITIAL_STATE": lambda args: args["h0"] is not None,
         "STORE_FINAL_STATE": lambda args: args["ht"] is not None,
         "SAVE_NEW_VALUE": lambda args: args["v_new"] is not None,
@@ -26,10 +29,12 @@ from vllm.model_executor.layers.fla.ops.utils import use_cuda_graph
     configs=[
         triton.Config({"BV": BV}, num_warps=num_warps, num_stages=num_stages)
         for num_warps in [2, 4]
+        # ┌------------------------  Metax Modification -------------------------┐
         for num_stages in [1]
+        # └------------------------  Metax Modification -------------------------┘
         for BV in [32, 64]
     ],
-    key=["H", "K", "V", "BT", "USE_G"],
+    key=["H", "K", "V", "BT"],
     use_cuda_graph=use_cuda_graph,
 )
 @triton.jit(do_not_specialize=["T"])
@@ -39,6 +44,7 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
     w,
     v_new,
     g,
+    gk,
     h,
     h0,
     ht,
@@ -52,6 +58,7 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
     BT: tl.constexpr,
     BV: tl.constexpr,
     USE_G: tl.constexpr,
+    USE_GK: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
     STORE_FINAL_STATE: tl.constexpr,
     SAVE_NEW_VALUE: tl.constexpr,
@@ -155,6 +162,7 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
         )
         b_w = tl.load(p_w, boundary_check=(0, 1))
         b_v_new += tl.dot(b_w, b_h1.to(b_w.dtype))
+
         if K > 64:
             p_w = tl.make_block_ptr(
                 w, (T, K), (stride_w, 1), (i_t * BT, 64), (BT, 64), (1, 0)
@@ -200,7 +208,40 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
                 b_h3 = b_h3 * b_g_last
             if K > 192:
                 b_h4 = b_h4 * b_g_last
+        if USE_GK:
+            o_k1 = tl.arange(0, 64)
+            b_gk_last1 = tl.load(
+                gk + (bos + last_idx) * H * K + i_h * K + o_k1,
+                mask=(o_k1 < K),
+                other=0.0,
+            )
+            b_h1 *= exp(b_gk_last1)[:, None]
+            if K > 64:
+                o_k2 = 64 + o_k1
+                b_gk_last2 = tl.load(
+                    gk + (bos + last_idx) * H * K + i_h * K + o_k2,
+                    mask=(o_k2 < K),
+                    other=0.0,
+                )
+                b_h2 *= exp(b_gk_last2)[:, None]
+            if K > 128:
+                o_k3 = 128 + o_k1
+                b_gk_last3 = tl.load(
+                    gk + (bos + last_idx) * H * K + i_h * K + o_k3,
+                    mask=(o_k3 < K),
+                    other=0.0,
+                )
+                b_h3 *= exp(b_gk_last3)[:, None]
+            if K > 192:
+                o_k4 = 192 + o_k1
+                b_gk_last4 = tl.load(
+                    gk + (bos + last_idx) * H * K + i_h * K + o_k4,
+                    mask=(o_k4 < K),
+                    other=0.0,
+                )
+                b_h4 *= exp(b_gk_last4)[:, None]
         b_v_new = b_v_new.to(k.dtype.element_ty)
+
         p_k = tl.make_block_ptr(
             k, (K, T), (1, stride_k), (0, i_t * BT), (64, BT), (0, 1)
         )

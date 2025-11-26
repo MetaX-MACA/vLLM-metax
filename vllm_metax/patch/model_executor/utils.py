@@ -17,9 +17,9 @@ logger = init_logger(__name__)
 
 def _int8_quantize(
     A: torch.Tensor,
-    A_scale: Optional[torch.Tensor],
+    A_scale: torch.Tensor | None,
     per_act_token: bool,
-    block_shape: Optional[list[int]] = None,
+    block_shape: list[int] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Perform int8 quantization on the inputs.  If a block_shape
@@ -35,9 +35,10 @@ def _int8_quantize(
         # ┌------------------------  Metax Modification -------------------------┐
         # A, A_scale = per_token_quant_int8(A)
         A, A_scale, _ = ops.scaled_int8_quant(A, A_scale)
-    # └------------------------- Metax Modification -------------------------┘
+        # └------------------------- Metax Modification -------------------------┘
 
     else:
+        assert not per_act_token
         assert len(block_shape) == 2
         _, block_k = block_shape[0], block_shape[1]
         A, A_scale = per_token_group_quant_int8(A, block_k)

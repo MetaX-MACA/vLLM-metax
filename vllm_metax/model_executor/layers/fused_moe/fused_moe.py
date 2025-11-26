@@ -683,7 +683,6 @@ def invoke_fused_moe_kernel(A: torch.Tensor,
     assert topk_weights is not None or not mul_routed_weight
     assert topk_weights is None or topk_weights.stride(1) == 1
     assert sorted_token_ids.stride(0) == 1
-
     if use_fp8_w8a8 or use_int8_w8a8:
         assert B_scale is not None
         assert (block_shape is None
@@ -1177,6 +1176,28 @@ def fused_topk(
     )
 
     return topk_weights, topk_ids, token_expert_indices
+
+
+def fused_topk_bias(
+    hidden_states: torch.Tensor,
+    gating_output: torch.Tensor,
+    e_score_correction_bias: torch.Tensor,
+    topk: int,
+    renormalize: bool,
+):
+    n_routed_experts = gating_output.shape[-1]
+    scores = gating_output.softmax(dim=-1)
+    scores_for_choice = scores.view(
+        -1, n_routed_experts
+    ) + e_score_correction_bias.unsqueeze(0)
+
+    # For batch invariance, use sorted=True to ensure deterministic expert selection
+    use_sorted = vllm_is_batch_invariant()
+    topk_indices = torch.topk(scores_for_choice, k=topk, dim=-1, sorted=use_sorted)[1]
+    topk_weights = scores.gather(1, topk_indices)
+    if renormalize:
+        topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+    return topk_weights.to(torch.float32), topk_indices.to(torch.int32)
 
 
 # This is used by the Deepseek-V2 and Deepseek-V3 model
