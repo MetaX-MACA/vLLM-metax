@@ -249,16 +249,10 @@ class QueryLenSupport(Enum):
     UNIFORM = "uniform"
     VARLEN = "varlen"
 
-
-try:
-    from vllm.vllm_flash_attn import flash_attn_varlen_func
-
-    is_vllm_fa = True
-except ImportError:
-    # For rocm use upstream flash attention
-    if current_platform.is_out_of_tree():
-        from flash_attn import flash_attn_varlen_func
-    is_vllm_fa = False
+# /------------------------  Metax Modification -------------------------\
+from flash_attn import flash_attn_varlen_func
+is_vllm_fa = False
+# \------------------------- Metax Modification -------------------------/
 
 try:
     from flashinfer import BatchPrefillWithRaggedKVCacheWrapper

@@ -732,12 +732,6 @@ class FlashAttentionImpl(AttentionImpl):
 
         if not attn_metadata.use_cascade:
             cu_seqlens_q = attn_metadata.query_start_loc
-            seqused_k = attn_metadata.seq_lens
-            max_seqlen_q = attn_metadata.max_query_len
-            max_seqlen_k = attn_metadata.max_seq_len
-            block_table = attn_metadata.block_table
-            scheduler_metadata = attn_metadata.scheduler_metadata
-
             descale_shape = (cu_seqlens_q.shape[0] - 1, self.num_kv_heads)
 
             if self.dcp_world_size > 1:
@@ -847,14 +841,19 @@ class FlashAttentionImpl(AttentionImpl):
 
         query = query.contiguous()
         query_across_dcp = get_dcp_group().all_gather(query, dim=1)
-        context_attn_out, context_lse = flash_attn_varlen_func(
+        cu_seqlens_k = torch.tensor(
+                        [0] + attn_metadata.dcp_context_kv_lens.tolist(),
+                        device=attn_metadata.dcp_context_kv_lens.device,
+                        dtype=torch.int32,
+                    ).cumsum(dim=0, dtype=torch.int32)
+
+        context_attn_out, context_lse, _ = flash_attn_varlen_func(
             q=query_across_dcp,
             k=key_cache,
             v=value_cache,
-            out=None,
             cu_seqlens_q=cu_seqlens_q,
             max_seqlen_q=max_seqlen_q,
-            seqused_k=attn_metadata.dcp_context_kv_lens,
+            cu_seqlens_k=cu_seqlens_k,
             max_seqlen_k=attn_metadata.max_dcp_context_kv_len,
             softmax_scale=self.scale,
             causal=False,
@@ -862,8 +861,8 @@ class FlashAttentionImpl(AttentionImpl):
             window_size=self.sliding_window,
             block_table=block_table,
             softcap=self.logits_soft_cap,
-            return_softmax_lse=True,
-            scheduler_metadata=attn_metadata.scheduler_metadata,
+            return_attn_probs=True,
+            # scheduler_metadata=attn_metadata.scheduler_metadata,
             # fa_version=self.vllm_flash_attn_version,
             # q_descale=q_descale,
             # k_descale=k_descale,
@@ -878,11 +877,10 @@ class FlashAttentionImpl(AttentionImpl):
         )
         context_lse_cor = context_lse_cor.transpose(0, 1).contiguous()
 
-        query_attn_out, query_lse = flash_attn_varlen_func(
+        query_attn_out, query_lse, _ = flash_attn_varlen_func(
             q=query,
             k=key,
             v=value,
-            out=None,
             cu_seqlens_q=cu_seqlens_q,
             max_seqlen_q=max_seqlen_q,
             cu_seqlens_k=cu_seqlens_q,
@@ -892,7 +890,7 @@ class FlashAttentionImpl(AttentionImpl):
             alibi_slopes=self.alibi_slopes,
             window_size=self.sliding_window,
             softcap=self.logits_soft_cap,
-            return_softmax_lse=True,
+            return_attn_probs=True,
             # fa_version=self.vllm_flash_attn_version,
             # q_descale=q_descale,
             # k_descale=k_descale,
@@ -1093,7 +1091,7 @@ def cascade_attention(
     # \------------------------  Metax Modification -------------------------/
 
     # Process shared prefix.
-    prefix_output, prefix_lse = flash_attn_varlen_func(
+    prefix_output, prefix_lse, _ = flash_attn_varlen_func(
         q=query,
         k=key_cache,
         v=value_cache,
@@ -1116,7 +1114,7 @@ def cascade_attention(
     # \------------------------  Metax Modification -------------------------/
 
     # Process suffix per query.
-    suffix_output, suffix_lse = flash_attn_varlen_func(
+    suffix_output, suffix_lse, _ = flash_attn_varlen_func(
         q=query,
         k=key_cache,
         v=value_cache,
@@ -1129,7 +1127,7 @@ def cascade_attention(
         window_size=sliding_window,
         block_table=block_table[:, num_common_kv_blocks:],
         softcap=logits_soft_cap,
-        return_softmax_lse=True,
+        return_attn_probs=True,
     )
 
     # Merge prefix and suffix outputs, and store the result in output.
