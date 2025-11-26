@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 import torch
 
+from vllm.utils.torch_utils import _aux_stream
 
-def _aux_stream() -> torch.cuda.Stream | None:
+
+def mx_aux_stream() -> torch.cuda.Stream | None:
     """
     Ensures aux_stream is initialized only once
     """
@@ -17,6 +19,10 @@ def _aux_stream() -> torch.cuda.Stream | None:
     return _aux_stream
 
 
-from vllm.utils import torch_utils
+import vllm.model_executor.layers.fused_moe.layer
 
-torch_utils.aux_stream = _aux_stream
+vllm.model_executor.layers.fused_moe.layer.aux_stream = mx_aux_stream
+
+import vllm.utils.torch_utils
+
+vllm.utils.torch_utils.aux_stream = mx_aux_stream

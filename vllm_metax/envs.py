@@ -1,15 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable
+
+from vllm.logger import logger
 
 if TYPE_CHECKING:
     VLLM_TARGET_DEVICE: str = "cuda"
-    MAX_JOBS: Optional[str] = None
-    NVCC_THREADS: Optional[str] = None
+    MAX_JOBS: str | None
+    NVCC_THREADS: str | None
     VLLM_USE_PRECOMPILED: bool = False
     VLLM_TEST_USE_PRECOMPILED_NIGHTLY_WHEEL: bool = False
-    CMAKE_BUILD_TYPE: Optional[str] = None
+    CMAKE_BUILD_TYPE: str | None
     VERBOSE: bool = False
     MACA_VLLM_USE_TN_2_NN: bool = True
 
@@ -54,7 +56,44 @@ environment_variables: dict[str, Callable[[], Any]] = {
     == "1",
 }
 
+
 # end-env-vars-definition
+def override_vllm_env(env_name: str, value: Any, reason: str | None) -> None:
+    """
+    Override a vLLM environment variable at runtime.
+
+    Args:
+        env_key: environment variable name (e.g. "VLLM_USE_TRTLLM_ATTENTION")
+                 or the callable from envs.environment_variables.
+        value: new value. If None, the env var is removed from os.environ and
+               the env resolver will return None.
+    """
+    from vllm import envs
+
+    if not isinstance(env_name, str):
+        raise TypeError("env_name must be a string")
+
+    if env_name not in envs.environment_variables:
+        raise KeyError(f"{env_name} is not a recognized vLLM environment variable")
+
+    logger.info_once(
+        "\nNote!: vllm_metax would replace %s to %s. Reason: \n%s",
+        env_name,
+        value,
+        reason,
+    )
+
+    # Replace the resolver with a callable that returns the desired value.
+    envs.environment_variables[env_name] = lambda v=value: v
+
+    # Update os.environ for code that reads it directly.
+    if value is None:
+        os.environ.pop(env_name, None)
+    else:
+        if isinstance(value, bool):
+            os.environ[env_name] = "1" if value else "0"
+        else:
+            os.environ[env_name] = str(value)
 
 
 def __getattr__(name: str):

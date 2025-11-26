@@ -13,6 +13,7 @@ import torch
 from typing_extensions import ParamSpec
 
 import vllm.envs as envs
+import vllm_metax.envs as mx_envs
 from vllm.logger import logger
 from vllm_metax.utils import import_pymxml
 from vllm.utils.torch_utils import cuda_device_count_stateless
@@ -678,8 +679,22 @@ MacaPlatform.log_warnings()
 
 
 # Note: Put all env Override here for Maca platform
-envs.VLLM_USE_FLASHINFER_SAMPLER = False
+mx_envs.override_vllm_env(
+    "VLLM_USE_FLASHINFER_SAMPLER", False, "flashinfer sampler are not supported on maca"
+)
+mx_envs.override_vllm_env(
+    "VLLM_USE_TRTLLM_ATTENTION", False, "trtllm interfaces are not supported"
+)
+mx_envs.override_vllm_env(
+    "VLLM_USE_CUDNN_PREFILL", False, "cudnn prefill interfaces are not supported"
+)
+mx_envs.override_vllm_env(
+    "VLLM_USE_TRTLLM_RAGGED_DEEPSEEK_PREFILL",
+    False,
+    "trtllm interfaces are not supported",
+)
+# envs.VLLM_USE_TRTLLM_RAGGED_DEEPSEEK_PREFILL = False
+# envs.VLLM_USE_CUDNN_PREFILL = False
+# envs.VLLM_USE_FLASHINFER_SAMPLER = False
 # envs.VLLM_USE_STANDALONE_COMPILE = False
-envs.VLLM_USE_TRTLLM_ATTENTION = False
-envs.VLLM_USE_CUDNN_PREFILL = False
-envs.VLLM_USE_TRTLLM_RAGGED_DEEPSEEK_PREFILL = False
+# envs.VLLM_DISABLE_SHARED_EXPERTS_STREAM = False

@@ -90,6 +90,8 @@ def register():
 
 ########### general plugins ###########
 def register_patch():
+    import vllm_metax.hotfix.fix_aux_stream  # noqa: F401
+    import vllm_metax.hotfix.fix_standalone_compile  # noqa: F401
     import vllm_metax.patch  # noqa: F401
 
 
