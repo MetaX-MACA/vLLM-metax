@@ -17,7 +17,7 @@ class MctlassScaledMMLinearKernel(CutlassScaledMMLinearKernel):
         return True, None
 
 # /------------------------  Metax Modification ----------------------------\
-#缩放矩阵乘内核，增添上对OOT平台的支持
+#Scale the matrix multiplication kernel
 
 _POSSIBLE_KERNELS: dict[PlatformEnum, list[type[ScaledMMLinearKernel]]] = {
     PlatformEnum.OOT: [MctlassScaledMMLinearKernel]

@@ -12,7 +12,7 @@ from vllm.v1.worker import worker_base
 from vllm.v1.kv_cache_interface import KVCacheConfig
 
 # ┌------------------------  Metax Modification -------------------------┐
-#为vllm.v1.worker.wrker_base添加gpu_worker中拥有的方法
+#Add the methods from gpu_worker to vllm.v1.worker.worker_base
 def sleep(self, level: int = 1) -> None:
     from vllm_metax.device_allocator.cumem import CuMemAllocator
 
