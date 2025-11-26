@@ -10,7 +10,12 @@ from vllm.attention.backends.abstract import (
     AttentionType,
     is_quantized_kv_cache,
 )
-from vllm.attention.ops.triton_decode_attention import decode_attention_fwd
+
+# ---------------------------------------------------------------
+# Note: We need to use Maca's decode_attention due to
+#       the limit of shmem for triton kernel
+# ---------------------------------------------------------------
+from vllm_metax.attention.ops.triton_decode_attention import decode_attention_fwd
 from vllm.config.cache import CacheDType
 from vllm.logger import init_logger
 from vllm.model_executor.layers.batch_invariant import (

@@ -71,6 +71,7 @@ exclude = [
 "vllm_metax/v1/**" = ["ALL"]
 "vllm_metax/csrc/**" = ["ALL"]
 "vllm_metax/patch/**" = ["ALL"]
+"vllm_metax/hotfix/**" = ["ALL"]
 "vllm_metax/models/**" = ["ALL"]
 "tools/**" = ["ALL"]
 "setup.py" = ["G004"]

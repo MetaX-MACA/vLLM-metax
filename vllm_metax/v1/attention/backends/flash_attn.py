@@ -18,7 +18,11 @@ from vllm.attention.backends.abstract import (
 )
 from vllm.attention.layer import Attention
 from vllm.attention.ops.common import cp_lse_ag_out_rs
-from vllm.attention.ops.merge_attn_states import merge_attn_states
+
+# --------------------------------------------------------------
+# Note: use Maca's merge_attn_states to get cuda kernel invoked
+# --------------------------------------------------------------
+from vllm_metax.attention.ops.merge_attn_states import merge_attn_states
 from vllm_metax.attention.utils.fa_utils import (
     flash_attn_supports_fp8,
     get_flash_attn_version,
@@ -860,10 +864,10 @@ class FlashAttentionImpl(AttentionImpl):
             softcap=self.logits_soft_cap,
             return_softmax_lse=True,
             scheduler_metadata=attn_metadata.scheduler_metadata,
-            fa_version=self.vllm_flash_attn_version,
-            q_descale=q_descale,
-            k_descale=k_descale,
-            v_descale=v_descale,
+            # fa_version=self.vllm_flash_attn_version,
+            # q_descale=q_descale,
+            # k_descale=k_descale,
+            # v_descale=v_descale,
         )
         # FA returns LSE in shape [ H, B ] but cp_lse_ag_out_rs wants [ B, H ]
         context_attn_out_cor, context_lse_cor = cp_lse_ag_out_rs(
@@ -889,10 +893,10 @@ class FlashAttentionImpl(AttentionImpl):
             window_size=self.sliding_window,
             softcap=self.logits_soft_cap,
             return_softmax_lse=True,
-            fa_version=self.vllm_flash_attn_version,
-            q_descale=q_descale,
-            k_descale=k_descale,
-            v_descale=v_descale,
+            # fa_version=self.vllm_flash_attn_version,
+            # q_descale=q_descale,
+            # k_descale=k_descale,
+            # v_descale=v_descale,
         )
         assert context_attn_out_cor.shape == query_attn_out.shape
         assert context_lse_cor.shape == query_lse.shape
@@ -955,10 +959,10 @@ class FlashAttentionImpl(AttentionImpl):
             alibi_slopes=self.alibi_slopes,
             window_size=self.sliding_window,
             softcap=self.logits_soft_cap,
-            fa_version=self.vllm_flash_attn_version,
-            q_descale=layer._q_scale.expand(descale_shape),
-            k_descale=layer._k_scale.expand(descale_shape),
-            v_descale=layer._v_scale.expand(descale_shape),
+            # fa_version=self.vllm_flash_attn_version,
+            # q_descale=layer._q_scale.expand(descale_shape),
+            # k_descale=layer._k_scale.expand(descale_shape),
+            # v_descale=layer._v_scale.expand(descale_shape),
             num_splits=1 if self.batch_invariant_enabled else 0,
         )
 

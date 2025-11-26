@@ -436,7 +436,7 @@ def get_maca_version() -> Version:
 
 
 def fixed_version_scheme(version: ScmVersion) -> str:
-    return "0.11.1"
+    return "0.11.2"
 
 
 def always_hash(version: ScmVersion) -> str:

@@ -67,6 +67,48 @@ def _get_backend_priorities(
         ]
 
 
+def register_attention_backends() -> None:
+    # Pre-register all attention backends
+    logger.info("Pre-registering attention backends.")
+    from vllm.attention.backends.registry import (
+        AttentionBackendEnum,
+        register_backend,
+    )
+
+    register_backend(
+        AttentionBackendEnum.FLASHMLA,
+        "vllm_metax.v1.attention.backends.mla.flashmla.MacaFlashMLABackend",
+    )
+    register_backend(
+        AttentionBackendEnum.FLASHMLA_SPARSE,
+        "vllm_metax.v1.attention.backends.mla.flashmla_sparse.MacaFlashMLASparseBackend",
+    )
+    register_backend(
+        AttentionBackendEnum.TRITON_MLA,
+        "vllm_metax.v1.attention.backends.mla.triton_mla.MacaTritonMLABackend",
+    )
+    register_backend(
+        AttentionBackendEnum.FLASH_ATTN,
+        "vllm_metax.v1.attention.backends.flash_attn.MacaFlashAttentionBackend",
+    )
+    register_backend(
+        AttentionBackendEnum.FLASHINFER,
+        "vllm_metax.v1.attention.backends.flashinfer.MacaFlashInferBackend",
+    )
+    register_backend(
+        AttentionBackendEnum.TRITON_ATTN,
+        "vllm_metax.v1.attention.backends.triton_attn.MacaTritonAttentionBackend",
+    )
+    register_backend(
+        AttentionBackendEnum.TREE_ATTN,
+        "vllm_metax.v1.attention.backends.tree_attn.MacaTreeAttentionBackend",
+    )
+    register_backend(
+        AttentionBackendEnum.FLEX_ATTENTION,
+        "vllm_metax.v1.attention.backends.flex_attention.MacaFlexAttentionBackend",
+    )
+
+
 def with_mxml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
     @wraps(fn)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
@@ -253,6 +295,7 @@ class MacaPlatformBase(Platform):
     def get_vit_attn_backend(
         cls, head_size: int, dtype: torch.dtype
     ) -> "AttentionBackendEnum":
+        register_attention_backends()
         from vllm.attention.backends.registry import AttentionBackendEnum
 
         # TODO(Hank) Need to check which is better between
@@ -326,45 +369,7 @@ class MacaPlatformBase(Platform):
         use_sparse: bool,
         attn_type: str | None = None,
     ) -> str:
-        # Pre-register all attention backends
-        logger.info("Pre-registering attention backends.")
-        from vllm.attention.backends.registry import (
-            AttentionBackendEnum,
-            register_backend,
-        )
-
-        register_backend(
-            AttentionBackendEnum.FLASHMLA,
-            "vllm_metax.v1.attention.backends.mla.flashmla.MacaFlashMLABackend",
-        )
-        register_backend(
-            AttentionBackendEnum.FLASHMLA_SPARSE,
-            "vllm_metax.v1.attention.backends.mla.flashmla_sparse.MacaFlashMLASparseBackend",
-        )
-        register_backend(
-            AttentionBackendEnum.TRITON_MLA,
-            "vllm_metax.v1.attention.backends.mla.triton_mla.MacaTritonMLABackend",
-        )
-        register_backend(
-            AttentionBackendEnum.FLASH_ATTN,
-            "vllm_metax.v1.attention.backends.flash_attn.MacaFlashAttentionBackend",
-        )
-        register_backend(
-            AttentionBackendEnum.FLASHINFER,
-            "vllm_metax.v1.attention.backends.flashinfer.MacaFlashInferBackend",
-        )
-        register_backend(
-            AttentionBackendEnum.TRITON_ATTN,
-            "vllm_metax.v1.attention.backends.triton_attn.MacaTritonAttentionBackend",
-        )
-        register_backend(
-            AttentionBackendEnum.TREE_ATTN,
-            "vllm_metax.v1.attention.backends.tree_attn.MacaTreeAttentionBackend",
-        )
-        register_backend(
-            AttentionBackendEnum.FLEX_ATTENTION,
-            "vllm_metax.v1.attention.backends.flex_attention.MacaFlexAttentionBackend",
-        )
+        register_attention_backends()
 
         from vllm.attention import AttentionType
 
@@ -527,6 +532,7 @@ class MacaPlatformBase(Platform):
         cls, parser: FlexibleArgumentParser | None = None
     ) -> None:
         """Pre-register and update Maca platform."""
+        register_attention_backends()
         # TODO(m01016): update cudagraph max capture size  here
 
 
@@ -673,7 +679,7 @@ MacaPlatform.log_warnings()
 
 # Note: Put all env Override here for Maca platform
 envs.VLLM_USE_FLASHINFER_SAMPLER = False
-envs.VLLM_USE_STANDALONE_COMPILE = False
+# envs.VLLM_USE_STANDALONE_COMPILE = False
 envs.VLLM_USE_TRTLLM_ATTENTION = False
 envs.VLLM_USE_CUDNN_PREFILL = False
 envs.VLLM_USE_TRTLLM_RAGGED_DEEPSEEK_PREFILL = False
