@@ -249,8 +249,10 @@ class QueryLenSupport(Enum):
     UNIFORM = "uniform"
     VARLEN = "varlen"
 
+
 # /------------------------  Metax Modification -------------------------\
 from flash_attn import flash_attn_varlen_func
+
 is_vllm_fa = False
 # \------------------------- Metax Modification -------------------------/
 

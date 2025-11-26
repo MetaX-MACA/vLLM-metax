@@ -839,13 +839,15 @@ class FlashAttentionImpl(AttentionImpl):
         max_seqlen_q = attn_metadata.max_query_len
         block_table = attn_metadata.block_table
 
+        assert attn_metadata.dcp_context_kv_lens is not None
+
         query = query.contiguous()
         query_across_dcp = get_dcp_group().all_gather(query, dim=1)
         cu_seqlens_k = torch.tensor(
-                        [0] + attn_metadata.dcp_context_kv_lens.tolist(),
-                        device=attn_metadata.dcp_context_kv_lens.device,
-                        dtype=torch.int32,
-                    ).cumsum(dim=0, dtype=torch.int32)
+            [0] + attn_metadata.dcp_context_kv_lens.tolist(),
+            device=attn_metadata.dcp_context_kv_lens.device,
+            dtype=torch.int32,
+        ).cumsum(dim=0, dtype=torch.int32)
 
         context_attn_out, context_lse, _ = flash_attn_varlen_func(
             q=query_across_dcp,
