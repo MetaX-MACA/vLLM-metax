@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
-"""For compatibility with the Metax platform, use the MACA API 
-functions (e.g., mcSetDevice, mcDeviceSynchronize).
-"""
+
+# -------------------------------------------------------
+# Note: This patch is for compatibility on Metax platform,
+#       replaced some libraries' interface with maca's
+# -------------------------------------------------------
+
 """This file is a pure Python wrapper for the cudart library.
 It avoids the need to compile a separate shared library, and is
 convenient for use when we just need to call a few functions.
@@ -9,16 +12,14 @@ convenient for use when we just need to call a few functions.
 
 import ctypes
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # this line makes it possible to directly load `libcudart.so` using `ctypes`
 import torch  # noqa
-import vllm
-import vllm.envs as envs
-from vllm.distributed.device_communicators import cuda_wrapper
-from vllm.logger import init_logger
 
-logger = init_logger(__name__)
+import vllm.envs as envs
+from vllm.distributed.device_communicators.cuda_wrapper import logger
+from vllm.platforms import current_platform
 
 # === export types and functions from cudart to Python ===
 # for the original cudart definition, please check
@@ -36,20 +37,16 @@ class cudaIpcMemHandle_t(ctypes.Structure):
 class Function:
     name: str
     restype: Any
-    argtypes: List[Any]
+    argtypes: list[Any]
 
 
-def find_loaded_library(lib_name) -> Optional[str]:
+def find_loaded_library(lib_name) -> str | None:
     """
     According to according to https://man7.org/linux/man-pages/man5/proc_pid_maps.5.html,
     the file `/proc/self/maps` contains the memory maps of the process, which includes the
     shared libraries loaded by the process. We can use this file to find the path of the
     a loaded library.
     """  # noqa
-    # /------------------------  Metax Modification -------------------------\
-    logger.info(f"[Plugin] Hooked find_loaded_library -> {find_loaded_library}")
-    # \------------------------- Metax Modification -------------------------/
-
     found = False
     with open("/proc/self/maps") as f:
         for line in f:
@@ -71,68 +68,84 @@ def find_loaded_library(lib_name) -> Optional[str]:
 
 
 class CudaRTLibrary:
-    # /------------------------  Metax Modification -------------------------\
-    # use maca
     exported_functions = [
         # ​cudaError_t cudaSetDevice ( int  device )
-        Function("mcSetDevice", cudaError_t, [ctypes.c_int]),
+        Function("cudaSetDevice", cudaError_t, [ctypes.c_int]),
         # cudaError_t 	cudaDeviceSynchronize ( void )
-        Function("mcDeviceSynchronize", cudaError_t, []),
+        Function("cudaDeviceSynchronize", cudaError_t, []),
         # ​cudaError_t cudaDeviceReset ( void )
-        Function("mcDeviceReset", cudaError_t, []),
+        Function("cudaDeviceReset", cudaError_t, []),
         # const char* 	cudaGetErrorString ( cudaError_t error )
-        Function("mcGetErrorString", ctypes.c_char_p, [cudaError_t]),
+        Function("cudaGetErrorString", ctypes.c_char_p, [cudaError_t]),
         # ​cudaError_t 	cudaMalloc ( void** devPtr, size_t size )
         Function(
-            "mcMalloc", cudaError_t, [ctypes.POINTER(ctypes.c_void_p), ctypes.c_size_t]
+            "cudaMalloc",
+            cudaError_t,
+            [ctypes.POINTER(ctypes.c_void_p), ctypes.c_size_t],
         ),
         # ​cudaError_t 	cudaFree ( void* devPtr )
-        Function("mcFree", cudaError_t, [ctypes.c_void_p]),
+        Function("cudaFree", cudaError_t, [ctypes.c_void_p]),
         # ​cudaError_t cudaMemset ( void* devPtr, int  value, size_t count )
         Function(
-            "mcMemset", cudaError_t, [ctypes.c_void_p, ctypes.c_int, ctypes.c_size_t]
+            "cudaMemset", cudaError_t, [ctypes.c_void_p, ctypes.c_int, ctypes.c_size_t]
         ),
         # ​cudaError_t cudaMemcpy ( void* dst, const void* src, size_t count, cudaMemcpyKind kind ) # noqa
         Function(
-            "mcMemcpy",
+            "cudaMemcpy",
             cudaError_t,
             [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, cudaMemcpyKind],
         ),
         # cudaError_t cudaIpcGetMemHandle ( cudaIpcMemHandle_t* handle, void* devPtr ) # noqa
         Function(
-            "mcIpcGetMemHandle",
+            "cudaIpcGetMemHandle",
             cudaError_t,
             [ctypes.POINTER(cudaIpcMemHandle_t), ctypes.c_void_p],
         ),
         # ​cudaError_t cudaIpcOpenMemHandle ( void** devPtr, cudaIpcMemHandle_t handle, unsigned int  flags ) # noqa
         Function(
-            "mcIpcOpenMemHandle",
+            "cudaIpcOpenMemHandle",
             cudaError_t,
             [ctypes.POINTER(ctypes.c_void_p), cudaIpcMemHandle_t, ctypes.c_uint],
         ),
     ]
-    # \------------------------- Metax Modification -------------------------/
+
+    # https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Runtime_API_functions_supported_by_HIP.html # noqa
+    cuda_to_maca_mapping = {
+        "cudaSetDevice": "mcSetDevice",
+        "cudaDeviceSynchronize": "mcDeviceSynchronize",
+        "cudaDeviceReset": "mcDeviceReset",
+        "cudaGetErrorString": "mcGetErrorString",
+        "cudaMalloc": "mcMalloc",
+        "cudaFree": "mcFree",
+        "cudaMemset": "mcMemset",
+        "cudaMemcpy": "mcMemcpy",
+        "cudaIpcGetMemHandle": "mcIpcGetMemHandle",
+        "cudaIpcOpenMemHandle": "mcIpcOpenMemHandle",
+    }
 
     # class attribute to store the mapping from the path to the library
     # to avoid loading the same library multiple times
-    path_to_library_cache: Dict[str, Any] = {}
+    path_to_library_cache: dict[str, Any] = {}
 
     # class attribute to store the mapping from library path
     #  to the corresponding dictionary
-    path_to_dict_mapping: Dict[str, Dict[str, Any]] = {}
+    path_to_dict_mapping: dict[str, dict[str, Any]] = {}
 
-    def __init__(self, so_file: Optional[str] = None):
-        # /------------------------  Metax Modification -------------------------\
-        # use libmcruntime
+    def __init__(self, so_file: str | None = None):
         if so_file is None:
-            so_file = find_loaded_library("libmcruntime")
+            so_file = find_loaded_library("libcudart")
             if so_file is None:
-                so_file = envs.VLLM_CUDART_SO_PATH  # fallback to env var
+                # libcudart is not loaded in the current process, try hip
+                so_file = find_loaded_library("libmcruntime")
+                # should be safe to assume now that we are using ROCm
+                # as the following assertion should error out if the
+                # libhiprtc library is also not loaded
+                if so_file is None:
+                    so_file = envs.VLLM_CUDART_SO_PATH  # fallback to env var
             assert so_file is not None, (
                 "libcudart is not loaded in the current process, "
                 "try setting VLLM_CUDART_SO_PATH"
             )
-        # \------------------------- Metax Modification -------------------------/
         if so_file not in CudaRTLibrary.path_to_library_cache:
             lib = ctypes.CDLL(so_file)
             CudaRTLibrary.path_to_library_cache[so_file] = lib
@@ -141,7 +154,12 @@ class CudaRTLibrary:
         if so_file not in CudaRTLibrary.path_to_dict_mapping:
             _funcs = {}
             for func in CudaRTLibrary.exported_functions:
-                f = getattr(self.lib, func.name)
+                f = getattr(
+                    self.lib,
+                    CudaRTLibrary.cuda_to_maca_mapping[func.name]
+                    if current_platform.is_out_of_tree()
+                    else func.name,
+                )
                 f.restype = func.restype
                 f.argtypes = func.argtypes
                 _funcs[func.name] = f
@@ -153,52 +171,54 @@ class CudaRTLibrary:
             error_str = self.cudaGetErrorString(result)
             raise RuntimeError(f"CUDART error: {error_str}")
 
-    # /------------------------  Metax Modification -------------------------\
-    # use Metax maca
     def cudaGetErrorString(self, error: cudaError_t) -> str:
-        return self.funcs["mcGetErrorString"](error).decode("utf-8")
+        return self.funcs["cudaGetErrorString"](error).decode("utf-8")
 
     def cudaSetDevice(self, device: int) -> None:
-        self.CUDART_CHECK(self.funcs["mcSetDevice"](device))
+        self.CUDART_CHECK(self.funcs["cudaSetDevice"](device))
 
     def cudaDeviceSynchronize(self) -> None:
-        self.CUDART_CHECK(self.funcs["mcDeviceSynchronize"]())
+        self.CUDART_CHECK(self.funcs["cudaDeviceSynchronize"]())
 
     def cudaDeviceReset(self) -> None:
-        self.CUDART_CHECK(self.funcs["mcDeviceReset"]())
+        self.CUDART_CHECK(self.funcs["cudaDeviceReset"]())
 
     def cudaMalloc(self, size: int) -> ctypes.c_void_p:
         devPtr = ctypes.c_void_p()
-        self.CUDART_CHECK(self.funcs["mcMalloc"](ctypes.byref(devPtr), size))
+        self.CUDART_CHECK(self.funcs["cudaMalloc"](ctypes.byref(devPtr), size))
         return devPtr
 
     def cudaFree(self, devPtr: ctypes.c_void_p) -> None:
-        self.CUDART_CHECK(self.funcs["mcFree"](devPtr))
+        self.CUDART_CHECK(self.funcs["cudaFree"](devPtr))
 
     def cudaMemset(self, devPtr: ctypes.c_void_p, value: int, count: int) -> None:
-        self.CUDART_CHECK(self.funcs["mcMemset"](devPtr, value, count))
+        self.CUDART_CHECK(self.funcs["cudaMemset"](devPtr, value, count))
 
     def cudaMemcpy(
         self, dst: ctypes.c_void_p, src: ctypes.c_void_p, count: int
     ) -> None:
         cudaMemcpyDefault = 4
         kind = cudaMemcpyDefault
-        self.CUDART_CHECK(self.funcs["mcMemcpy"](dst, src, count, kind))
+        self.CUDART_CHECK(self.funcs["cudaMemcpy"](dst, src, count, kind))
 
     def cudaIpcGetMemHandle(self, devPtr: ctypes.c_void_p) -> cudaIpcMemHandle_t:
         handle = cudaIpcMemHandle_t()
-        self.CUDART_CHECK(self.funcs["mcIpcGetMemHandle"](ctypes.byref(handle), devPtr))
+        self.CUDART_CHECK(
+            self.funcs["cudaIpcGetMemHandle"](ctypes.byref(handle), devPtr)
+        )
         return handle
 
     def cudaIpcOpenMemHandle(self, handle: cudaIpcMemHandle_t) -> ctypes.c_void_p:
         cudaIpcMemLazyEnablePeerAccess = 1
         devPtr = ctypes.c_void_p()
         self.CUDART_CHECK(
-            self.funcs["mcIpcOpenMemHandle"](
+            self.funcs["cudaIpcOpenMemHandle"](
                 ctypes.byref(devPtr), handle, cudaIpcMemLazyEnablePeerAccess
             )
         )
         return devPtr
-    # \------------------------- Metax Modification -------------------------/
+
+
+import vllm.distributed.device_communicators.cuda_wrapper
 
 vllm.distributed.device_communicators.cuda_wrapper.CudaRTLibrary = CudaRTLibrary

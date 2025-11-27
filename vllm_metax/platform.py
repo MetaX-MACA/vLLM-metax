@@ -134,7 +134,8 @@ class MacaPlatformBase(Platform):
     supported_quantization: list[str] = [
         "awq",
         "gptq",
-        "compressed_tensors",
+        "compressed-tensors",
+        "compressed_tensors",  # This is `_` version of `-`
         "moe_wna16",
         "gguf",
     ]

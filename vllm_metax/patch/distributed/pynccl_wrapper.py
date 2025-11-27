@@ -1,10 +1,36 @@
 # SPDX-License-Identifier: Apache-2.0
-"""For compatibility with the Metax platform, use the MACA API 
-functions (e.g., mcclGetVersion, mcclGetUniqueId, mcclAllReduce).
-"""
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+
+# This file is a pure Python wrapper for the NCCL library.
+# The main purpose is to use NCCL combined with CUDA graph.
+# Before writing this script, we tried the following approach:
+# 1. We tried to use `cupy`, it calls NCCL correctly, but `cupy` itself
+#  often gets stuck when initializing the NCCL communicator.
+# 2. We tried to use `torch.distributed`, but `torch.distributed.all_reduce`
+#  contains many other potential cuda APIs, that are not allowed during
+#  capturing the CUDA graph. For further details, please check
+# https://discuss.pytorch.org/t/pytorch-cudagraph-with-nccl-operation-failed/ .
+#
+# Another rejected idea is to write a C/C++ binding for NCCL. It is usually
+# doable, but we often encounter issues related with nccl versions, and need
+# to switch between different versions of NCCL. See
+# https://github.com/NVIDIA/nccl/issues/1234 for more details.
+# A C/C++ binding is not flexible enough to handle this. It requires
+# recompilation of the code every time we want to switch between different
+# versions. This current implementation, with a **pure** Python wrapper, is
+# more flexible. We can easily switch between different versions of NCCL by
+# changing the environment variable `VLLM_NCCL_SO_PATH`, or the `so_file`
+# variable in the code.
+
+
+# -------------------------------------------------------
+# Note: This patch is for compatibility on Metax platform,
+#       replaced some libraries' interface with maca's
+# -------------------------------------------------------
+
 import ctypes
 import platform
-from typing import Any, Dict, Optional
+from typing import Any
 
 import vllm
 from vllm.distributed.device_communicators.pynccl_wrapper import (
@@ -20,16 +46,12 @@ from vllm.distributed.device_communicators.pynccl_wrapper import (
     ncclWindow_t,
     ncclUniqueId,
 )
-from vllm.logger import init_logger
 
-from vllm_metax.utils import find_mccl_library
-
-logger = init_logger(__name__)
+from vllm.platforms import current_platform
+from vllm_metax.utils.mccl import find_mccl_library
 
 
 class NCCLLibrary:
-    # /------------------------  Metax Modification -------------------------\
-    # use maca
     exported_functions = [
         # const char* ncclGetErrorString(ncclResult_t result)
         Function("mcclGetErrorString", ctypes.c_char_p, [ncclResult_t]),
@@ -208,11 +230,10 @@ class NCCLLibrary:
     #  to the corresponding dictionary
     path_to_dict_mapping: dict[str, dict[str, Any]] = {}
 
-    def __init__(self, so_file: Optional[str] = None):
-    # /------------------------  Metax Modification -------------------------\
-    # use maca find_mccl_library
+    def __init__(self, so_file: str | None = None):
+        # /------------------------  Metax Modification -------------------------\
         so_file = so_file or find_mccl_library()
-    # \------------------------- Metax Modification -------------------------/
+        # \------------------------- Metax Modification -------------------------/
         try:
             if so_file not in NCCLLibrary.path_to_dict_mapping:
                 lib = ctypes.CDLL(so_file)
@@ -231,21 +252,37 @@ class NCCLLibrary:
                 platform.platform(),
             )
             raise e
-    # /------------------------  Metax Modification -------------------------\
-    # use maca 
+
         if so_file not in NCCLLibrary.path_to_dict_mapping:
             _funcs: dict[str, Any] = {}
             for func in NCCLLibrary.exported_functions:
-                f = getattr(self.lib, func.name)
-                f.restype = func.restype
-                f.argtypes = func.argtypes
-                _funcs[func.name] = f
+                try:
+                    f = getattr(self.lib, func.name)
+                    f.restype = func.restype
+                    f.argtypes = func.argtypes
+                    _funcs[func.name] = f
+                except AttributeError:
+                    if func.name in [
+                        "ncclCommWindowRegister",
+                        "ncclCommWindowDeregister",
+                    ]:
+                        if envs.VLLM_USE_NCCL_SYMM_MEM:
+                            logger.warning_once(
+                                "The symbol %s is not found in the NCCL "
+                                "library %s. To enable VLLM_USE_NCCL_SYMM_MEM "
+                                " please update your NCCL version to >= "
+                                "2.27.03.",
+                                func.name,
+                                so_file,
+                            )
+                        if current_platform.is_rocm():
+                            # Having an exception here on ROCm platform is
+                            # not allowed during graph capturing
+                            continue
+                    raise
             NCCLLibrary.path_to_dict_mapping[so_file] = _funcs
         self._funcs = NCCLLibrary.path_to_dict_mapping[so_file]
-    # \------------------------- Metax Modification -------------------------/
 
-    # /------------------------  Metax Modification -------------------------\
-    # use maca (e.g., mcclGetErrorString, mcclGetVersion, mcclAllReduce)
     def ncclGetErrorString(self, result: ncclResult_t) -> str:
         return self._funcs["mcclGetErrorString"](result).decode("utf-8")
 
@@ -438,6 +475,8 @@ class NCCLLibrary:
     def ncclCommWindowDeregister(self, comm: ncclComm_t, window: ncclWindow_t) -> None:
         # self.NCCL_CHECK(self._funcs["mcclCommWindowDeregister"](comm, window))
         return
-    # \------------------------- Metax Modification -------------------------/
+
+
+import vllm.distributed.device_communicators.pynccl_wrapper
 
 vllm.distributed.device_communicators.pynccl_wrapper.NCCLLibrary = NCCLLibrary

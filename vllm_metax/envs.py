@@ -41,7 +41,7 @@ environment_variables: dict[str, Callable[[], Any]] = {
     "CUDA_HOME": lambda: os.environ.get("CUDA_HOME", None),
     # Path to the NCCL library file. It is needed because nccl>=2.19 brought
     # by PyTorch contains a bug: https://github.com/NVIDIA/nccl/issues/1234
-    "VLLM_NCCL_SO_PATH": lambda: os.environ.get("VLLM_NCCL_SO_PATH", None),
+    "VLLM_MCCL_SO_PATH": lambda: os.environ.get("VLLM_MCCL_SO_PATH", None),
     # when `VLLM_NCCL_SO_PATH` is not set, vllm will try to find the nccl
     # library file in the locations specified by `LD_LIBRARY_PATH`
     "LD_LIBRARY_PATH": lambda: os.environ.get("LD_LIBRARY_PATH", None),
