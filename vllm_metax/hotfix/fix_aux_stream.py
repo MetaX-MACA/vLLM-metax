@@ -1,4 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
+
+# -----------------------------------------------------
+# Note: This is a hotfix to ensure the `mx_aux_stream`
+#       is correctly initialized in maca platform by
+#       *is_cuda_alike* check.
+#
+# TODO(hank): Remove this once the issue is resolved.
+# -----------------------------------------------------
 import torch
 
 from vllm.utils.torch_utils import _aux_stream

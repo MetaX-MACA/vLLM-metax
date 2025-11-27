@@ -1,7 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
+
+# -----------------------------------------------------
+# Note: This is a hotfix for torch2.8+metax to make the
+#       standalone compilation backend work.
+#
+# TODO(hank): Remove this once the torch issue is resolved.
+# _____________________________________________________
+
 import torch
 
-# from typing import TYPE_CHECKING
 from torch._functorch._aot_autograd.schemas import AOTConfig
 from torch._functorch._aot_autograd.autograd_cache import (
     check_cacheable,

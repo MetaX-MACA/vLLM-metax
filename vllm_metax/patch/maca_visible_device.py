@@ -1,5 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
-from vllm.v1.worker.worker_base import WorkerWrapperBase, logger
+
+# ------------------------------------------------------------------------
+# Note: This file is a patch for vLLM to support `MACA_VISIBLE_DEVICES`.
+#       It modifies the behavior of environment variable handling to include
+#       `MACA_VISIBLE_DEVICES` in addition to the standard `CUDA_VISIBLE_DEVICES`.
+#
+# This is specifically tailored for the Metax platform.
+# ------------------------------------------------------------------------
+
+from vllm.v1.worker.worker_base import WorkerWrapperBase
 import contextlib
 
 from typing import List, Dict, Iterator
@@ -17,7 +26,7 @@ def update_environment_variables_with_maca(
     envs = envs_list[self.rpc_rank]
     key = "CUDA_VISIBLE_DEVICES"
     # /------------------------  Metax Modification -------------------------\
-    # sync `MACA_VISIBLE_DEVICES` with `CUDA_VISIBLE_DEVICES`
+
     envs["MACA_VISIBLE_DEVICES"] = envs.get(key, "")
     # \------------------------- Metax Modification -------------------------/
     if key in envs and key in os.environ:
@@ -41,8 +50,6 @@ def set_device_control_env_var_with_maca(
 
     value = get_device_indices(evar, local_dp_rank, world_size, local_world_size)
     # /------------------------  Metax Modification -------------------------\
-    # In addition to setting the platform-specific environment variable,
-    # also set MACA_VISIBLE_DEVICE
     with patch.dict(os.environ, values=((evar, value),)):
         os.environ["MACA_VISIBLE_DEVICES"] = value
         yield
