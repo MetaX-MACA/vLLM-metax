@@ -24,6 +24,10 @@
 # limitations under the License.
 """Inference-only DeepseekV2/DeepseekV3 model."""
 
+# /------------------------  Metax Modification -------------------------\
+    # 涉及metax自定义实现（deep_gemm / mla / mx_ops）
+# \------------------------- Metax Modification -------------------------/
+
 import typing
 from collections.abc import Callable, Iterable
 from itertools import islice
