@@ -16,10 +16,13 @@ class MctlassScaledMMLinearKernel(CutlassScaledMMLinearKernel):
     def can_implement(cls, c: ScaledMMLinearLayerConfig) -> tuple[bool, Optional[str]]:
         return True, None
 
+# /------------------------  Metax Modification ----------------------------\
+#Scale the matrix multiplication kernel
 
 _POSSIBLE_KERNELS: dict[PlatformEnum, list[type[ScaledMMLinearKernel]]] = {
     PlatformEnum.OOT: [MctlassScaledMMLinearKernel]
 }
+# \------------------------- Metax Modification ----------------------------/
 
 import vllm.model_executor.layers.quantization.kernels.scaled_mm
 

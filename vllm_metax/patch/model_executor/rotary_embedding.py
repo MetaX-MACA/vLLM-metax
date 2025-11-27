@@ -19,9 +19,12 @@ def apply_rotary_emb_dispatch(
         is_neox_style: Whether to use the Neox-style or GPT-J-style rotary
             positional embeddings.
     """
+    # ┌------------------------  Metax Modification --------------------------------┐
+    #Implement apply_rotary_emb using the upstream flash-attn version
     from flash_attn.layers.rotary import apply_rotary_emb
 
     return apply_rotary_emb(x.unsqueeze(0), cos, sin, not is_neox_style).squeeze(0)
+    # └------------------------- Metax Modification --------------------------------┘
 
 
 import vllm.model_executor.layers.rotary_embedding.common
