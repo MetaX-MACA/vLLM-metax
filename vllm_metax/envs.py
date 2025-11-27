@@ -73,7 +73,7 @@ def override_vllm_env(env_name: str, value: Any, reason: str | None) -> None:
         raise KeyError(f"{env_name} is not a recognized vLLM environment variable")
 
     logger.info_once(
-        "\nNote!: vllm_metax would replace %s to %s. Reason: \n%s",
+        "\nNote!: vllm_metax would replace %s to %s. Reason: %s",
         env_name,
         value,
         reason,

@@ -1,5 +1,20 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+
+# ---------------------------------------------------
+# Note:
+#
+# Here we only maintain the custom ops that are:
+#
+#   - modified
+#   - newly added
+#
+# in vllm_metax compared to vllm.
+#
+# When *adding* new custom ops, make sure you checked the
+# latest vllm/_custom_ops.py first to avoid adding duplicates.
+# ---------------------------------------------------
+
 import torch
 import vllm.envs as envs
 
