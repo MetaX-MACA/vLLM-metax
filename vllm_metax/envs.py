@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     VLLM_TEST_USE_PRECOMPILED_NIGHTLY_WHEEL: bool = False
     CMAKE_BUILD_TYPE: str | None
     VERBOSE: bool = False
-    MACA_VLLM_USE_TN_2_NN: bool = True
 
 environment_variables: dict[str, Callable[[], Any]] = {
     # ================== Installation Time Env Vars ==================
@@ -51,9 +50,6 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # (e.g. install vllm from source with tag v0.9.1 will cause the version set
     # as 0.9.2)
     "VLLM_OFFICIAL_VERSION": lambda: os.getenv("VLLM_OFFICIAL_VERSION", None),
-    # if set, enable loading weight by transpose
-    "MACA_VLLM_USE_TN_2_NN": lambda: os.environ.get("MACA_VLLM_USE_TN_2_NN", "0")
-    == "1",
 }
 
 

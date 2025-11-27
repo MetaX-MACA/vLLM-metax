@@ -692,7 +692,7 @@ mx_envs.override_vllm_env(
 mx_envs.override_vllm_env(
     "VLLM_USE_TRTLLM_RAGGED_DEEPSEEK_PREFILL",
     False,
-    "trtllm interfaces are not supported",
+    "trtllm interfaces are not supported",  # noqa
 )
 # envs.VLLM_USE_TRTLLM_RAGGED_DEEPSEEK_PREFILL = False
 # envs.VLLM_USE_CUDNN_PREFILL = False

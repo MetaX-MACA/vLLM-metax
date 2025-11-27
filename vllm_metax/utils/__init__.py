@@ -6,8 +6,6 @@
 # https://github.com/huggingface/transformers/blob/v4.28.0/src/transformers/models/llama/modeling_llama.py
 # Copyright 2024 The vLLM team.
 
-from vllm_metax import envs as mx_envs
-
 
 def import_pymxml():
     """
@@ -42,9 +40,6 @@ def import_pymxml():
 
 
 def vllm_version():
-    if mx_envs.VLLM_OFFICIAL_VERSION is not None:
-        return mx_envs.VLLM_OFFICIAL_VERSION
-    else:
-        import vllm
+    import vllm
 
-        return vllm.__version__
+    return vllm.__version__
