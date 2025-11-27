@@ -8,6 +8,12 @@
 # Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
 # ruff: noqa: E501
 
+
+# ------------------------------------------------------------
+# Note: maca need to reduce the nums_stages to avoid
+#       hardware limit of triton shmem size.
+# ------------------------------------------------------------
+
 import torch
 
 from vllm.triton_utils import tl, triton

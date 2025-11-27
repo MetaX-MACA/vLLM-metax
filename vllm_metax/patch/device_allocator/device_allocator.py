@@ -1,4 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
+
+# ------------------------------------------------------------
+# Note: this patch is to support sleep_mode on maca backend.
+#       We need to replace cuda `CuMemAllocator` with maca's.
+# ------------------------------------------------------------
+
+
 import vllm
 from vllm.logger import init_logger
 
@@ -11,8 +18,7 @@ import torch
 from vllm.v1.worker import worker_base
 from vllm.v1.kv_cache_interface import KVCacheConfig
 
-# ┌------------------------  Metax Modification -------------------------┐
-#Add the methods from gpu_worker to vllm.v1.worker.worker_base
+
 def sleep(self, level: int = 1) -> None:
     from vllm_metax.device_allocator.cumem import CuMemAllocator
 
@@ -80,7 +86,7 @@ def initialize_from_config(self, kv_cache_config: KVCacheConfig) -> None:
         context = nullcontext()
     with context:
         self.model_runner.initialize_kv_cache(kv_cache_config)
-# └------------------------- Metax Modification -------------------------┘
+
 
 worker_base.sleep = sleep
 worker_base.wake_up = wake_up

@@ -52,7 +52,7 @@ def find_loaded_library(lib_name) -> str | None:
 
 cumem_available = False
 # /------------------------  Metax Modifications -------------------------\
-#Modify the import method of cumem_allocator and CudaRTLibrary to avoid errors on the ROCm platform
+# Using maca `cumem_allocator` and `CudaRTLibrary`
 try:
     from vllm_metax.cumem_allocator import (
         init_module,

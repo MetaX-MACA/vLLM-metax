@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
+# -----------------------------------------------
+# Note: Use maca's flash_attn instead of vllm's
+# -----------------------------------------------
+
 import vllm
 from vllm.logger import init_logger
 
@@ -20,7 +24,6 @@ def apply_rotary_emb_dispatch(
             positional embeddings.
     """
     # ┌------------------------  Metax Modification --------------------------------┐
-    #Implement apply_rotary_emb using the upstream flash-attn version
     from flash_attn.layers.rotary import apply_rotary_emb
 
     return apply_rotary_emb(x.unsqueeze(0), cos, sin, not is_neox_style).squeeze(0)

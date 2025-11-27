@@ -1,4 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
+
+# ----------------------------------------------------
+# Note: add plugin option to cutlass kernel dispatch
+# ----------------------------------------------------
+
 from typing import Optional
 
 from vllm.model_executor.layers.quantization.kernels.scaled_mm.cutlass import (
@@ -16,9 +21,8 @@ class MctlassScaledMMLinearKernel(CutlassScaledMMLinearKernel):
     def can_implement(cls, c: ScaledMMLinearLayerConfig) -> tuple[bool, Optional[str]]:
         return True, None
 
-# /------------------------  Metax Modification ----------------------------\
-#Scale the matrix multiplication kernel
 
+# /------------------------  Metax Modification ----------------------------\
 _POSSIBLE_KERNELS: dict[PlatformEnum, list[type[ScaledMMLinearKernel]]] = {
     PlatformEnum.OOT: [MctlassScaledMMLinearKernel]
 }
