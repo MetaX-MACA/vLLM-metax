@@ -1,4 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
+"""
+Change the CUDA_VISIBLE_DEVICES environment variable 
+to MACA_VISIBLE_DEVICES environment variable
+"""
 from vllm.v1.worker.worker_base import WorkerWrapperBase, logger
 import contextlib
 
@@ -16,8 +20,10 @@ def update_environment_variables_with_maca(
 ) -> None:
     envs = envs_list[self.rpc_rank]
     key = "CUDA_VISIBLE_DEVICES"
+    # /------------------------  Metax Modification -------------------------\
     # sync `MACA_VISIBLE_DEVICES`` with `CUDA_VISIBLE_DEVICES`
     envs["MACA_VISIBLE_DEVICES"] = envs.get(key, "")
+    # \------------------------- Metax Modification -------------------------/
     if key in envs and key in os.environ:
         # overwriting CUDA_VISIBLE_DEVICES is desired behavior
         # suppress the warning in `update_environment_variables`
@@ -34,13 +40,17 @@ def set_device_control_env_var_with_maca(
     for engine subprocess.
     """
     world_size = vllm_config.parallel_config.world_size
+    local_world_size = vllm_config.parallel_config.local_world_size
     evar = current_platform.device_control_env_var
 
-    value = get_device_indices(evar, local_dp_rank, world_size)
+    value = get_device_indices(evar, local_dp_rank, world_size, local_world_size)
+    # /------------------------  Metax Modification -------------------------\
+    # In addition to setting the platform-specific environment variable, 
+    # also set MACA_VISIBLE_DEVICE
     with patch.dict(os.environ, values=((evar, value),)):
         os.environ["MACA_VISIBLE_DEVICES"] = value
         yield
-
+    # \------------------------- Metax Modification -------------------------/
 
 from vllm.v1.engine import utils
 

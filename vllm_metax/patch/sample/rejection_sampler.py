@@ -1,4 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
+"""
+sample_recovered_tokens_kernel: The original version uses vectorized operations to compute in parallel across the entire 
+vocabulary, whereas the modified Metax version employs chunked processing to handle extremely 
+large vocabularies.
+"""
+
 from vllm.triton_utils import tl, triton
 
 import vllm.v1.sample.rejection_sampler
@@ -19,6 +25,8 @@ def sample_recovered_tokens_kernel(
     NO_DRAFT_PROBS: tl.constexpr,
     BLOCK_SIZE: tl.constexpr = 1024,
 ):
+    """Handles large vocabs by chunking to avoid memory constraints."""
+    # /------------------------  Metax Modification -------------------------\
     req_idx = tl.program_id(0)
     if req_idx == 0:
         start_idx = 0
@@ -93,6 +101,7 @@ def sample_recovered_tokens_kernel(
         )
 
     tl.store(output_token_ids_ptr + start_idx + pos, best_token_id)
+    # \------------------------- Metax Modification -------------------------/
 
 
 # NOTE(woosuk): Avoid specialization to prevent unnecessary recompilation.
@@ -110,9 +119,11 @@ def rejection_greedy_sample_kernel(
     # FIXME(woosuk): Because is_greedy_ptr is not None at profiling run,
     # re-compilation may happen during runtime when is_greedy_ptr is None.
     is_greedy = True if is_greedy_ptr is None else tl.load(is_greedy_ptr + req_idx)
+    # /------------------------  Metax Modification -------------------------\
     if is_greedy is None:
         # Early exit for non-greedy sampling requests.
         return
+    # \------------------------- Metax Modification -------------------------/
 
     start_idx = 0 if req_idx == 0 else tl.load(cu_num_draft_tokens_ptr + req_idx - 1)
     end_idx = tl.load(cu_num_draft_tokens_ptr + req_idx)
