@@ -1,0 +1,18 @@
+nav:
+  - Home: README.md
+  - User Guide:
+    # - usage/README.md
+    - Getting Started:
+      - getting_started/quickstart.md
+      - getting_started/installation/maca.md
+    - Models:
+      - models/supported_models.md
+  - Developer Guide:
+    - developing/README.md
+    - Patch Management:
+      - developing/patches/README.md
+    - Model Implementation:
+      - developing/model/registration.md
+    # - Inference and Serving:
+      # - serving/*
+# Todo: Add more navigation items here
