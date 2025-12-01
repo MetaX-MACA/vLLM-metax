@@ -6,9 +6,10 @@ Users of vLLM should always import **only** these wrappers.
 """
 
 # /------------------------  Metax Modification -------------------------\
-    # 移除 vLLM 原生 FP8/E8M0/GEMM 等功能路径
-    # 新增最小化的 BF16 MQA 接口以满足框架自身需求
+    # Removed native vLLM FP8/E8M0/GEMM acceleration paths
+    # Added a minimal BF16 MQA implementation to satisfy internal requirements
 # \------------------------- Metax Modification -------------------------/
+
 
 from __future__ import annotations
 

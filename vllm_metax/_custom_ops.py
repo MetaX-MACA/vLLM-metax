@@ -1,13 +1,23 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
-# /------------------------  Metax Modification -------------------------\
-    # 封装已经在 .so 中注册的 C++/CUDA 算子，让 Python 层通过 ops.xxx 统一调用 torch.ops._C.xxx 内核
-    # _custom_ops.py目前只保留最小依赖，主要用于插件的quant_config/ 和 deepseek模型里
-# \------------------------- Metax Modification -------------------------/
+# ---------------------------------------------------
+# Note:
+#
+# Here we only maintain the custom ops that are:
+#
+#   - modified
+#   - newly added
+#
+# in vllm_metax compared to vllm.
+#
+# When *adding* new custom ops, make sure you checked the
+# latest vllm/_custom_ops.py first to avoid adding duplicates.
+# ---------------------------------------------------
 
 import torch
 import vllm.envs as envs
+
 
 def awq_gemm(
     input: torch.Tensor,
