@@ -94,6 +94,8 @@ RUN yum makecache && \
     yum clean all && rm -rf /var/cache/yum /tmp/*
 
 ## Install cu-bridge
+# CU_BRIDGE 3.2.1 has some bugs and can't work with MACA SDK 3.2.1 properly.
+# So here we install CU_BRIDGE 3.1.0 instead.
 ARG CU_BRIDGE_VERSION=3.1.0
 RUN cd /tmp/ && \
     export MACA_PATH=/opt/maca && \
@@ -150,10 +152,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM full_maca AS clean_maca
 
 RUN rpm -e --nodeps \
-        mcflashattn_3.2.1 \
-        mcflashinfer_3.2.1 \
-        mxreport-3.2.1 \
-        mccltests-3.2.1 && \
+        mcflashattn_${MACA_VERSION} \
+        mcflashinfer_${MACA_VERSION} \
+        mxreport-${MACA_VERSION} \
+        mccltests-${MACA_VERSION} && \
     find /opt/maca/ -type f -name "*.a" -delete && \
     yum clean all && rm -rf /var/cache/yum /tmp/*
 
@@ -169,13 +171,16 @@ ENV LD_LIBRARY_PATH=/opt/mxdriver/lib:${MACA_PATH}/lib:${MACA_PATH}/mxgpu_llvm/l
 
 RUN yum makecache && yum install -y \
     binutils \
-    yum clean all && rm -rf /var/cache/yum /tmp/*
+    procps-ng \
+    libibverbs \
+    librdmacm \
+    libibumad \
+    openblas \
+    numactl-libs \
+    && yum clean all && rm -rf /var/cache/yum /tmp/*
 
 COPY --from=clean_maca /opt/maca /opt/maca
 COPY --from=clean_maca /opt/mxdriver /opt/mxdriver
-
-RUN rm -rf /usr/*
-COPY --from=clean_maca /usr /usr
 
 WORKDIR /workspace
 ARG UV_EXTRA_INDEX_URL
@@ -212,6 +217,7 @@ RUN vllm_metax_init
 # mxffmpeg-3.2.1-3.2.1.10-1.x86_64
 # mxgpu_llvm_3.2.1-3.2.1.10-1.x86_64
 # mxkw_3.2.1-3.2.1.10-1.x86_64
+# numactl-libs — x86_64
 
 # List of *ALL* MACA_SDK dependencies
 # maca_sdk — x86_64 — 3.2.1.10-1 — maca-sdk — 7.5 k
