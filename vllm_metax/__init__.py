@@ -6,6 +6,8 @@ import os
 import shutil
 from pathlib import Path
 
+from .version import __version__, __version_tuple__  # noqa: F401
+
 
 def copy_with_backup(src_path: Path, dest_path: Path):
     """
