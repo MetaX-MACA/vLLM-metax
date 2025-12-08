@@ -34,6 +34,7 @@ class ModelWorker(Worker):
         self.related_gpu_ids = []
         self.api_serve_process = None
         self.port = self.port_manager.get_next_available_port()
+        self.model_tag = f"{model_cfg['name']}_tp{model_cfg.get('tp', 1)}_pp{model_cfg.get('pp', 1)}_dp{model_cfg.get('dp', 1)}"
         self.status = WorkerStatus.INIT
 
     def _calc_required_gpus(self, model_config):
@@ -113,7 +114,8 @@ class ModelWorker(Worker):
         )
 
         # Prepare logfile
-        log_file = os.path.join(self.work_dir, f"{self.model_cfg['name']}_serve.log")
+
+        log_file = os.path.join(self.work_dir, f"{self.model_tag}_serve.log")
         os.makedirs(os.path.dirname(os.path.abspath(log_file)), exist_ok=True)
 
         # Set environment variable
@@ -196,9 +198,7 @@ class ModelWorker(Worker):
         self._await_api_service_ready(timeout=600, blocking=True)
 
         self.status = WorkerStatus.INFERENCE_TESTING
-        log_file = os.path.join(
-            self.work_dir, f"{self.model_cfg['name']}_inference.log"
-        )
+        log_file = os.path.join(self.work_dir, f"{self.model_tag}_inference.log")
         os.makedirs(os.path.dirname(os.path.abspath(log_file)), exist_ok=True)
 
         client = ChatCompletionClient(host="localhost", port=self.port)
