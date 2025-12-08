@@ -4,26 +4,20 @@
 import os
 import yaml
 import csv
-from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from pprint import pprint
 
 import gpu_manager
-
-# ------------- user-tweakable defaults -------------
-NUM_GPUS = 8  # total GPUs on machine
-MODEL_CONFIG_FILE = "model_jiajia.yaml"  # model configuration file
-MODEL_FUNCTIONAL_TEST_RESULT_DIR = f"/workspace/model_functional_test_{datetime.now().strftime('%Y_%m_%d_%H_%M')}"  # where to store test results
-# ---------------------------------------------------
+import machine_config
 
 
 class Scheduler:
     def __init__(
         self,
-        num_gpus=NUM_GPUS,
-        model_config_file=MODEL_CONFIG_FILE,
-        work_dir=MODEL_FUNCTIONAL_TEST_RESULT_DIR,
+        num_gpus=machine_config.NUM_GPUS,
+        model_config_file=machine_config.MODEL_CONFIG_FILE,
+        work_dir=machine_config.MODEL_FUNCTIONAL_TEST_RESULT_DIR,
     ):
         self.num_gpus = num_gpus
         self.model_config_file = model_config_file
@@ -80,7 +74,7 @@ class Scheduler:
         return all_results
 
     def record_environment(self):
-        log_file = os.path.join(self.work_dir, "environment_info.txt")
+        log_file = os.path.join(self.work_dir, "collect_env.txt")
         os.makedirs(os.path.dirname(os.path.abspath(log_file)), exist_ok=True)
 
         import collect_env

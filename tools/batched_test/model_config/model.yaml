@@ -27,6 +27,7 @@
   dp: 1
   pp: 1
   extra_args:
+    --chat-template: chat_template/tool_chat_template_deepseekr1.jinja
 
 - name: "DeepSeek-R1-BF16-L4-W8A8"
   model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-BF16-L4-W8A8"
@@ -41,6 +42,7 @@
   dp: 1
   pp: 1
   extra_args:
+    --chat-template: chat_template/template_baichuan.jinja
 
 - name: "Baichuan2-7B-Chat"
   model_path: "/mxstorage/pde_ai/models/llm/Baichuan/Baichuan2-7B-Chat"
@@ -48,6 +50,7 @@
   dp: 1
   pp: 1
   extra_args:
+    --chat-template: chat_template/template_baichuan.jinja
 
 - name: "ChatGLM3-6B"
   model_path: "/mxstorage/pde_ai/models/llm/ChatGLM/chatglm3-6b"
