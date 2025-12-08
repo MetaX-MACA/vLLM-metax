@@ -3,6 +3,7 @@
 
 import os
 import yaml
+import csv
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -43,8 +44,11 @@ class Scheduler:
         return model_list
 
     def run_functional_test(self):
-        results = []
+        all_results = []
         futures = []
+
+        csv_file_path = os.path.join(self.work_dir, "functional_test_results.csv")
+        os.makedirs(self.work_dir, exist_ok=True)
 
         from model_worker import ModelWorker
 
@@ -58,11 +62,22 @@ class Scheduler:
             future = self.pool.submit(worker.run)
             futures.append(future)
 
-        for f in as_completed(futures):
-            results.append(f.result())
+        with open(csv_file_path, mode="w", newline="", encoding="utf-8") as f_csv:
+            fieldnames = ["Model", "Result", "Stage", "Reason", "Model Path"]
+            writer = csv.DictWriter(f_csv, fieldnames=fieldnames, restval="")
+            writer.writeheader()
 
-        pprint(results)
-        return results
+            for f in as_completed(futures):
+                result = f.result()
+                all_results.append(result)
+
+                print(f"Task finished: {result}")
+
+                writer.writerow(result)
+                f_csv.flush()
+
+        pprint(all_results)
+        return all_results
 
     def record_environment(self):
         log_file = os.path.join(self.work_dir, "environment_info.txt")

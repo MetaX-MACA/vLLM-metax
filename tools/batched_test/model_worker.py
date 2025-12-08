@@ -3,9 +3,18 @@ import time
 import psutil
 import os
 import abc
+from enum import Enum, auto
 
 from schedular import Scheduler
 import net_utils
+
+
+class WorkerStatus(Enum):
+    INIT = auto()
+    ALLOCATING_GPU = auto()
+    STARTING_SERVER = auto()
+    INFERENCE_TESTING = auto()
+    NORMAL_END = auto()
 
 
 class Worker(abc.ABC):
@@ -25,11 +34,13 @@ class ModelWorker(Worker):
         self.related_gpu_ids = []
         self.api_serve_process = None
         self.port = self.port_manager.get_next_available_port()
+        self.status = WorkerStatus.INIT
 
     def _calc_required_gpus(self, model_config):
         tp = model_config.get("tp", 1)
         pp = model_config.get("pp", 1)
-        return tp * pp
+        dp = model_config.get("dp", 1)
+        return tp * pp * dp
 
     def run(self):
         # The entry_points of worker thread
@@ -40,9 +51,6 @@ class ModelWorker(Worker):
         try:
             # Step 1. alloc GPU
             self.related_gpu_ids = self._wait_and_allocate_gpus(required_gpus)
-            print(
-                f"[{self.model_cfg['name']}] got available gpus: {self.related_gpu_ids}"
-            )
 
             # Step 2. launch serve
             self.api_serve_process = self._launch_vllm_serve(
@@ -53,13 +61,22 @@ class ModelWorker(Worker):
             self._test_inference()
 
             # Step 4. result recording
-            return {"model": self.model_cfg["name"], "status": "success"}
+            return {
+                "Model": self.model_cfg["name"],
+                "Result": "Success",
+                "Stage": WorkerStatus.NORMAL_END.name,
+                "Reason": "",
+                "Model Path": self.model_cfg["model_path"],
+            }
 
         except Exception as e:
+            print(f"[{self.model_cfg['name']}] Error occurred: {e}")
             return {
-                "model": self.model_cfg["name"],
-                "status": "failure",
-                "reason": str(e),
+                "Model": self.model_cfg["name"],
+                "Result": "Failed",
+                "Stage": self.status.name,
+                "Reason": str(e),
+                "Model Path": self.model_cfg["model_path"],
             }
 
         finally:
@@ -70,6 +87,7 @@ class ModelWorker(Worker):
 
     def _wait_and_allocate_gpus(self, required) -> list[int]:
         # Block until required GPUs are allocated
+        self.status = WorkerStatus.ALLOCATING_GPU
 
         while True:
             occupied_gpus = self.gpu_manager.allocate(required)
@@ -87,15 +105,21 @@ class ModelWorker(Worker):
 
     def _launch_vllm_serve(self, gpus_list: list[int], model_cfg):
         # Asynchronously launch vLLM serve process
+        self.status = WorkerStatus.STARTING_SERVER
 
         assert len(gpus_list) > 0, "No GPUs allocated for launching vLLM serve."
         assert len(gpus_list) == self._calc_required_gpus(model_cfg), (
             "Allocated GPU count does not match required."
         )
 
+        # Prepare logfile
+        log_file = os.path.join(self.work_dir, f"{self.model_cfg['name']}_serve.log")
+        os.makedirs(os.path.dirname(os.path.abspath(log_file)), exist_ok=True)
+
         # Set environment variable
-        env = os.environ.copy()
-        env["CUDA_VISIBLE_DEVICES"] = ",".join(str(idx) for idx in gpus_list)
+        extra_env = {}
+        extra_env["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] = "1"
+        extra_env["CUDA_VISIBLE_DEVICES"] = ",".join(str(idx) for idx in gpus_list)
 
         cmd = [
             "vllm",
@@ -130,15 +154,21 @@ class ModelWorker(Worker):
                 for item in extra_args:
                     cmd.append(str(item))
 
-        print(f"[{self.model_cfg['name']}] Launch command: {' '.join(cmd)}")
+        env_copy = os.environ.copy()
+        env_copy.update(extra_env)
 
-        log_file = os.path.join(self.work_dir, f"{self.model_cfg['name']}_serve.log")
+        cmd_str = f"[{self.model_cfg['name']}] command: {' '.join(cmd)}"
 
-        return net_utils.run_cmd(cmd=cmd, log_file=log_file, env=env)
+        with open(log_file, "a") as f:
+            f.write(cmd_str + "\n" + "-" * 80 + "\n")
+            f.write(extra_env.__str__() + "\n" + "-" * 80 + "\n")
+            f.flush()
+        print(cmd_str)
+
+        return net_utils.run_cmd(cmd=cmd, log_file=log_file, env=env_copy)
 
     def _await_api_service_ready(self, blocking=True, timeout=600):
         # Block until the API service is up or timeout
-
         t0 = time.time()
 
         print(f"[{self.model_cfg['name']}] Waiting for service on port {self.port}...")
@@ -164,9 +194,12 @@ class ModelWorker(Worker):
         from api_client import ChatCompletionClient
 
         self._await_api_service_ready(timeout=600, blocking=True)
+
+        self.status = WorkerStatus.INFERENCE_TESTING
         log_file = os.path.join(
             self.work_dir, f"{self.model_cfg['name']}_inference.log"
         )
+        os.makedirs(os.path.dirname(os.path.abspath(log_file)), exist_ok=True)
 
         client = ChatCompletionClient(host="localhost", port=self.port)
         model = client.get_model()
@@ -207,12 +240,21 @@ class ModelWorker(Worker):
             print(f"[{self.model_cfg['name']}] Error getting process info: {e}")
             return
 
-        children = parent.children(recursive=True)
-        for child in children:
-            child.kill()
+        try:
+            children = parent.children(recursive=True)
+            for child in children:
+                try:
+                    child.kill()
+                except psutil.NoSuchProcess:
+                    pass
+        except psutil.NoSuchProcess:
+            pass
 
-        parent.kill()
-        parent.wait()
+        try:
+            parent.kill()
+            parent.wait()
+        except psutil.NoSuchProcess:
+            pass
 
         # kill GPU worker zombie processes in case they are not cleaned up
         for pid in worker_pid:

@@ -15,6 +15,14 @@
     -mtp:
     --errors-only:
 
+- name: "DeepSeek-V2-Lite"
+  model_path: "/mnt/share/models/DeepSeek/DeepSeek-V2-Lite"
+  tp: 1
+  pp: 1
+  dp: 1
+  distributed_executor_backend: "mp"
+  extra_args:
+
 - name: "Qwen3-4B"
   model_path: "/mnt/share/models/Qwen/Qwen3-4B"
   tp: 2

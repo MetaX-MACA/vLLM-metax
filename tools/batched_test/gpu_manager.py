@@ -178,7 +178,6 @@ finally:
 
 assert mxml_available, "pymxml NVML is not available on this system."
 
-gpu_manager = GPUManager()
 # pprint(gpu_manager.get_gpu_count()) # initialize pymxml
 # pprint(gpu_manager.get_gpu_memory_list()) # initialize pymxml
 # pprint(gpu_manager.get_free_gpu_indices())

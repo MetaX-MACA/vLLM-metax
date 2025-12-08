@@ -51,7 +51,7 @@ def run_cmd(
     if log_file is not None:
         # Ensure the directory exists
         os.makedirs(os.path.dirname(os.path.abspath(log_file)), exist_ok=True)
-        file_obj = open(log_file, "w")
+        file_obj = open(log_file, "a")
         stdout_dest = file_obj
         stderr_dest = subprocess.STDOUT  # combine stderr with stdout
     elif capture_output:
