@@ -99,9 +99,8 @@ class ModelWorker(Worker):
                     raise ValueError(
                         "Requested more GPUs than available on the system."
                     )
+                print(f"[{self.model_cfg['name']}] Allocated GPUs: {occupied_gpus}")
                 return occupied_gpus
-
-            print(f"[{self.model_cfg['name']}] Waiting for GPU resources...")
             time.sleep(3)
 
     def _launch_vllm_serve(self, gpus_list: list[int], model_cfg):
@@ -119,9 +118,10 @@ class ModelWorker(Worker):
         os.makedirs(os.path.dirname(os.path.abspath(log_file)), exist_ok=True)
 
         # Set environment variable
-        extra_env = {}
-        extra_env["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] = "1"
-        extra_env["CUDA_VISIBLE_DEVICES"] = ",".join(str(idx) for idx in gpus_list)
+        # Initialize with base requirements
+        run_env = {}
+        run_env["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] = "1"
+        run_env["CUDA_VISIBLE_DEVICES"] = ",".join(str(idx) for idx in gpus_list)
 
         cmd = [
             "vllm",
@@ -146,6 +146,7 @@ class ModelWorker(Worker):
             self.model_cfg.get("distributed_executor_backend", "ray"),
         ]
         extra_args = self.model_cfg.get("extra_args")
+        extra_env = self.model_cfg.get("extra_env")
         if extra_args:
             if isinstance(extra_args, dict):
                 for key, value in extra_args.items():
@@ -156,8 +157,18 @@ class ModelWorker(Worker):
                 for item in extra_args:
                     cmd.append(str(item))
 
+        if extra_env:
+            if isinstance(extra_env, dict):
+                # transfer all key-value pairs to string
+                run_env.update({str(k): str(v) for k, v in extra_env.items()})
+            elif isinstance(extra_env, list):
+                for item in extra_env:
+                    if isinstance(item, dict):
+                        for k, v in item.items():
+                            run_env[str(k)] = str(v)
+
         env_copy = os.environ.copy()
-        env_copy.update(extra_env)
+        env_copy.update(run_env)
 
         cmd_str = f"[{self.model_cfg['name']}] command: {' '.join(cmd)}"
 
@@ -167,6 +178,7 @@ class ModelWorker(Worker):
             f.flush()
         print(cmd_str)
 
+        print("log file:", log_file)
         return net_utils.run_cmd(cmd=cmd, log_file=log_file, env=env_copy)
 
     def _await_api_service_ready(self, blocking=True, timeout=600):
@@ -190,7 +202,9 @@ class ModelWorker(Worker):
             if not blocking:
                 return False
 
-        raise TimeoutError(f"Service did not start within {timeout} seconds.")
+        raise TimeoutError(
+            f"[{self.model_cfg['name']}] Service did not start within {timeout} seconds, aborted."
+        )
 
     def _test_inference(self):
         from api_client import ChatCompletionClient
