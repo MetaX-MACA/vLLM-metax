@@ -94,6 +94,7 @@ class GPUManager:
          - usedGpuMemory: Amount of GPU memory used by the process (MiB).
         """
         handle = pymxml.nvmlDeviceGetHandleByIndex(gpu_index)
+        gpu_process_infos = []
         try:
             gpu_process_infos = pymxml.nvmlDeviceGetComputeRunningProcesses_v3(handle)
         except pymxml.NVMLError as e:
@@ -131,9 +132,8 @@ class GPUManager:
          - pid: Process ID using the GPU.
          - usedGpuMemory: Amount of GPU memory used by the process (MiB).
         """
-        gpu_count = self.get_gpu_count()
         gpu_process_infos: dict[int, list[dict]] = {}
-        for i in range(gpu_count):
+        for i in range(self.gpu_count):
             info = self.get_gpu_process_info(i)
             gpu_process_infos[i] = info  # type: ignore
         return gpu_process_infos

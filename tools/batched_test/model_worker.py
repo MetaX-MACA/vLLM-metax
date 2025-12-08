@@ -119,12 +119,16 @@ class ModelWorker(Worker):
             "--distributed-executor-backend",
             self.model_cfg.get("distributed_executor_backend", "ray"),
         ]
-        extra_args = self.model_cfg.get("extra_args", [])
+        extra_args = self.model_cfg.get("extra_args")
         if extra_args:
-            for key, value in extra_args.items():
-                cmd.append(str(key))
-                if value is not None:
-                    cmd.append(str(value))
+            if isinstance(extra_args, dict):
+                for key, value in extra_args.items():
+                    cmd.append(str(key))
+                    if value is not None:
+                        cmd.append(str(value))
+            elif isinstance(extra_args, list):
+                for item in extra_args:
+                    cmd.append(str(item))
 
         print(f"[{self.model_cfg['name']}] Launch command: {' '.join(cmd)}")
 
@@ -143,7 +147,7 @@ class ModelWorker(Worker):
             return_code = self.api_serve_process.poll()
             if return_code is not None:
                 raise RuntimeError(
-                    "vLLM serve process exited unexpectedly with code %d.", return_code
+                    "vLLM serve process exited unexpectedly with code %d." % return_code
                 )
 
             # Check if port is open

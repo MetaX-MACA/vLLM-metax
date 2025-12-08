@@ -62,7 +62,4 @@ def run_cmd(
         cmd, shell=use_shell, stdout=stdout_dest, stderr=stderr_dest, text=True, env=env
     )
 
-    if file_obj:
-        file_obj.close()
-
     return pid  # return pid for background process
