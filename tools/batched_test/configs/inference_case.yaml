@@ -1,0 +1,18 @@
+- question: "Where's the capital of China?"
+  keywords: 
+    - "Beijing"
+- question: "Who's the founder of Apple?"
+  keywords: 
+    - "Steve Jobs"
+    - "Jobs"
+- question: "What's the value of gravity in the earth?"
+  keywords: 
+    - "9.8"
+- question: "中国的首都在哪里？"
+  keywords: 
+    - "北京"
+- question: "1+1等于几？"
+  keywords: 
+    - "2"
+    - "二"
+    - "two"

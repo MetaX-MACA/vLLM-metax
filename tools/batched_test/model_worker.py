@@ -3,6 +3,7 @@ import time
 import psutil
 import os
 import abc
+import csv
 from enum import Enum, auto
 
 from schedular import Scheduler
@@ -13,7 +14,12 @@ class WorkerStatus(Enum):
     INIT = auto()
     ALLOCATING_GPU = auto()
     STARTING_SERVER = auto()
+
+    # inference testing only
     INFERENCE_TESTING = auto()
+    # performance testing only
+    PERFORMANCE_TESTING = auto()
+
     NORMAL_END = auto()
 
 
@@ -23,74 +29,53 @@ class Worker(abc.ABC):
         raise NotImplementedError("Worker must implement run method.")
 
 
-class ModelWorker(Worker):
-    def __init__(self, scheduler: Scheduler, model_cfg, work_dir: str):
+class ServeWorker(Worker):
+    def __init__(self, scheduler: Scheduler, work_dir: str, model_cfg: dict):
         self.scheduler = scheduler
-        self.model_cfg = model_cfg
-        self.work_dir = work_dir
-
-        self.gpu_manager = scheduler.gpu_manager
         self.port_manager = net_utils.PortManager()
+        self.gpu_manager = scheduler.gpu_manager
+
+        self.work_dir = work_dir
+        self.model_cfg = model_cfg
+
         self.related_gpu_ids = []
         self.api_serve_process = None
         self.port = self.port_manager.get_next_available_port()
         self.model_tag = f"{model_cfg['name']}_tp{model_cfg.get('tp', 1)}_pp{model_cfg.get('pp', 1)}_dp{model_cfg.get('dp', 1)}"
         self.status = WorkerStatus.INIT
 
-    def _calc_required_gpus(self, model_config):
-        tp = model_config.get("tp", 1)
-        pp = model_config.get("pp", 1)
-        dp = model_config.get("dp", 1)
+    def _calc_required_gpus(self, inference_cfg: dict) -> int:
+        tp = inference_cfg.get("tp", 1)
+        pp = inference_cfg.get("pp", 1)
+        dp = inference_cfg.get("dp", 1)
         return tp * pp * dp
 
     def run(self):
-        # The entry_points of worker thread
-
+        serve_config = self.model_cfg.get("serve_config", {})
         # Get available port
-        required_gpus = self._calc_required_gpus(self.model_cfg)
+        required_gpus = self._calc_required_gpus(serve_config)
 
         try:
             # Step 1. alloc GPU
             self.related_gpu_ids = self._wait_and_allocate_gpus(required_gpus)
 
             # Step 2. launch serve
-            self.api_serve_process = self._launch_vllm_serve(
-                self.related_gpu_ids, self.model_cfg
-            )
+            self.api_serve_process = self._launch_vllm_serve()
 
-            # Step 3. test inference request
-            self._test_inference()
-
-            # Step 4. result recording
-            return {
-                "Model": self.model_cfg["name"],
-                "Result": "Success",
-                "Stage": WorkerStatus.NORMAL_END.name,
-                "Reason": "",
-                "Model Path": self.model_cfg["model_path"],
-            }
+            # Step 3. client testing
+            return self.do_some_thing_after_serve_start()
 
         except Exception as e:
-            print(f"[{self.model_cfg['name']}] Error occurred: {e}")
-            return {
-                "Model": self.model_cfg["name"],
-                "Result": "Failed",
-                "Stage": self.status.name,
-                "Reason": str(e),
-                "Model Path": self.model_cfg["model_path"],
-            }
-
+            return self.warp_failure(str(e))
         finally:
-            # cleanup
-            self.port_manager.release_port(self.port)
-            self.gpu_manager.release(self.related_gpu_ids)
-            self._cleanup_serve()
+            self.cleanup()
 
-    def _wait_and_allocate_gpus(self, required) -> list[int]:
+    def _wait_and_allocate_gpus(self, required, timeout: int = 3600) -> list[int]:
         # Block until required GPUs are allocated
         self.status = WorkerStatus.ALLOCATING_GPU
 
-        while True:
+        t0 = time.time()
+        while time.time() - t0 < timeout:
             occupied_gpus = self.gpu_manager.allocate(required)
             print(f"[{self.model_cfg['name']}] Trying to allocate {required} GPUs...")
 
@@ -101,28 +86,23 @@ class ModelWorker(Worker):
                     )
                 print(f"[{self.model_cfg['name']}] Allocated GPUs: {occupied_gpus}")
                 return occupied_gpus
-            time.sleep(3)
+            time.sleep(10)
 
-    def _launch_vllm_serve(self, gpus_list: list[int], model_cfg):
+    def _launch_vllm_serve(self):
         # Asynchronously launch vLLM serve process
         self.status = WorkerStatus.STARTING_SERVER
 
-        assert len(gpus_list) > 0, "No GPUs allocated for launching vLLM serve."
-        assert len(gpus_list) == self._calc_required_gpus(model_cfg), (
-            "Allocated GPU count does not match required."
+        assert len(self.related_gpu_ids) > 0, (
+            "No GPUs allocated for launching vLLM serve."
         )
 
         # Prepare logfile
+        log_file = net_utils.prepare_dir(
+            os.path.join(self.work_dir, "log", f"{self.model_tag}_serve.log")
+        )
 
-        log_file = os.path.join(self.work_dir, f"{self.model_tag}_serve.log")
-        os.makedirs(os.path.dirname(os.path.abspath(log_file)), exist_ok=True)
-
-        # Set environment variable
-        # Initialize with base requirements
-        run_env = {}
-        run_env["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] = "1"
-        run_env["CUDA_VISIBLE_DEVICES"] = ",".join(str(idx) for idx in gpus_list)
-
+        # Prepare command
+        serve_config = self.model_cfg.get("serve_config", {})
         cmd = [
             "vllm",
             "serve",
@@ -130,23 +110,23 @@ class ModelWorker(Worker):
             "--port",
             str(self.port),
             "-tp",
-            str(self.model_cfg.get("tp", 1)),
+            str(serve_config.get("tp", 1)),
             "-pp",
-            str(self.model_cfg.get("pp", 1)),
+            str(serve_config.get("pp", 1)),
             "-dp",
-            str(self.model_cfg.get("dp", 1)),
+            str(serve_config.get("dp", 1)),
             "--trust-remote-code",
             "--gpu-memory-utilization",
-            str(self.model_cfg.get("gpu_memory_utilization", 0.9)),
+            str(serve_config.get("gpu_memory_utilization", 0.9)),
             "--swap-space",
-            str(self.model_cfg.get("swap_space", 16)),
+            str(serve_config.get("swap_space", 16)),
             "--max-model-len",
-            str(self.model_cfg.get("max_model_len", 4096)),
+            str(serve_config.get("max_model_len", 4096)),
             "--distributed-executor-backend",
-            self.model_cfg.get("distributed_executor_backend", "ray"),
+            serve_config.get("distributed_executor_backend", "ray"),
         ]
-        extra_args = self.model_cfg.get("extra_args")
-        extra_env = self.model_cfg.get("extra_env")
+
+        extra_args = serve_config.get("extra_args")
         if extra_args:
             if isinstance(extra_args, dict):
                 for key, value in extra_args.items():
@@ -157,6 +137,13 @@ class ModelWorker(Worker):
                 for item in extra_args:
                     cmd.append(str(item))
 
+        # Set environment variable
+        run_env = {}
+        run_env["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] = "1"
+        run_env["CUDA_VISIBLE_DEVICES"] = ",".join(
+            str(idx) for idx in self.related_gpu_ids
+        )
+        extra_env = serve_config.get("extra_env")
         if extra_env:
             if isinstance(extra_env, dict):
                 # transfer all key-value pairs to string
@@ -170,15 +157,15 @@ class ModelWorker(Worker):
         env_copy = os.environ.copy()
         env_copy.update(run_env)
 
-        cmd_str = f"[{self.model_cfg['name']}] command: {' '.join(cmd)}"
-
+        # Log the command and environment
         with open(log_file, "a") as f:
+            cmd_str = f"[{self.model_cfg['name']}] command: {' '.join(cmd)}"
             f.write(cmd_str + "\n" + "-" * 80 + "\n")
-            f.write(extra_env.__str__() + "\n" + "-" * 80 + "\n")
+            f.write(run_env.__str__() + "\n" + "-" * 80 + "\n")
             f.flush()
-        print(cmd_str)
+            print(cmd_str)
 
-        print("log file:", log_file)
+        # Launch the command
         return net_utils.run_cmd(cmd=cmd, log_file=log_file, env=env_copy)
 
     def _await_api_service_ready(self, blocking=True, timeout=600):
@@ -191,7 +178,7 @@ class ModelWorker(Worker):
             return_code = self.api_serve_process.poll()
             if return_code is not None:
                 raise RuntimeError(
-                    "vLLM serve process exited unexpectedly with code %d." % return_code
+                    f"[{self.model_cfg['name']}] vLLM serve process exited unexpectedly with code {return_code}."
                 )
 
             # Check if port is open
@@ -206,34 +193,7 @@ class ModelWorker(Worker):
             f"[{self.model_cfg['name']}] Service did not start within {timeout} seconds, aborted."
         )
 
-    def _test_inference(self):
-        from api_client import ChatCompletionClient
-
-        self._await_api_service_ready(timeout=600, blocking=True)
-
-        self.status = WorkerStatus.INFERENCE_TESTING
-        log_file = os.path.join(self.work_dir, f"{self.model_tag}_inference.log")
-        os.makedirs(os.path.dirname(os.path.abspath(log_file)), exist_ok=True)
-
-        client = ChatCompletionClient(host="localhost", port=self.port)
-        model = client.get_model()
-        print(f"Using model: {model}")
-
-        questions = [
-            "Where's the capital of China?",
-            "Who's the founder of Apple?",
-            "What's the value of gravity in the earth?",
-        ]
-        for response in client.create_chat_completion(
-            questions=questions, model=model, stream=False
-        ):
-            # Write response to log file
-            with open(log_file, "a") as f:
-                f.write(f"[{self.model_cfg['name']}] Response:\n")
-                f.write(response.choices[0].message.content + "\n")
-                f.write("-" * 40 + "\n")
-
-    def _cleanup_serve(self):
+    def _shutdown_process(self):
         if self.api_serve_process is None:
             print(f"[{self.model_cfg['name']}] No serve process to clean up.")
             return
@@ -283,3 +243,130 @@ class ModelWorker(Worker):
                     )
 
         print(f"[{self.model_cfg['name']}] serve cleaned up.")
+
+    @abc.abstractmethod
+    def do_some_thing_after_serve_start(self, *args, **kwargs):
+        """
+        Return success result to `scheduler`
+         :param self: Description
+         :param args: Description
+         :param kwargs: Description
+        """
+        raise NotImplementedError("Must implement this method.")
+
+    @abc.abstractmethod
+    def warp_failure(self, *args, **kwargs):
+        """
+        Return failure result to `scheduler`
+         :param self: Description
+         :param args: Description
+         :param kwargs: Description
+        """
+        raise NotImplementedError("Must implement this method.")
+
+    @abc.abstractmethod
+    def cleanup(self, *args, **kwargs):
+        """
+        Additional cleanup after serve is stopped.
+
+        :param self: Description
+        :param args: Description
+        :param kwargs: Description
+        """
+        self._shutdown_process()
+        self.port_manager.release_port(self.port)
+        self.gpu_manager.release(self.related_gpu_ids)
+
+
+class InferWorker(ServeWorker):
+    def __init__(self, case_file, **kwargs):
+        super().__init__(**kwargs)
+        self.case_file = case_file
+
+    def do_some_thing_after_serve_start(self):
+        correct_ratio = self._test_inference()
+        return {
+            "Model": self.model_cfg["name"],
+            "Correct Ratio": str(correct_ratio * 100) + "%",
+            "Stage": WorkerStatus.NORMAL_END.name,
+            "Reason": "",
+            "Model Path": self.model_cfg["model_path"],
+        }
+
+    def warp_failure(self, e: str):
+        return {
+            "Model": self.model_cfg["name"],
+            "Correct Ratio": "0%",
+            "Stage": self.status.name,
+            "Reason": str(e),
+            "Model Path": self.model_cfg["model_path"],
+        }
+
+    def cleanup(self, *args, **kwargs):
+        super().cleanup(*args, **kwargs)
+
+    def _test_inference(self) -> float:
+        from api_client import ChatCompletionClient
+
+        self._await_api_service_ready(timeout=600, blocking=True)
+
+        self.status = WorkerStatus.INFERENCE_TESTING
+        log_file = net_utils.prepare_dir(
+            os.path.join(self.work_dir, "log", f"{self.model_tag}_inference.log")
+        )
+
+        # Load test cases from YAML
+        assert os.path.exists(self.case_file), (
+            f"Case file {self.case_file} does not exist."
+        )
+        import yaml
+
+        with open(self.case_file, "r", encoding="utf-8") as f:
+            test_cases = yaml.safe_load(f)
+
+        client = ChatCompletionClient(host="localhost", port=self.port)
+        model = client.get_model()
+        print(f"Using model: {model}")
+
+        questions = [case["question"] for case in test_cases]
+
+        # Get generator for responses
+        responses_gen = client.create_chat_completion(
+            questions=questions, model=model, stream=False
+        )
+
+        corrected_responses = 0
+        with open(log_file, "a") as f:
+            # Zip test cases with yielded responses to match them
+            for test_case, response in zip(test_cases, responses_gen):
+                content = response.choices[0].message.content
+                keywords = test_case.get("keywords", [])
+
+                # Check if any keyword is in the content (case-insensitive)
+                if any(str(k).lower() in content.lower() for k in keywords):
+                    corrected_responses += 1
+
+                f.write(
+                    f"[{self.model_cfg['name']}] Question: {test_case['question']}\n"
+                )
+                f.write(f"[{self.model_cfg['name']}] Response:\n")
+                f.write(content + "\n")
+                f.write("-" * 40 + "\n")
+
+        print(
+            f"[{self.model_cfg['name']}] Corrected responses: {corrected_responses} out of {len(test_cases)}"
+        )
+        return corrected_responses / len(test_cases)
+
+
+class BenchmarkWorker(ServeWorker):
+    def do_some_thing_after_serve_start(self):
+        # Implement performance testing logic here
+        pass
+
+    def warp_failure(self, *args, **kwargs):
+        # Implement failure handling for performance testing here
+        pass
+
+    def cleanup(self, *args, **kwargs):
+        super().cleanup(*args, **kwargs)

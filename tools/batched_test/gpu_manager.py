@@ -1,11 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
-# gpu_manager.py
 
-from functools import wraps
-import os
+from functools import wraps, cache
 from typing_extensions import ParamSpec
 from typing import Callable, TypeVar
-from filelock import FileLock
+
 import threading
 
 import pymxml
@@ -38,17 +36,21 @@ class GPUManager:
                 cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, gpu_count=8, max_idle_mem_mb=900):
+    def __init__(self, max_idle_mem_mb=900):
         if hasattr(self, "_initialized"):
             return
 
         self._initialized = True
 
         # TODO(hank): auto-detect gpu count and gpu_ids
-        self.gpu_count = gpu_count
         self.max_idle_mem = max_idle_mem_mb
         self.global_mutex = threading.Lock()
         self.occupied_gpus = set()
+
+    @cache
+    @with_mxml_context
+    def get_gpu_count(self) -> int:
+        return pymxml.nvmlDeviceGetCount()
 
     @with_mxml_context
     def get_gpu_memory_list(self) -> list[dict]:
@@ -56,8 +58,9 @@ class GPUManager:
         Get a list of dict, length equal to the number of GPUs, each dict contains used, free, and total memory (MiB).
         Uses pynvml to get memory usage.
         """
+        gpu_count = self.get_gpu_count()
         mems_infos = []
-        for i in range(self.gpu_count):
+        for i in range(gpu_count):
             handle = pymxml.nvmlDeviceGetHandleByIndex(i)
             info = pymxml.nvmlDeviceGetMemoryInfo(handle)
             mems_infos.append(
@@ -132,6 +135,7 @@ class GPUManager:
          - pid: Process ID using the GPU.
          - usedGpuMemory: Amount of GPU memory used by the process (MiB).
         """
+        gpu_count = self.get_gpu_count()
         gpu_process_infos: dict[int, list[dict]] = {}
         for i in range(self.gpu_count):
             info = self.get_gpu_process_info(i)
@@ -145,7 +149,7 @@ class GPUManager:
         Returns a list of allocated GPU indices.
         """
         with self.global_mutex:
-            if num_required > self.gpu_count:
+            if num_required > self.get_gpu_count():
                 return [-1]
             free_gpus = self.get_free_gpu_indices()
             if len(free_gpus) < num_required:

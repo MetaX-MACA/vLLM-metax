@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# -----------------------------------------
+# General Configurations
+
+# Note: The timestamp must be appended
+WORK_DIR: "/workspace/model_test"
+MODEL_CONFIG: "configs/model_jiajia.yaml"
+
+# -----------------------------------------
+# Functional Test Configurations
+INFERENCE_CASE_CONFIG: "configs/inference_case.yaml"
+# -----------------------------------------
+# Performance Test Configurations
+
+
+# -----------------------------------------
+# Accuracy Test Configurations

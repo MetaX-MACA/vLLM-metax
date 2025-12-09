@@ -63,3 +63,9 @@ def run_cmd(
     )
 
     return pid  # return pid for background process
+
+
+def prepare_dir(file_path: str) -> str:
+    dir_path = os.path.dirname(os.path.abspath(file_path))
+    os.makedirs(dir_path, exist_ok=True)
+    return file_path
