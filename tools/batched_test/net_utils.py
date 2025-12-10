@@ -65,7 +65,16 @@ def run_cmd(
     return pid  # return pid for background process
 
 
-def prepare_dir(file_path: str) -> str:
-    dir_path = os.path.dirname(os.path.abspath(file_path))
-    os.makedirs(dir_path, exist_ok=True)
-    return file_path
+def prepare_dir(path: str, is_file: bool) -> str:
+    if is_file:
+        dir_path = os.path.dirname(os.path.abspath(path))
+        os.makedirs(dir_path, exist_ok=True)
+    else:
+        os.makedirs(os.path.abspath(path), exist_ok=True)
+    return path
+
+
+def current_dt() -> str:
+    import datetime
+
+    return datetime.datetime.now().strftime("%Y_%m_%d_%H_%M")

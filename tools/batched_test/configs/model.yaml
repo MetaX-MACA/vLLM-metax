@@ -95,7 +95,7 @@
   pp: 1
   extra_args:
 
-- name: "Llama-2-7b-hf"
+- name: "Llama-2-7B-hf"
   model_path: "/mxstorage/pde_ai/models/llm/Llama/Llama-2-7b-hf"
   tp: 1
   dp: 1
@@ -117,21 +117,21 @@
   pp: 1
   extra_args:
 
-- name: "Qwen2-5-14B-Instruct"
+- name: "Qwen2.5-72B-Instruct-AWQ"
   model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen2___5-72B-Instruct-AWQ"
   tp: 1
   dp: 1
   pp: 1
   extra_args:
 
-- name: "Qwen2-72B-Instruct-GPTQ-Int4"
+- name: "Qwen2.5-72B-Instruct-GPTQ"
   model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen2___5-72B-Instruct-GPTQ-Int4"
   tp: 1
   dp: 1
   pp: 1
   extra_args:
 
-- name: "Qwen2.5-14B-Instruct-W8A8-Dynamic-Per-Token"
+- name: "Qwen2.5-14B-W8A8"
   model_path: "/mxstorage/pde_ai/models/llm/W8A8/Qwen2.5-14B-Instruct-W8A8-Dynamic-Per-Token"
   tp: 1
   dp: 1
@@ -229,6 +229,13 @@
   pp: 1
   extra_args:
 
+- name: "Qwen3-Reranker-8B"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-Reranker-8B"
+  tp: 1
+  dp: 1
+  pp: 1
+  extra_args:
+
 - name: "Hunyuan-0.5B-Instruct"
   model_path: "/mxstorage/pde_ai/models/llm/Hunyuan/Hunyuan-0.5B-Instruct"
   tp: 1
@@ -241,6 +248,14 @@
   tp: 1
   dp: 1
   pp: 1
+  extra_args:
+
+- name: "PaddleOCR-VL"
+  model_path: "/mxstorage/pde_ai/models/llm/PaddleOCR-VL"
+  tp: 1
+  dp: 1
+  pp: 1
+  is_multimodal: true
   extra_args:
 
 - name: "Qwen2-72B-Instruct-w8a8"
@@ -313,6 +328,13 @@
   pp: 1
   extra_args:
 
+- name: "Kimi-Linear-48B-A3B-Instruct"
+  model_path: "/mxstorage/pde_ai/models/llm/Kimi-Linear-48B-A3B-Instruct"
+  tp: 2
+  dp: 1
+  pp: 1
+  extra_args:
+
 - name: "Mixtral-8x7B-v0.1"
   model_path: "/mxstorage/pde_ai/models/llm/Mistral/Mixtral-8x7B-v0.1"
   tp: 4
@@ -340,6 +362,7 @@
   dp: 1
   pp: 1
   extra_args:
+
 
 - name: "Qwen3-Next-80B-A3B-Instruct.w8a8"
   model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-Next-80B-A3B-Instruct.w8a8"
@@ -418,6 +441,15 @@
   pp: 1
   extra_args:
 
+# - name: "DeepSeek-R1-BF16-L4-W8A8"
+#   model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-BF16-L4-W8A8"
+#   tp: 4
+#   dp: 2
+#   pp: 1
+#   dcp: 2
+#   gpu_memory_utilization: 0.8
+#   extra_args:
+
 - name: "DeepSeek-R1-BF16-L4-W8A8"
   model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-BF16-L4-W8A8"
   tp: 4
@@ -436,6 +468,13 @@
 
 - name: "Qwen3-235B-A22B-w8a8"
   model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-235B-A22B.w8a8"
+  tp: 8
+  dp: 1
+  pp: 1
+  extra_args:
+  
+- name: "QwQ-32B-Preview"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/QwQ-32B"
   tp: 8
   dp: 1
   pp: 1

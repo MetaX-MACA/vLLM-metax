@@ -1,0 +1,98 @@
+[
+    {
+        "max_concurrency": 1,
+        "num_prompts": 5,
+        "random_input_len": 128,
+        "random_output_len": 128
+    },
+    {
+        "max_concurrency": 1,
+        "num_prompts": 5,
+        "random_input_len": 2048,
+        "random_output_len": 2048
+    },
+    {
+        "max_concurrency": 1,
+        "num_prompts": 5,
+        "random_input_len": 3072,
+        "random_output_len": 1024
+    },
+    {
+        "max_concurrency": 16,
+        "num_prompts": 80,
+        "random_input_len": 128,
+        "random_output_len": 128
+    },
+    {
+        "max_concurrency": 16,
+        "num_prompts": 80,
+        "random_input_len": 2048,
+        "random_output_len": 2048
+    },
+    {
+        "max_concurrency": 16,
+        "num_prompts": 80,
+        "random_input_len": 3072,
+        "random_output_len": 1024
+    },
+    {
+        "max_concurrency": 32,
+        "num_prompts": 160,
+        "random_input_len": 128,
+        "random_output_len": 128
+    },
+    {
+        "max_concurrency": 32,
+        "num_prompts": 160,
+        "random_input_len": 2048,
+        "random_output_len": 2048
+    },
+    {
+        "max_concurrency": 32,
+        "num_prompts": 160,
+        "random_input_len": 3072,
+        "random_output_len": 1024
+    },
+    {
+        "max_concurrency": 64,
+        "num_prompts": 320,
+        "random_input_len": 128,
+        "random_output_len": 128
+    },
+    {
+        "max_concurrency": 64,
+        "num_prompts": 320,
+        "random_input_len": 2048,
+        "random_output_len": 2048
+    },
+    {
+        "max_concurrency": 64,
+        "num_prompts": 320,
+        "random_input_len": 3072,
+        "random_output_len": 1024
+    },
+    {
+        "max_concurrency": 128,
+        "num_prompts": 640,
+        "random_input_len": 128,
+        "random_output_len": 128
+    },
+    {
+        "max_concurrency": 256,
+        "num_prompts": 1280,
+        "random_input_len": 128,
+        "random_output_len": 128
+    },
+    {
+        "max_concurrency": 512,
+        "num_prompts": 2560,
+        "random_input_len": 128,
+        "random_output_len": 128
+    },
+    {
+        "max_concurrency": 1024,
+        "num_prompts": 5120,
+        "random_input_len": 128,
+        "random_output_len": 128
+    }
+]
