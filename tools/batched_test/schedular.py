@@ -60,9 +60,7 @@ class SchedularArgs:
         parser.add_argument(
             "--model-config",
             type=str,
-            default=os.path.join(
-                os.path.dirname(__file__), "configs", "model_jiajia.yaml"
-            ),
+            default=os.path.join(os.path.dirname(__file__), "configs", "model.yaml"),
             help="Path to the model configuration file.",
         )
 

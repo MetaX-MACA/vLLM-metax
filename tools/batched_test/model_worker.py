@@ -312,7 +312,7 @@ class InferWorker(Worker):
 
         self.status = self.InferenceStatus.INFERENCING
         log_file = net_utils.prepare_dir(
-            os.path.join(self.infer_dir, f"{self.model_tag}_inference.log")
+            os.path.join(self.work_dir, f"{self.model_tag}_inference.log")
         )
 
         # Load test cases from YAML
