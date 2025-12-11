@@ -59,18 +59,15 @@ def run_cmd(
         stderr_dest = subprocess.PIPE
 
     pid = subprocess.Popen(
-        cmd, shell=use_shell, stdout=stdout_dest, stderr=stderr_dest, text=True, env=env
+        cmd, shell=use_shell, stdout=stdout_dest, stderr=stderr_dest, env=env
     )
 
     return pid  # return pid for background process
 
 
-def prepare_dir(path: str, is_file: bool) -> str:
-    if is_file:
-        dir_path = os.path.dirname(os.path.abspath(path))
-        os.makedirs(dir_path, exist_ok=True)
-    else:
-        os.makedirs(os.path.abspath(path), exist_ok=True)
+def prepare_dir(path: str) -> str:
+    dir_path = os.path.dirname(os.path.abspath(path))
+    os.makedirs(dir_path, exist_ok=True)
     return path
 
 

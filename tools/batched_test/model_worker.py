@@ -5,53 +5,35 @@ import os
 import abc
 from enum import Enum, auto
 
-from schedular import Scheduler
+import signal
+import threading
+
+import gpu_manager
 import net_utils
-
-
-class InferenceStatus(Enum):
-    INIT = auto()
-    STARTING_SERVER = auto()
-
-    # inference testing only
-    INFERENCE_TESTING = auto()
-
-    NORMAL_END = auto()
+import contextlib
 
 
 class Worker(abc.ABC):
-    @abc.abstractmethod
-    def run(self):
-        raise NotImplementedError("Worker must implement run method.")
-
-
-class ServeBuilder:
-    related_gpu_ids = []
-    work_dir = None
-
-    def __init__(self, scheduler: Scheduler, work_dir: str, model_cfg: dict):
-        self.scheduler = scheduler
-        self.port_manager = net_utils.PortManager()
-        self.gpu_manager = scheduler.gpu_manager
-
+    def __init__(self, base_dir: str, work_dir: str, model_cfg: dict):
+        self.base_dir = base_dir
         self.work_dir = work_dir
         self.model_cfg = model_cfg
 
+        self.config_manager = ModelConfigManager(model_cfg)
+        self.port_manager = net_utils.PortManager()
+        self.gpu_manager = gpu_manager.GPUManager()
         self.port = self.port_manager.get_next_available_port()
-        self.model_tag = f"{model_cfg['name']}_tp{model_cfg.get('tp', 1)}_pp{model_cfg.get('pp', 1)}_dp{model_cfg.get('dp', 1)}"
+        self.related_gpu_ids = []
 
-    def _calc_required_gpus(self, inference_cfg: dict) -> int:
-        tp = inference_cfg.get("tp", 1)
-        pp = inference_cfg.get("pp", 1)
-        dp = inference_cfg.get("dp", 1)
-        return tp * pp * dp
+    @abc.abstractmethod
+    def run(self, stop_event: threading.Event):
+        raise NotImplementedError("Worker must implement run method.")
 
     def _wait_and_allocate_gpus(self, timeout: int = 3600) -> list[int]:
         # Block until required GPUs are allocated
         assert self.related_gpu_ids == [], "GPUs have already been allocated."
 
-        serve_config = self.model_cfg.get("serve_config", {})
-        required_gpus = self._calc_required_gpus(serve_config)
+        required_gpus = self.config_manager._calc_required_gpus()
 
         t0 = time.time()
         while time.time() - t0 < timeout:
@@ -70,15 +52,37 @@ class ServeBuilder:
                 return occupied_gpus
             time.sleep(10)
 
-    def _prepare_serve_cmd(self) -> list[str]:
+    def _cleanup(self):
+        self.port_manager.release_port(self.port)
+        self.gpu_manager.release(self.related_gpu_ids)
+
+
+class ModelConfigManager:
+    def __init__(self, model_cfg: dict):
+        self.model_cfg = model_cfg
+        self.model_tag = f"{model_cfg['name']}_tp{model_cfg.get('tp', 1)}_pp{model_cfg.get('pp', 1)}_dp{model_cfg.get('dp', 1)}"
+
+    def get_field(self, field_name: str, default=None):
+        return self.model_cfg.get(field_name, default)
+
+    def _calc_required_gpus(self) -> int:
+        serve_config = self.model_cfg.get("serve_config", {})
+        tp = serve_config.get("tp", 1)
+        pp = serve_config.get("pp", 1)
+        dp = serve_config.get("dp", 1)
+        return tp * pp * dp
+
+    def _prepare_serve_cmd(self, host: str | None, port: int) -> list[str]:
         # Prepare command
         serve_config = self.model_cfg.get("serve_config", {})
         cmd = [
             "vllm",
             "serve",
             self.model_cfg["model_path"],
+            "--host",
+            host if host is not None else "localhost",
             "--port",
-            str(self.port),
+            str(port),
             "-tp",
             str(serve_config.get("tp", 1)),
             "-pp",
@@ -109,13 +113,69 @@ class ServeBuilder:
 
         return cmd
 
-    def _prepare_extra_env(self) -> dict:
+    def _prepare_bench_cmd(self, host: str | None, port: int) -> list[str]:
+        bench_cfg = self.model_cfg.get("benchmark", {})
+        bench_cmd = [
+            "vllm",
+            "bench",
+            "serve",
+            "--model",
+            self.model_cfg["model_path"],
+            "--host",
+            host if host is not None else "localhost",
+            "--port",
+            str(port),
+            "--dataset-name",
+            bench_cfg.get("dataset_name", "random"),
+            "--ignore-eos" if bench_cfg.get("ignore_eos") else "",
+        ]
+        return bench_cmd
+
+    def _prepare_sweep_cmd(
+        self, host: str | None, port: int, output_dir: str
+    ) -> list[str]:
+        # Prepare sweep command
+        bench_cfg = self.model_cfg.get("benchmark", {})
+
+        serve_cmd = self._prepare_serve_cmd(host, port)
+        bench_cmd = self._prepare_bench_cmd(host, port)
+        param_file = bench_cfg.get("bench_param")
+
+        assert serve_cmd is not None, "Serve command is not prepared."
+        assert bench_cmd is not None, "Benchmark command is not prepared."
+        assert os.path.exists(os.path.abspath(param_file)), (
+            f"Benchmark parameters file {param_file} does not exist."
+        )
+
+        sweep_cmd = [
+            "vllm",
+            "bench",
+            "sweep",
+            "serve",
+            "--serve-cmd",
+            " ".join(serve_cmd),
+            "--bench-cmd",
+            " ".join(bench_cmd),
+            "--bench-params",
+            param_file,
+            "--output-dir",
+            output_dir,
+            "--num-runs",
+            str(bench_cfg.get("sweep_num_runs", "3")),
+        ]
+
+        return sweep_cmd
+
+    def _prepare_extra_env(self, occupied_gpus: list[int] | None) -> dict:
         # Prepare environment variables
         run_env = {}
-        run_env["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] = "1"
-        run_env["CUDA_VISIBLE_DEVICES"] = ",".join(
-            str(idx) for idx in self.related_gpu_ids
-        )
+
+        if occupied_gpus is not None:
+            run_env["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] = "1"
+            run_env["CUDA_VISIBLE_DEVICES"] = ",".join(
+                str(idx) for idx in occupied_gpus
+            )
+
         extra_env = self.model_cfg.get("extra_env")
         if extra_env:
             if isinstance(extra_env, dict):
@@ -129,44 +189,48 @@ class ServeBuilder:
 
         return run_env
 
-    def _cleanup(self):
-        self.port_manager.release_port(self.port)
-        self.gpu_manager.release(self.related_gpu_ids)
 
+class InferWorker(Worker):
+    class InferenceStatus(Enum):
+        INIT = auto()
+        STARTING_SERVER = auto()
+        INFERENCING = auto()
+        NORMAL_END = auto()
 
-class InferWorker(ServeBuilder, Worker):
-    def __init__(self, case_file, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, base_dir: str, case_file: str, model_cfg: dict, work_dir: str):
+        super().__init__(base_dir=base_dir, work_dir=work_dir, model_cfg=model_cfg)
+
         self.case_file = case_file
-        self.status = InferenceStatus.INIT
         self.api_serve_process = None
-        # Update work_dir
-        self.work_dir = net_utils.prepare_dir(
-            os.path.join(self.work_dir, "functional"), is_file=False
-        )
+        self.status = self.InferenceStatus.INIT
+        self.model_tag = self.config_manager.model_tag
 
-    def run(self):
+    def run(self, stop_event: threading.Event):
+        self.stop_event = stop_event
         try:
             # Step 1. alloc GPU
             self._wait_and_allocate_gpus()
+            # self.related_gpu_ids = [0,1]
 
             # Step 2. launch serve
             self._launch_vllm_serve()
 
             # Step 3. client testing
             return self._post_client_test()
-
         except Exception as e:
+            print(f"[{self.model_cfg['name']}] Inference failed: {e}")
             return self._warp_failure(str(e))
         finally:
             self._cleanup()
 
     def _post_client_test(self):
+        self._check_api_service_ready(timeout=600, blocking=True)
+
         correct_ratio = self._chat_completion()
         return {
             "Model": self.model_cfg["name"],
             "Correct Ratio": str(correct_ratio * 100) + "%",
-            "Stage": InferenceStatus.NORMAL_END.name,
+            "Stage": self.InferenceStatus.NORMAL_END.name,
             "Reason": "",
             "Model Path": self.model_cfg["model_path"],
         }
@@ -182,7 +246,7 @@ class InferWorker(ServeBuilder, Worker):
 
     def _launch_vllm_serve(self):
         # Asynchronously launch vLLM serve process
-        self.status = InferenceStatus.STARTING_SERVER
+        self.status = self.InferenceStatus.STARTING_SERVER
 
         assert len(self.related_gpu_ids) > 0, (
             "No GPUs allocated for launching vLLM serve."
@@ -190,14 +254,14 @@ class InferWorker(ServeBuilder, Worker):
 
         # Prepare logfile
         log_file = net_utils.prepare_dir(
-            os.path.join(self.work_dir, f"{self.model_tag}_serve.log"), is_file=True
+            os.path.join(self.work_dir, f"{self.model_tag}_serve.log")
         )
 
         # Prepare command
-        cmd = self._prepare_serve_cmd()
+        cmd = self.config_manager._prepare_serve_cmd(host=None, port=self.port)
 
         # Set environment variable
-        extra_env = self._prepare_extra_env()
+        extra_env = self.config_manager._prepare_extra_env(self.related_gpu_ids)
 
         env_copy = os.environ.copy()
         env_copy.update(extra_env)
@@ -222,6 +286,9 @@ class InferWorker(ServeBuilder, Worker):
         print(f"[{self.model_cfg['name']}] Waiting for service on port {self.port}...")
         while time.time() - t0 < timeout:
             # Check if process has exited
+            if self.stop_event.is_set():
+                raise KeyboardInterrupt("Stop event set, terminating service check.")
+
             return_code = self.api_serve_process.poll()
             if return_code is not None:
                 raise RuntimeError(
@@ -243,11 +310,9 @@ class InferWorker(ServeBuilder, Worker):
     def _chat_completion(self) -> float:
         from api_client import ChatCompletionClient
 
-        self._check_api_service_ready(timeout=600, blocking=True)
-
-        self.status = InferenceStatus.INFERENCE_TESTING
+        self.status = self.InferenceStatus.INFERENCING
         log_file = net_utils.prepare_dir(
-            os.path.join(self.work_dir, f"{self.model_tag}_inference.log"), is_file=True
+            os.path.join(self.infer_dir, f"{self.model_tag}_inference.log")
         )
 
         # Load test cases from YAML
@@ -294,41 +359,26 @@ class InferWorker(ServeBuilder, Worker):
         return corrected_responses / len(test_cases)
 
     def _shutdown_process(self):
-        if self.api_serve_process is None:
-            print(f"[{self.model_cfg['name']}] No serve process to clean up.")
-            return
+        serve_process = self.api_serve_process
 
-        # Clean up the serve process and its children
-        pid = self.api_serve_process.pid
-        worker_pid = self.gpu_manager.get_gpu_process_pid(self.related_gpu_ids)
-
-        if not psutil.pid_exists(pid) and len(worker_pid) == 0:
-            print(
-                f"[{self.model_cfg['name']}] PID {pid} does not exist, skipping cleanup."
-            )
+        if serve_process is None:
             return
 
         try:
-            parent = psutil.Process(pid)
-        except Exception as e:
-            print(f"[{self.model_cfg['name']}] Error getting process info: {e}")
-            return
-
-        try:
+            parent = psutil.Process(serve_process.pid)
             children = parent.children(recursive=True)
             for child in children:
                 try:
                     child.kill()
                 except psutil.NoSuchProcess:
                     pass
-        except psutil.NoSuchProcess:
-            pass
-
-        try:
             parent.kill()
             parent.wait()
         except psutil.NoSuchProcess:
             pass
+
+        # Double check the gpu worker processes
+        worker_pid = self.gpu_manager.get_gpu_process_pid(self.related_gpu_ids)
 
         # kill GPU worker zombie processes in case they are not cleaned up
         for pid in worker_pid:
@@ -336,13 +386,12 @@ class InferWorker(ServeBuilder, Worker):
                 try:
                     p = psutil.Process(pid)
                     p.kill()
-                    p.wait()
                 except Exception as e:
                     print(
                         f"[{self.model_cfg['name']}] Error killing GPU worker process {pid}: {e}"
                     )
 
-        print(f"[{self.model_cfg['name']}] serve cleaned up.")
+        print(f"[{self.model_cfg['name']}] Serve cleaned up successfully.")
 
     def _cleanup(self):
         """
@@ -356,14 +405,11 @@ class InferWorker(ServeBuilder, Worker):
         self._shutdown_process()
 
 
-class BenchmarkWorker(ServeBuilder, Worker):
-    def __init__(self, bench_param_folder: str, **kargs):
-        super().__init__(**kargs)
-        self.work_dir = net_utils.prepare_dir(
-            os.path.join(self.work_dir, "performance"), is_file=False
-        )
-        self.bench_result_dir = self.work_dir
-        self.bench_param_dir = bench_param_folder
+class BenchSweepWorker(Worker):
+    def __init__(self, base_dir: str, work_dir: str, model_cfg: dict):
+        super().__init__(base_dir=base_dir, work_dir=work_dir, model_cfg=model_cfg)
+        self.sweep_process = None
+        self.model_tag = self.config_manager.model_tag
 
     def run(self):
         try:
@@ -377,12 +423,16 @@ class BenchmarkWorker(ServeBuilder, Worker):
             self._cleanup()
 
     def _launch_bench_sweep(self):
-        sweep_cmd = self._prepare_sweep_cmd()
-        extra_env = self._prepare_extra_env()
+        result_dir = os.path.join(self.work_dir, self.model_tag)
 
-        # Log the command and environment
+        sweep_cmd = self.config_manager._prepare_sweep_cmd(
+            host=None, port=self.port, output_dir=result_dir
+        )
+        extra_env = self.config_manager._prepare_extra_env(self.related_gpu_ids)
+
+        # Log the process output
         log_file = net_utils.prepare_dir(
-            os.path.join(self.work_dir, f"{self.model_tag}_serve.log"), is_file=True
+            os.path.join(self.work_dir, f"{self.model_tag}_serve.log")
         )
 
         with open(log_file, "a") as f:
@@ -399,68 +449,6 @@ class BenchmarkWorker(ServeBuilder, Worker):
         )
 
         self.sweep_process.wait()
-
-    def _prepare_bench_cmd(self):
-        bench_cfg = self.model_cfg.get("benchmark", {})
-        bench_cmd = [
-            "vllm",
-            "bench",
-            "serve",
-            "--model",
-            self.model_cfg["model_path"],
-            "--port",
-            str(self.port),
-            "--dataset-name",
-            bench_cfg.get("dataset_name", "random"),
-            "--ignore-eos" if bench_cfg.get("ignore_eos") else "",
-        ]
-        return bench_cmd
-
-    def _prepare_bench_param_file(self) -> str:
-        # Find benchmark parameters file
-        bench_cfg = self.model_cfg.get("benchmark", {})
-        bench_params_file = os.path.join(
-            self.bench_param_dir, "bench_%d.json" % bench_cfg.get("priority", 1)
-        )
-
-        return bench_params_file
-
-    def _prepare_sweep_cmd(self):
-        # Prepare sweep command
-        bench_cfg = self.model_cfg.get("benchmark", {})
-
-        serve_cmd = self._prepare_serve_cmd()
-        bench_cmd = self._prepare_bench_cmd()
-        bench_params_file = self._prepare_bench_param_file()
-
-        assert serve_cmd is not None, "Serve command is not prepared."
-        assert bench_cmd is not None, "Benchmark command is not prepared."
-        assert os.path.exists(bench_params_file), (
-            f"Benchmark parameters file {bench_params_file} does not exist."
-        )
-
-        result_dir = net_utils.prepare_dir(
-            os.path.join(self.work_dir, self.model_tag), is_file=False
-        )
-
-        sweep_cmd = [
-            "vllm",
-            "bench",
-            "sweep",
-            "serve",
-            "--serve-cmd",
-            " ".join(serve_cmd),
-            "--bench-cmd",
-            " ".join(bench_cmd),
-            "--bench-params",
-            bench_params_file,
-            "--output-dir",
-            result_dir,
-            "--num-runs",
-            str(bench_cfg.get("sweep_num_runs", "3")),
-        ]
-
-        return sweep_cmd
 
     def warp_failure(self, e: str):
         # Implement failure handling for performance testing here
