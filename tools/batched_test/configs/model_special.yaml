@@ -1,0 +1,80 @@
+- name: "GLM-4-9B-Chat"
+  model_path: "/mxstorage/pde_ai/models/llm/ChatGLM/glm-4-9b-chat"
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+      --chat-template: chat_template/template_chatglm.jinja
+  benchmark:
+    bench_param: "configs/bench_params/bench_default.json"
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "GLM-4v-9B"
+  model_path: "/mxstorage/pde_ai/models/llm/ChatGLM/glm-4v-9b"
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+      --chat-template: chat_template/template_chatglm.jinja
+  benchmark:
+    bench_param: "configs/bench_params/bench_default.json"
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "InternVL2_5-8B"
+  model_path: "/mxstorage/pde_ai/models/llm/Internlm/InternVL2_5-8B"
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    distributed_executor_backend: "mp"
+    extra_args:
+  benchmark:
+    bench_param: "configs/bench_params/bench_default.json"
+    sweep_num_runs: 1
+  extra_env:
+
+
+- name: "InternVL2-8B"
+  model_path: "/mxstorage/pde_ai/models/llm/Internlm/InternVL2-8B"
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    distributed_executor_backend: "mp"
+    extra_args:
+  benchmark:
+    bench_param: "configs/bench_params/bench_default.json"
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "Mistral-8x7B-v0.1"
+  model_path: "/mxstorage/pde_ai/models/llm/Mistral/Mixtral-8x7B-v0.1"
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --chat-template: chat_template/tool_chat_template_mistral.jinja
+  benchmark:
+    bench_param: "configs/bench_params/bench_default.json"
+    sweep_num_runs: 1
+  extra_env:
+
+
+- name: "Meta-Llama-3-70B"
+  model_path: "/mxstorage/pde_ai/models/llm/Llama/Meta-Llama-3-70B"
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --chat-template: chat_template/tool_chat_template_llama3.2_json.jinja
+  benchmark:
+    bench_param: "configs/bench_params/bench_default.json"
+    sweep_num_runs: 1
+  extra_env:
+  

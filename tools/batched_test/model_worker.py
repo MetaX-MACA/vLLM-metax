@@ -60,7 +60,7 @@ class Worker(abc.ABC):
 class ModelConfigManager:
     def __init__(self, model_cfg: dict):
         self.model_cfg = model_cfg
-        self.model_tag = f"{model_cfg['name']}_tp{model_cfg.get('tp', 1)}_pp{model_cfg.get('pp', 1)}_dp{model_cfg.get('dp', 1)}"
+        self.serve_cfg = model_cfg.get("serve_config", {})
 
     def get_field(self, field_name: str, default=None):
         return self.model_cfg.get(field_name, default)
@@ -203,7 +203,7 @@ class InferWorker(Worker):
         self.case_file = case_file
         self.api_serve_process = None
         self.status = self.InferenceStatus.INIT
-        self.model_tag = self.config_manager.model_tag
+        self.model_tag = f"{model_cfg['name']}_tp{self.serve_cfg.get('tp', 1)}_pp{self.serve_cfg.get('pp', 1)}_dp{self.serve_cfg.get('dp', 1)}"
 
     def run(self, stop_event: threading.Event):
         self.stop_event = stop_event
@@ -409,7 +409,7 @@ class BenchSweepWorker(Worker):
     def __init__(self, base_dir: str, work_dir: str, model_cfg: dict):
         super().__init__(base_dir=base_dir, work_dir=work_dir, model_cfg=model_cfg)
         self.sweep_process = None
-        self.model_tag = self.config_manager.model_tag
+        self.model_tag = f"{model_cfg['name']}_tp{self.serve_cfg.get('tp', 1)}_pp{self.serve_cfg.get('pp', 1)}_dp{self.serve_cfg.get('dp', 1)}"
 
     def run(self):
         try:
