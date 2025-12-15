@@ -1,0 +1,25 @@
+- picture_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
+  keywords: 
+    - "boardwalk"
+    - "walkway"
+    - "sky"
+    - "grass"
+
+- picture_url: assets/images/leaning_tower.png
+  keywords: 
+    - "tower"
+    - "building"
+    - "Pisa"
+
+- picture_url: assets/images/Tom_and_Jerry.png
+  keywords: 
+    - "cat"
+    - "mouse"
+    - "cartoon"
+
+- picture_url: "assets/images/cavalier_king_charles_spaniel.png"
+  keywords: 
+    - "dog"
+    - "Charles"
+    - "Cavalier King"
+    - "animal"

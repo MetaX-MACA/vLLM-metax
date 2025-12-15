@@ -5,6 +5,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -18,6 +20,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -31,6 +35,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -44,6 +50,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -57,6 +65,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -70,6 +80,8 @@
     pp: 1
     extra_args:
       --chat-template: chat_template/template_baichuan.jinja
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -83,6 +95,8 @@
     pp: 1
     extra_args:
       --chat-template: chat_template/template_baichuan.jinja
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -95,6 +109,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -108,6 +124,8 @@
     pp: 1
     extra_args:
       --chat-template: chat_template/template_chatglm.jinja
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -120,7 +138,10 @@
     dp: 1
     pp: 1
     extra_args:
+      --hf-overrides: "'{\"architectures\": [\"GLM4VForCausalLM\"]}'"
       --chat-template: chat_template/template_chatglm.jinja
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -132,7 +153,10 @@
     tp: 1
     dp: 1
     pp: 1
+    distributed_executor_backend: "mp"
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -145,6 +169,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -156,7 +182,10 @@
     tp: 1
     dp: 1
     pp: 1
+    distributed_executor_backend: "mp"
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -169,6 +198,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -182,6 +213,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -194,6 +227,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -206,6 +241,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -218,6 +255,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -230,6 +269,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -242,6 +283,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -254,6 +297,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -266,6 +311,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -278,6 +325,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -290,6 +339,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -302,6 +353,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -314,6 +367,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -326,6 +381,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -338,6 +395,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -350,6 +409,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -362,6 +423,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -374,6 +437,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -386,6 +451,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -398,6 +465,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -410,6 +479,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -422,6 +493,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -435,6 +508,8 @@
     pp: 1
     is_multimodal: true
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -447,6 +522,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -459,6 +536,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -471,6 +550,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -483,6 +564,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -495,6 +578,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -507,6 +592,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -519,6 +606,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -531,6 +620,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -542,7 +633,10 @@
     tp: 2
     dp: 1
     pp: 1
+    distributed_executor_backend: "mp"
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -555,6 +649,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -567,6 +663,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -580,6 +678,10 @@
     pp: 1
     extra_args:
       --chat-template: chat_template/tool_chat_template_mistral.jinja
+      --enable-auto-tool-choice:
+      --tool-call-parser: "mistral"
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -592,6 +694,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -604,6 +708,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -616,6 +722,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -629,6 +737,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -641,6 +751,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -653,6 +765,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -665,6 +779,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -677,7 +793,9 @@
     dp: 1
     pp: 1
     extra_args:
-      --chat-template: chat_template/tool_chat_template_llama3.2_json.jinja
+      --chat-template: chat_template/tool_chat_template_llama3.1_json.jinja
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -690,6 +808,8 @@
     dp: 2
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -702,6 +822,8 @@
     dp: 2
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -714,6 +836,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -726,6 +850,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -738,6 +864,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -750,24 +878,28 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
   extra_env:
 
-# - name: "DeepSeek-R1-BF16-L4-W8A8"
-#   model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-BF16-L4-W8A8"
-#   serve_config:
-    # tp: 4
-#     dp: 2
-#     pp: 1
-#   dcp: 2
-#   gpu_memory_utilization: 0.8
-#     extra_args:
-  # benchmark:
-  #     bench_param: "configs/bench_params/bench_default.json"
-  #     sweep_num_runs: 1
-  # extra_env:
+- name: "DeepSeek-R1-BF16-L4-W8A8"
+  model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-BF16-L4-W8A8"
+  serve_config:
+    tp: 4
+    dp: 2
+    pp: 1
+    # dcp: 2
+    gpu_memory_utilization: 0.8
+    extra_args:
+  infer_type:
+    - text-only
+  benchmark:
+      bench_param: "configs/bench_params/bench_default.json"
+      sweep_num_runs: 1
+  extra_env:
 
 - name: "DeepSeek-R1-BF16-L4-W8A8"
   model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-BF16-L4-W8A8"
@@ -778,6 +910,8 @@
     dcp: 2
     gpu_memory_utilization: 0.8
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -790,6 +924,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -802,6 +938,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -814,6 +952,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -826,6 +966,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -838,6 +980,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -850,6 +994,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -862,6 +1008,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -874,6 +1022,8 @@
     dp: 1
     pp: 1
     extra_args:
+  infer_type:
+    - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1

@@ -15,6 +15,13 @@
     extra_args:
       -mtp:
       --chat-template: "/relative/path/to/scheduler.py"
+  infer_type: # one of the following types (required)
+    - text-only  # supported
+    - single-image # supported
+    - multi-image # TODO(hank): not supported yet
+    - multi-modal # TODO(hank): not supported yet
+    - video # TODO(hank): not supported yet
+    - audio # TODO(hank): not supported yet
   benchmark:
       bench_param: "/relative/path/to/scheduler.py" # default
       dataset_name: "random"  # default
@@ -24,18 +31,18 @@
     EXAMPLE_ENV_VAR: "value"
 
 
-- name: "DeepSeek-V2-Lite"
-  model_path: "/mnt/share/models/DeepSeek/DeepSeek-V2-Lite"
-  serve_config:
-    tp: 2
-    pp: 1
-    dp: 1
-    extra_args:
-  benchmark:
-    bench_param: "configs/bench_params/bench_2.json"
-    sweep_num_runs: 1
-  extra_env:
-    MACA_QUEUE_SCHEDULE_POLICY: 1
+# - name: "DeepSeek-V2-Lite"
+#   model_path: "/mnt/share/models/DeepSeek/DeepSeek-V2-Lite"
+#   serve_config:
+#     tp: 2
+#     pp: 1
+#     dp: 1
+#     extra_args:
+#   benchmark:
+#     bench_param: "configs/bench_params/bench_2.json"
+#     sweep_num_runs: 1
+#   extra_env:
+#     MACA_QUEUE_SCHEDULE_POLICY: 1
 
 - name: "Qwen3-4B"
   model_path: "/mnt/share/models/Qwen/Qwen3-4B"
@@ -44,6 +51,23 @@
     pp: 1
     dp: 1
     extra_args:
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_2.json"
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "Qwen3-VL-8B-Instruct"
+  model_path: "/mnt/share/models/Qwen/Qwen3-VL-8B-Instruct"
+  serve_config:
+    tp: 2
+    pp: 1
+    dp: 1
+    max_model_len: 40960  # default
+    extra_args:
+  infer_type:
+    - single-image
   benchmark:
     bench_param: "configs/bench_params/bench_2.json"
     sweep_num_runs: 1

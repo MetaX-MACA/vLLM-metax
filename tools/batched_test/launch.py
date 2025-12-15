@@ -14,15 +14,16 @@ from pprint import pprint
 import net_utils
 
 import gpu_manager
+from tqdm import tqdm
 
 
 @dataclass
 class SchedularArgs:
-    base_dir: str
     work_dir: str
     model_config: str
 
-    inference_case: str
+    text_case: str
+    image_case: str
 
     infer: bool = False
     perf: bool = False
@@ -33,10 +34,10 @@ class SchedularArgs:
     @classmethod
     def from_cli_args(cls, args: argparse.Namespace) -> "SchedularArgs":
         return cls(
-            base_dir=args.base_dir,
             work_dir=args.work_dir,
             model_config=args.model_config,
-            inference_case=args.inference_case,
+            text_case=args.text_case,
+            image_case=args.image_case,
             infer=args.infer,
             perf=args.perf,
         )
@@ -44,45 +45,50 @@ class SchedularArgs:
     @classmethod
     def add_cli_args(cls, parser: argparse.ArgumentParser) -> None:
         parser.add_argument(
-            "--base-dir",
-            type=str,
-            default=os.path.dirname(__file__),
-            help="Base directory of the script.",
-        )
-
-        parser.add_argument(
             "--work-dir",
             type=str,
             default="/workspace/model_test",
-            help="Base working directory for all tests.",
+            help="Save result for all kind of tests. Default to: </workspace/model_test>",
         )
 
         parser.add_argument(
             "--model-config",
+            metavar="CONFIG_YAML_FILE",
             type=str,
             default=os.path.join(os.path.dirname(__file__), "configs", "model.yaml"),
-            help="Path to the model configuration file.",
+            help="Model config file path. Default to: <configs/model.yaml>",
         )
 
         parser.add_argument(
             "--infer",
             action="store_true",
-            help="Need run inference functional tests.",
+            help="Specify this to run inference test.",
         )
 
         parser.add_argument(
-            "--inference-case",
+            "--text-case",
+            metavar="LM_CASE_FILE",
             type=str,
             default=os.path.join(
-                os.path.dirname(__file__), "configs", "inference", "inference_case.yaml"
+                os.path.dirname(__file__), "configs", "inference", "text_case.yaml"
             ),
-            help="Path to the inference case configuration file.",
+            help="Cases used for inference test. Default to: <configs/inference/text_case.yaml>",
+        )
+
+        parser.add_argument(
+            "--image-case",
+            metavar="IMAGE_CASE_FILE",
+            type=str,
+            default=os.path.join(
+                os.path.dirname(__file__), "configs", "inference", "image_case.yaml"
+            ),
+            help="Cases used for inference test. Default to: <configs/inference/image_case.yaml>",
         )
 
         parser.add_argument(
             "--perf",
             action="store_true",
-            help="Need run performance tests.",
+            help="Specify this to run performance benchmark.",
         )
 
 
@@ -113,12 +119,15 @@ class Scheduler:
             env_info = collect_env.get_pretty_env_info()
             f.write(env_info)
 
-    def run_functional_test(self):
+    def run_inference(self):
         all_results = []
         futures = []
 
-        assert os.path.exists(self.args.inference_case), (
-            f"Case file not found: {self.args.inference_case}"
+        assert os.path.exists(self.args.text_case), (
+            f"Case file not found: {self.args.text_case}"
+        )
+        assert os.path.exists(self.args.image_case), (
+            f"Case file not found: {self.args.image_case}"
         )
 
         infer_work_dir = os.path.join(self.work_dir, "inference")
@@ -130,10 +139,10 @@ class Scheduler:
 
         for cfg in self.model_list:
             worker = InferWorker(
-                base_dir=self.args.base_dir,
                 work_dir=infer_work_dir,
                 model_cfg=cfg,
-                case_file=self.args.inference_case,
+                text_case=self.args.text_case,
+                image_case=self.args.image_case,
             )
             future = self.executor.submit(worker.run, stop_event)
             futures.append(future)
@@ -145,17 +154,39 @@ class Scheduler:
                 restval="",
             )
             csv_writer.writeheader()
+            with tqdm(
+                total=len(self.model_list),
+                desc="Inference",
+                unit="model",
+                mininterval=0.5,
+                maxinterval=2.0,
+            ) as pbar:
+                pbar.refresh()
+                refresh_stop = threading.Event()
 
-            for f in as_completed(futures):
-                result = f.result()
-                all_results.append(result)
+                def _refresher():
+                    while not refresh_stop.wait(5.0):
+                        pbar.refresh()
 
-                csv_writer.writerow(result)
-                f_csv.flush()
+                refresher_thread = threading.Thread(target=_refresher, daemon=True)
+                refresher_thread.start()
+
+                try:
+                    for f in as_completed(futures):
+                        result = f.result()
+                        all_results.append(result)
+
+                        csv_writer.writerow(result)
+                        f_csv.flush()
+
+                        pbar.update(1)
+                finally:
+                    refresh_stop.set()
+                    refresher_thread.join()
 
         pprint(all_results)
 
-    def run_performance_test(self):
+    def run_performance(self):
         all_results = []
         futures = []
 
@@ -164,7 +195,6 @@ class Scheduler:
 
         for cfg in self.model_list:
             worker = BenchSweepWorker(
-                base_dir=self.args.base_dir,
                 work_dir=bench_work_dir,
                 model_cfg=cfg,
             )
@@ -179,10 +209,10 @@ class Scheduler:
         # self.record_environment()
         try:
             if self.args.infer:
-                self.run_functional_test()
+                self.run_inference()
 
             elif self.args.perf:
-                self.run_performance_test()
+                self.run_performance()
 
         except KeyboardInterrupt:
             print("Ctrl-C detected, terminating all tests...")
