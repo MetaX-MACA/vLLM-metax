@@ -15,8 +15,11 @@ from contextlib import AbstractContextManager, nullcontext
 from vllm.utils.mem_constants import GiB_bytes
 
 import torch
-from vllm.v1.worker import worker_base
+# from vllm.v1.worker import worker_base
+from vllm.v1.worker.gpu_worker import Worker
 from vllm.v1.kv_cache_interface import KVCacheConfig
+from vllm.distributed.kv_transfer import ensure_kv_transfer_initialized
+
 
 
 def sleep(self, level: int = 1) -> None:
@@ -58,6 +61,16 @@ def wake_up(self, tags: list[str] | None = None) -> None:
                 buffer.data.copy_(self._sleep_saved_buffers[name].data)
         self._sleep_saved_buffers = {}
 
+    # If the KV cache has just been woken up,
+    # the internal state of cache_engine must be reset,
+    # especially the FP8 scaling factor.
+    if (
+        (tags is None or "kv_cache" in tags)
+        and self.cache_config.cache_dtype.startswith("fp8")
+        and hasattr(self.model_runner, "init_fp8_kv_scales")
+    ):
+        self.model_runner.init_fp8_kv_scales()
+
 
 def _maybe_get_memory_pool_context(self, tag: str) -> AbstractContextManager:
     if self.vllm_config.model_config.enable_sleep_mode:
@@ -68,27 +81,32 @@ def _maybe_get_memory_pool_context(self, tag: str) -> AbstractContextManager:
             assert allocator.get_current_usage() == 0, (
                 "Sleep mode can only be used for one instance per process."
             )
-        context = allocator.use_memory_pool(tag=tag)
+        return allocator.use_memory_pool(tag=tag)
     else:
-        context = nullcontext()
-    return context
+        return nullcontext()
 
 
 def initialize_from_config(self, kv_cache_config: KVCacheConfig) -> None:
     """Allocate GPU KV cache with the specified kv_cache_config."""
 
+    # Init kv cache connector here, because it requires
+    # `kv_cache_config`.
+    # NOTE(Kuntai): This need to be done before `initialize_kv_cache`,
+    # because `initialize_kv_cache` will inject kv cache groups not
+    # related to kv cache connector (e.g. kv cache sharing layers).
+    ensure_kv_transfer_initialized(self.vllm_config, kv_cache_config)
+
     if self.vllm_config.model_config.enable_sleep_mode:
         from vllm_metax.device_allocator.cumem import CuMemAllocator
 
         allocator = CuMemAllocator.get_instance()
-        context = allocator.use_memory_pool(tag="kv_cache")
+        with allocator.use_memory_pool(tag="kv_cache"):
+                self.model_runner.initialize_kv_cache(kv_cache_config)
     else:
-        context = nullcontext()
-    with context:
         self.model_runner.initialize_kv_cache(kv_cache_config)
 
 
-worker_base.sleep = sleep
-worker_base.wake_up = wake_up
-worker_base._maybe_get_memory_pool_context = _maybe_get_memory_pool_context
-worker_base.initialize_from_config = initialize_from_config
+Worker.sleep = sleep
+Worker.wake_up = wake_up
+Worker._maybe_get_memory_pool_context = _maybe_get_memory_pool_context
+Worker.initialize_from_config = initialize_from_config
