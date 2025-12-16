@@ -31,6 +31,6 @@ class MacaCompressedTensorsConfig(CompressedTensorsConfig):
         origin_quant_method = super().get_quant_method(layer, prefix)
         if isinstance(origin_quant_method, CompressedTensorsMoEMethod):
             origin_quant_method = MacaCompressedTensorsMoEMethod.get_moe_method(
-                self, layer
+                self, layer, layer_name=prefix
             )
         return origin_quant_method

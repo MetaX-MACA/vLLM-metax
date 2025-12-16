@@ -14,8 +14,9 @@ class MacaCompressedTensorsMoEMethod(CompressedTensorsMoEMethod):
     def get_moe_method(
         quant_config: "CompressedTensorsConfig",  # type: ignore # noqa E501
         layer: torch.nn.Module,
+        layer_name: str,
     ) -> "CompressedTensorsMoEMethod":
-        moe_method = CompressedTensorsMoEMethod.get_moe_method(quant_config, layer)
+        moe_method = CompressedTensorsMoEMethod.get_moe_method(quant_config, layer, layer_name)
         if isinstance(moe_method, CompressedTensorsWNA16MoEMethod):
             moe_method = MacaCompressedTensorsWNA16MoEMethod(
                 quant_config, layer.moe_config
@@ -30,7 +31,7 @@ class MacaCompressedTensorsMoEMethod(CompressedTensorsMoEMethod):
 class MacaCompressedTensorsW8A8Int8MoEMethod(CompressedTensorsW8A8Int8MoEMethod):
     def apply(
         self,
-        layer: torch.nn.Module,
+        layer: FusedMoE,
         x: torch.Tensor,
         router_logits: torch.Tensor,
         top_k: int,
@@ -58,19 +59,9 @@ class MacaCompressedTensorsW8A8Int8MoEMethod(CompressedTensorsW8A8Int8MoEMethod)
 
         from vllm_metax.model_executor.layers.fused_moe import fused_experts
 
-        topk_weights, topk_ids, _ = FusedMoE.select_experts(
+        topk_weights, topk_ids, _ = layer.select_experts(
             hidden_states=x,
             router_logits=router_logits,
-            use_grouped_topk=use_grouped_topk,
-            top_k=top_k,
-            renormalize=renormalize,
-            topk_group=topk_group,
-            num_expert_group=num_expert_group,
-            custom_routing_function=custom_routing_function,
-            scoring_func=scoring_func,
-            routed_scaling_factor=routed_scaling_factor,
-            e_score_correction_bias=e_score_correction_bias,
-            indices_type=self.topk_indices_dtype,
         )
 
         return fused_experts(
@@ -91,7 +82,7 @@ class MacaCompressedTensorsW8A8Int8MoEMethod(CompressedTensorsW8A8Int8MoEMethod)
 class MacaCompressedTensorsWNA16MoEMethod(CompressedTensorsWNA16MoEMethod):
     def apply(
         self,
-        layer: torch.nn.Module,
+        layer: FusedMoE,
         x: torch.Tensor,
         router_logits: torch.Tensor,
         top_k: int,
@@ -119,19 +110,9 @@ class MacaCompressedTensorsWNA16MoEMethod(CompressedTensorsWNA16MoEMethod):
 
         from vllm_metax.model_executor.layers.fused_moe import fused_experts
 
-        topk_weights, topk_ids, _ = FusedMoE.select_experts(
+        topk_weights, topk_ids, _ = layer.select_experts(
             hidden_states=x,
             router_logits=router_logits,
-            use_grouped_topk=use_grouped_topk,
-            top_k=top_k,
-            renormalize=renormalize,
-            topk_group=topk_group,
-            num_expert_group=num_expert_group,
-            custom_routing_function=custom_routing_function,
-            scoring_func=scoring_func,
-            routed_scaling_factor=routed_scaling_factor,
-            e_score_correction_bias=e_score_correction_bias,
-            indices_type=self.topk_indices_dtype,
         )
 
         return fused_experts(
