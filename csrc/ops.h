@@ -52,7 +52,6 @@ void paged_attention_v2(
     const int64_t blocksparse_vert_stride, const int64_t blocksparse_block_size,
     const int64_t blocksparse_head_sliding_step);
 
-#ifndef USE_ROCM
 void merge_attn_states(torch::Tensor& output,
                        std::optional<torch::Tensor> output_lse,
                        const torch::Tensor& prefix_output,
@@ -84,7 +83,6 @@ void convert_vertical_slash_indexes_mergehead(
     torch::Tensor vertical_indices_count,  // [N_HEADS, ]
     torch::Tensor slash_indices_count, int64_t context_size,
     int64_t block_size_M, int64_t block_size_N, bool causal);
-#endif
 
 void rms_norm(torch::Tensor& out, torch::Tensor& input, torch::Tensor& weight,
               double epsilon);
