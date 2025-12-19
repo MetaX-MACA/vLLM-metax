@@ -71,7 +71,7 @@ def _get_backend_priorities(
 
 def register_attention_backends() -> None:
     # Pre-register all attention backends
-    logger.info("Pre-registering attention backends.")
+    # logger.info("Pre-registering attention backends.")
     from vllm.attention.backends.registry import (
         AttentionBackendEnum,
         register_backend,
