@@ -37,7 +37,6 @@ dynamic = [ "version", "dependencies", "optional-dependencies"]
 Homepage="https://github.com/MetaX-MACA/vLLM-metax"
 
 [project.scripts]
-vllm_metax_init = "vllm_metax:post_installation"
 vllm_collect_env = "vllm_metax:collect_env"
 
 [project.entry-points."vllm.platform_plugins"]

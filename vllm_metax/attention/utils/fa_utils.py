@@ -26,14 +26,14 @@ def get_flash_attn_version(requires_alibi: bool = False) -> int | None:
     return None
 
 
-def flash_attn_supports_sinks() -> bool:
-    return False
-
-
 def flash_attn_supports_fp8() -> bool:
     logger.info_once(
         "Using Maca version of flash attention, which does not support FP8"
     )
+    return False
+
+
+def flash_attn_supports_sinks() -> bool:
     return False
 
 

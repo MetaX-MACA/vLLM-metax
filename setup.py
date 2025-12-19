@@ -436,7 +436,7 @@ def get_maca_version() -> Version:
 
 
 def fixed_version_scheme(version: ScmVersion) -> str:
-    return "0.11.2"
+    return "0.12.0"
 
 
 def always_hash(version: ScmVersion) -> str:
@@ -452,7 +452,7 @@ def always_hash(version: ScmVersion) -> str:
     return f"unknown.{date_str}"
 
 
-def get_vllm_version() -> str:
+def get_plugin_version() -> str:
     version = get_version(
         version_scheme=fixed_version_scheme,
         local_scheme=always_hash,
@@ -599,7 +599,7 @@ else:
 
 setup(
     # static metadata should rather go in pyproject.toml
-    version=get_vllm_version(),
+    version=get_plugin_version(),
     ext_modules=ext_modules,
     install_requires=get_requirements(),
     extras_require={

@@ -3,8 +3,6 @@
 import os
 from typing import TYPE_CHECKING, Any, Callable
 
-from vllm.logger import logger
-
 if TYPE_CHECKING:
     VLLM_TARGET_DEVICE: str = "cuda"
     MAX_JOBS: str | None
@@ -65,6 +63,7 @@ def override_vllm_env(env_name: str, value: Any, reason: str | None) -> None:
                the env resolver will return None.
     """
     from vllm import envs
+    from vllm.logger import logger
 
     if not isinstance(env_name, str):
         raise TypeError("env_name must be a string")
@@ -73,7 +72,7 @@ def override_vllm_env(env_name: str, value: Any, reason: str | None) -> None:
         raise KeyError(f"{env_name} is not a recognized vLLM environment variable")
 
     logger.info_once(
-        "\nNote!: vllm_metax would replace %s to %s. Reason: %s",
+        "Note!: set %s to %s. Reason: %s",
         env_name,
         value,
         reason,

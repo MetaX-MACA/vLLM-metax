@@ -1,5 +1,6 @@
 - name: "example-model"
   model_path: "/path/to/example-model"
+  timeout: 600 # default is 600 seconds
   serve_config:
     tp: 99
     pp: 99
@@ -34,20 +35,112 @@
 # - name: "DeepSeek-V2-Lite"
 #   model_path: "/mnt/share/models/DeepSeek/DeepSeek-V2-Lite"
 #   serve_config:
-#     tp: 2
+#     tp: 1
 #     pp: 1
 #     dp: 1
 #     extra_args:
+#   infer_type:
+#     - text-only
 #   benchmark:
 #     bench_param: "configs/bench_params/bench_2.json"
 #     sweep_num_runs: 1
 #   extra_env:
 #     MACA_QUEUE_SCHEDULE_POLICY: 1
 
-- name: "Qwen3-4B"
-  model_path: "/mnt/share/models/Qwen/Qwen3-4B"
+# - name: "Qwen3-30B-A3B"
+#   model_path: "/mnt/share/models/Qwen/Qwen3-30B-A3B"
+#   serve_config:
+#     tp: 2
+#     pp: 1
+#     dp: 1
+#     extra_args:
+#   infer_type:
+#     - text-only
+#   benchmark:
+#     bench_param: "configs/bench_params/bench_2.json"
+#     sweep_num_runs: 1
+#   extra_env:
+
+# - name: "Qwen3-4B"
+#   model_path: "/mnt/share/models/Qwen/Qwen3-4B"
+#   serve_config:
+#     tp: 1
+#     pp: 1
+#     dp: 1
+#     extra_args:
+#   infer_type:
+#     - text-only
+#   benchmark:
+#     bench_param: "configs/bench_params/bench_2.json"
+#     sweep_num_runs: 1
+#   extra_env:
+
+# - name: "Qwen3-VL-8B-Instruct"
+#   model_path: "/mnt/share/models/Qwen/Qwen3-VL-8B-Instruct"
+#   serve_config:
+#     tp: 1
+#     pp: 1
+#     dp: 1
+#     max_model_len: 40960  # default
+#     extra_args:
+#   infer_type:
+#     - single-image
+#   benchmark:
+#     bench_param: "configs/bench_params/bench_2.json"
+#     sweep_num_runs: 1
+#   extra_env:
+
+
+# - name: "Qwen3-8B"
+#   model_path: "/mnt/share/models/Qwen/Qwen3-8B"
+#   serve_config:
+#     tp: 1
+#     pp: 1
+#     dp: 1
+#     extra_args:
+#   infer_type:
+#     - text-only
+#   benchmark:
+#     bench_param: "configs/bench_params/bench_2.json"
+#     sweep_num_runs: 1
+#   extra_env:
+
+
+# - name: "Qwen3-Next-80B-A3B-Instruct"
+#   model_path: "/mnt/share/models/Qwen/Qwen3-Next-80B-A3B-Instruct"
+#   serve_config:
+#     tp: 4
+#     pp: 1
+#     dp: 1
+#     extra_args:
+#   infer_type:
+#     - text-only
+#   benchmark:
+#     bench_param: "configs/bench_params/bench_2.json"
+#     sweep_num_runs: 1
+#   extra_env:
+
+
+# - name: "Qwen3-30B-A3B-W8A8"
+#   model_path: "/mnt/share/models/Qwen/Qwen3-30B-A3B_w8a8"
+#   serve_config:
+#     tp: 1
+#     pp: 1
+#     dp: 1
+#     extra_args:
+#   infer_type:
+#     - text-only
+#   benchmark:
+#     bench_param: "configs/bench_params/bench_2.json"
+#     sweep_num_runs: 1
+#   extra_env:
+
+
+- name: "Qwen3-235B-A22B-W8A8"
+  model_path: "/mnt/share/models/Qwen/Qwen3-235B-A22B_w8a8"
+  timeout: 1200
   serve_config:
-    tp: 2
+    tp: 8
     pp: 1
     dp: 1
     extra_args:
@@ -57,67 +150,3 @@
     bench_param: "configs/bench_params/bench_2.json"
     sweep_num_runs: 1
   extra_env:
-
-- name: "Qwen3-VL-8B-Instruct"
-  model_path: "/mnt/share/models/Qwen/Qwen3-VL-8B-Instruct"
-  serve_config:
-    tp: 2
-    pp: 1
-    dp: 1
-    max_model_len: 40960  # default
-    extra_args:
-  infer_type:
-    - single-image
-  benchmark:
-    bench_param: "configs/bench_params/bench_2.json"
-    sweep_num_runs: 1
-  extra_env:
-
-
-# - name: "Qwen3-8B"
-#   model_path: "/mnt/share/models/Qwen/Qwen3-8B"
-#   serve_config:
-#     tp: 4
-#     pp: 1
-#     dp: 1
-#     extra_args:
-#   benchmark:
-#       priority: 1 # lower value means higher priority
-#       sweep_num_runs: 1
-#   extra_env:
-
-
-# - name: "Qwen3-14B"
-#   model_path: "/mnt/share/models/Qwen/Qwen3-14B"
-#   serve_config:
-#     tp: 2
-#     pp: 1
-#     dp: 1
-#     extra_args:
-#   benchmark:
-#       priority: 1 # lower value means higher priority
-#       sweep_num_runs: 1
-#   extra_env:
-
-# - name: "Qwen3-235B-A22B"
-#   model_path: "/mnt/share/models/Qwen/Qwen3-235B-A22B"
-#   serve_config:
-#     tp: 8
-#     pp: 2
-#     dp: 1
-#     extra_args:
-#   benchmark:
-#       priority: 1 # lower value means higher priority
-#       sweep_num_runs: 1
-#   extra_env:
-  
-# - name: "Qwen3-30B-A3B"
-#   serve_config:
-#     tp: 8
-#     pp: 1
-#     dp: 1
-#     extra_args:
-#   benchmark:
-#       priority: 1 # lower value means higher priority
-#       sweep_num_runs: 1
-#   extra_env:

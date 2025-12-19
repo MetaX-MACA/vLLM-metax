@@ -7,6 +7,7 @@ Users of vLLM should always import **only** these wrappers.
 
 from __future__ import annotations
 
+import functools
 import importlib
 import os
 from typing import Any, Callable, NoReturn
@@ -15,6 +16,13 @@ import torch
 
 import vllm.envs as envs
 from vllm.utils.import_utils import has_deep_gemm
+
+
+def is_deep_gemm_supported() -> bool:
+    """Return `True` if DeepGEMM is supported on the current platform.
+    Currently, only Hopper and Blackwell GPUs are supported.
+    """
+    return envs.VLLM_USE_DEEP_GEMM and has_deep_gemm()
 
 
 def _missing(*_: Any, **__: Any) -> NoReturn:
@@ -49,6 +57,7 @@ def _lazy_init() -> None:
     _bf16_paged_mqa_logits_impl = getattr(_dg, "bf16_paged_mqa_logits", None)
 
 
+@functools.cache
 def bf16_mqa_logits(
     q: torch.Tensor,
     kv: tuple[torch.Tensor, torch.Tensor],
@@ -127,4 +136,5 @@ def bf16_paged_mqa_logits(
 __all__ = [
     "bf16_mqa_logits",
     "bf16_paged_mqa_logits",
+    "is_deep_gemm_supported",
 ]

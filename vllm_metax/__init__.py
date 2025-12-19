@@ -1,81 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-import importlib.metadata
-import importlib.util
-import os
-import shutil
-from pathlib import Path
-
 from .version import __version__, __version_tuple__  # noqa: F401
-
-
-def copy_with_backup(src_path: Path, dest_path: Path):
-    """
-    Copy a file or directory from src_path to dest_path.
-    - If dest_path is an existing directory, copy src_path into that directory.
-    - If dest_path exists as a file or directory, back it up as .bak before copying.
-    """
-    if not os.path.exists(src_path):
-        raise FileNotFoundError(f"Source path does not exist: {src_path}")
-
-    # If dest_path is an existing directory, copy into it
-    if os.path.isdir(dest_path):
-        dest_full_path = dest_path / os.path.basename(src_path)
-    else:
-        dest_full_path = dest_path
-
-    # Backup if target path already exists (file or dir)
-    if os.path.exists(dest_full_path):
-        backup_path = dest_full_path.parent / (dest_full_path.name + ".bak")
-        if os.path.exists(backup_path):
-            if os.path.isdir(backup_path) and not os.path.islink(backup_path):
-                shutil.rmtree(backup_path)
-            else:
-                os.remove(backup_path)
-        os.rename(dest_full_path, backup_path)
-
-    # Perform the copy
-    if os.path.isdir(src_path):
-        shutil.copytree(src_path, dest_full_path)
-    else:
-        shutil.copy2(src_path, dest_full_path)
-
-
-def post_installation():
-    """Post installation script."""
-    print("Post installation script.")
-
-    # Get the path to the vllm distribution
-    vllm_dist_path = Path(
-        str(importlib.metadata.distribution("vllm").locate_file("vllm"))
-    )
-    plugin_dist_path = Path(
-        str(importlib.metadata.distribution("vllm_metax").locate_file("vllm_metax"))
-    )
-
-    assert os.path.exists(vllm_dist_path)
-    assert os.path.exists(plugin_dist_path)
-
-    print(f"vLLM Dist Location: [{vllm_dist_path}]")
-    print(f"vLLM_plugin Dist Location: [{plugin_dist_path}]")
-
-    files_to_copy = {
-        # workaround for Qwen3-Next
-        # for get_available_device: set cuda
-        "patch/vllm_substitution/utils.py": vllm_dist_path
-        / "model_executor/layers/fla/ops/utils.py",
-    }
-
-    for src_path, dest_path in files_to_copy.items():
-        source_file = Path(plugin_dist_path) / src_path
-        dest_file = Path(vllm_dist_path) / dest_path
-        try:
-            copy_with_backup(source_file, dest_file)
-        except Exception as e:
-            print("Init failed as: ", e)
-            raise
-
-    print("Post installation successful.")
 
 
 def collect_env() -> None:
@@ -92,7 +17,6 @@ def register():
 
 ########### general plugins ###########
 def register_patch():
-    import vllm_metax.hotfix.fix_aux_stream  # noqa: F401
     import vllm_metax.hotfix.fix_standalone_compile  # noqa: F401
     import vllm_metax.patch  # noqa: F401
 

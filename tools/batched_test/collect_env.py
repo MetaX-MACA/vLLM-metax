@@ -54,7 +54,7 @@ SystemEnv = namedtuple(
         "python_platform",
         "is_cuda_available",
         "cuda_runtime_version",
-        "maca_runtime_version",
+        "maca_sdk_version",
         "bios_version",
         "cuda_module_loading",
         "nvidia_driver_version",
@@ -219,8 +219,10 @@ def get_running_cuda_version(run_lambda):
     return run_and_parse_first_match(run_lambda, "nvcc --version", r"release .+ V(.*)")
 
 
-def get_running_maca_version(run_lambda):
-    return run_and_parse_first_match(run_lambda, "mxcc --version", r"release .+ V(.*)")
+def get_maca_sdk_version(run_lambda):
+    return run_and_parse_first_match(
+        run_lambda, "cat $MACA_PATH/Version.txt", r"Version:(.*)"
+    )
 
 
 def get_bios_version(run_lambda):
@@ -648,7 +650,7 @@ def get_env_info():
         is_cuda_available=cuda_available_str,
         cuda_compiled_version=cuda_version_str,
         cuda_runtime_version=get_running_cuda_version(run_lambda),
-        maca_runtime_version=get_running_maca_version(run_lambda),
+        maca_sdk_version=get_maca_sdk_version(run_lambda),
         bios_version=get_bios_version(run_lambda),
         cuda_module_loading=get_cuda_module_loading_config(),
         nvidia_gpu_models=get_gpu_info(run_lambda),
@@ -684,6 +686,12 @@ CMake version                : {cmake_version}
 Libc version                 : {libc_version}
 
 ==============================
+       MACA Info
+==============================
+Maca driver version          : {nvidia_driver_version}
+MACA SDK version             : {maca_sdk_version}
+
+==============================
        PyTorch Info
 ==============================
 PyTorch version              : {torch_version}
@@ -713,8 +721,6 @@ Is CUDA available            : {is_cuda_available}
 CUDA runtime version         : {cuda_runtime_version}
 CUDA_MODULE_LOADING set to   : {cuda_module_loading}
 GPU models and configuration : {nvidia_gpu_models}
-Maca driver version          : {nvidia_driver_version}
-MACA runtime version         : {maca_runtime_version}
 BIOS version                 : {bios_version}
 cuDNN version                : {cudnn_version}
 Is XNNPACK available         : {is_xnnpack_available}

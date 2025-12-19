@@ -18,6 +18,20 @@ from collections import namedtuple
 import regex as re
 
 try:
+    import vllm
+
+    VLLM_AVAILABLE = True
+except (ImportError, NameError, AttributeError, OSError):
+    VLLM_AVAILABLE = False
+
+try:
+    import vllm_metax
+
+    VLLM_METAX_AVAILABLE = True
+except (ImportError, NameError, AttributeError, OSError):
+    VLLM_METAX_AVAILABLE = False
+
+try:
     import torch
 
     TORCH_AVAILABLE = True
@@ -40,7 +54,7 @@ SystemEnv = namedtuple(
         "python_platform",
         "is_cuda_available",
         "cuda_runtime_version",
-        "maca_runtime_version",
+        "maca_sdk_version",
         "bios_version",
         "cuda_module_loading",
         "nvidia_driver_version",
@@ -49,15 +63,11 @@ SystemEnv = namedtuple(
         "pip_version",  # 'pip' or 'pip3'
         "pip_packages",
         "conda_packages",
-        "hip_compiled_version",
-        "hip_runtime_version",
-        "miopen_runtime_version",
         "caching_allocator_config",
         "is_xnnpack_available",
         "cpu_info",
-        "rocm_version",  # vllm specific field
-        "neuron_sdk_version",  # vllm specific field
         "vllm_version",  # vllm specific field
+        "vllm_metax_version",  # vllm-metax specific field
         "vllm_build_flags",  # vllm specific field
         "gpu_topo",  # vllm specific field
         "env_vars",
@@ -65,6 +75,8 @@ SystemEnv = namedtuple(
 )
 
 DEFAULT_CONDA_PATTERNS = {
+    "metax",
+    "vllm",
     "torch",
     "numpy",
     "cudatoolkit",
@@ -81,6 +93,9 @@ DEFAULT_CONDA_PATTERNS = {
 }
 
 DEFAULT_PIP_PATTERNS = {
+    "metax",
+    "maca",
+    "vllm",
     "torch",
     "numpy",
     "mypy",
@@ -191,22 +206,6 @@ def get_nvidia_driver_version(run_lambda):
 
 
 def get_gpu_info(run_lambda):
-    if get_platform() == "darwin" or (
-        TORCH_AVAILABLE
-        and hasattr(torch.version, "hip")
-        and torch.version.hip is not None
-    ):
-        if TORCH_AVAILABLE and torch.cuda.is_available():
-            if torch.version.hip is not None:
-                prop = torch.cuda.get_device_properties(0)
-                if hasattr(prop, "gcnArchName"):
-                    gcnArch = " ({})".format(prop.gcnArchName)
-                else:
-                    gcnArch = "NoGCNArchNameOnOldPyTorch"
-            else:
-                gcnArch = ""
-            return torch.cuda.get_device_name(None) + gcnArch
-        return None
     smi = get_nvidia_smi()
     uuid_regex = re.compile(r" \(UUID: .+?\)")
     rc, out, _ = run_lambda(smi + " -L")
@@ -220,8 +219,10 @@ def get_running_cuda_version(run_lambda):
     return run_and_parse_first_match(run_lambda, "nvcc --version", r"release .+ V(.*)")
 
 
-def get_running_maca_version(run_lambda):
-    return run_and_parse_first_match(run_lambda, "mx-smi", r"MACA Version:\s*([^\s]+)")
+def get_maca_sdk_version(run_lambda):
+    return run_and_parse_first_match(
+        run_lambda, "cat $MACA_PATH/Version.txt", r"Version:(.*)"
+    )
 
 
 def get_bios_version(run_lambda):
@@ -283,28 +284,34 @@ def get_nvidia_smi():
     return smi
 
 
-def get_rocm_version(run_lambda):
-    """Returns the ROCm version if available, otherwise 'N/A'."""
-    return run_and_parse_first_match(
-        run_lambda, "hipcc --version", r"HIP version: (\S+)"
-    )
-
-
-def get_neuron_sdk_version(run_lambda):
-    # Adapted from your install script
-    try:
-        result = run_lambda(["neuron-ls"])
-        return result if result[0] == 0 else "N/A"
-    except Exception:
+def get_vllm_version():
+    if not VLLM_AVAILABLE:
         return "N/A"
 
+    from vllm import __version__, __version_tuple__
 
-def get_vllm_version():
-    try:
-        from vllm import __version__, __version_tuple__
-    except Exception as e:
-        print(e)
-        __version__ = "dev"
+    if __version__ == "dev":
+        return "N/A (dev)"
+    version_str = __version_tuple__[-1]
+    if isinstance(version_str, str) and version_str.startswith("g"):
+        # it's a dev build
+        if "." in version_str:
+            # it's a dev build containing local changes
+            git_sha = version_str.split(".")[0][1:]
+            date = version_str.split(".")[-1][1:]
+            return f"{__version__} (git sha: {git_sha}, date: {date})"
+        else:
+            # it's a dev build without local changes
+            git_sha = version_str[1:]  # type: ignore
+            return f"{__version__} (git sha: {git_sha})"
+    return __version__
+
+
+def get_vllm_metax_version():
+    if not VLLM_METAX_AVAILABLE:
+        return "N/A"
+
+    from vllm_metax import __version__, __version_tuple__
 
     if __version__ == "dev":
         return "N/A (dev)"
@@ -337,8 +344,6 @@ def get_gpu_topo(run_lambda):
 
     if get_platform() == "linux":
         output = run_and_read_all(run_lambda, "mx-smi topo -m")
-        if output is None:
-            output = run_and_read_all(run_lambda, "rocm-smi --showtopo")
 
     return output
 
@@ -626,31 +631,11 @@ def get_env_info():
         debug_mode_str = str(torch.version.debug)
         cuda_available_str = str(torch.cuda.is_available())
         cuda_version_str = torch.version.cuda
-        if (
-            not hasattr(torch.version, "hip") or torch.version.hip is None
-        ):  # cuda version
-            hip_compiled_version = hip_runtime_version = miopen_runtime_version = "N/A"
-        else:  # HIP version
-
-            def get_version_or_na(cfg, prefix):
-                _lst = [s.rsplit(None, 1)[-1] for s in cfg if prefix in s]
-                return _lst[0] if _lst else "N/A"
-
-            cfg = torch._C._show_config().split("\n")
-            hip_runtime_version = get_version_or_na(cfg, "HIP Runtime")
-            miopen_runtime_version = get_version_or_na(cfg, "MIOpen")
-            cuda_version_str = "N/A"
-            hip_compiled_version = torch.version.hip
-    else:
-        version_str = debug_mode_str = cuda_available_str = cuda_version_str = "N/A"
-        hip_compiled_version = hip_runtime_version = miopen_runtime_version = "N/A"
 
     sys_version = sys.version.replace("\n", " ")
 
     conda_packages = get_conda_packages(run_lambda)
 
-    rocm_version = get_rocm_version(run_lambda)
-    neuron_sdk_version = get_neuron_sdk_version(run_lambda)
     vllm_version = get_vllm_version()
     vllm_build_flags = summarize_vllm_build_flags()
     gpu_topo = get_gpu_topo(run_lambda)
@@ -665,15 +650,12 @@ def get_env_info():
         is_cuda_available=cuda_available_str,
         cuda_compiled_version=cuda_version_str,
         cuda_runtime_version=get_running_cuda_version(run_lambda),
-        maca_runtime_version=get_running_maca_version(run_lambda),
+        maca_sdk_version=get_maca_sdk_version(run_lambda),
         bios_version=get_bios_version(run_lambda),
         cuda_module_loading=get_cuda_module_loading_config(),
         nvidia_gpu_models=get_gpu_info(run_lambda),
         nvidia_driver_version=get_nvidia_driver_version(run_lambda),
         cudnn_version=get_cudnn_version(run_lambda),
-        hip_compiled_version=hip_compiled_version,
-        hip_runtime_version=hip_runtime_version,
-        miopen_runtime_version=miopen_runtime_version,
         pip_version=pip_version,
         pip_packages=pip_list_output,
         conda_packages=conda_packages,
@@ -685,9 +667,8 @@ def get_env_info():
         caching_allocator_config=get_cachingallocator_config(),
         is_xnnpack_available=is_xnnpack_available(),
         cpu_info=get_cpu_info(run_lambda),
-        rocm_version=rocm_version,
-        neuron_sdk_version=neuron_sdk_version,
         vllm_version=vllm_version,
+        vllm_metax_version=get_vllm_metax_version(),
         vllm_build_flags=vllm_build_flags,
         gpu_topo=gpu_topo,
         env_vars=get_env_vars(),
@@ -705,12 +686,17 @@ CMake version                : {cmake_version}
 Libc version                 : {libc_version}
 
 ==============================
+       MACA Info
+==============================
+Maca driver version          : {nvidia_driver_version}
+MACA SDK version             : {maca_sdk_version}
+
+==============================
        PyTorch Info
 ==============================
 PyTorch version              : {torch_version}
 Is debug build               : {is_debug_build}
 CUDA used to build PyTorch   : {cuda_compiled_version}
-ROCM used to build PyTorch   : {hip_compiled_version}
 
 ==============================
       Python Environment
@@ -719,18 +705,24 @@ Python version               : {python_version}
 Python platform              : {python_platform}
 
 ==============================
+         vLLM Info
+==============================
+vLLM Version                 : {vllm_version}
+vLLM-metax Version           : {vllm_metax_version}
+vLLM Build Flags:
+  {vllm_build_flags}
+GPU Topology:
+  {gpu_topo}
+
+==============================
        CUDA(MACA) / GPU Info
 ==============================
 Is CUDA available            : {is_cuda_available}
 CUDA runtime version         : {cuda_runtime_version}
 CUDA_MODULE_LOADING set to   : {cuda_module_loading}
 GPU models and configuration : {nvidia_gpu_models}
-Maca driver version          : {nvidia_driver_version}
-MACA runtime version         : {maca_runtime_version}
 BIOS version                 : {bios_version}
 cuDNN version                : {cudnn_version}
-HIP runtime version          : {hip_runtime_version}
-MIOpen runtime version       : {miopen_runtime_version}
 Is XNNPACK available         : {is_xnnpack_available}
 
 ==============================
@@ -751,16 +743,6 @@ Versions of relevant libraries
 env_info_fmt += "\n\n"
 
 env_info_fmt += """
-==============================
-         vLLM Info
-==============================
-ROCM Version                 : {rocm_version}
-Neuron SDK Version           : {neuron_sdk_version}
-vLLM Version                 : {vllm_version}
-vLLM Build Flags:
-  {vllm_build_flags}
-GPU Topology:
-  {gpu_topo}
 
 ==============================
      Environment Variables

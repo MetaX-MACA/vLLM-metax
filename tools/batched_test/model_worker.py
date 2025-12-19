@@ -30,7 +30,7 @@ class Worker(abc.ABC):
     def run(self, stop_event: threading.Event):
         raise NotImplementedError("Worker must implement run method.")
 
-    def _wait_and_allocate_gpus(self, timeout: int = 3600) -> list[int]:
+    def _wait_and_allocate_gpus(self, timeout: int = 7200) -> list[int]:
         # Block until required GPUs are allocated
         assert self.related_gpu_ids == [], "GPUs have already been allocated."
 
@@ -38,6 +38,9 @@ class Worker(abc.ABC):
 
         t0 = time.time()
         while time.time() - t0 < timeout:
+            if self.stop_event.is_set():
+                raise KeyboardInterrupt("Stop event set, terminating service check.")
+
             occupied_gpus = self.gpu_manager.allocate(required_gpus)
             print(
                 f"[{self.model_cfg['name']}] Trying to allocate {required_gpus} GPUs..."
@@ -52,6 +55,10 @@ class Worker(abc.ABC):
                 self.related_gpu_ids = occupied_gpus
                 return occupied_gpus
             time.sleep(10)
+
+        raise TimeoutError(
+            f"[{self.model_cfg['name']}] Failed to allocate {required_gpus} GPUs within {timeout} seconds."
+        )
 
     def _cleanup(self):
         self.port_manager.release_port(self.port)
@@ -92,13 +99,13 @@ class ModelConfigManager:
             str(serve_config.get("dp", 1)),
             "--trust-remote-code",
             "--gpu-memory-utilization",
-            str(serve_config.get("gpu_memory_utilization", 0.9)),
+            str(serve_config.get("gpu_memory_utilization", 0.8)),
             "--swap-space",
             str(serve_config.get("swap_space", 16)),
             "--max-model-len",
             str(serve_config.get("max_model_len", 4096)),
             "--distributed-executor-backend",
-            serve_config.get("distributed_executor_backend", "ray"),
+            serve_config.get("distributed_executor_backend", "mp"),
         ]
 
         extra_args = serve_config.get("extra_args")
@@ -110,7 +117,7 @@ class ModelConfigManager:
                         cmd.append(str(value))
             elif isinstance(extra_args, list):
                 for item in extra_args:
-                    cmd.append(str(item))
+                    cmd.append(item)
 
         return cmd
 
@@ -128,9 +135,10 @@ class ModelConfigManager:
             str(port),
             "--dataset-name",
             bench_cfg.get("dataset_name", "random"),
-            "--ignore-eos" if bench_cfg.get("ignore_eos") else "",
             "--trust-remote-code",
         ]
+        if bench_cfg.get("ignore_eos"):
+            bench_cmd.append("--ignore-eos")
         return bench_cmd
 
     def prepare_sweep_cmd(
@@ -155,9 +163,9 @@ class ModelConfigManager:
             "sweep",
             "serve",
             "--serve-cmd",
-            " ".join(serve_cmd),
+            shlex.join(serve_cmd),
             "--bench-cmd",
-            " ".join(bench_cmd),
+            shlex.join(bench_cmd),
             "--bench-params",
             param_file,
             "--output-dir",
@@ -210,7 +218,7 @@ class InferWorker(Worker):
         self.api_serve_process = None
         self.status = self.InferenceStatus.INIT
         self.serve_cfg = model_cfg.get("serve_config", {})
-        self.model_tag = f"{model_cfg['name']}_tp{self.serve_cfg.get('tp', 1)}_pp{self.serve_cfg.get('pp', 1)}_dp{self.serve_cfg.get('dp', 1)}"
+        self.model_tag = f"{model_cfg['name']}[tp{self.serve_cfg.get('tp', 1)}pp{self.serve_cfg.get('pp', 1)}dp{self.serve_cfg.get('dp', 1)}]"
 
     def _get_text_only_cases(self) -> list[dict]:
         import yaml
@@ -232,7 +240,9 @@ class InferWorker(Worker):
         questions = [case["question"] for case in text_cases]
 
         # Get generator for responses
-        content_gen = client.run_text_only(questions)
+        content_gen = client.run_text_only(
+            questions=questions, max_completion_tokens=256
+        )
 
         corrected_responses = 0
         with open(log_file, "a") as f:
@@ -259,9 +269,8 @@ class InferWorker(Worker):
 
         # Get generator for responses
         content_gen = client.run_single_image(
-            model=client.get_model(),
-            max_completion_tokens=256,
             image_urls=image_urls,
+            max_completion_tokens=256,
         )
 
         corrected_responses = 0
@@ -302,11 +311,12 @@ class InferWorker(Worker):
             self._cleanup()
 
     def _post_client_test(self):
-        self._check_api_service_ready(timeout=600, blocking=True)
+        timeout = self.model_cfg.get("timeout", 600)
+        self._check_api_service_ready(timeout=timeout, blocking=True)
 
         correct_ratio = self._chat_completion()
         return {
-            "Model": self.model_cfg["name"],
+            "Model": self.model_tag,
             "Correct Ratio": str(correct_ratio * 100) + "%",
             "Stage": self.InferenceStatus.NORMAL_END.name,
             "Reason": "",
@@ -315,7 +325,7 @@ class InferWorker(Worker):
 
     def _warp_failure(self, e: str):
         return {
-            "Model": self.model_cfg["name"],
+            "Model": self.model_tag,
             "Correct Ratio": "0%",
             "Stage": self.status.name,
             "Reason": str(e),
@@ -346,7 +356,7 @@ class InferWorker(Worker):
 
         # Log the command and environment
         with open(log_file, "a") as f:
-            cmd_str = f"[{self.model_cfg['name']}] command: {' '.join(cmd)}"
+            cmd_str = f"[{self.model_cfg['name']}] command: {shlex.join(cmd)}"
             f.write(cmd_str + "\n" + "-" * 80 + "\n")
             f.write(extra_env.__str__() + "\n" + "-" * 80 + "\n")
             f.flush()

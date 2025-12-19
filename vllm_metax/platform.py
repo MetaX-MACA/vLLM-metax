@@ -15,6 +15,7 @@ from typing_extensions import ParamSpec
 import vllm.envs as envs
 import vllm_metax.envs as mx_envs
 from vllm.logger import logger
+from vllm.attention.backends.abstract import AttentionType
 from vllm_metax.utils import import_pymxml
 from vllm.utils.torch_utils import cuda_device_count_stateless
 
@@ -70,7 +71,7 @@ def _get_backend_priorities(
 
 def register_attention_backends() -> None:
     # Pre-register all attention backends
-    logger.info("Pre-registering attention backends.")
+    # logger.info("Pre-registering attention backends.")
     from vllm.attention.backends.registry import (
         AttentionBackendEnum,
         register_backend,
@@ -78,35 +79,35 @@ def register_attention_backends() -> None:
 
     register_backend(
         AttentionBackendEnum.FLASHMLA,
-        "vllm_metax.v1.attention.backends.mla.flashmla.MacaFlashMLABackend",
+        class_path="vllm_metax.v1.attention.backends.mla.flashmla.MacaFlashMLABackend",
     )
     register_backend(
-        AttentionBackendEnum.FLASHMLA_SPARSE,
-        "vllm_metax.v1.attention.backends.mla.flashmla_sparse.MacaFlashMLASparseBackend",
+        backend=AttentionBackendEnum.FLASHMLA_SPARSE,
+        class_path="vllm_metax.v1.attention.backends.mla.flashmla_sparse.MacaFlashMLASparseBackend",
     )
     register_backend(
-        AttentionBackendEnum.TRITON_MLA,
-        "vllm_metax.v1.attention.backends.mla.triton_mla.MacaTritonMLABackend",
+        backend=AttentionBackendEnum.TRITON_MLA,
+        class_path="vllm_metax.v1.attention.backends.mla.triton_mla.MacaTritonMLABackend",
     )
     register_backend(
         AttentionBackendEnum.FLASH_ATTN,
-        "vllm_metax.v1.attention.backends.flash_attn.MacaFlashAttentionBackend",
+        class_path="vllm_metax.v1.attention.backends.flash_attn.MacaFlashAttentionBackend",
     )
     register_backend(
-        AttentionBackendEnum.FLASHINFER,
-        "vllm_metax.v1.attention.backends.flashinfer.MacaFlashInferBackend",
+        backend=AttentionBackendEnum.FLASHINFER,
+        class_path="vllm_metax.v1.attention.backends.flashinfer.MacaFlashInferBackend",
     )
     register_backend(
-        AttentionBackendEnum.TRITON_ATTN,
-        "vllm_metax.v1.attention.backends.triton_attn.MacaTritonAttentionBackend",
+        backend=AttentionBackendEnum.TRITON_ATTN,
+        class_path="vllm_metax.v1.attention.backends.triton_attn.MacaTritonAttentionBackend",
     )
     register_backend(
-        AttentionBackendEnum.TREE_ATTN,
-        "vllm_metax.v1.attention.backends.tree_attn.MacaTreeAttentionBackend",
+        backend=AttentionBackendEnum.TREE_ATTN,
+        class_path="vllm_metax.v1.attention.backends.tree_attn.MacaTreeAttentionBackend",
     )
     register_backend(
-        AttentionBackendEnum.FLEX_ATTENTION,
-        "vllm_metax.v1.attention.backends.flex_attention.MacaFlexAttentionBackend",
+        backend=AttentionBackendEnum.FLEX_ATTENTION,
+        class_path="vllm_metax.v1.attention.backends.flex_attention.MacaFlexAttentionBackend",
     )
 
 
@@ -264,7 +265,7 @@ class MacaPlatformBase(Platform):
 
         compilation_config = vllm_config.compilation_config
         if (
-            envs.VLLM_ALL2ALL_BACKEND == "deepep_high_throughput"
+            parallel_config.all2all_backend == "deepep_high_throughput"
             and parallel_config.data_parallel_size > 1
             and compilation_config.cudagraph_mode != CUDAGraphMode.NONE
         ):
@@ -283,7 +284,7 @@ class MacaPlatformBase(Platform):
 
         # Disable cascade attention for Maca platform currently
         if vllm_config.model_config is not None:
-            model_config.disable_cascade_attn = True
+            vllm_config.model_config.disable_cascade_attn = True
 
     @classmethod
     def get_current_memory_usage(
@@ -372,8 +373,6 @@ class MacaPlatformBase(Platform):
         attn_type: str | None = None,
     ) -> str:
         register_attention_backends()
-
-        from vllm.attention import AttentionType
 
         if attn_type is None:
             attn_type = AttentionType.DECODER

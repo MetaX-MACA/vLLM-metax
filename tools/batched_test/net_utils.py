@@ -74,4 +74,4 @@ def prepare_dir(path: str) -> str:
 def current_dt() -> str:
     import datetime
 
-    return datetime.datetime.now().strftime("%Y_%m_%d_%H_%M")
+    return datetime.datetime.now().strftime("%Y%m%d_%H%M")

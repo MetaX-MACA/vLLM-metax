@@ -206,7 +206,7 @@ class Scheduler:
             all_results.append(result)
 
     def run_all(self):
-        # self.record_environment()
+        self.record_environment()
         try:
             if self.args.infer:
                 self.run_inference()

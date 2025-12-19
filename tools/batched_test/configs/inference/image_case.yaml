@@ -4,6 +4,7 @@
     - "walkway"
     - "sky"
     - "grass"
+    - "internalServerError" # test remote url handling
 
 - picture_url: assets/images/leaning_tower.png
   keywords: 

@@ -37,7 +37,7 @@ if is_flash_attn_varlen_func_available():
         reshape_and_cache_flash,
         flash_attn_with_kvcache,  # used for prefill decode split
     )
-from vllm.config import VllmConfig, get_layers_from_vllm_config
+from vllm.config import VllmConfig, get_current_vllm_config, get_layers_from_vllm_config
 from vllm.config.cache import CacheDType
 from vllm.distributed.parallel_state import get_dcp_group
 from vllm.logger import init_logger
@@ -60,7 +60,7 @@ from vllm.attention.backends.registry import AttentionBackendEnum, register_back
 from vllm.v1.kv_cache_interface import AttentionSpec
 
 # --------------------------------------------------------------
-# Note: used for prefill decode split with mtp
+# Note: used for prefill decode split with mtp on maca
 # --------------------------------------------------------------
 from vllm_metax.v1.attention.backends.mla.common import QueryLenSupport
 
@@ -71,11 +71,26 @@ logger = init_logger(__name__)
 class MacaFlashAttentionBackend(AttentionBackend):
     accept_output_buffer: bool = True
     supported_dtypes: ClassVar[list[torch.dtype]] = [torch.float16, torch.bfloat16]
-    # NOTE(tdoublep): while in principle, FA supports
-    # MultipleOf(16), these are the block sizes that do not
-    # suffer from the NaN propagation problem described here:
-    # https://github.com/Dao-AILab/flash-attention/issues/1974
-    supported_kernel_block_sizes: ClassVar[list[int | MultipleOf]] = [16, 32, 64]
+
+    @staticmethod
+    def get_supported_kernel_block_sizes() -> list[int | MultipleOf]:
+        vllm_config = get_current_vllm_config()
+        model_config = vllm_config.model_config
+        cache_config = vllm_config.cache_config
+        if (
+            model_config
+            and model_config.is_hybrid
+            and (
+                cache_config.mamba_ssm_cache_dtype == "float32"
+                or cache_config.mamba_cache_dtype == "float32"
+            )
+        ):
+            # NOTE(tdoublep): while in principle, FA supports
+            # MultipleOf(16), these are the block sizes that do not
+            # suffer from the NaN propagation problem described here:
+            # https://github.com/Dao-AILab/flash-attention/issues/1974
+            return [16, 32, 64]
+        return [MultipleOf(16)]
 
     @staticmethod
     def get_name() -> str:
@@ -84,8 +99,6 @@ class MacaFlashAttentionBackend(AttentionBackend):
     @classmethod
     def supports_attn_type(cls, attn_type: str) -> bool:
         """FlashAttention supports all attention types."""
-        from vllm.attention import AttentionType
-
         return attn_type in (
             AttentionType.DECODER,
             AttentionType.ENCODER,
@@ -114,12 +127,20 @@ class MacaFlashAttentionBackend(AttentionBackend):
         return (2, num_blocks, block_size, num_kv_heads, head_size)
 
     @staticmethod
-    def get_kv_cache_stride_order() -> tuple[int, ...]:
+    def get_kv_cache_stride_order(
+        include_num_layers_dimension: bool = False,
+    ) -> tuple[int, ...]:
         # `stride_order` indicates the permutation that gets
         # us from `get_kv_cache_shape` to the actual memory layout we want.
         cache_layout = get_kv_cache_layout()
-        if cache_layout == "NHD":
+        if cache_layout == "NHD" and include_num_layers_dimension:
+            # (num_blocks, num_layers, 2, block_size, num_kv_heads, head_size)
+            return (2, 0, 1, 3, 4, 5)
+        elif cache_layout == "NHD":
             stride_order = (0, 1, 2, 3, 4)
+        elif cache_layout == "HND" and include_num_layers_dimension:
+            # (num_blocks, num_kv_heads, num_layers, 2, block_size, head_size)
+            return (2, 4, 0, 1, 3, 5)
         elif cache_layout == "HND":
             stride_order = (0, 1, 3, 2, 4)
         else:
@@ -137,8 +158,8 @@ class MacaFlashAttentionBackend(AttentionBackend):
             raise ValueError(f"Unrecognized FP8 dtype: {kv_cache_dtype}")
 
     @classmethod
-    def get_supported_head_sizes(cls) -> list[int]:
-        return [32, 64, 72, 80, 96, 112, 128, 160, 192, 224, 256]
+    def supports_head_size(cls, head_size: int) -> bool:
+        return head_size % 8 == 0 and head_size <= 256
 
     @classmethod
     def supports_kv_cache_dtype(cls, kv_cache_dtype: CacheDType | None) -> bool:
@@ -309,8 +330,8 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
             self.dcp_world_size = 1
             self.dcp_rank = 0
 
-        self.dcp_kv_cache_interleave_size = (
-            self.parallel_config.dcp_kv_cache_interleave_size
+        self.cp_kv_cache_interleave_size = (
+            self.parallel_config.cp_kv_cache_interleave_size
         )
 
         self.use_full_cuda_graph = (
@@ -349,7 +370,6 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         max_seq_len = common_attn_metadata.max_seq_len
         query_start_loc = common_attn_metadata.query_start_loc
         seq_lens = common_attn_metadata.seq_lens
-        seq_lens_cpu = common_attn_metadata.seq_lens_cpu
         block_table_tensor = common_attn_metadata.block_table_tensor
         slot_mapping = common_attn_metadata.slot_mapping
         causal = common_attn_metadata.causal
@@ -473,20 +493,23 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         prefix_scheduler_metadata = None
 
         if self.dcp_world_size > 1:
-            query_kv_lens_cpu = (
-                common_attn_metadata.query_start_loc_cpu[1:]
-                - common_attn_metadata.query_start_loc_cpu[:-1]
-            )
-            dcp_context_kv_lens_cpu = seq_lens_cpu - query_kv_lens_cpu
+            query_kv_lens = query_start_loc[1:] - query_start_loc[:-1]
+            dcp_context_kv_lens = seq_lens - query_kv_lens
 
-            dcp_context_kv_lens_cpu = get_dcp_local_seq_lens(
-                dcp_context_kv_lens_cpu,
+            dcp_context_kv_lens = get_dcp_local_seq_lens(
+                dcp_context_kv_lens,
                 self.dcp_world_size,
                 self.dcp_rank,
-                self.dcp_kv_cache_interleave_size,
+                self.cp_kv_cache_interleave_size,
             )
-            dcp_context_kv_lens = dcp_context_kv_lens_cpu.to(self.device)
-            max_dcp_context_kv_len = dcp_context_kv_lens.max().item()
+            # After DCP distribution, the maximum number of tokens for any rank is
+            # ceil(L / (N * I)) * I, where L is max_seq_len, N is dcp_world_size,
+            # and I is cp_kv_cache_interleave_size.
+            # This eliminates GPU->CPU sync while minimizing workspace over-allocation.
+            num_partitions = self.dcp_world_size * self.cp_kv_cache_interleave_size
+            max_dcp_context_kv_len = (
+                (max_seq_len + num_partitions - 1) // num_partitions
+            ) * self.cp_kv_cache_interleave_size
 
             scheduler_metadata = schedule(
                 batch_size=num_reqs,
@@ -503,9 +526,8 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
             prefix_kv_lens = torch.tensor(
                 [common_prefix_len], dtype=torch.int32, device=self.device
             )
-            suffix_kv_lens = (seq_lens_cpu[:num_reqs] - common_prefix_len).to(
-                self.device, non_blocking=True
-            )
+            # Use GPU tensor directly - no CPU sync needed
+            suffix_kv_lens = seq_lens[:num_reqs] - common_prefix_len
             prefix_scheduler_metadata = schedule(
                 batch_size=1,
                 cu_query_lens=cu_prefix_query_lens,
@@ -523,10 +545,6 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
                 causal=True,
             )
         else:
-            cu_prefix_query_lens = None
-            prefix_kv_lens = None
-            suffix_kv_lens = None
-            prefix_scheduler_metadata = None
             scheduler_metadata = schedule(
                 batch_size=num_reqs,
                 cu_query_lens=query_start_loc,
@@ -752,6 +770,12 @@ class FlashAttentionImpl(AttentionImpl):
 
         if not attn_metadata.use_cascade:
             cu_seqlens_q = attn_metadata.query_start_loc
+            seqused_k = attn_metadata.seq_lens
+            max_seqlen_q = attn_metadata.max_query_len
+            max_seqlen_k = attn_metadata.max_seq_len
+            block_table = attn_metadata.block_table
+            scheduler_metadata = attn_metadata.scheduler_metadata
+
             descale_shape = (cu_seqlens_q.shape[0] - 1, self.num_kv_heads)
 
             if self.dcp_world_size > 1:
@@ -865,10 +889,10 @@ class FlashAttentionImpl(AttentionImpl):
         max_seqlen_q = attn_metadata.max_query_len
         block_table = attn_metadata.block_table
 
-        assert attn_metadata.dcp_context_kv_lens is not None
-
         query = query.contiguous()
         query_across_dcp = get_dcp_group().all_gather(query, dim=1)
+        # /------------------------  Metax Modification -------------------------\
+        assert attn_metadata.dcp_context_kv_lens is not None
         cu_seqlens_k = torch.tensor(
             [0] + attn_metadata.dcp_context_kv_lens.tolist(),
             device=attn_metadata.dcp_context_kv_lens.device,
@@ -896,6 +920,7 @@ class FlashAttentionImpl(AttentionImpl):
             # k_descale=k_descale,
             # v_descale=v_descale,
         )
+        # \------------------------- Metax Modification -------------------------/
         # FA returns LSE in shape [ H, B ] but cp_lse_ag_out_rs wants [ B, H ]
         context_attn_out_cor, context_lse_cor = cp_lse_ag_out_rs(
             context_attn_out,
@@ -905,6 +930,7 @@ class FlashAttentionImpl(AttentionImpl):
         )
         context_lse_cor = context_lse_cor.transpose(0, 1).contiguous()
 
+        # /------------------------  Metax Modification -------------------------\
         query_attn_out, query_lse, _ = flash_attn_varlen_func(
             q=query,
             k=key,
@@ -924,6 +950,8 @@ class FlashAttentionImpl(AttentionImpl):
             # k_descale=k_descale,
             # v_descale=v_descale,
         )
+        # \------------------------- Metax Modification -------------------------/
+
         assert context_attn_out_cor.shape == query_attn_out.shape
         assert context_lse_cor.shape == query_lse.shape
         merge_attn_states(
@@ -1119,6 +1147,7 @@ def cascade_attention(
     # \------------------------  Metax Modification -------------------------/
 
     # Process shared prefix.
+    # /------------------------  Metax Modification -------------------------\
     prefix_output, prefix_lse, _ = flash_attn_varlen_func(
         q=query,
         k=key_cache,
@@ -1133,6 +1162,7 @@ def cascade_attention(
         block_table=block_table[:1],
         softcap=logits_soft_cap,
     )
+    # \------------------------- Metax Modification -------------------------/
 
     descale_shape = (cu_query_lens.shape[0] - 1, key_cache.shape[-2])
     # /------------------------  Metax Modification -------------------------\

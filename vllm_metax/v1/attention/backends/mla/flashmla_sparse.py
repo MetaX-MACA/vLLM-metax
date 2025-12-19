@@ -57,8 +57,11 @@ structured as:
 class MacaFlashMLASparseBackend(AttentionBackend):
     accept_output_buffer: bool = True
     supported_dtypes: ClassVar[list[torch.dtype]] = [torch.bfloat16]
-    supported_kernel_block_sizes: ClassVar[list[int | MultipleOf]] = [64]
     supported_kv_cache_dtypes: ClassVar[list[CacheDType]] = ["auto"]
+
+    @staticmethod
+    def get_supported_kernel_block_sizes() -> list[int | MultipleOf]:
+        return [64]
 
     @staticmethod
     def get_name() -> str:
@@ -170,7 +173,7 @@ def _convert_req_index_to_global_index_kernel(
     inblock_off = tok % BLOCK_SIZE
 
     # Guard block_table access
-    valid_block = block_id < max_num_blocks_per_req
+    valid_block = (block_id < max_num_blocks_per_req) & (block_id >= 0)
     bt_ptr = block_table_ptr + req * bt_stride0 + block_id * bt_stride1
     base = tl.load(bt_ptr, mask=valid_block, other=0)
 

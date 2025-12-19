@@ -262,7 +262,11 @@ class BatchDCPPrefillWrapper:
             return_lse=True,
         )
         output_context, lse_context = cp_lse_ag_out_rs(
-            output_context_tmp, lse_context_tmp, get_dcp_group(), return_lse=True
+            output_context_tmp,
+            lse_context_tmp,
+            get_dcp_group(),
+            return_lse=True,
+            is_lse_base_on_e=False,
         )
         lse_context = lse_context.transpose(0, 1).contiguous()
 
@@ -288,14 +292,16 @@ class BatchDCPPrefillWrapper:
 class MacaFlashInferBackend(AttentionBackend):
     accept_output_buffer: bool = True
     supported_dtypes: ClassVar[list[torch.dtype]] = [torch.float16, torch.bfloat16]
-    # Note: Not sure for all platforms,
-    # but on Blackwell, only support a page size of
-    # 16, 32, 64
-    supported_kernel_block_sizes: ClassVar[list[int | MultipleOf]] = [16, 32, 64]
     supported_kv_cache_dtypes: ClassVar[list[CacheDType]] = [
         "auto",
         "bfloat16",
     ]
+
+    @staticmethod
+    def get_supported_kernel_block_sizes() -> list[int | MultipleOf]:
+        # Note: Not sure for all platforms, but on Blackwell,
+        # only support a page size of 16, 32, 64.
+        return [16, 32, 64]
 
     @staticmethod
     def get_name() -> str:
@@ -320,12 +326,20 @@ class MacaFlashInferBackend(AttentionBackend):
         return (num_blocks, 2, block_size, num_kv_heads, head_size)
 
     @staticmethod
-    def get_kv_cache_stride_order() -> tuple[int, ...]:
+    def get_kv_cache_stride_order(
+        include_num_layers_dimension: bool = False,
+    ) -> tuple[int, ...]:
         # `stride_order` indicates the permutation that gets us from
         # `get_kv_cache_shape` to the actual memory layout we want.
         cache_layout = get_kv_cache_layout()
-        if cache_layout == "NHD":
+        if cache_layout == "NHD" and include_num_layers_dimension:
+            # (num_blocks, num_layers, 2, block_size, num_kv_heads, head_size)
+            return (1, 0, 2, 3, 4, 5)
+        elif cache_layout == "NHD":
             stride_order = (0, 1, 2, 3, 4)
+        elif cache_layout == "HND" and include_num_layers_dimension:
+            # (num_blocks, 2, num_kv_heads, num_layers, block_size, head_size)
+            return (1, 2, 4, 0, 3, 5)
         elif cache_layout == "HND":
             stride_order = (0, 1, 3, 2, 4)
         else:
@@ -599,6 +613,9 @@ class FlashInferMetadataBuilder(AttentionMetadataBuilder[FlashInferMetadata]):
                 buffer_size, dtype=torch.uint8, device=self.device
             )
         return self._workspace_buffer
+
+    def set_workspace_buffer(self, workspace_buffer: torch.Tensor):
+        self._workspace_buffer = workspace_buffer
 
     def _get_prefill_wrapper(
         self,
@@ -928,25 +945,7 @@ class FlashInferMetadataBuilder(AttentionMetadataBuilder[FlashInferMetadata]):
                     and pure_decode
                     and num_decode_tokens <= self._decode_cudagraph_max_bs
                 )
-                if use_cudagraph:
-                    num_input_tokens = self.vllm_config.pad_for_cudagraph(
-                        num_decode_tokens
-                    )
-                    # Carefully fulfill the padding region with reasonable value
-                    # on cpu.
-                    # Make sure paged_kv_indptr_cpu is not decreasing
-                    self.paged_kv_indptr_cpu[
-                        1 + num_decodes : 1 + num_input_tokens
-                    ].fill_(paged_kv_indptr_cpu[-1])
-                    # Fill the remaining paged_kv_last_page_len_cpu with 1.
-                    # This is because flashinfer treats 0 as a full page
-                    # instead of empty.
-                    self.paged_kv_last_page_len_cpu[num_decodes:num_input_tokens].fill_(
-                        1
-                    )
-
-                else:
-                    num_input_tokens = num_decode_tokens
+                num_input_tokens = num_decode_tokens
 
                 attn_metadata.decode_wrapper = self._get_decode_wrapper(
                     num_input_tokens, use_cudagraph
@@ -1286,7 +1285,10 @@ class FlashInferImpl(AttentionImpl):
                         return_lse=True,
                     )
                     output[:num_decode_tokens] = cp_lse_ag_out_rs(
-                        output_tmp, lse, get_dcp_group()
+                        output_tmp,
+                        lse,
+                        get_dcp_group(),
+                        is_lse_base_on_e=False,
                     )
                 else:
                     decode_wrapper.run(

@@ -7,30 +7,33 @@ import torch
 from vllm.model_executor.layers.quantization.base_config import (  # noqa: E501
     QuantizeMethodBase,
 )
-from vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors_moe import (  # noqa: E501
-    CompressedTensorsMoEMethod,
+from vllm.model_executor.layers.quantization.compressed_tensors import (
+    compressed_tensors_moe as vllm_ctm,
 )
-from vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors import (
-    CompressedTensorsConfig,
+from vllm.model_executor.layers.quantization.compressed_tensors import (
+    compressed_tensors as vllm_ct,
 )
 
-from vllm_metax.quant_config.compressed_tensors_moe import (
-    MacaCompressedTensorsMoEMethod,
-)
+from vllm_metax.quant_config.compressed_tensors_moe import CompressedTensorsMoEMethod
 
 from vllm.model_executor.layers.quantization import register_quantization_config
 
+# -----------------------------------------------------------
+# Note: We need to keep the name **consistent** with vLLM's
+# -----------------------------------------------------------
+
 
 @register_quantization_config("compressed-tensors")
-class MacaCompressedTensorsConfig(CompressedTensorsConfig):
+class MacaCompressedTensorsConfig(vllm_ct.CompressedTensorsConfig):
     def get_quant_method(
         self,
         layer: torch.nn.Module,
         prefix: str,
     ) -> Optional["QuantizeMethodBase"]:
         origin_quant_method = super().get_quant_method(layer, prefix)
-        if isinstance(origin_quant_method, CompressedTensorsMoEMethod):
-            origin_quant_method = MacaCompressedTensorsMoEMethod.get_moe_method(
-                self, layer
+        # Replace with Metax's MoE quantization methods
+        if isinstance(origin_quant_method, vllm_ctm.CompressedTensorsMoEMethod):
+            origin_quant_method = CompressedTensorsMoEMethod.get_moe_method(
+                self, layer, layer_name=prefix
             )
         return origin_quant_method

@@ -12,6 +12,20 @@
     sweep_num_runs: 1
   extra_env:
 
+- name: "DeepSeek-OCR"
+  model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-OCR"
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+    - single-image
+  benchmark:
+    bench_param: "configs/bench_params/bench_default.json"
+    sweep_num_runs: 1
+  extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: "DeepSeek-R1-Distill-Qwen-7B"
   model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B"
@@ -56,7 +70,7 @@
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
   extra_env:
-    MACA_QUEUE_SCHEDULE_POLICY: 1
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: "DeepSeek-R1-BF16-L4-W8A8"
   model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-BF16-L4-W8A8"
@@ -71,6 +85,7 @@
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
   extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: "Baichuan-7B"
   model_path: "/mxstorage/pde_ai/models/llm/Baichuan/Baichuan-7B"
@@ -138,10 +153,10 @@
     dp: 1
     pp: 1
     extra_args:
-      --hf-overrides: "'{\"architectures\": [\"GLM4VForCausalLM\"]}'"
+      # --hf-overrides: '{"architectures": ["GLM4VForCausalLM"]}'
       --chat-template: chat_template/template_chatglm.jinja
   infer_type:
-    - text-only
+    - single-image
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -156,7 +171,7 @@
     distributed_executor_backend: "mp"
     extra_args:
   infer_type:
-    - text-only
+    - single-image
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -185,7 +200,7 @@
     distributed_executor_backend: "mp"
     extra_args:
   infer_type:
-    - text-only
+    - single-image
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -214,7 +229,7 @@
     pp: 1
     extra_args:
   infer_type:
-    - text-only
+    - single-image
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -228,7 +243,7 @@
     pp: 1
     extra_args:
   infer_type:
-    - text-only
+    - single-image
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -318,10 +333,10 @@
     sweep_num_runs: 1
   extra_env:
 
-- name: "Qwen3-32B-AWQ"
-  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-32B"
+- name: "Qwen3-30B-A3B-AWQ"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B-AWQ"
   serve_config:
-    tp: 1
+    tp: 2
     dp: 1
     pp: 1
     extra_args:
@@ -382,7 +397,7 @@
     pp: 1
     extra_args:
   infer_type:
-    - text-only
+    - single-image
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -396,7 +411,7 @@
     pp: 1
     extra_args:
   infer_type:
-    - text-only
+    - single-image
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -410,7 +425,7 @@
     pp: 1
     extra_args:
   infer_type:
-    - text-only
+    - single-image
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -424,7 +439,7 @@
     pp: 1
     extra_args:
   infer_type:
-    - text-only
+    - single-image
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -509,7 +524,22 @@
     is_multimodal: true
     extra_args:
   infer_type:
-    - text-only
+    - single-image
+  benchmark:
+    bench_param: "configs/bench_params/bench_default.json"
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "glm-4.6V"
+  model_path: "/mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.6V"
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    is_multimodal: true
+    extra_args:
+  infer_type:
+    - single-image
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -570,6 +600,7 @@
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
   extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: "Qwen3-Omni-30B-A3B-Instruct"
   model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-Omni-30B-A3B-Instruct"
@@ -579,7 +610,7 @@
     pp: 1
     extra_args:
   infer_type:
-    - text-only
+    - single-image
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -626,6 +657,7 @@
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
   extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: "InternVL2_5-26B"
   model_path: "/mxstorage/pde_ai/models/llm/Internlm/InternVL2_5-26B"
@@ -665,6 +697,21 @@
     extra_args:
   infer_type:
     - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_default.json"
+    sweep_num_runs: 1
+  extra_env:
+
+
+- name: "GLM-4.5V_W8A8"
+  model_path: "/mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.5V_W8A8/vllm_quant_model"
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+    - single-image
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -732,6 +779,7 @@
 
 - name: "Qwen3-Next-80B-A3B-Instruct.w8a8"
   model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-Next-80B-A3B-Instruct.w8a8"
+  timeout: 1200
   serve_config:
     tp: 4
     dp: 1
@@ -743,6 +791,7 @@
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
   extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: "Qwen3-Next-80B-A3B-Instruct"
   model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-Next-80B-A3B-Instruct"
@@ -757,6 +806,7 @@
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
   extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: "DeepSeek-R1-Distill-Llama-70B"
   model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Llama-70B"
@@ -870,9 +920,11 @@
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
   extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: "DeepSeek-R1-awq"
   model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-awq"
+  timeout: 1800
   serve_config:
     tp: 8
     dp: 1
@@ -884,14 +936,14 @@
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
   extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: "DeepSeek-R1-BF16-L4-W8A8"
   model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-BF16-L4-W8A8"
   serve_config:
-    tp: 4
-    dp: 2
+    tp: 2
+    dp: 4
     pp: 1
-    # dcp: 2
     gpu_memory_utilization: 0.8
     extra_args:
   infer_type:
@@ -900,6 +952,7 @@
       bench_param: "configs/bench_params/bench_default.json"
       sweep_num_runs: 1
   extra_env:
+      VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: "DeepSeek-R1-BF16-L4-W8A8"
   model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-BF16-L4-W8A8"
@@ -907,15 +960,16 @@
     tp: 4
     dp: 2
     pp: 1
-    dcp: 2
     gpu_memory_utilization: 0.8
     extra_args:
+      -dcp: 2
   infer_type:
     - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
   extra_env:
+      VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: "Qwen2.5-72B-Instruct"
   model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen2.5-72B-Instruct"
@@ -932,6 +986,7 @@
   extra_env:
 
 - name: "Qwen3-235B-A22B-w8a8"
+  timeout: 1800
   model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-235B-A22B.w8a8"
   serve_config:
     tp: 8
@@ -981,7 +1036,7 @@
     pp: 1
     extra_args:
   infer_type:
-    - text-only
+    - single-image
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -989,13 +1044,14 @@
 
 - name: "Qwen3-VL-235B-A22B-Instruct_W8A8"
   model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-VL-235B-A22B-Instruct_W8A8/vllm_quant_model"
+  timeout: 1200
   serve_config:
     tp: 8
     dp: 1
     pp: 1
     extra_args:
   infer_type:
-    - text-only
+    - single-image
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -1009,11 +1065,27 @@
     pp: 1
     extra_args:
   infer_type:
+    - single-image
+  benchmark:
+    bench_param: "configs/bench_params/bench_default.json"
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "GLM-4.6-W8A8"
+  model_path: "/mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.6-W8A8"
+  timeout: 1800
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
     - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
   extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: "Mixtral-8x22B-Instruct-v0.1"
   model_path: "/mxstorage/pde_ai/models/llm/Mistral/Mixtral-8x22B-Instruct-v0.1"
@@ -1022,6 +1094,7 @@
     dp: 1
     pp: 1
     extra_args:
+      --chat-template: chat_template/tool_chat_template_mistral.jinja
   infer_type:
     - text-only
   benchmark:

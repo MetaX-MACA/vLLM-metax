@@ -39,12 +39,13 @@ Note: set UV=1 if you are using uv instead of pip.
 ```yaml
 - name: "example-model"
   model_path: "/path/to/example-model"
+  timeout: 600 # default is 600 seconds
   serve_config:
     tp: 99
     pp: 99
     dp: 99
     distributed_executor_backend: "ray"  # default
-    gpu_memory_utilization: 0.9  # default
+    gpu_memory_utilization: 0.8  # default
     swap_space: 16  # default
     max_model_len: 4096  # default
     # Optional extra arguments for vllm serve command
@@ -52,7 +53,7 @@ Note: set UV=1 if you are using uv instead of pip.
     # won't check the validity of these args
     extra_args:
       --chat-template: "/relative/path/to/script"
-      --hf-overrides: "'{\"architectures\": [\"GLM4VForCausalLM\"]}'"
+      --hf-overrides: '{"architectures": ["GLM4VForCausalLM"]}'
   infer_type: # one of the following types (required)
     - text-only  # supported
     - single-image # supported
