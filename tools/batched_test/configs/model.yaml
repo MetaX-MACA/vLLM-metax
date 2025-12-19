@@ -27,7 +27,6 @@
   extra_env:
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
-
 - name: "DeepSeek-R1-Distill-Qwen-7B"
   model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B"
   serve_config:
@@ -792,6 +791,7 @@
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
   extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: "Qwen3-Next-80B-A3B-Instruct"
   model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-Next-80B-A3B-Instruct"
