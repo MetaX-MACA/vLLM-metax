@@ -237,7 +237,9 @@ class InferWorker(Worker):
         questions = [case["question"] for case in text_cases]
 
         # Get generator for responses
-        content_gen = client.run_text_only(questions)
+        content_gen = client.run_text_only(
+            questions=questions, max_completion_tokens=256
+        )
 
         corrected_responses = 0
         with open(log_file, "a") as f:
@@ -264,9 +266,8 @@ class InferWorker(Worker):
 
         # Get generator for responses
         content_gen = client.run_single_image(
-            model=client.get_model(),
-            max_completion_tokens=256,
             image_urls=image_urls,
+            max_completion_tokens=256,
         )
 
         corrected_responses = 0

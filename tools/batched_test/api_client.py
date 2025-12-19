@@ -8,6 +8,8 @@ NOTE: start a supported chat completion model server with `vllm serve`, e.g.
 import argparse
 import base64
 import os
+import mimetypes
+from typing import Iterable
 
 from openai import OpenAI
 
@@ -20,11 +22,31 @@ system_message = {
 }
 
 
-def encode_base64_content_from_url(content_path: str) -> str:
+def encode_base64_content_from_file(content_path: str) -> str:
     """Encode a content retrieved from a remote url to base64 format."""
     with open(content_path, "rb") as image_file:
-        result = base64.b64encode(image_file.read()).decode("utf-8")
-    return result
+        return base64.b64encode(image_file.read()).decode("utf-8")
+
+
+def is_remote_url(s: str) -> bool:
+    return s.startswith("http://") or s.startswith("https://")
+
+
+def file_path_to_data_url(path: str) -> str:
+    abs_path = path
+    if not os.path.isabs(abs_path):
+        abs_path = os.path.join(os.path.dirname(__file__), path)
+
+    if not os.path.exists(abs_path):
+        raise FileNotFoundError(f"Image file not found: {abs_path}")
+
+    mime, _ = mimetypes.guess_type(abs_path)
+    if not mime:
+        # Safe fallback; vLLM generally accepts common image types.
+        mime = "image/png"
+
+    b64 = encode_base64_content_from_file(abs_path)
+    return f"data:{mime};base64,{b64}"
 
 
 class ChatCompletionClient:
@@ -40,51 +62,65 @@ class ChatCompletionClient:
         models = self.client.models.list()
         return models.data[0].id
 
-    def run_text_only(self, questions: list[str]):
-        model = self.get_model()
+    def run_text_only(
+        self,
+        questions: list[str],
+        model: str | None = None,
+        max_completion_tokens: int = 256,
+    ) -> Iterable[str]:
+        if model is None:
+            model = self.get_model()
 
         for question in questions:
             messages = [system_message, {"role": "user", "content": question}]
             response = self.client.chat.completions.create(
                 messages=messages,
                 model=model,
-                max_completion_tokens=256,
+                max_completion_tokens=max_completion_tokens,
             )
-
             yield response.choices[0].message.content
 
     # Single-image input inference
     def run_single_image(
-        self, model: str, max_completion_tokens: int, image_urls: list[str]
-    ):
-        ## Use image url in the payload
+        self,
+        max_completion_tokens: int,
+        image_urls: list[str],
+        model: str | None = None,
+    ) -> Iterable[str]:
+        """
+        If allow_remote_urls=False (recommended for offline), remote http(s) URLs
+        will be rejected so you don't trigger server-side fetch + 500.
+        """
+        if model is None:
+            model = self.get_model()
+
         for image_url in image_urls:
-            if image_url.startswith("http://") or image_url.startswith("https://"):
-                url_content = image_url
-            else:
-                image_url = os.path.join(os.path.dirname(__file__), image_url)
-                url_content = "data:image/png;base64," + encode_base64_content_from_url(
-                    image_url
+            try:
+                if is_remote_url(image_url):
+                    url_content = image_url
+                else:
+                    url_content = file_path_to_data_url(image_url)
+
+                chat_completion = self.client.chat.completions.create(
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "What's in this image?"},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": url_content},
+                                },
+                            ],
+                        }
+                    ],
+                    model=model,
+                    max_completion_tokens=max_completion_tokens,
                 )
+                yield chat_completion.choices[0].message.content
 
-            chat_completion_from_url = self.client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": "What's in this image?"},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": url_content},
-                            },
-                        ],
-                    }
-                ],
-                model=model,
-                max_completion_tokens=max_completion_tokens,
-            )
-
-            yield chat_completion_from_url.choices[0].message.content
+            except Exception as e:
+                yield f"type={type(e).__name__} msg={e}"
 
 
 if __name__ == "__main__":
@@ -93,6 +129,7 @@ if __name__ == "__main__":
         "--host", type=str, default="localhost", help="vLLM API server host"
     )
     parser.add_argument("--port", type=int, default=8000, help="vLLM API server port")
+    parser.add_argument("--mode", type=str, default="text-only", help="inference mode")
     args = parser.parse_args()
 
     client = ChatCompletionClient(host=args.host, port=args.port)
@@ -105,9 +142,23 @@ if __name__ == "__main__":
         "What's the value of gravity in the earth?",
     ]
 
-    for response in client.run_text_only(
-        questions=questions, model=model, stream=False
-    ):
-        print("Response:")
-        print(response.choices[0].message.content)
+    iamge_urls = [
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
+        "assets/images/leaning_tower.png",
+        "assets/images/Tom_and_Jerry.png",
+    ]
+
+    if args.mode == "text-only":
+        for response in client.run_text_only(
+            questions=questions, model=model, stream=False
+        ):
+            print("Response:")
+            print(response.choices[0].message.content)
+            print("-" * 40)
+    elif args.mode == "single-image":
+        for response in client.run_single_image(
+            model=model, max_completion_tokens=256, image_urls=iamge_urls
+        ):
+            print("Response:")
+            print(response)
         print("-" * 40)

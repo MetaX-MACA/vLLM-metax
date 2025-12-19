@@ -20,7 +20,7 @@
     dp: 1
     pp: 1
     extra_args:
-      # --hf-overrides: '{"architectures": ["GLM4VForCausalLM"]}'
+      --hf-overrides: '{"architectures": ["GLM4VForCausalLM"]}'
       --chat-template: chat_template/template_chatglm.jinja
   infer_type:
     - single-image
