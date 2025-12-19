@@ -38,6 +38,9 @@ class Worker(abc.ABC):
 
         t0 = time.time()
         while time.time() - t0 < timeout:
+            if self.stop_event.is_set():
+                raise KeyboardInterrupt("Stop event set, terminating service check.")
+
             occupied_gpus = self.gpu_manager.allocate(required_gpus)
             print(
                 f"[{self.model_cfg['name']}] Trying to allocate {required_gpus} GPUs..."
