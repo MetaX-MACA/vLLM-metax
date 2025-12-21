@@ -83,6 +83,7 @@ from vllm_metax.v1.attention.backends.mla.indexer import (
     DeepseekV32IndexerMetadata,
 )
 from vllm.v1.kv_cache_interface import KVCacheSpec, MLAAttentionSpec
+from vllm.v1.worker.workspace import current_workspace_manager
 
 from vllm.model_executor.models.interfaces import MixtureOfExperts, SupportsEagle, SupportsLoRA, SupportsPP
 from vllm.model_executor.models.utils import (
@@ -157,7 +158,6 @@ class DeepseekAttention(nn.Module):
 
         self.rotary_emb = get_rope(
             self.head_dim,
-            rotary_dim=self.head_dim,
             max_position=max_position_embeddings,
             rope_parameters=config.rope_parameters,
         )
@@ -500,7 +500,6 @@ class DeepseekV2Attention(nn.Module):
 
         self.rotary_emb = get_rope(
             qk_rope_head_dim,
-            rotary_dim=qk_rope_head_dim,
             max_position=max_position_embeddings,
             rope_parameters=config.rope_parameters,
             is_neox_style=False,
@@ -1001,7 +1000,6 @@ class DeepseekV2MLAAttention(nn.Module):
 
         self.rotary_emb = get_rope(
             qk_rope_head_dim,
-            rotary_dim=qk_rope_head_dim,
             max_position=max_position_embeddings,
             rope_parameters=config.rope_parameters,
             is_neox_style=False,
@@ -1021,7 +1019,6 @@ class DeepseekV2MLAAttention(nn.Module):
         if self.is_v32:
             self.indexer_rope_emb = get_rope(
                 qk_rope_head_dim,
-                rotary_dim=qk_rope_head_dim,
                 max_position=max_position_embeddings,
                 rope_parameters=config.rope_parameters,
                 is_neox_style=True,
