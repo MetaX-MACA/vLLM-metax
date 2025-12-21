@@ -191,7 +191,7 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
   ops.impl("top_k_per_row_decode", torch::kCUDA, &top_k_per_row_decode);
 
   // ┌------------------------  Not supported for Metax
-  // -------------------------┐ Layernorm-quant Apply Root Mean Square (RMS)
+  // ------------------------┐ Layernorm-quant Apply Root Mean Square (RMS)
   // Normalization to the input tensor.
   ops.def(
       "rms_norm_static_fp8_quant(Tensor! result, Tensor input, Tensor weight, "
@@ -199,6 +199,8 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
       "()");
   ops.impl("rms_norm_static_fp8_quant", torch::kCUDA,
            &rms_norm_static_fp8_quant);
+  // └------------------------- Not supported for Metax
+  // -------------------------┘
 
   // In-place fused Add and RMS Normalization.
   ops.def(
@@ -215,8 +217,14 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
       "Tensor? scale_ub, Tensor!? residual) -> ()");
   ops.impl("rms_norm_dynamic_per_token_quant", torch::kCUDA,
            &rms_norm_dynamic_per_token_quant);
-  // └------------------------- Not supported for Metax
-  // -------------------------┘
+
+  // Fused Layernorm + Block quant kernels
+  ops.def(
+      "rms_norm_per_block_quant(Tensor! result, Tensor input, "
+      "Tensor weight, Tensor! scale, float epsilon, "
+      "Tensor? scale_ub, Tensor!? residual, int group_size, "
+      "bool is_scale_transposed) -> ()");
+  ops.impl("rms_norm_per_block_quant", torch::kCUDA, &rms_norm_per_block_quant);
 
   // Rotary embedding
   // Apply GPT-NeoX or GPT-J style rotary embedding to query and key.
