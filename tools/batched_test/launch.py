@@ -198,7 +198,7 @@ class Scheduler:
                 work_dir=bench_work_dir,
                 model_cfg=cfg,
             )
-            future = self.executor.submit(worker.run)
+            future = self.executor.submit(worker.run, stop_event)
             futures.append(future)
 
         for f in as_completed(futures):
