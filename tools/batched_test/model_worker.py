@@ -478,7 +478,8 @@ class BenchSweepWorker(Worker):
         self.serve_cfg = model_cfg.get("serve_config", {})
         self.model_tag = f"{model_cfg['name']}_tp{self.serve_cfg.get('tp', 1)}_pp{self.serve_cfg.get('pp', 1)}_dp{self.serve_cfg.get('dp', 1)}"
 
-    def run(self):
+    def run(self, stop_event: threading.Event):
+        self.stop_event = stop_event
         try:
             self._wait_and_allocate_gpus()
             self._launch_bench_sweep()
