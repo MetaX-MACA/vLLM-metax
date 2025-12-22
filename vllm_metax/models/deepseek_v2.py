@@ -1227,6 +1227,9 @@ class DeepseekV2Model(nn.Module):
         self.config = config
         self.device = current_platform.device_type
 
+        # -----------------------------------------
+        # Note: torch compile needs to eval the
+        #       `getattr` ahead of `forward`
         self._llama_4_scaling_config = getattr(config, "llama_4_scaling", None)
 
         self.vocab_size = config.vocab_size
@@ -1289,6 +1292,14 @@ class DeepseekV2Model(nn.Module):
             residual = intermediate_tensors["residual"]
 
         # Compute llama 4 scaling once per forward pass if enabled
+        # -----------------------------------------------------
+        # Note: it need to be a explicit variable to make torch
+        #       compile happy, do not make it like:
+        # 
+        #           llama_4_scaling_config = getattr(config, "llama_4_scaling", None)
+        # 
+        #       torch compile might omit the default value of 
+        #       `None` at eval-time.
         llama_4_scaling_config = self._llama_4_scaling_config
         llama_4_scaling: torch.Tensor | None
         if llama_4_scaling_config is not None:
