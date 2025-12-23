@@ -18,6 +18,12 @@ from vllm.platforms import PlatformEnum
 
 class MctlassScaledMMLinearKernel(CutlassScaledMMLinearKernel):
     @classmethod
+    def is_supported(
+        cls, compute_capability: int | None = None
+    ) -> tuple[bool, str | None]:
+        return True, None
+
+    @classmethod
     def can_implement(cls, c: ScaledMMLinearLayerConfig) -> tuple[bool, Optional[str]]:
         return True, None
 
