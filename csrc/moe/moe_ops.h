@@ -14,6 +14,37 @@ void moe_align_block_size(torch::Tensor topk_ids, int64_t num_experts,
                           torch::Tensor num_tokens_post_pad,
                           std::optional<torch::Tensor> maybe_expert_map);
 
+void batched_moe_align_block_size(int64_t max_tokens_per_batch,
+                                  int64_t block_size,
+                                  torch::Tensor const& expert_num_tokens,
+                                  torch::Tensor sorted_ids,
+                                  torch::Tensor expert_ids,
+                                  torch::Tensor num_tokens_post_pad);
+
+void moe_lora_align_block_size(
+    torch::Tensor topk_ids, torch::Tensor token_lora_mapping,
+    int64_t num_experts, int64_t block_size, int64_t max_loras,
+    int64_t max_num_tokens_padded, int64_t max_num_m_blocks,
+    torch::Tensor sorted_token_ids, torch::Tensor expert_ids,
+    torch::Tensor num_tokens_post_pad, torch::Tensor adapter_enabled,
+    torch::Tensor lora_ids, std::optional<torch::Tensor> maybe_expert_map);
+
+// torch::Tensor moe_wna16_gemm(torch::Tensor input, torch::Tensor output,
+//                              torch::Tensor b_qweight, torch::Tensor b_scales,
+//                              std::optional<torch::Tensor> b_qzeros,
+//                              std::optional<torch::Tensor> topk_weights,
+//                              torch::Tensor sorted_token_ids,
+//                              torch::Tensor expert_ids,
+//                              torch::Tensor num_tokens_post_pad, int64_t
+//                              top_k, int64_t BLOCK_SIZE_M, int64_t
+//                              BLOCK_SIZE_N, int64_t BLOCK_SIZE_K, int64_t
+//                              bit);
+
+// std::tuple<torch::Tensor, torch::Tensor> grouped_topk(
+//     torch::Tensor const& scores, int64_t n_group, int64_t topk_group,
+//     int64_t topk, bool renormalize, double routed_scaling_factor,
+//     torch::Tensor const& bias, int64_t scoring_func);
+
 void fused_moe_kernel(const torch::Tensor& A, const torch::Tensor& B,
                       const torch::Tensor& C, const torch::Tensor& topk_weights,
                       const torch::Tensor& topk_ids,

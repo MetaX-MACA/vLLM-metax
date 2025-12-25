@@ -191,8 +191,13 @@ class MacaPlatformBase(Platform):
             import vllm_metax._C  # noqa: F401
         except ImportError as e:
             logger.warning("Failed to import from vllm_metax._C: %r", e)
-        with contextlib.suppress(ImportError):
+
+        try:
             import vllm_metax._moe_C  # noqa: F401
+        except ImportError as e:
+            logger.warning("Failed to import from vllm_metax._moe_C: %r", e)
+        # with contextlib.suppress(ImportError):
+        #     import vllm_metax._moe_C  # noqa: F401
 
     @classmethod
     def check_and_update_config(cls, vllm_config: "VllmConfig") -> None:
@@ -663,6 +668,11 @@ mx_envs.override_vllm_env(
 )
 mx_envs.override_vllm_env(
     "VLLM_USE_TRTLLM_ATTENTION", False, "trtllm interfaces are not supported"
+)
+mx_envs.override_vllm_env(
+    "VLLM_DISABLE_FLASHINFER_PREFILL",
+    True,
+    "disable flashinfer prefill(use flash_attn prefill) on maca",
 )
 mx_envs.override_vllm_env(
     "VLLM_USE_CUDNN_PREFILL", False, "cudnn prefill interfaces are not supported"

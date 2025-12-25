@@ -478,8 +478,11 @@ if (USE_MACA AND ENABLE_BLAS_API)
   set(MCBLAS_LIB $ENV{MACA_PATH}/lib/libmcblas.so)
 endif()
 
-if(VLLM_GPU_LANG STREQUAL "CUDA"  AND NOT USE_MACA)
-  list(APPEND VLLM_MOE_EXT_SRC "csrc/moe/moe_wna16.cu")
+if(USE_MACA)
+  list(APPEND VLLM_MOE_EXT_SRC 
+    # "csrc/moe/moe_wna16.cu"
+    # "csrc/moe/grouped_topk_kernels.cu"
+  )
 endif()
 
 set_gencode_flags_for_srcs(
