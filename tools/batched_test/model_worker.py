@@ -241,10 +241,6 @@ class InferWorker(Worker):
             self.csv_resumer["Model"].str.strip() == self.model_tag
         ]
 
-        # print("--------------------------------")
-        # print("model_results", model_results)
-        # print("--------------------------------")
-
         if model_results.empty:
             return True
 
@@ -330,14 +326,12 @@ class InferWorker(Worker):
 
         return corrected_responses / len(image_cases)
 
-    def run(self, stop_event: threading.Event) -> dict | None:
+    def run(self, stop_event: threading.Event) -> dict:
         self.stop_event = stop_event
         try:
             if not self._need_run():
-                print(
-                    f"[{self.model_tag}] All tests on this combination have been passed! Skiped."
-                )
-                return None
+                return self._warp_skipped()
+
             # Step 1. alloc GPU
             self._wait_and_allocate_gpus()
             # self.related_gpu_ids = [0,1]
@@ -372,6 +366,18 @@ class InferWorker(Worker):
             "Correct Ratio": "0%",
             "Stage": self.status.name,
             "Reason": str(e),
+            "Model Path": self.model_cfg["model_path"],
+        }
+
+    def _warp_skipped(self):
+        print(
+            f"[{self.model_tag}] All tests on this combination have been passed! Skiped."
+        )
+        return {
+            "Model": self.model_tag,
+            "Correct Ratio": "0%",
+            "Stage": self.InferenceStatus.NORMAL_END.name,
+            "Reason": f"Resumed from last result",
             "Model Path": self.model_cfg["model_path"],
         }
 

@@ -94,7 +94,7 @@ class SchedularArgs:
             "--resume-csv",
             metavar="RESUME_CSV",
             type=str,
-            help="Only run the failed case from specified inference_result.csv",
+            help="Resume from the failed case in specified inference_result.csv",
         )
 
         parser.add_argument(
@@ -188,11 +188,9 @@ class Scheduler:
                     for f in as_completed(futures):
                         result = f.result()
                         pbar.update(1)
-                        if result is not None:
-                            all_results.append(result)
-
-                            csv_writer.writerow(result)
-                            f_csv.flush()
+                        all_results.append(result)
+                        csv_writer.writerow(result)
+                        f_csv.flush()
                 finally:
                     refresh_stop.set()
                     refresher_thread.join()
