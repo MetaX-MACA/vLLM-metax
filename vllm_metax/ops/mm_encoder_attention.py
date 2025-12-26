@@ -56,7 +56,9 @@ class MacaMMEncoderAttention(MMEncoderAttention):
             AttentionBackendEnum.ROCM_AITER_FA,
         }
 
+        # /------------------ Metax Modification -------------------\
         from vllm_metax.attention.utils.fa_utils import flash_attn_varlen_func
+        # \---------------------------------------------------------/
 
         self.flash_attn_varlen_func = flash_attn_varlen_func
 
