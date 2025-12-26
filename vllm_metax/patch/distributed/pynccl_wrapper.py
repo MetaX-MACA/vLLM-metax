@@ -35,7 +35,6 @@ from typing import Any
 import vllm
 from vllm.distributed.device_communicators.pynccl_wrapper import (
     Function,
-    NCCLLibrary,
     buffer_type,
     cudaStream_t,
     logger,
@@ -51,7 +50,7 @@ from vllm.platforms import current_platform
 from vllm_metax.utils.mccl import find_mccl_library
 
 
-class NCCLLibrary:
+class MCCLLibrary:
     exported_functions = [
         # const char* ncclGetErrorString(ncclResult_t result)
         Function("mcclGetErrorString", ctypes.c_char_p, [ncclResult_t]),
@@ -235,10 +234,10 @@ class NCCLLibrary:
         so_file = so_file or find_mccl_library()
         # \------------------------- Metax Modification -------------------------/
         try:
-            if so_file not in NCCLLibrary.path_to_dict_mapping:
+            if so_file not in MCCLLibrary.path_to_dict_mapping:
                 lib = ctypes.CDLL(so_file)
-                NCCLLibrary.path_to_library_cache[so_file] = lib
-            self.lib = NCCLLibrary.path_to_library_cache[so_file]
+                MCCLLibrary.path_to_library_cache[so_file] = lib
+            self.lib = MCCLLibrary.path_to_library_cache[so_file]
         except Exception as e:
             logger.error(
                 "Failed to load NCCL library from %s. "
@@ -253,9 +252,9 @@ class NCCLLibrary:
             )
             raise e
 
-        if so_file not in NCCLLibrary.path_to_dict_mapping:
+        if so_file not in MCCLLibrary.path_to_dict_mapping:
             _funcs: dict[str, Any] = {}
-            for func in NCCLLibrary.exported_functions:
+            for func in MCCLLibrary.exported_functions:
                 try:
                     f = getattr(self.lib, func.name)
                     f.restype = func.restype
@@ -280,8 +279,8 @@ class NCCLLibrary:
                             # not allowed during graph capturing
                             continue
                     raise
-            NCCLLibrary.path_to_dict_mapping[so_file] = _funcs
-        self._funcs = NCCLLibrary.path_to_dict_mapping[so_file]
+            MCCLLibrary.path_to_dict_mapping[so_file] = _funcs
+        self._funcs = MCCLLibrary.path_to_dict_mapping[so_file]
 
     def ncclGetErrorString(self, result: ncclResult_t) -> str:
         return self._funcs["mcclGetErrorString"](result).decode("utf-8")
@@ -477,6 +476,7 @@ class NCCLLibrary:
         return
 
 
-import vllm.distributed.device_communicators.pynccl_wrapper
+from vllm.distributed.device_communicators import pynccl, pynccl_wrapper
 
-vllm.distributed.device_communicators.pynccl_wrapper.NCCLLibrary = NCCLLibrary
+pynccl.NCCLLibrary = MCCLLibrary
+pynccl_wrapper.NCCLLibrary = MCCLLibrary

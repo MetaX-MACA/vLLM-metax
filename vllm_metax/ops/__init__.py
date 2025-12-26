@@ -1,3 +1,3 @@
 # SPDX-License-Identifier: Apache-2.0
 
-from . import activation, fused_moe, layernorm, rotary_embedding  # noqa
+from . import activation, fused_moe, layernorm, rotary_embedding, mm_encoder_attention  # noqa: F401

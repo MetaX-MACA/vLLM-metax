@@ -46,9 +46,7 @@ def flash_attn_maxseqlen_wrapper(
         dropout_p=0.0,
         causal=False,
     )
-    context_layer = einops.rearrange(
-        output, "(b s) h d -> s b (h d)", b=batch_size
-    ).contiguous()
+    context_layer = einops.rearrange(output, "(b s) h d -> b s h d", b=batch_size)
     return context_layer
 
 
@@ -61,8 +59,7 @@ def flash_attn_maxseqlen_wrapper_fake(
     batch_size: int,
     is_rocm_aiter: bool,
 ) -> torch.Tensor:
-    b, s, h, d = q.shape
-    return torch.empty((s, b, h * d), dtype=q.dtype, device=q.device)
+    return torch.empty_like(q)
 
 
 direct_register_custom_op(
