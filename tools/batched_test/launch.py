@@ -24,6 +24,7 @@ class SchedularArgs:
 
     text_case: str
     image_case: str
+    resume_csv: str = None
 
     infer: bool = False
     perf: bool = False
@@ -33,11 +34,15 @@ class SchedularArgs:
 
     @classmethod
     def from_cli_args(cls, args: argparse.Namespace) -> "SchedularArgs":
+        if args.resume_csv is not None:
+            assert os.path.exists(args.resume_csv)
+            # resume_csv = os.path.join(os.path.abspath)
         return cls(
             work_dir=args.work_dir,
             model_config=args.model_config,
             text_case=args.text_case,
             image_case=args.image_case,
+            resume_csv=args.resume_csv,
             infer=args.infer,
             perf=args.perf,
         )
@@ -83,6 +88,13 @@ class SchedularArgs:
                 os.path.dirname(__file__), "configs", "inference", "image_case.yaml"
             ),
             help="Cases used for inference test. Default to: <configs/inference/image_case.yaml>",
+        )
+
+        parser.add_argument(
+            "--resume-csv",
+            metavar="RESUME_CSV",
+            type=str,
+            help="Only run the failed case from specified inference_result.csv",
         )
 
         parser.add_argument(
@@ -143,6 +155,7 @@ class Scheduler:
                 model_cfg=cfg,
                 text_case=self.args.text_case,
                 image_case=self.args.image_case,
+                last_resume=self.args.resume_csv,
             )
             future = self.executor.submit(worker.run, stop_event)
             futures.append(future)
@@ -174,12 +187,12 @@ class Scheduler:
                 try:
                     for f in as_completed(futures):
                         result = f.result()
-                        all_results.append(result)
-
-                        csv_writer.writerow(result)
-                        f_csv.flush()
-
                         pbar.update(1)
+                        if result is not None:
+                            all_results.append(result)
+
+                            csv_writer.writerow(result)
+                            f_csv.flush()
                 finally:
                     refresh_stop.set()
                     refresher_thread.join()

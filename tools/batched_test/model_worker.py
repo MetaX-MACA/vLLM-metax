@@ -13,6 +13,7 @@ import gpu_manager
 import net_utils
 import contextlib
 from api_client import ChatCompletionClient
+import pandas as pd
 
 
 class Worker(abc.ABC):
@@ -210,7 +211,14 @@ class InferWorker(Worker):
         INFERENCING = auto()
         NORMAL_END = auto()
 
-    def __init__(self, text_case: str, image_case: str, model_cfg: dict, work_dir: str):
+    def __init__(
+        self,
+        text_case: str,
+        image_case: str,
+        model_cfg: dict,
+        work_dir: str,
+        last_resume: str | None = None,
+    ):
         super().__init__(work_dir=work_dir, model_cfg=model_cfg)
 
         self.text_case = text_case
@@ -219,6 +227,36 @@ class InferWorker(Worker):
         self.status = self.InferenceStatus.INIT
         self.serve_cfg = model_cfg.get("serve_config", {})
         self.model_tag = f"{model_cfg['name']}[tp{self.serve_cfg.get('tp', 1)}pp{self.serve_cfg.get('pp', 1)}dp{self.serve_cfg.get('dp', 1)}]"
+
+        self.csv_resumer = None
+        if last_resume is not None:
+            self.csv_resumer = pd.read_csv(last_resume)
+
+    def _need_run(self) -> bool:
+        if self.csv_resumer is None:
+            return True
+
+        # Check if case exists in resumer
+        model_results = self.csv_resumer[
+            self.csv_resumer["Model"].str.strip() == self.model_tag
+        ]
+
+        # print("--------------------------------")
+        # print("model_results", model_results)
+        # print("--------------------------------")
+
+        if model_results.empty:
+            return True
+
+        failed_cases = model_results[
+            model_results["Stage"].str.strip() != self.InferenceStatus.NORMAL_END.name
+        ]
+
+        if failed_cases.empty:
+            # All passed
+            return False
+
+        return True
 
     def _get_text_only_cases(self) -> list[dict]:
         import yaml
@@ -292,9 +330,14 @@ class InferWorker(Worker):
 
         return corrected_responses / len(image_cases)
 
-    def run(self, stop_event: threading.Event):
+    def run(self, stop_event: threading.Event) -> dict | None:
         self.stop_event = stop_event
         try:
+            if not self._need_run():
+                print(
+                    f"[{self.model_tag}] All tests on this combination have been passed! Skiped."
+                )
+                return None
             # Step 1. alloc GPU
             self._wait_and_allocate_gpus()
             # self.related_gpu_ids = [0,1]
