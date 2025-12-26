@@ -31,7 +31,7 @@ class Worker(abc.ABC):
     def run(self, stop_event: threading.Event):
         raise NotImplementedError("Worker must implement run method.")
 
-    def _wait_and_allocate_gpus(self, timeout: int = 7200) -> list[int]:
+    def _wait_and_allocate_gpus(self, timeout: int = 14400) -> list[int]:
         # Block until required GPUs are allocated
         assert self.related_gpu_ids == [], "GPUs have already been allocated."
 

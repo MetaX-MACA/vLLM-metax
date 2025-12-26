@@ -153,7 +153,7 @@
     dp: 1
     pp: 1
     extra_args:
-      # --hf-overrides: '{"architectures": ["GLM4VForCausalLM"]}'
+      --hf-overrides: '{"architectures": ["GLM4VForCausalLM"]}'
       --chat-template: chat_template/template_chatglm.jinja
   infer_type:
     - single-image
@@ -389,20 +389,6 @@
     sweep_num_runs: 1
   extra_env:
 
-- name: "Qwen3-VL-8B-Instruct"
-  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-VL-8B-Instruct"
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-    - single-image
-  benchmark:
-    bench_param: "configs/bench_params/bench_default.json"
-    sweep_num_runs: 1
-  extra_env:
-
 - name: Qwen3-VL-30B-A3B-Instruct_W8A8
   model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-VL-30B-A3B-Instruct_W8A8/vllm_quant_model"
   serve_config:
@@ -530,8 +516,8 @@
     sweep_num_runs: 1
   extra_env:
 
-- name: "glm-4.6V"
-  model_path: "/mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.6V"
+- name: "glm-4.6V-Flash"
+  model_path: "/mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.6V-Flash"
   serve_config:
     tp: 1
     dp: 1
@@ -624,7 +610,7 @@
     pp: 1
     extra_args:
   infer_type:
-    - text-only
+    - single-image
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -659,6 +645,21 @@
   extra_env:
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
+- name: "ERNIE-4.5-VL-28B-A3B-Thinking"
+  model_path: "/mxstorage/pde_ai/models/llm/ERNIE/ERNIE-4.5-VL-28B-A3B-Thinking"
+  serve_config:
+    tp: 2
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+    - single-image
+  benchmark:
+    bench_param: "configs/bench_params/bench_default.json"
+    sweep_num_runs: 1
+  extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
+
 - name: "InternVL2_5-26B"
   model_path: "/mxstorage/pde_ai/models/llm/Internlm/InternVL2_5-26B"
   serve_config:
@@ -668,7 +669,7 @@
     distributed_executor_backend: "mp"
     extra_args:
   infer_type:
-    - text-only
+    - single-image
   benchmark:
     bench_param: "configs/bench_params/bench_default.json"
     sweep_num_runs: 1
@@ -702,9 +703,38 @@
     sweep_num_runs: 1
   extra_env:
 
-
+- name: "GLM-4.5V"
+  model_path: "/mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.5V"
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --limit-mm-per-prompt.video: 0
+  infer_type:
+    - single-image
+  benchmark:
+    bench_param: "configs/bench_params/bench_default.json"
+    sweep_num_runs: 1
+  extra_env:
+  
 - name: "GLM-4.5V_W8A8"
   model_path: "/mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.5V_W8A8/vllm_quant_model"
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --limit-mm-per-prompt.video: 0
+  infer_type:
+    - single-image
+  benchmark:
+    bench_param: "configs/bench_params/bench_default.json"
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "GLM-4.6V"
+  model_path: "/mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.6V"
   serve_config:
     tp: 4
     dp: 1
@@ -865,6 +895,21 @@
     sweep_num_runs: 1
   extra_env:
 
+- name: "Qwen3-30B-A3B"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B"
+  serve_config:
+    tp: 2
+    dp: 2
+    pp: 1
+    extra_args:
+      --enable-expert-parallel
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_default.json"
+    sweep_num_runs: 1
+  extra_env:
+
 - name: "Qwen3-32B"
   model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-32B"
   serve_config:
@@ -924,7 +969,7 @@
 
 - name: "DeepSeek-R1-awq"
   model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-awq"
-  timeout: 1800
+  timeout: 2400
   serve_config:
     tp: 8
     dp: 1
@@ -946,6 +991,7 @@
     pp: 1
     gpu_memory_utilization: 0.8
     extra_args:
+      --speculative-config : '{"num_speculative_tokens":1,"method":"deepseek_mtp"}'
   infer_type:
     - text-only
   benchmark:
@@ -1088,6 +1134,7 @@
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: "Mixtral-8x22B-Instruct-v0.1"
+  timeout: 1200
   model_path: "/mxstorage/pde_ai/models/llm/Mistral/Mixtral-8x22B-Instruct-v0.1"
   serve_config:
     tp: 8
