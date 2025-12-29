@@ -43,7 +43,9 @@ def eagle_prepare_next_token_padded_kernel(
 
     if is_discarded:
         backup_token = tl.load(backup_next_token_ids_ptr + req_idx)
-        valid_count = tl.full((), 0, dtype=tl.uint32)
+        # /------------------------  Metax Modification -------------------------\
+        valid_count = tl.full((), 0, dtype=tl.int32)
+        # \---------------------------------------------------------------------/
         tl.store(next_token_ids_ptr + req_idx, backup_token)
         tl.store(valid_sampled_tokens_count_ptr + req_idx, valid_count)
     else:
@@ -58,11 +60,9 @@ def eagle_prepare_next_token_padded_kernel(
         is_valid_mask = (token_ids != -1) & (token_ids < vocab_size) & token_mask
 
         # /------------------------  Metax Modification -------------------------\
-        valid_count_int = tl.sum(is_valid_mask)
-        valid_count = tl.cast(valid_count_int, tl.uint32)
-
-        if valid_count_int > 0:
-            # \------------------------- Metax Modification -------------------------/
+        valid_count = tl.cast(is_valid_mask.to(tl.int32))
+        # \------------------------- Metax Modification -------------------------/
+        if valid_count > 0:
             # Guaranteed to be well-defined since
             # valid_count > 0 implies is_valid_mask is not empty
             last_valid_index = tl.max(tl.where(is_valid_mask, token_offs, -1))
