@@ -26,7 +26,7 @@ class MacaGPTQConfig(GPTQConfig):
 
     def get_quant_method(
         self, layer: torch.nn.Module, prefix: str
-    ) -> Optional[Union["GPTQLinearMethod", "QuantizeMethodBase"]]:
+    ) -> Union["GPTQLinearMethod", "QuantizeMethodBase"] | None:
         if isinstance(layer, FusedMoE):
             # GPTQ MoE support: fall back to MoeWNA16 for broad compatibility
             from vllm_metax.quant_config.moe_wna16 import MacaMoeWNA16Config

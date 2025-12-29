@@ -23,5 +23,5 @@ def find_mccl_library() -> str:
             so_file = "libmccl.so"
         else:
             raise ValueError("MCCL only supports MACA backends.")
-        logger.info("Found mccl from library %s", so_file)
+        logger.info_once("Found mccl from library %s", so_file)
     return so_file

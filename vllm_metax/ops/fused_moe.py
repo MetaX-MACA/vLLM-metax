@@ -3,36 +3,19 @@ from vllm.model_executor.layers.fused_moe.layer import (
     UnquantizedFusedMoEMethod,
 )
 
-from typing import Callable
 import torch
 
 from vllm_metax.model_executor.layers.fused_moe.fused_moe import fused_experts
+from vllm.platforms import current_platform
 
 
 @UnquantizedFusedMoEMethod.register_oot
 class MacaUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
     def forward_oot(
         self,
-        layer: torch.nn.Module,
+        layer: "FusedMoe",  # type: ignore[name-defined] # noqa: F821
         x: torch.Tensor,
-        use_grouped_topk: bool,
-        top_k: int,
         router_logits: torch.Tensor,
-        renormalize: bool,
-        topk_group: int | None = None,
-        num_expert_group: int | None = None,
-        global_num_experts: int = -1,
-        expert_map: torch.Tensor | None = None,
-        custom_routing_function: Callable | None = None,
-        scoring_func: str = "softmax",
-        routed_scaling_factor: float = 1.0,
-        e_score_correction_bias: torch.Tensor | None = None,
-        apply_router_weight_on_input: bool = False,
-        activation: str = "silu",
-        enable_eplb: bool = False,
-        expert_load_view: torch.Tensor | None = None,
-        logical_to_physical_map: torch.Tensor | None = None,
-        logical_replica_count: torch.Tensor | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         topk_weights, topk_ids, zero_expert_result = layer.select_experts(
             hidden_states=x,
@@ -46,12 +29,13 @@ class MacaUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
             topk_weights=topk_weights,
             topk_ids=topk_ids,
             inplace=True,
-            activation=activation,
+            activation=layer.activation,
             quant_config=self.moe_quant_config,
-            apply_router_weight_on_input=apply_router_weight_on_input,
-            global_num_experts=global_num_experts,
-            expert_map=expert_map,
+            apply_router_weight_on_input=layer.apply_router_weight_on_input,
+            global_num_experts=layer.global_num_experts,
+            expert_map=layer.expert_map,
         )
+
         if layer.zero_expert_num != 0 and layer.zero_expert_type is not None:
             assert not isinstance(result, tuple), (
                 "Shared + zero experts are mutually exclusive not yet supported"
@@ -59,3 +43,6 @@ class MacaUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
             return result, zero_expert_result
         else:
             return result
+
+    if current_platform.is_out_of_tree():
+        forward_native = forward_oot

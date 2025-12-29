@@ -28,7 +28,7 @@ class MacaAWQConfig(AWQConfig):
 
     def get_quant_method(
         self, layer: torch.nn.Module, prefix: str
-    ) -> Optional[Union["LinearMethodBase", "QuantizeMethodBase"]]:
+    ) -> Union["LinearMethodBase", "QuantizeMethodBase"] | None:
         if isinstance(layer, LinearBase):
             if is_layer_skipped(
                 prefix,

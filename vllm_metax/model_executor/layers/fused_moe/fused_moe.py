@@ -2054,7 +2054,11 @@ def fused_experts_impl(
         curr_topk_weights = topk_weights[begin_chunk_idx:end_chunk_idx]
 
         sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
-            curr_topk_ids, stage1_config["BLOCK_SIZE_M"], global_num_experts, expert_map
+            curr_topk_ids,
+            stage1_config["BLOCK_SIZE_M"],
+            global_num_experts,
+            expert_map,
+            ignore_invalid_experts=True,
         )
         # ┌------------------------  Metax Modification -------------------------┐
         if (
@@ -2182,6 +2186,9 @@ def fused_experts_impl(
                         expert_map,
                     )
                 )
+
+            if expert_map is not None:
+                intermediate_cache3.zero_()
 
             invoke_fused_moe_kernel(
                 qintermediate_cache2,

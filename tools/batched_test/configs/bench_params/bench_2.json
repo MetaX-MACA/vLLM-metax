@@ -6,15 +6,9 @@
         "random_output_len": 128
     },
     {
-        "max_concurrency": 1,
-        "num_prompts": 5,
-        "random_input_len": 2048,
-        "random_output_len": 2048
-    },
-    {
-        "max_concurrency": 1,
-        "num_prompts": 5,
-        "random_input_len": 3072,
+        "max_concurrency": 4,
+        "num_prompts": 20,
+        "random_input_len": 1024,
         "random_output_len": 1024
     },
     {

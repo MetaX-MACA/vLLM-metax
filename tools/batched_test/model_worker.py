@@ -13,6 +13,7 @@ import gpu_manager
 import net_utils
 import contextlib
 from api_client import ChatCompletionClient
+import pandas as pd
 
 
 class Worker(abc.ABC):
@@ -30,7 +31,7 @@ class Worker(abc.ABC):
     def run(self, stop_event: threading.Event):
         raise NotImplementedError("Worker must implement run method.")
 
-    def _wait_and_allocate_gpus(self, timeout: int = 7200) -> list[int]:
+    def _wait_and_allocate_gpus(self, timeout: int = 14400) -> list[int]:
         # Block until required GPUs are allocated
         assert self.related_gpu_ids == [], "GPUs have already been allocated."
 
@@ -210,7 +211,14 @@ class InferWorker(Worker):
         INFERENCING = auto()
         NORMAL_END = auto()
 
-    def __init__(self, text_case: str, image_case: str, model_cfg: dict, work_dir: str):
+    def __init__(
+        self,
+        text_case: str,
+        image_case: str,
+        model_cfg: dict,
+        work_dir: str,
+        last_resume: str | None = None,
+    ):
         super().__init__(work_dir=work_dir, model_cfg=model_cfg)
 
         self.text_case = text_case
@@ -219,6 +227,32 @@ class InferWorker(Worker):
         self.status = self.InferenceStatus.INIT
         self.serve_cfg = model_cfg.get("serve_config", {})
         self.model_tag = f"{model_cfg['name']}[tp{self.serve_cfg.get('tp', 1)}pp{self.serve_cfg.get('pp', 1)}dp{self.serve_cfg.get('dp', 1)}]"
+
+        self.csv_resumer = None
+        if last_resume is not None:
+            self.csv_resumer = pd.read_csv(last_resume)
+
+    def _need_run(self) -> bool:
+        if self.csv_resumer is None:
+            return True
+
+        # Check if case exists in resumer
+        model_results = self.csv_resumer[
+            self.csv_resumer["Model"].str.strip() == self.model_tag
+        ]
+
+        if model_results.empty:
+            return True
+
+        failed_cases = model_results[
+            model_results["Stage"].str.strip() != self.InferenceStatus.NORMAL_END.name
+        ]
+
+        if failed_cases.empty:
+            # All passed
+            return False
+
+        return True
 
     def _get_text_only_cases(self) -> list[dict]:
         import yaml
@@ -292,9 +326,12 @@ class InferWorker(Worker):
 
         return corrected_responses / len(image_cases)
 
-    def run(self, stop_event: threading.Event):
+    def run(self, stop_event: threading.Event) -> dict:
         self.stop_event = stop_event
         try:
+            if not self._need_run():
+                return self._warp_skipped()
+
             # Step 1. alloc GPU
             self._wait_and_allocate_gpus()
             # self.related_gpu_ids = [0,1]
@@ -329,6 +366,18 @@ class InferWorker(Worker):
             "Correct Ratio": "0%",
             "Stage": self.status.name,
             "Reason": str(e),
+            "Model Path": self.model_cfg["model_path"],
+        }
+
+    def _warp_skipped(self):
+        print(
+            f"[{self.model_tag}] All tests on this combination have been passed! Skiped."
+        )
+        return {
+            "Model": self.model_tag,
+            "Correct Ratio": "0%",
+            "Stage": self.InferenceStatus.NORMAL_END.name,
+            "Reason": f"Resumed from last result",
             "Model Path": self.model_cfg["model_path"],
         }
 
@@ -478,7 +527,8 @@ class BenchSweepWorker(Worker):
         self.serve_cfg = model_cfg.get("serve_config", {})
         self.model_tag = f"{model_cfg['name']}_tp{self.serve_cfg.get('tp', 1)}_pp{self.serve_cfg.get('pp', 1)}_dp{self.serve_cfg.get('dp', 1)}"
 
-    def run(self):
+    def run(self, stop_event: threading.Event):
+        self.stop_event = stop_event
         try:
             self._wait_and_allocate_gpus()
             self._launch_bench_sweep()
