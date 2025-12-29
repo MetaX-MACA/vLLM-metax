@@ -1,2 +1,2 @@
 # SPDX-License-Identifier: Apache-2.0
-from . import coordinator, eagle
+from . import coordinator

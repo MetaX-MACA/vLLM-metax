@@ -7,4 +7,4 @@ from . import model_executor
 
 from . import dp_fix
 from . import oot
-from . import sample
+from . import triton_support
