@@ -193,5 +193,5 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install /tmp/wheels/* 
 
 # Fix(hank): don't know why vllm installation also brings in flashinfer-python, remove it here.
-RUN uv pip uninstall flashinfer-python
+RUN uv pip uninstall flashinfer-python cupy-cuda12x
 #################### FINAL IMAGE ####################
