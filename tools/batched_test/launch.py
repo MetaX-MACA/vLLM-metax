@@ -21,6 +21,7 @@ from tqdm import tqdm
 class SchedularArgs:
     work_dir: str
     model_config: str
+    cluster_config: str
 
     text_case: str
     image_case: str
@@ -40,6 +41,7 @@ class SchedularArgs:
         return cls(
             work_dir=args.work_dir,
             model_config=args.model_config,
+            cluster_config=args.cluster_config,
             text_case=args.text_case,
             image_case=args.image_case,
             resume_csv=args.resume_csv,
@@ -62,6 +64,14 @@ class SchedularArgs:
             type=str,
             default=os.path.join(os.path.dirname(__file__), "configs", "model.yaml"),
             help="Model config file path. Default to: <configs/model.yaml>",
+        )
+
+        parser.add_argument(
+            "--cluster-config",
+            metavar="CONFIG_YAML_FILE",
+            type=str,
+            default=os.path.join(os.path.dirname(__file__), "configs", "cluster.yaml"),
+            help="Cluster config file path. Default to: <configs/cluster.yaml>",
         )
 
         parser.add_argument(
@@ -115,6 +125,17 @@ class Scheduler:
         self.model_list = self._load_yaml_config(args.model_config)
         self.work_dir = os.path.join(args.work_dir, net_utils.current_dt())
         self.executor = ThreadPoolExecutor(max_workers=self.gpu_manager.get_gpu_count())
+        self.use_cluster = False
+
+        if args.cluster_config:
+            self.use_cluster = True
+            cluster_nodes_config = self._load_yaml_config(args.cluster_config)
+
+            self.executor = ThreadPoolExecutor(max_workers=1)
+        else:
+            self.executor = ThreadPoolExecutor(
+                max_workers=self.gpu_manager.get_gpu_count()
+            )
 
     def _load_yaml_config(self, config_yaml: str) -> list[dict]:
         with open(config_yaml, "r") as f:
