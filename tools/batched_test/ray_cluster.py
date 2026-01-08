@@ -1,18 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
-import subprocess
 import paramiko
 import time
 import os
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
+from typing import Literal
 
-dataclass
 
-
+@dataclass
 class SSHConfig:
-    ip: str
+    hostname: str
     port: int
     user: str
-    auth_type: str
+    auth_type: Literal["password", "key"]
     password: str | None = None
     private_key: str | None = None
 
@@ -29,12 +28,10 @@ class SSHConfig:
             raise ValueError("private_key must be provided when auth_type is 'key'")
 
     def to_dict(self) -> dict:
-        """转换为字典"""
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict) -> "SSHConfig":
-        """从字典创建实例"""
         return cls(**data)
 
 
@@ -44,12 +41,10 @@ class ClusterNode:
     nic: str
 
     def to_dict(self) -> dict:
-        """转换为字典"""
         return {"ssh": self.ssh.to_dict(), "nic": self.nic}
 
     @classmethod
     def from_dict(cls, data: dict) -> "ClusterNode":
-        """从字典创建实例"""
         return cls(ssh=SSHConfig.from_dict(data["ssh"]), nic=data.get("nic", "eth0"))
 
 
@@ -57,28 +52,24 @@ def remote_command(ssh_info: SSHConfig, command: str) -> str:
     """
     Run remote command via ssh
     """
-    print(f"[远程:{ssh_info.ip}:{ssh_info.port}] 执行命令: {command}")
-
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
         # 连接服务器
         if ssh_info.auth_type == "key":
-            # 使用密钥认证
             key_path = os.path.expanduser(ssh_info.private_key)
             private_key = paramiko.RSAKey.from_private_key_file(key_path)
             ssh.connect(
-                hostname=ssh_info.host,
+                hostname=ssh_info.hostname,
                 port=ssh_info.port,
                 username=ssh_info.user,
                 pkey=private_key,
                 timeout=10,
             )
         elif ssh_info.auth_type == "password":
-            # 使用密码认证
             ssh.connect(
-                hostname=ssh_info.host,
+                hostname=ssh_info.hostname,
                 port=ssh_info.port,
                 username=ssh_info.user,
                 password=ssh_info.password,
@@ -86,6 +77,7 @@ def remote_command(ssh_info: SSHConfig, command: str) -> str:
             )
 
         # 执行命令
+        print(f"[远程:{ssh_info.hostname}:{ssh_info.port}] 执行命令: {command}")
         _, stdout, stderr = ssh.exec_command(command)
 
         # 获取输出
@@ -113,27 +105,27 @@ def remote_command(ssh_info: SSHConfig, command: str) -> str:
         raise
 
 
-# ------------------------------
-# Ray集群部署
-# ------------------------------
-
-
 class RayClusterManager:
     def __init__(self, cluster_config: dict):
         self.master: ClusterNode = self.init_node(cluster_config["master"])
-        self.slaves: list[ClusterNode] = self.init_node(cluster_config["slaves"])
+        self.slaves: list[ClusterNode] = []
+
+        if slave_nodes := cluster_config.get("slaves", None):
+            self.slaves = self.init_node(slave_nodes)
+
         self.gpu_pre_node = cluster_config["gpu_per_node"]
+        self.all_gpu_nums = (1 + len(self.slaves)) * self.gpu_pre_node
 
     def init_node(self, node_config: dict) -> ClusterNode | list[ClusterNode]:
         if isinstance(node_config, list):
             return [self.init_node(item) for item in node_config]
 
-        ssh_config = node_config.get("ssh_config")
-        ray_config = node_config.get("ray_config")
+        ssh_config = node_config.get("ssh")
+        ray_config = node_config.get("ray")
 
         ssh = SSHConfig(
-            ip=ssh_config.get("ssh_hostname"),
-            port=ssh_config.get("ssh_port"),
+            hostname=ssh_config.get("hostname"),
+            port=ssh_config.get("port"),
             user=ssh_config.get("user"),
             auth_type=ssh_config.get("auth_type"),
             password=ssh_config.get("ssh_password"),
@@ -142,7 +134,7 @@ class RayClusterManager:
 
         return ClusterNode(ssh=ssh, nic=ray_config.get("nic"))
 
-    def start_ray_head(self, CLUSTER_CONFIG: dict) -> str:
+    def start_ray_head(self) -> str:
         """
         启动Ray头节点
         :return: Ray集群地址
@@ -159,32 +151,29 @@ class RayClusterManager:
             """
         output = remote_command(self.master.ssh, ray_start_cmd)
 
-        assert output is not None
+        assert output
 
         # 提取Ray集群地址
+        ray_address = None
         for line in output.split("\n"):
-            if "Ray runtime started" in line:
-                # 解析ray address
-                ray_address_line = [
-                    l for l in output.split("\n") if "ray start --address=" in l
-                ]
-                if ray_address_line:
-                    ray_address = ray_address_line[0].strip().split("=")[1]
-                    print(f"Ray头节点已启动，集群地址: {ray_address}")
-                    return ray_address
+            if "ray start --address=" in line:
+                ray_address = line.strip().split("=")[1]
+                break
+
+        if ray_address and "Ray runtime started" in output:
+            print(f"Ray头节点已启动, 集群地址: {ray_address}")
+            return ray_address
 
         print("无法获取Ray集群地址")
         return None
 
-    def start_ray_workers(self, ray_address: str) -> bool:
-        """
-        启动Ray工作节点
-        :param ray_address: Ray集群地址
-        :return: 是否所有工作节点都成功启动
-        """
-        success = True
-        for i, cluster_node in enumerate(self.slaves):
+    def start_ray_workers(self, ray_address: str, num_of_slaves: int) -> list[int]:
+        slave_indices = []
+        for i in range(num_of_slaves):
+            cluster_node = self.slaves[i]
+
             ray_start_cmd = f"""
+                ray stop --force && \
                 export GLOO_SOCKET_IFNAME={cluster_node.nic} && \
                 export NCCL_SOCKET_IFNAME={cluster_node.nic} && \
                 export RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1 && \
@@ -193,19 +182,14 @@ class RayClusterManager:
                 """
             output = remote_command(cluster_node.ssh, ray_start_cmd)
 
-            if output and "Ray runtime started" in output:
-                print(
-                    f"Ray工作节点 {i + 1} ({cluster_node.ssh.host}:{cluster_node.ssh.port}) 已启动"
-                )
-            else:
-                print(
-                    f"Ray工作节点 {i + 1} ({cluster_node.ssh.host}:{cluster_node.ssh.port}) 启动失败"
-                )
-                success = False
+            if not (output and "Ray runtime started" in output):
+                raise RuntimeError(f"ray start error on slaves: {output}")
 
-        return success
+            slave_indices.append(i + 1)  # start from 1 since 0 is for master
 
-    def check_ray_cluster(self) -> bool:
+        return slave_indices
+
+    def check_ray_cluster(self, num_required: int) -> bool:
         """
         检查Ray集群状态
         :return: 集群是否正常
@@ -219,37 +203,29 @@ class RayClusterManager:
         if not output:
             return False
 
-        print("Ray集群状态:")
-        print(output)
+        return f"{float(num_required)} GPU" in output
 
-        # 检查节点数量
-        num_nodes = 1 + len(self.slaves)
-        num_gpus = num_nodes * self.gpu_per_node
+    def allocate(self, num_required: int) -> list[int]:
+        if num_required > self.all_gpu_nums:
+            raise RuntimeError(
+                f"Out of cards, needs {num_required},but got {{self.all_gpu_nums}}"
+            )
 
-        if f"{float(num_gpus)} GPU" in output:
-            print(f"Ray集群配置正确: {num_nodes}个节点，{num_gpus}张GPU")
-            return True
-        else:
-            print("Ray集群配置不正确")
-            return False
+        needed_slaves = (num_required + self.gpu_pre_node - 1) // self.gpu_pre_node - 1
 
-    def ray_init(self, node_cfg):
-        print("=" * 60)
-        print("VLLM多机部署自动化脚本")
-        print("=" * 60)
+        assert self.gpu_pre_node * (needed_slaves + 1) >= num_required
+        assert len(self.slaves) >= needed_slaves
 
-        # 1. 启动Ray头节点
-        print("\n1. 启动Ray头节点...")
-        ray_address = self.start_ray_head(node_cfg)
-        if not ray_address:
-            raise RuntimeError("Ray头节点启动失败，退出脚本")
+        ray_address = self.start_ray_head()
+        slave_indices = self.start_ray_workers(ray_address, needed_slaves)
 
-        # 2. 启动Ray工作节点
-        print("\n2. 启动Ray工作节点...")
-        if not self.start_ray_workers(ray_address, node_cfg):
-            raise RuntimeError("Ray工作节点启动失败，退出脚本")
+        assert self.check_ray_cluster(num_required)
 
-        # 3. 检查Ray集群状态
-        print("\n3. 检查Ray集群状态...")
-        if not self.check_ray_cluster(node_cfg):
-            raise RuntimeError("Ray集群状态异常，退出脚本")
+        # TODO(hank): add mutex here to allocate nodes
+        return [0] + slave_indices
+
+    def release(self, related_nodes: list[int]):
+        ray_stop_raw = "ray stop --force"
+        remote_command(self.master.ssh, ray_stop_raw)
+        for _, cluster_node in enumerate(self.slaves):
+            remote_command(cluster_node.ssh, ray_stop_raw)

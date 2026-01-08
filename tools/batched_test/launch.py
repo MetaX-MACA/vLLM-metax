@@ -15,23 +15,28 @@ import net_utils
 
 import gpu_manager
 from tqdm import tqdm
+from ray_cluster import RayClusterManager
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SchedularArgs:
     work_dir: str
     model_config: str
-    cluster_config: str
 
-    text_case: str
-    image_case: str
-    resume_csv: str = None
+    cluster_config: str | None = None
 
     infer: bool = False
+    text_case: str
+    image_case: str
+    resume_csv: str | None = None
+
     perf: bool = False
 
     parser_name: ClassVar[str] = "schedular"
     parser_help: ClassVar[str] = "Model Auto Testing Scheduler"
+
+    def __post_init__(self):
+        pass
 
     @classmethod
     def from_cli_args(cls, args: argparse.Namespace) -> "SchedularArgs":
@@ -70,7 +75,6 @@ class SchedularArgs:
             "--cluster-config",
             metavar="CONFIG_YAML_FILE",
             type=str,
-            default=os.path.join(os.path.dirname(__file__), "configs", "cluster.yaml"),
             help="Cluster config file path. Default to: <configs/cluster.yaml>",
         )
 
@@ -121,21 +125,19 @@ class Scheduler:
     def __init__(self, args: SchedularArgs):
         self.args = args
 
-        self.gpu_manager = gpu_manager.GPUManager()
         self.model_list = self._load_yaml_config(args.model_config)
         self.work_dir = os.path.join(args.work_dir, net_utils.current_dt())
-        self.executor = ThreadPoolExecutor(max_workers=self.gpu_manager.get_gpu_count())
-        self.use_cluster = False
 
         if args.cluster_config:
-            self.use_cluster = True
             cluster_nodes_config = self._load_yaml_config(args.cluster_config)
-
-            self.executor = ThreadPoolExecutor(max_workers=1)
+            self.gpu_manager = RayClusterManager(cluster_nodes_config)
+            # TODO(hank) not allow concurrency on cluster mode now
+            max_workers = 1
         else:
-            self.executor = ThreadPoolExecutor(
-                max_workers=self.gpu_manager.get_gpu_count()
-            )
+            self.gpu_manager = gpu_manager.GPUManager()
+            max_workers = self.gpu_manager.get_gpu_count()
+
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
 
     def _load_yaml_config(self, config_yaml: str) -> list[dict]:
         with open(config_yaml, "r") as f:
@@ -177,6 +179,7 @@ class Scheduler:
                 text_case=self.args.text_case,
                 image_case=self.args.image_case,
                 last_resume=self.args.resume_csv,
+                gpu_manager=self.gpu_manager,
             )
             future = self.executor.submit(worker.run, stop_event)
             futures.append(future)
@@ -227,8 +230,7 @@ class Scheduler:
 
         for cfg in self.model_list:
             worker = BenchSweepWorker(
-                work_dir=bench_work_dir,
-                model_cfg=cfg,
+                work_dir=bench_work_dir, model_cfg=cfg, gpu_manager=self.gpu_manager
             )
             future = self.executor.submit(worker.run, stop_event)
             futures.append(future)
@@ -243,7 +245,7 @@ class Scheduler:
             if self.args.infer:
                 self.run_inference()
 
-            elif self.args.perf:
+            if self.args.perf:
                 self.run_performance()
 
         except KeyboardInterrupt:
