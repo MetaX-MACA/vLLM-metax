@@ -4,6 +4,7 @@ import time
 import os
 from dataclasses import dataclass, asdict
 from typing import Literal
+import regex as re
 
 
 @dataclass
@@ -190,20 +191,19 @@ class RayClusterManager:
         return slave_indices
 
     def check_ray_cluster(self, num_required: int) -> bool:
-        """
-        检查Ray集群状态
-        :return: 集群是否正常
-        """
+        # sleep to wait ray status init
         time.sleep(5)
 
-        # 获取Ray节点列表
         cmd = "ray status"
         output = remote_command(self.master.ssh, cmd)
 
-        if not output:
-            return False
+        assert output, f"chekc_ray_cluster failed, no output from `{cmd}`"
 
-        return f"{float(num_required)} GPU" in output
+        match = re.search(r"(\d+)\.\d+\s*GPU", output)
+        if match:
+            integer_part = int(match.group(1))
+
+        return integer_part >= num_required
 
     def allocate(self, num_required: int) -> list[int]:
         if num_required > self.all_gpu_nums:
@@ -219,7 +219,9 @@ class RayClusterManager:
         ray_address = self.start_ray_head()
         slave_indices = self.start_ray_workers(ray_address, needed_slaves)
 
-        assert self.check_ray_cluster(num_required)
+        assert self.check_ray_cluster(num_required), (
+            "check_ray_cluster failed, no enough gpus on cluster"
+        )
 
         # TODO(hank): add mutex here to allocate nodes
         return [0] + slave_indices

@@ -75,7 +75,7 @@ class SchedularArgs:
             "--cluster-config",
             metavar="CONFIG_YAML_FILE",
             type=str,
-            help="Cluster config file path. Default to: <configs/cluster.yaml>",
+            help="Cluster config file path.",
         )
 
         parser.add_argument(
