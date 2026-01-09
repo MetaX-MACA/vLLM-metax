@@ -9,21 +9,32 @@ from enum import Enum, auto
 import signal
 import threading
 
-import gpu_manager
 import net_utils
 import contextlib
 from api_client import ChatCompletionClient
 import pandas as pd
 
 
+from gpu_manager import GPUManager
+from ray_cluster import RayClusterManager
+
+CRITICAL_WORDS = ["EngineCore encountered an issue"]
+
+
 class Worker(abc.ABC):
-    def __init__(self, work_dir: str, model_cfg: dict):
+    def __init__(
+        self,
+        work_dir: str,
+        model_cfg: dict,
+        gpu_manager: RayClusterManager | GPUManager,
+    ):
         self.work_dir = work_dir
         self.model_cfg = model_cfg
+        self.gpu_manager = gpu_manager
 
         self.config_manager = ModelConfigManager(model_cfg)
         self.port_manager = net_utils.PortManager()
-        self.gpu_manager = gpu_manager.GPUManager()
+
         self.port = self.port_manager.get_next_available_port()
         self.related_gpu_ids = []
 
@@ -36,6 +47,14 @@ class Worker(abc.ABC):
         assert self.related_gpu_ids == [], "GPUs have already been allocated."
 
         required_gpus = self.config_manager.calc_required_gpus()
+
+        # If we use ray_cluster for testing, skip gpu_manager
+        # if isinstance(self.gpu_manager, RayClusterManager):
+        #     if required_gpus < self.gpu_manager.all_gpu_nums:
+        #         raise RuntimeError("Ray cluster does not have enough gpus.")
+        #     self.gpu_manager.ray_init()
+        #     self.related_gpu_ids = list(range(self.gpu_manager.all_gpu_nums))
+        #     return
 
         t0 = time.time()
         while time.time() - t0 < timeout:
@@ -54,7 +73,7 @@ class Worker(abc.ABC):
                     )
                 print(f"[{self.model_cfg['name']}] Allocated GPUs: {occupied_gpus}")
                 self.related_gpu_ids = occupied_gpus
-                return occupied_gpus
+                return
             time.sleep(10)
 
         raise TimeoutError(
@@ -218,8 +237,11 @@ class InferWorker(Worker):
         model_cfg: dict,
         work_dir: str,
         last_resume: str | None = None,
+        gpu_manager: RayClusterManager | GPUManager = None,
     ):
-        super().__init__(work_dir=work_dir, model_cfg=model_cfg)
+        super().__init__(
+            work_dir=work_dir, model_cfg=model_cfg, gpu_manager=gpu_manager
+        )
 
         self.text_case = text_case
         self.image_case = image_case
@@ -254,23 +276,24 @@ class InferWorker(Worker):
 
         return True
 
-    def _get_text_only_cases(self) -> list[dict]:
+    def _load_cases(self, case_file: str) -> list[dict]:
         import yaml
 
-        with open(self.text_case, "r", encoding="utf-8") as f:
+        with open(case_file, "r", encoding="utf-8") as f:
             test_cases = yaml.safe_load(f)
         return test_cases
 
-    def _get_image_cases(self) -> list[dict]:
-        import yaml
-
-        with open(self.image_case, "r", encoding="utf-8") as f:
-            test_cases = yaml.safe_load(f)
-        return test_cases
+    def _check_critical_words(
+        self, content: str, blacklist: list[str] = CRITICAL_WORDS
+    ) -> str | None:
+        for _, item in enumerate(blacklist):
+            if item in content:
+                return item
+        return None
 
     def _do_text_only_inference(self, log_file: str) -> float:
         client = ChatCompletionClient(host="localhost", port=self.port)
-        text_cases = self._get_text_only_cases()
+        text_cases = self._load_cases(self.text_case)
         questions = [case["question"] for case in text_cases]
 
         # Get generator for responses
@@ -282,6 +305,11 @@ class InferWorker(Worker):
         with open(log_file, "a") as f:
             # Zip test cases with yielded responses to match them
             for test_case, content in zip(text_cases, content_gen):
+                if death_indication := self._check_critical_words(content_gen):
+                    raise RuntimeError(
+                        f"client received: {death_indication}, "
+                        "which indicate that vllm serve might crashed. Aborting..."
+                    )
                 keywords = test_case.get("keywords", [])
 
                 # Check if any keyword is in the content (case-insensitive)
@@ -298,7 +326,7 @@ class InferWorker(Worker):
 
     def _do_single_image_inference(self, log_file: str) -> float:
         client = ChatCompletionClient(host="localhost", port=self.port)
-        image_cases = self._get_image_cases()
+        image_cases = self._load_cases(self.image_case)
         image_urls = [case["picture_url"] for case in image_cases]
 
         # Get generator for responses
@@ -311,8 +339,13 @@ class InferWorker(Worker):
         with open(log_file, "a") as f:
             # Zip test cases with yielded responses to match them
             for test_case, content in zip(image_cases, content_gen):
-                keywords = test_case.get("keywords", [])
+                if death_indication := self._check_critical_words(content):
+                    raise RuntimeError(
+                        f"client received: {death_indication}, "
+                        "which indicate that vllm serve might crashed. Aborting..."
+                    )
 
+                keywords = test_case.get("keywords", [])
                 # Check if any keyword is in the content (case-insensitive)
                 if any(str(k).lower() in content.lower() for k in keywords):
                     corrected_responses += 1
@@ -334,7 +367,6 @@ class InferWorker(Worker):
 
             # Step 1. alloc GPU
             self._wait_and_allocate_gpus()
-            # self.related_gpu_ids = [0,1]
 
             # Step 2. launch serve
             self._launch_vllm_serve()
@@ -399,6 +431,10 @@ class InferWorker(Worker):
 
         # Set environment variable
         extra_env = self.config_manager.prepare_extra_env(self.related_gpu_ids)
+
+        # No need to set this variable for multi-node ray cluster
+        if isinstance(self.gpu_manager, RayClusterManager):
+            extra_env.pop("CUDA_VISIBLE_DEVICES", None)
 
         env_copy = os.environ.copy()
         env_copy.update(extra_env)
@@ -516,12 +552,20 @@ class InferWorker(Worker):
         :param kwargs: Description
         """
         super()._cleanup()
-        self._shutdown_process()
+        if isinstance(self.gpu_manager, GPUManager):
+            self._shutdown_process()
 
 
 class BenchSweepWorker(Worker):
-    def __init__(self, work_dir: str, model_cfg: dict):
-        super().__init__(work_dir=work_dir, model_cfg=model_cfg)
+    def __init__(
+        self,
+        work_dir: str,
+        model_cfg: dict,
+        gpu_manager: RayClusterManager | GPUManager = None,
+    ):
+        super().__init__(
+            work_dir=work_dir, model_cfg=model_cfg, gpu_manager=gpu_manager
+        )
         self.sweep_process = None
 
         self.serve_cfg = model_cfg.get("serve_config", {})
