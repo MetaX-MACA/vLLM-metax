@@ -301,16 +301,15 @@ class InferWorker(Worker):
             questions=questions, max_completion_tokens=256
         )
 
-        if death_indication := self._check_critical_words(content):
-            raise RuntimeError(
-                f"client received: {death_indication},"
-                "which indicate that vllm serve might crashed. Aborting..."
-            )
-
         corrected_responses = 0
         with open(log_file, "a") as f:
             # Zip test cases with yielded responses to match them
             for test_case, content in zip(text_cases, content_gen):
+                if death_indication := self._check_critical_words(content_gen):
+                    raise RuntimeError(
+                        f"client received: {death_indication}, "
+                        "which indicate that vllm serve might crashed. Aborting..."
+                    )
                 keywords = test_case.get("keywords", [])
 
                 # Check if any keyword is in the content (case-insensitive)
@@ -336,18 +335,17 @@ class InferWorker(Worker):
             max_completion_tokens=256,
         )
 
-        if death_indication := self._check_critical_words(content):
-            raise RuntimeError(
-                f"client received: {death_indication},"
-                "which indicate that vllm serve might crashed. Aborting..."
-            )
-
         corrected_responses = 0
         with open(log_file, "a") as f:
             # Zip test cases with yielded responses to match them
             for test_case, content in zip(image_cases, content_gen):
-                keywords = test_case.get("keywords", [])
+                if death_indication := self._check_critical_words(content):
+                    raise RuntimeError(
+                        f"client received: {death_indication}, "
+                        "which indicate that vllm serve might crashed. Aborting..."
+                    )
 
+                keywords = test_case.get("keywords", [])
                 # Check if any keyword is in the content (case-insensitive)
                 if any(str(k).lower() in content.lower() for k in keywords):
                     corrected_responses += 1
