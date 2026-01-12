@@ -166,7 +166,7 @@ class RayClusterManager:
         extra_env = {
             "GLOO_SOCKET_IFNAME": master.nic,
             "NCCL_SOCKET_IFNAME": master.nic,
-            "MACA_PATH": "opt/maca",
+            "MACA_PATH": "/opt/maca",
             "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1",
         }
         extra_env.update(extra_serve_env)
@@ -202,7 +202,7 @@ class RayClusterManager:
             extra_env = {
                 "GLOO_SOCKET_IFNAME": slave.nic,
                 "NCCL_SOCKET_IFNAME": slave.nic,
-                "MACA_PATH": "opt/maca",
+                "MACA_PATH": "/opt/maca",
                 "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1",
             }
             extra_env.update(extra_serve_env)
