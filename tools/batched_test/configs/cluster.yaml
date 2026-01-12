@@ -2,8 +2,7 @@
 # Note: this is the docker ssh, not host ssh
 #       we assume that the docker is pre-launched 
 #       already
-master:
-  ssh:
+- ssh:
     hostname: ssh.luwucloud.metax-internal.com  # 头节点IP地址
     port: 31269  # SSH端口
     user: root  # SSH用户名
@@ -13,15 +12,13 @@ master:
   ray:
     nic: eth0  # 网络接口名称（用于GLOO_SOCKET_IFNAME）
 
-slaves:
-  - ssh:
-      hostname: ssh.luwucloud.metax-internal.com  # 工作节点1 IP地址
-      port: 30081  # SSH端口
-      user: root  # SSH用户名
-      auth_type: password  # 认证类型："password" 或 "key"
-      ssh_key: ~/.ssh/id_rsa  # SSH私钥路径（auth_type="key"时使用）
-      ssh_password: "1"  # SSH密码（auth_type="password"时使用）
-    ray:
-      nic: eth0  # 网络接口名称（用于GLOO_SOCKET_IFNAME）
+- ssh:
+    hostname: ssh.luwucloud.metax-internal.com  # 工作节点1 IP地址
+    port: 30081  # SSH端口
+    user: root  # SSH用户名
+    auth_type: password  # 认证类型："password" 或 "key"
+    ssh_key: ~/.ssh/id_rsa  # SSH私钥路径（auth_type="key"时使用）
+    ssh_password: "1"  # SSH密码（auth_type="password"时使用）
+  ray:
+    nic: eth0  # 网络接口名称（用于GLOO_SOCKET_IFNAME）
 
-gpu_per_node: 8  # 每台机器的GPU数量

@@ -8,6 +8,8 @@ import regex as re
 import threading
 from pprint import pprint
 
+import shlex
+
 
 @dataclass
 class SSHConfig:
@@ -108,6 +110,19 @@ def remote_command(ssh_info: SSHConfig, command: str) -> str:
         raise
 
 
+def wrap_command_with_env(command: str | list[str], env_dict: dict) -> str:
+    env_parts = [f"{k}={shlex.quote(str(v))}" for k, v in env_dict.items()]
+    env_export = "export " + " ".join(env_parts)
+
+    if isinstance(command, list):
+        cmd_str = shlex.join(command)
+    else:
+        cmd_str = command.strip()
+
+    full_cmd = f"bash -c '{env_export} && {cmd_str}'"
+    return full_cmd
+
+
 class RayClusterManager:
     _instance = None
     _lock = threading.Lock()  # class-level lock for singleton creation
@@ -145,26 +160,26 @@ class RayClusterManager:
 
         return ClusterNode(ssh=ssh, nic=ray_config.get("nic"))
 
-    def start_ray_master(self, master: ClusterNode, env=None) -> str:
-        """
-        启动Ray头节点
-        :return: Ray集群地址
-        """
+    def start_ray_master(
+        self, master: ClusterNode, extra_serve_env: dict | None = None
+    ) -> str:
+        extra_env = {
+            "GLOO_SOCKET_IFNAME": master.nic,
+            "NCCL_SOCKET_IFNAME": master.nic,
+            "MACA_PATH": "opt/maca",
+            "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1",
+        }
+        extra_env.update(extra_serve_env)
 
-        # 启动Ray头节点，设置GLOO_SOCKET_IFNAME环境变量
         ray_start_cmd = f"""
             ray stop --force && \
-            export GLOO_SOCKET_IFNAME={master.nic} && \
-            export NCCL_SOCKET_IFNAME={master.nic} && \
-            export RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1 && \
-            export MACA_PATH=/opt/maca && \
             ray start --head --num-gpus={self.gpu_per_node}
             """
-        output = remote_command(master.ssh, ray_start_cmd)
+        remote_cmd = wrap_command_with_env(ray_start_cmd, extra_env)
+        output = remote_command(master.ssh, remote_cmd)
 
         assert output
 
-        # 提取Ray集群地址
         ray_address = None
         for line in output.split("\n"):
             if "ray start --address=" in line:
@@ -172,23 +187,32 @@ class RayClusterManager:
                 break
 
         if ray_address and "Ray runtime started" in output:
-            print(f"Ray头节点已启动, 集群地址: {ray_address}")
+            print(f"Ray started with address: {ray_address}")
             return ray_address
 
-        print("无法获取Ray集群地址")
         return None
 
-    def start_ray_slaves(self, ray_address: str, slaves: list[ClusterNode], env=None):
+    def start_ray_slaves(
+        self,
+        ray_address: str,
+        slaves: list[ClusterNode],
+        extra_serve_env: dict | None = None,
+    ):
         for slave in slaves:
+            extra_env = {
+                "GLOO_SOCKET_IFNAME": slave.nic,
+                "NCCL_SOCKET_IFNAME": slave.nic,
+                "MACA_PATH": "opt/maca",
+                "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1",
+            }
+            extra_env.update(extra_serve_env)
+
             ray_start_cmd = f"""
                 ray stop --force && \
-                export GLOO_SOCKET_IFNAME={slave.nic} && \
-                export NCCL_SOCKET_IFNAME={slave.nic} && \
-                export RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1 && \
-                export MACA_PATH=/opt/maca && \
                 ray start --address={ray_address} --num-gpus={self.gpu_per_node}
                 """
-            output = remote_command(slave.ssh, ray_start_cmd)
+            remote_cmd = wrap_command_with_env(ray_start_cmd, extra_env)
+            output = remote_command(slave.ssh, remote_cmd)
 
             if not (output and "Ray runtime started" in output):
                 raise RuntimeError(f"ray start error on slaves: {output}")
@@ -214,7 +238,7 @@ class RayClusterManager:
         ]
         return free_list
 
-    def start_ray_serve(self, nodes_list: list[int], env=None):
+    def start_ray_serve(self, nodes_list: list[int], extra_serve_env=None):
         assert len(nodes_list) > 0, (
             "start ray serve with empty node_list is not allowed"
         )
@@ -224,8 +248,8 @@ class RayClusterManager:
         master = self.all_nodes[nodes_list[0]]
         slaves = [self.all_nodes[i] for i in nodes_list[1:]]
 
-        ray_address = self.start_ray_master(master, env)
-        self.start_ray_slaves(ray_address, slaves, env)
+        ray_address = self.start_ray_master(master, extra_serve_env)
+        self.start_ray_slaves(ray_address, slaves, extra_serve_env)
 
     def allocate(self, num_required: int) -> list[int]:
         if num_required > self.all_gpu_nums:

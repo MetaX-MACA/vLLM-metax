@@ -1,0 +1,339 @@
+- name: "DeepSeek-V2-236B"
+  model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V2-236B"
+  timeout: 1800 # default is 600 seconds
+  serve_config:
+    tp: 8
+    pp: 2
+    dp: 1
+    distributed_executor_backend: "ray"  # default
+    gpu_memory_utilization: 0.9  # default
+    swap_space: 16  # default
+    max_model_len: 4096  # default
+
+    # Optional extra arguments for vllm serve command
+    # won't overwrite the default args
+    # won't check the validity of these args
+    extra_args:
+  infer_type: # one of the following types (required)
+    - text-only  # supported
+  benchmark:
+      bench_param: "configs/bench_params/bench_default.json"
+      dataset_name: "random"  # default
+      ignore_eos: true  # default
+      sweep_num_runs: 1  # default
+  extra_env:
+    EXAMPLE_ENV_VAR: "value"
+
+- name: "DeepSeek-V3-671B-W8A8"
+  model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V3-BF16_W8A8"
+  timeout: 1800 # default is 600 seconds
+  serve_config:
+    tp: 8
+    pp: 2
+    dp: 1
+    distributed_executor_backend: "ray"  # default
+    gpu_memory_utilization: 0.9  # default
+    swap_space: 16  # default
+    max_model_len: 4096  # default
+
+    # Optional extra arguments for vllm serve command
+    # won't overwrite the default args
+    # won't check the validity of these args
+    extra_args:
+  infer_type: # one of the following types (required)
+    - text-only  # supported
+  benchmark:
+      bench_param: "configs/bench_params/bench_high.json"
+      dataset_name: "random"  # default
+      ignore_eos: true  # default
+      sweep_num_runs: 1  # default
+  extra_env:
+    EXAMPLE_ENV_VAR: "value"
+
+- name: "DeepSeek-V3-671B-W8A8"
+  model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V3-BF16_W8A8"
+  timeout: 1800 # default is 600 seconds
+  serve_config:
+    tp: 4
+    pp: 1
+    dp: 4
+    distributed_executor_backend: "ray"  # default
+    gpu_memory_utilization: 0.9  # default
+    swap_space: 16  # default
+    max_model_len: 4096  # default
+
+    # Optional extra arguments for vllm serve command
+    # won't overwrite the default args
+    # won't check the validity of these args
+    extra_args:
+  infer_type: # one of the following types (required)
+    - text-only  # supported
+  benchmark:
+      bench_param: "configs/bench_params/bench_high.json"
+      dataset_name: "random"  # default
+      ignore_eos: true  # default
+      sweep_num_runs: 1  # default
+  extra_env:
+    EXAMPLE_ENV_VAR: "value"
+
+- name: "DeepSeek-V3-671B-W8A8"
+  model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V3-BF16_W8A8"
+  timeout: 1800 # default is 600 seconds
+  serve_config:
+    tp: 8
+    pp: 1
+    dp: 2
+    distributed_executor_backend: "ray"  # default
+    gpu_memory_utilization: 0.9  # default
+    swap_space: 16  # default
+    max_model_len: 4096  # default
+
+    # Optional extra arguments for vllm serve command
+    # won't overwrite the default args
+    # won't check the validity of these args
+    extra_args:
+  infer_type: # one of the following types (required)
+    - text-only  # supported
+  benchmark:
+      bench_param: "configs/bench_params/bench_high.json"
+      dataset_name: "random"  # default
+      ignore_eos: true  # default
+      sweep_num_runs: 1  # default
+  extra_env:
+    EXAMPLE_ENV_VAR: "value"
+
+- name: "deepseek-v3.2-exp"
+  model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V3.2-Exp-BF16"
+  timeout: 1800 # default is 600 seconds
+  serve_config:
+    tp: 16
+    pp: 1
+    dp: 1
+    distributed_executor_backend: "ray"  # default
+    gpu_memory_utilization: 0.9  # default
+    swap_space: 16  # default
+    max_model_len: 4096  # default
+
+    # Optional extra arguments for vllm serve command
+    # won't overwrite the default args
+    # won't check the validity of these args
+    extra_args:
+  infer_type: # one of the following types (required)
+    - text-only  # supported
+  benchmark:
+      bench_param: "configs/bench_params/bench_default.json"
+      dataset_name: "random"  # default
+      ignore_eos: true  # default
+      sweep_num_runs: 1  # default
+  extra_env:
+    EXAMPLE_ENV_VAR: "value"
+
+- name: "GLM-4.5"
+  model_path: "/mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.5"
+  timeout: 1800 # default is 600 seconds
+  serve_config:
+    tp: 8
+    pp: 1
+    dp: 2
+    distributed_executor_backend: "ray"  # default
+    gpu_memory_utilization: 0.9  # default
+    swap_space: 16  # default
+    max_model_len: 4096  # default
+
+    # Optional extra arguments for vllm serve command
+    # won't overwrite the default args
+    # won't check the validity of these args
+    extra_args:
+  infer_type: # one of the following types (required)
+    - text-only  # supported
+  benchmark:
+      bench_param: "configs/bench_params/bench_default.json"
+      dataset_name: "random"  # default
+      ignore_eos: true  # default
+      sweep_num_runs: 1  # default
+  extra_env:
+    EXAMPLE_ENV_VAR: "value"
+
+
+- name: "MiMo-V2-Flash-BF16"
+  model_path: "/mxstorage/pde_ai/models/llm/MiMo-V2-Flash-BF16"
+  timeout: 1800 # default is 600 seconds
+  serve_config:
+    tp: 8
+    pp: 1
+    dp: 2
+    distributed_executor_backend: "ray"  # default
+    gpu_memory_utilization: 0.9  # default
+    swap_space: 16  # default
+    max_model_len: 4096  # default
+
+    # Optional extra arguments for vllm serve command
+    # won't overwrite the default args
+    # won't check the validity of these args
+    extra_args:
+  infer_type: # one of the following types (required)
+    - text-only  # supported
+  benchmark:
+      bench_param: "configs/bench_params/bench_default.json"
+      dataset_name: "random"  # default
+      ignore_eos: true  # default
+      sweep_num_runs: 1  # default
+  extra_env:
+    EXAMPLE_ENV_VAR: "value"
+
+- name: "MiMo-V2-Flash-BF16"
+  model_path: "/mxstorage/pde_ai/models/llm/MiMo-V2-Flash-BF16"
+  timeout: 1800 # default is 600 seconds
+  serve_config:
+    tp: 8
+    pp: 1
+    dp: 2
+    distributed_executor_backend: "ray"  # default
+    gpu_memory_utilization: 0.9  # default
+    swap_space: 16  # default
+    max_model_len: 4096  # default
+
+    # Optional extra arguments for vllm serve command
+    # won't overwrite the default args
+    # won't check the validity of these args
+    extra_args:
+  infer_type: # one of the following types (required)
+    - text-only  # supported
+  benchmark:
+      bench_param: "configs/bench_params/bench_default.json"
+      dataset_name: "random"  # default
+      ignore_eos: true  # default
+      sweep_num_runs: 1  # default
+  extra_env:
+    EXAMPLE_ENV_VAR: "value"
+
+- name: "ERNIE-4.5-300B-A47B-PT"
+  model_path: "/mxstorage/pde_ai/models/llm/ERNIE/ERNIE-4.5-21B-A3B-PT"
+  timeout: 1800 # default is 600 seconds
+  serve_config:
+    tp: 8
+    pp: 2
+    dp: 1
+    distributed_executor_backend: "ray"  # default
+    gpu_memory_utilization: 0.9  # default
+    swap_space: 16  # default
+    max_model_len: 4096  # default
+
+    # Optional extra arguments for vllm serve command
+    # won't overwrite the default args
+    # won't check the validity of these args
+    extra_args:
+  infer_type: # one of the following types (required)
+    - text-only  # supported
+  benchmark:
+      bench_param: "configs/bench_params/bench_default.json"
+      dataset_name: "random"  # default
+      ignore_eos: true  # default
+      sweep_num_runs: 1  # default
+  extra_env:
+    EXAMPLE_ENV_VAR: "value"
+
+- name: "Qwen3-235B-A22B"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-235B-A22B"
+  timeout: 1800 # default is 600 seconds
+  serve_config:
+    tp: 8
+    pp: 2
+    dp: 1
+    distributed_executor_backend: "ray"  # default
+    gpu_memory_utilization: 0.9  # default
+    swap_space: 16  # default
+    max_model_len: 4096  # default
+
+    # Optional extra arguments for vllm serve command
+    # won't overwrite the default args
+    # won't check the validity of these args
+    extra_args:
+  infer_type: # one of the following types (required)
+    - text-only  # supported
+  benchmark:
+      bench_param: "configs/bench_params/bench_default.json"
+      dataset_name: "random"  # default
+      ignore_eos: true  # default
+      sweep_num_runs: 1  # default
+  extra_env:
+    EXAMPLE_ENV_VAR: "value"
+
+- name: "MiniMax-M2"
+  model_path: "/mxstorage/pde_ai/models/llm/MiniMax-M2"
+  timeout: 1800 # default is 600 seconds
+  serve_config:
+    tp: 16
+    pp: 1
+    dp: 1
+    distributed_executor_backend: "ray"  # default
+    gpu_memory_utilization: 0.9  # default
+    swap_space: 16  # default
+    max_model_len: 4096  # default
+
+    # Optional extra arguments for vllm serve command
+    # won't overwrite the default args
+    # won't check the validity of these args
+    extra_args:
+  infer_type: # one of the following types (required)
+    - text-only  # supported
+  benchmark:
+      bench_param: "configs/bench_params/bench_default.json"
+      dataset_name: "random"  # default
+      ignore_eos: true  # default
+      sweep_num_runs: 1  # default
+  extra_env:
+    EXAMPLE_ENV_VAR: "value"
+
+- name: "DeepSeek-R1-671B-BF16"
+  model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-BF16"
+  timeout: 1800 # default is 600 seconds
+  serve_config:
+    tp: 8
+    pp: 4
+    dp: 1
+    distributed_executor_backend: "ray"  # default
+    gpu_memory_utilization: 0.9  # default
+    swap_space: 16  # default
+    max_model_len: 4096  # default
+
+    # Optional extra arguments for vllm serve command
+    # won't overwrite the default args
+    # won't check the validity of these args
+    extra_args:
+  infer_type: # one of the following types (required)
+    - text-only  # supported
+  benchmark:
+      bench_param: "configs/bench_params/bench_default.json"
+      dataset_name: "random"  # default
+      ignore_eos: true  # default
+      sweep_num_runs: 1  # default
+  extra_env:
+    EXAMPLE_ENV_VAR: "value"
+
+
+- name: "DeepSeek-V3-BF16"
+  model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V3-BF16"
+  timeout: 1800 # default is 600 seconds
+  serve_config:
+    tp: 8
+    pp: 4
+    dp: 1
+    distributed_executor_backend: "ray"  # default
+    gpu_memory_utilization: 0.9  # default
+    swap_space: 16  # default
+    max_model_len: 4096  # default
+
+    # Optional extra arguments for vllm serve command
+    # won't overwrite the default args
+    # won't check the validity of these args
+    extra_args:
+  infer_type: # one of the following types (required)
+    - text-only  # supported
+  benchmark:
+      bench_param: "configs/bench_params/bench_default.json"
+      dataset_name: "random"  # default
+      ignore_eos: true  # default
+      sweep_num_runs: 1  # default
+  extra_env:
+    EXAMPLE_ENV_VAR: "value"

@@ -436,9 +436,7 @@ class InferWorker(Worker):
         # No need to set this variable for multi-node ray cluster
         if isinstance(self.gpu_manager, RayClusterManager):
             extra_env.pop("CUDA_VISIBLE_DEVICES", None)
-            self.gpu_manager.start_ray_serve(
-                self.related_gpu_ids, {**os.environ, **extra_env}
-            )
+            self.gpu_manager.start_ray_serve(self.related_gpu_ids, extra_env)
 
         # Log the command and environment
         with open(log_file, "a") as f:
@@ -596,9 +594,7 @@ class BenchSweepWorker(Worker):
         # No need to set this variable for multi-node ray cluster
         if isinstance(self.gpu_manager, RayClusterManager):
             extra_env.pop("CUDA_VISIBLE_DEVICES", None)
-            self.gpu_manager.start_ray_serve(
-                self.related_gpu_ids, {**os.environ, **extra_env}
-            )
+            self.gpu_manager.start_ray_serve(self.related_gpu_ids, extra_env)
 
         # Log the process output
         log_file = net_utils.prepare_dir(
