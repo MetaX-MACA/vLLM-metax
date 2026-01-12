@@ -148,9 +148,10 @@ class GPUManager:
         Allocate GPUs based on current free memory status.
         Returns a list of allocated GPU indices.
         """
+        if num_required > self.get_gpu_count():
+            return [-1]
+
         with self.global_mutex:
-            if num_required > self.get_gpu_count():
-                return [-1]
             free_gpus = self.get_free_gpu_indices()
             if len(free_gpus) < num_required:
                 return []

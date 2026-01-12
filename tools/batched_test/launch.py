@@ -13,9 +13,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pprint import pprint
 import net_utils
 
-import gpu_manager
 from tqdm import tqdm
-from ray_cluster import RayClusterManager
+
+from ray_manager import RayClusterManager
+from gpu_manager import GPUManager
 
 
 @dataclass(kw_only=True)
@@ -134,7 +135,7 @@ class Scheduler:
             # TODO(hank) not allow concurrency on cluster mode now
             max_workers = 1
         else:
-            self.gpu_manager = gpu_manager.GPUManager()
+            self.gpu_manager = GPUManager()
             max_workers = self.gpu_manager.get_gpu_count()
 
         self.executor = ThreadPoolExecutor(max_workers=max_workers)

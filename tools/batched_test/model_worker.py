@@ -16,7 +16,7 @@ import pandas as pd
 
 
 from gpu_manager import GPUManager
-from ray_cluster import RayClusterManager
+from ray_manager import RayClusterManager
 
 CRITICAL_WORDS = ["EngineCore encountered an issue"]
 
@@ -47,14 +47,6 @@ class Worker(abc.ABC):
         assert self.related_gpu_ids == [], "GPUs have already been allocated."
 
         required_gpus = self.config_manager.calc_required_gpus()
-
-        # If we use ray_cluster for testing, skip gpu_manager
-        # if isinstance(self.gpu_manager, RayClusterManager):
-        #     if required_gpus < self.gpu_manager.all_gpu_nums:
-        #         raise RuntimeError("Ray cluster does not have enough gpus.")
-        #     self.gpu_manager.ray_init()
-        #     self.related_gpu_ids = list(range(self.gpu_manager.all_gpu_nums))
-        #     return
 
         t0 = time.time()
         while time.time() - t0 < timeout:
@@ -103,6 +95,15 @@ class ModelConfigManager:
     def prepare_serve_cmd(self, host: str | None, port: int) -> list[str]:
         # Prepare command
         serve_config = self.model_cfg.get("serve_config", {})
+        distributed_executor_backend = (
+            "ray"
+            if (
+                serve_config.get("distributed_executor_backend") == "ray"
+                or self.calc_required_gpus() >= 8
+            )
+            else "mp"
+        )
+
         cmd = [
             "vllm",
             "serve",
@@ -125,7 +126,7 @@ class ModelConfigManager:
             "--max-model-len",
             str(serve_config.get("max_model_len", 4096)),
             "--distributed-executor-backend",
-            serve_config.get("distributed_executor_backend", "mp"),
+            distributed_executor_backend,
         ]
 
         extra_args = serve_config.get("extra_args")
@@ -302,20 +303,20 @@ class InferWorker(Worker):
         )
 
         corrected_responses = 0
-        with open(log_file, "a") as f:
-            # Zip test cases with yielded responses to match them
-            for test_case, content in zip(text_cases, content_gen):
-                if death_indication := self._check_critical_words(content_gen):
-                    raise RuntimeError(
-                        f"client received: {death_indication}, "
-                        "which indicate that vllm serve might crashed. Aborting..."
-                    )
-                keywords = test_case.get("keywords", [])
+        # Zip test cases with yielded responses to match them
+        for test_case, content in zip(text_cases, content_gen):
+            if death_indication := self._check_critical_words(content):
+                raise RuntimeError(
+                    f"client received: {death_indication}, "
+                    "which indicate that vllm serve might crashed. Aborting..."
+                )
+            keywords = test_case.get("keywords", [])
 
-                # Check if any keyword is in the content (case-insensitive)
-                if any(str(k).lower() in content.lower() for k in keywords):
-                    corrected_responses += 1
+            # Check if any keyword is in the content (case-insensitive)
+            if any(str(k).lower() in content.lower() for k in keywords):
+                corrected_responses += 1
 
+            with open(log_file, "a") as f:
                 f.write(
                     f"[{self.model_cfg['name']}] Question: {test_case['question']}\n"
                 )
@@ -336,20 +337,20 @@ class InferWorker(Worker):
         )
 
         corrected_responses = 0
-        with open(log_file, "a") as f:
-            # Zip test cases with yielded responses to match them
-            for test_case, content in zip(image_cases, content_gen):
-                if death_indication := self._check_critical_words(content):
-                    raise RuntimeError(
-                        f"client received: {death_indication}, "
-                        "which indicate that vllm serve might crashed. Aborting..."
-                    )
 
-                keywords = test_case.get("keywords", [])
-                # Check if any keyword is in the content (case-insensitive)
-                if any(str(k).lower() in content.lower() for k in keywords):
-                    corrected_responses += 1
+        # Zip test cases with yielded responses to match them
+        for test_case, content in zip(image_cases, content_gen):
+            if death_indication := self._check_critical_words(content):
+                raise RuntimeError(
+                    f"client received: {death_indication}, "
+                    "which indicate that vllm serve might crashed. Aborting..."
+                )
 
+            keywords = test_case.get("keywords", [])
+            # Check if any keyword is in the content (case-insensitive)
+            if any(str(k).lower() in content.lower() for k in keywords):
+                corrected_responses += 1
+            with open(log_file, "a") as f:
                 f.write(
                     f"[{self.model_cfg['name']}] Image URL: {test_case['picture_url']}\n"
                 )
@@ -431,13 +432,14 @@ class InferWorker(Worker):
 
         # Set environment variable
         extra_env = self.config_manager.prepare_extra_env(self.related_gpu_ids)
+        env_copy = os.environ.copy()
+        env_copy.update(extra_env)
 
         # No need to set this variable for multi-node ray cluster
         if isinstance(self.gpu_manager, RayClusterManager):
-            extra_env.pop("CUDA_VISIBLE_DEVICES", None)
-
-        env_copy = os.environ.copy()
-        env_copy.update(extra_env)
+            extra_env.pop("CUDA_VISIBLE_DEVICES", None)  # just for log correction
+            env_copy.pop("CUDA_VISIBLE_DEVICES", None)
+            self.gpu_manager.start_ray_serve(self.related_gpu_ids, env_copy)
 
         # Log the command and environment
         with open(log_file, "a") as f:

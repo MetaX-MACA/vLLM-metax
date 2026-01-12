@@ -5,6 +5,7 @@ import os
 from dataclasses import dataclass, asdict
 from typing import Literal
 import regex as re
+import threading
 
 
 @dataclass
@@ -107,17 +108,25 @@ def remote_command(ssh_info: SSHConfig, command: str) -> str:
 
 
 class RayClusterManager:
+    _instance = None
+    _lock = threading.Lock()  # class-level lock for singleton creation
+
+    def __new__(cls, *args, **kwargs):
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self, cluster_config: dict):
-        self.master: ClusterNode = self.init_node(cluster_config["master"])
-        self.slaves: list[ClusterNode] = []
+        self.global_mutex = threading.Lock()
+        self.occupied_nodes = set()
 
-        if slave_nodes := cluster_config.get("slaves", None):
-            self.slaves = self.init_node(slave_nodes)
+        self.all_nodes: list[ClusterNode] = self.init_node(cluster_config)
+        print(self.all_nodes)
+        self.gpu_per_node = cluster_config["gpu_per_node"]
+        self.all_gpu_nums = (1 + len(self.slaves)) * self.gpu_per_node
 
-        self.gpu_pre_node = cluster_config["gpu_per_node"]
-        self.all_gpu_nums = (1 + len(self.slaves)) * self.gpu_pre_node
-
-    def init_node(self, node_config: dict) -> ClusterNode | list[ClusterNode]:
+    def init_node(self, node_config: list | dict) -> ClusterNode | list[ClusterNode]:
         if isinstance(node_config, list):
             return [self.init_node(item) for item in node_config]
 
@@ -135,7 +144,7 @@ class RayClusterManager:
 
         return ClusterNode(ssh=ssh, nic=ray_config.get("nic"))
 
-    def start_ray_head(self) -> str:
+    def start_ray_master(self, master: ClusterNode, env=None) -> str:
         """
         启动Ray头节点
         :return: Ray集群地址
@@ -144,13 +153,13 @@ class RayClusterManager:
         # 启动Ray头节点，设置GLOO_SOCKET_IFNAME环境变量
         ray_start_cmd = f"""
             ray stop --force && \
-            export GLOO_SOCKET_IFNAME={self.master.nic} && \
-            export NCCL_SOCKET_IFNAME={self.master.nic} && \
+            export GLOO_SOCKET_IFNAME={master.nic} && \
+            export NCCL_SOCKET_IFNAME={master.nic} && \
             export RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1 && \
             export MACA_PATH=/opt/maca && \
-            ray start --head --num-gpus={self.gpu_pre_node}
+            ray start --head --num-gpus={self.gpu_per_node}
             """
-        output = remote_command(self.master.ssh, ray_start_cmd)
+        output = remote_command(master.ssh, ray_start_cmd)
 
         assert output
 
@@ -168,27 +177,20 @@ class RayClusterManager:
         print("无法获取Ray集群地址")
         return None
 
-    def start_ray_workers(self, ray_address: str, num_of_slaves: int) -> list[int]:
-        slave_indices = []
-        for i in range(num_of_slaves):
-            cluster_node = self.slaves[i]
-
+    def start_ray_slaves(self, ray_address: str, slaves: list[ClusterNode], env=None):
+        for slave in slaves:
             ray_start_cmd = f"""
                 ray stop --force && \
-                export GLOO_SOCKET_IFNAME={cluster_node.nic} && \
-                export NCCL_SOCKET_IFNAME={cluster_node.nic} && \
+                export GLOO_SOCKET_IFNAME={slave.nic} && \
+                export NCCL_SOCKET_IFNAME={slave.nic} && \
                 export RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1 && \
                 export MACA_PATH=/opt/maca && \
                 ray start --address={ray_address} --num-gpus={self.gpu_per_node}
                 """
-            output = remote_command(cluster_node.ssh, ray_start_cmd)
+            output = remote_command(slave.ssh, ray_start_cmd)
 
             if not (output and "Ray runtime started" in output):
                 raise RuntimeError(f"ray start error on slaves: {output}")
-
-            slave_indices.append(i + 1)  # start from 1 since 0 is for master
-
-        return slave_indices
 
     def check_ray_cluster(self, num_required: int) -> bool:
         # sleep to wait ray status init
@@ -205,29 +207,42 @@ class RayClusterManager:
 
         return integer_part >= num_required
 
+    def get_free_nodes(self):
+        free_list = [i for i in range(self.all_nodes) if i not in self.occupied_gpus]
+        return free_list
+
+    def start_ray_serve(self, nodes_list: list[int], env=None):
+        assert len(nodes_list) > 0, (
+            "start ray serve with empty node_list is not allowed"
+        )
+        print(f"master_index: {nodes_list[0]}")
+        print(f"slave_index: {nodes_list[1:]}")
+
+        master = self.all_nodes[nodes_list[0]]
+        slaves = [self.all_nodes[i] for i in nodes_list[1:]]
+
+        ray_address = self.start_ray_master(master, env)
+        self.start_ray_slaves(ray_address, slaves, env)
+
     def allocate(self, num_required: int) -> list[int]:
         if num_required > self.all_gpu_nums:
-            raise RuntimeError(
-                f"Out of cards, needs {num_required},but got {{self.all_gpu_nums}}"
-            )
+            return [-1]
 
-        needed_slaves = (num_required + self.gpu_pre_node - 1) // self.gpu_pre_node - 1
+        needed_nodes = (num_required + self.gpu_per_node - 1) // self.gpu_per_node
+        assert self.gpu_per_node * needed_nodes >= num_required
 
-        assert self.gpu_pre_node * (needed_slaves + 1) >= num_required
-        assert len(self.slaves) >= needed_slaves
-
-        ray_address = self.start_ray_head()
-        slave_indices = self.start_ray_workers(ray_address, needed_slaves)
-
-        assert self.check_ray_cluster(num_required), (
-            "check_ray_cluster failed, no enough gpus on cluster"
-        )
-
-        # TODO(hank): add mutex here to allocate nodes
-        return [0] + slave_indices
+        with self.global_mutex:
+            free_nodes = self.get_free_nodes()
+            if free_nodes < needed_nodes:
+                return []
+            allocated_nodes = free_nodes[:needed_nodes]
+            self.occupied_nodes.update(allocated_nodes)
+            return allocated_nodes
 
     def release(self, related_nodes: list[int]):
         ray_stop_raw = "ray stop --force"
-        remote_command(self.master.ssh, ray_stop_raw)
-        for _, cluster_node in enumerate(self.slaves):
-            remote_command(cluster_node.ssh, ray_stop_raw)
+
+        with self.global_mutex:
+            for i in related_nodes:
+                remote_command(self.all_nodes[i].ssh, ray_stop_raw)
+                self.occupied_nodes.discard(i)
