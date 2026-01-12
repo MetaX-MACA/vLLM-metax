@@ -6,6 +6,7 @@ from dataclasses import dataclass, asdict
 from typing import Literal
 import regex as re
 import threading
+from pprint import pprint
 
 
 @dataclass
@@ -122,9 +123,9 @@ class RayClusterManager:
         self.occupied_nodes = set()
 
         self.all_nodes: list[ClusterNode] = self.init_node(cluster_config)
-        print(self.all_nodes)
-        self.gpu_per_node = cluster_config["gpu_per_node"]
-        self.all_gpu_nums = (1 + len(self.slaves)) * self.gpu_per_node
+        pprint(self.all_nodes)
+        self.gpu_per_node = 8
+        self.all_gpu_nums = len(self.all_nodes) * self.gpu_per_node
 
     def init_node(self, node_config: list | dict) -> ClusterNode | list[ClusterNode]:
         if isinstance(node_config, list):
@@ -208,7 +209,9 @@ class RayClusterManager:
         return integer_part >= num_required
 
     def get_free_nodes(self):
-        free_list = [i for i in range(self.all_nodes) if i not in self.occupied_gpus]
+        free_list = [
+            i for i in range(len(self.all_nodes)) if i not in self.occupied_nodes
+        ]
         return free_list
 
     def start_ray_serve(self, nodes_list: list[int], env=None):
@@ -233,7 +236,7 @@ class RayClusterManager:
 
         with self.global_mutex:
             free_nodes = self.get_free_nodes()
-            if free_nodes < needed_nodes:
+            if len(free_nodes) < needed_nodes:
                 return []
             allocated_nodes = free_nodes[:needed_nodes]
             self.occupied_nodes.update(allocated_nodes)

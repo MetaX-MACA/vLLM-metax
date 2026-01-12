@@ -6,11 +6,10 @@ import os
 import abc
 from enum import Enum, auto
 
-import signal
 import threading
+import traceback
 
 import net_utils
-import contextlib
 from api_client import ChatCompletionClient
 import pandas as pd
 
@@ -376,6 +375,7 @@ class InferWorker(Worker):
             return self._post_client_test()
         except Exception as e:
             print(f"[{self.model_cfg['name']}] Inference failed: {e}")
+            traceback.print_exc()
             return self._warp_failure(str(e))
         finally:
             self._cleanup()
@@ -432,14 +432,13 @@ class InferWorker(Worker):
 
         # Set environment variable
         extra_env = self.config_manager.prepare_extra_env(self.related_gpu_ids)
-        env_copy = os.environ.copy()
-        env_copy.update(extra_env)
 
         # No need to set this variable for multi-node ray cluster
         if isinstance(self.gpu_manager, RayClusterManager):
-            extra_env.pop("CUDA_VISIBLE_DEVICES", None)  # just for log correction
-            env_copy.pop("CUDA_VISIBLE_DEVICES", None)
-            self.gpu_manager.start_ray_serve(self.related_gpu_ids, env_copy)
+            extra_env.pop("CUDA_VISIBLE_DEVICES", None)
+            self.gpu_manager.start_ray_serve(
+                self.related_gpu_ids, {**os.environ, **extra_env}
+            )
 
         # Log the command and environment
         with open(log_file, "a") as f:
@@ -451,7 +450,7 @@ class InferWorker(Worker):
 
         # Launch the command
         self.api_serve_process = net_utils.run_cmd(
-            cmd=cmd, log_file=log_file, env=env_copy
+            cmd=cmd, log_file=log_file, env={**os.environ, **extra_env}
         )
 
     def _check_api_service_ready(self, blocking=True, timeout=600):
@@ -591,7 +590,15 @@ class BenchSweepWorker(Worker):
         sweep_cmd = self.config_manager.prepare_sweep_cmd(
             host=None, port=self.port, output_dir=result_dir
         )
+
         extra_env = self.config_manager.prepare_extra_env(self.related_gpu_ids)
+
+        # No need to set this variable for multi-node ray cluster
+        if isinstance(self.gpu_manager, RayClusterManager):
+            extra_env.pop("CUDA_VISIBLE_DEVICES", None)
+            self.gpu_manager.start_ray_serve(
+                self.related_gpu_ids, {**os.environ, **extra_env}
+            )
 
         # Log the process output
         log_file = net_utils.prepare_dir(
