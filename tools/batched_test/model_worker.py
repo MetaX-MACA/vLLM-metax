@@ -52,17 +52,15 @@ class Worker(abc.ABC):
             if self.stop_event.is_set():
                 raise KeyboardInterrupt("Stop event set, terminating service check.")
 
-            occupied_gpus = self.gpu_manager.allocate(required_gpus)
             print(
                 f"[{self.model_cfg['name']}] Trying to allocate {required_gpus} GPUs..."
             )
+            occupied_gpus = self.gpu_manager.allocate(required_gpus)
 
             if len(occupied_gpus) > 0:
-                if occupied_gpus[0] == -1:
-                    raise ValueError(
-                        "Requested more GPUs than available on the system."
-                    )
-                print(f"[{self.model_cfg['name']}] Allocated GPUs: {occupied_gpus}")
+                print(
+                    f"[{self.model_cfg['name']}] Allocated resources: {occupied_gpus}"
+                )
                 self.related_gpu_ids = occupied_gpus
                 return
             time.sleep(10)

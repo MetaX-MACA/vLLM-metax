@@ -2,23 +2,35 @@
 # Note: this is the docker ssh, not host ssh
 #       we assume that the docker is pre-launched 
 #       already
-- ssh:
-    hostname: ssh.luwucloud.metax-internal.com  # 头节点IP地址
-    port: 31269  # SSH端口
-    user: root  # SSH用户名
-    auth_type: password  # 认证类型："password" 或 "key"
-    ssh_key: ~/.ssh/id_rsa  # SSH私钥路径（auth_type="key"时使用）
-    ssh_password: "1"  # SSH密码（auth_type="password"时使用）
-  ray:
-    nic: eth0  # 网络接口名称（用于GLOO_SOCKET_IFNAME）
+
+# the first node is the script launcher node
 
 - ssh:
-    hostname: ssh.luwucloud.metax-internal.com  # 工作节点1 IP地址
-    port: 30081  # SSH端口
-    user: root  # SSH用户名
-    auth_type: password  # 认证类型："password" 或 "key"
-    ssh_key: ~/.ssh/id_rsa  # SSH私钥路径（auth_type="key"时使用）
-    ssh_password: "1"  # SSH密码（auth_type="password"时使用）
+    hostname: 127.0.0.1 # SSH hostname
+    port: 22  # SSH port
+    user: root  # SSH user
+    auth_type: password  # Authentication type: "password" or "key"
+    private_key: ~/.ssh/id_rsa  # SSH key path (used when auth_type="key")
+    password: "1"  # SSH password (used when auth_type="password")
   ray:
-    nic: eth0  # 网络接口名称（用于GLOO_SOCKET_IFNAME）
+    nic: eth0  # Network Interface Card (used for GLOO_SOCKET_IFNAME)
 
+- ssh:
+    hostname: 127.0.0.1 # SSH hostname
+    port: 22  # SSH port
+    user: root  # SSH user
+    auth_type: password  # Authentication type: "password" or "key"
+    private_key: ~/.ssh/id_rsa  # SSH key path (used when auth_type="key")
+    password: "1"  # SSH password (used when auth_type="password")
+  ray:
+    nic: eth0  # Network Interface Card (used for GLOO_SOCKET_IFNAME)
+
+- ssh:
+    hostname: 127.0.0.1 # SSH hostname
+    port: 22  # SSH port
+    user: root  # SSH user
+    auth_type: password  # Authentication type: "password" or "key"
+    private_key: ~/.ssh/id_rsa  # SSH key path (used when auth_type="key")
+    password: "1"  # SSH password (used when auth_type="password")
+  ray:
+    nic: eth0  # Network Interface Card (used for GLOO_SOCKET_IFNAME)

@@ -50,7 +50,11 @@ class ClusterNode:
 
     @classmethod
     def from_dict(cls, data: dict) -> "ClusterNode":
-        return cls(ssh=SSHConfig.from_dict(data["ssh"]), nic=data.get("nic", "eth0"))
+        nic = data.get("nic")
+        if nic is None:
+            ray_cfg = data.get("ray") or {}
+            nic = ray_cfg.get("nic", "eth0")
+        return cls(ssh=SSHConfig.from_dict(data["ssh"]), nic=nic)
 
 
 def remote_command(ssh_info: SSHConfig, command: str) -> str:
@@ -146,19 +150,7 @@ class RayClusterManager:
         if isinstance(node_config, list):
             return [self.init_node(item) for item in node_config]
 
-        ssh_config = node_config.get("ssh")
-        ray_config = node_config.get("ray")
-
-        ssh = SSHConfig(
-            hostname=ssh_config.get("hostname"),
-            port=ssh_config.get("port"),
-            user=ssh_config.get("user"),
-            auth_type=ssh_config.get("auth_type"),
-            password=ssh_config.get("ssh_password"),
-            private_key=ssh_config.get("ssh_key"),
-        )
-
-        return ClusterNode(ssh=ssh, nic=ray_config.get("nic"))
+        return ClusterNode.from_dict(node_config)
 
     def start_ray_master(
         self, master: ClusterNode, extra_serve_env: dict | None = None
@@ -242,8 +234,6 @@ class RayClusterManager:
         assert len(nodes_list) > 0, (
             "start ray serve with empty node_list is not allowed"
         )
-        print(f"master_index: {nodes_list[0]}")
-        print(f"slave_index: {nodes_list[1:]}")
 
         master = self.all_nodes[nodes_list[0]]
         slaves = [self.all_nodes[i] for i in nodes_list[1:]]
@@ -253,7 +243,7 @@ class RayClusterManager:
 
     def allocate(self, num_required: int) -> list[int]:
         if num_required > self.all_gpu_nums:
-            return [-1]
+            raise ValueError("Requested more GPUs than available on the system.")
 
         needed_nodes = (num_required + self.gpu_per_node - 1) // self.gpu_per_node
         assert self.gpu_per_node * needed_nodes >= num_required

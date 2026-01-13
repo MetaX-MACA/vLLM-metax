@@ -149,7 +149,7 @@ class GPUManager:
         Returns a list of allocated GPU indices.
         """
         if num_required > self.get_gpu_count():
-            return [-1]
+            raise ValueError("Requested more GPUs than available on the system.")
 
         with self.global_mutex:
             free_gpus = self.get_free_gpu_indices()
