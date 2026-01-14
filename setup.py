@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 
 import importlib.util
 import json
@@ -24,6 +25,7 @@ try:
     from torch.utils.cpp_extension import MACA_HOME
 
     USE_MACA = True
+    USE_MCOPLIB = True
 except ImportError:
     MACA_HOME = None
     USE_MACA = False
@@ -514,10 +516,11 @@ def get_requirements() -> list[str]:
 ext_modules = []
 
 if _is_cuda():
-    ext_modules.append(CMakeExtension(name="vllm_metax._moe_C"))
     ext_modules.append(CMakeExtension(name="vllm_metax.cumem_allocator"))
 
-if _build_custom_ops() or True:
+if not USE_MCOPLIB and _is_cuda():
+    ext_modules.append(CMakeExtension(name="vllm_metax._moe_C"))
+if not USE_MCOPLIB and _build_custom_ops():
     ext_modules.append(CMakeExtension(name="vllm_metax._C"))
 
 package_data = {

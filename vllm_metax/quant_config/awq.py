@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 
 from typing import Optional, Union
 
@@ -15,7 +16,7 @@ from vllm.model_executor.layers.quantization.awq import (
 )
 from vllm.model_executor.layers.quantization.awq import is_layer_skipped, logger
 from vllm.model_executor.layers.quantization.base_config import QuantizeMethodBase
-from vllm.utils.torch_utils import direct_register_custom_op
+from vllm.utils.torch_utils import direct_register_custom_op, is_torch_equal_or_newer
 
 from vllm_metax import _custom_ops as ops
 from vllm.model_executor.layers.quantization import register_quantization_config
@@ -164,5 +165,9 @@ direct_register_custom_op(
     op_func=_apply_awq,
     mutates_args=[],
     fake_impl=_apply_awq_fake,
-    tags=(torch.Tag.needs_fixed_stride_order,),
+    tags=(
+        ()
+        if is_torch_equal_or_newer("2.7.0")
+        else (torch.Tag.needs_fixed_stride_order,)
+    ),
 )

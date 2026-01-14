@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
-from vllm.model_executor.layers.fused_moe.layer import (
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
+from vllm.model_executor.layers.fused_moe.unquantized_fused_moe_method import (
     UnquantizedFusedMoEMethod,
 )
 
+from vllm.platforms import current_platform
 from typing import Callable
 import torch
 
@@ -82,3 +84,14 @@ class MacaUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
             return result, zero_expert_result
         else:
             return result
+        
+    if current_platform.is_tpu():
+        forward_native = UnquantizedFusedMoEMethod.forward_tpu
+    elif current_platform.is_cpu():
+        forward_native = UnquantizedFusedMoEMethod.forward_cpu
+    elif current_platform.is_xpu():
+        forward_native = UnquantizedFusedMoEMethod.forward_xpu
+    elif current_platform.is_out_of_tree():
+        forward_native = forward_oot
+    else:
+        forward_native = UnquantizedFusedMoEMethod.forward_cuda

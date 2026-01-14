@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 
 from typing import Optional
 
@@ -31,6 +32,6 @@ class MacaCompressedTensorsConfig(CompressedTensorsConfig):
         origin_quant_method = super().get_quant_method(layer, prefix)
         if isinstance(origin_quant_method, CompressedTensorsMoEMethod):
             origin_quant_method = MacaCompressedTensorsMoEMethod.get_moe_method(
-                self, layer
+                self, layer, prefix
             )
         return origin_quant_method

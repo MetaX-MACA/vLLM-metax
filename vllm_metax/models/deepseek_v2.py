@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 # Adapted from
@@ -704,7 +705,7 @@ def sparse_attn_indexer(
         )
         num_rows = logits.shape[0]
         assert topk_tokens == 2048, "top_k_per_row assumes size 2048"
-        topk_indices = topk_indices_buffer[:num_decode_tokens, :topk_tokens]
+        topk_indices = topk_indices_buffer[:num_padded_tokens, :topk_tokens]
 
         mx_ops.top_k_per_row_decode(
             logits,
@@ -720,9 +721,9 @@ def sparse_attn_indexer(
                 topk_indices.reshape(batch_size, -1, topk_indices.shape[-1]),
                 decode_lens,
             )
-        topk_indices_buffer[:num_decode_tokens, : topk_indices.shape[-1]] = (
-            topk_indices.to(dtype=torch.int32)
-        )
+            topk_indices_buffer[:num_decode_tokens, : topk_indices.shape[-1]] = (
+                topk_indices.to(dtype=torch.int32)
+            )
 
     return topk_indices_buffer
 
@@ -857,7 +858,7 @@ class Indexer(nn.Module):
         q = q.view(-1, self.n_head, self.head_dim)
         weights, _ = self.weights_proj(hidden_states)
         weights = (
-            weights.unsqueeze(-1) * q_scale * self.softmax_scale * self.n_head**-0.5
+            weights.unsqueeze(-1) * self.softmax_scale * self.n_head**-0.5
         )
         weights = weights.squeeze(-1)
 

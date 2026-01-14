@@ -1,64 +1,38 @@
 diff --git a/vllm/config/compilation.py b/vllm/config/compilation.py
-index ef0b7353e..54a3bcef7 100644
+index 5a3517362..d73c60dc5 100644
 --- a/vllm/config/compilation.py
 +++ b/vllm/config/compilation.py
-@@ -360,7 +360,7 @@ class CompilationConfig:
-         "vllm.linear_attention",
-         "vllm.plamo2_mamba_mixer",
-         "vllm.gdn_attention",
--        "vllm.sparse_attn_indexer",
-+        "vllm.mx_sparse_attn_indexer",
+@@ -501,7 +501,7 @@ class CompilationConfig:
+         "vllm::plamo2_mamba_mixer",
+         "vllm::gdn_attention_core",
+         "vllm::kda_attention",
+-        "vllm::sparse_attn_indexer",
++        "vllm::mx_sparse_attn_indexer",
      ]
  
      def compute_hash(self) -> str:
-diff --git a/vllm/v1/sample/rejection_sampler.py b/vllm/v1/sample/rejection_sampler.py
-index 8f0b38ecb..fc8f16f26 100644
---- a/vllm/v1/sample/rejection_sampler.py
-+++ b/vllm/v1/sample/rejection_sampler.py
-@@ -451,7 +451,7 @@ def rejection_greedy_sample_kernel(
-         is_greedy = True
-     else:
-         is_greedy = tl.load(is_greedy_ptr + req_idx)
--    if not is_greedy:
-+    if is_greedy is None:
-         # Early exit for non-greedy sampling requests.
-         return
- 
 diff --git a/vllm/v1/spec_decode/eagle.py b/vllm/v1/spec_decode/eagle.py
-index 06f963b09..9ee8d5acd 100644
+index 5bf2503c3..8b1917f63 100644
 --- a/vllm/v1/spec_decode/eagle.py
 +++ b/vllm/v1/spec_decode/eagle.py
-@@ -17,7 +17,7 @@ from vllm.forward_context import set_forward_context
- from vllm.logger import init_logger
+@@ -20,7 +20,7 @@ from vllm.logger import init_logger
+ from vllm.model_executor.layers.attention_layer_base import AttentionLayerBase
  from vllm.model_executor.model_loader import get_model
  from vllm.model_executor.models import supports_multimodal
 -from vllm.model_executor.models.deepseek_v2 import DeepseekV32IndexerCache
 +from vllm_metax.models.deepseek_v2 import DeepseekV32IndexerCache
  from vllm.model_executor.models.llama_eagle3 import Eagle3LlamaForCausalLM
+ from vllm.multimodal import MULTIMODAL_REGISTRY
  from vllm.platforms import current_platform
- from vllm.utils import is_pin_memory_available
-diff --git a/vllm/v1/worker/gpu_model_runner.py b/vllm/v1/worker/gpu_model_runner.py
-index a438c7777..61d8a41dc 100644
---- a/vllm/v1/worker/gpu_model_runner.py
-+++ b/vllm/v1/worker/gpu_model_runner.py
-@@ -40,7 +40,7 @@ from vllm.model_executor.layers.attention_layer_base import AttentionLayerBase
- from vllm.model_executor.layers.mamba.abstract import MambaBase
- from vllm.model_executor.layers.rotary_embedding import MRotaryEmbedding
- from vllm.model_executor.model_loader import TensorizerLoader, get_model_loader
--from vllm.model_executor.models.deepseek_v2 import DeepseekV32IndexerCache
-+from vllm_metax.models.deepseek_v2 import DeepseekV32IndexerCache
- # yapf conflicts with isort for this block
- # yapf: disable
- from vllm.model_executor.models.interfaces import (SupportsMultiModal,
 diff --git a/vllm/v1/worker/utils.py b/vllm/v1/worker/utils.py
-index 3e0dbda59..46fec11c4 100644
+index 095407a8b..33356d25b 100644
 --- a/vllm/v1/worker/utils.py
 +++ b/vllm/v1/worker/utils.py
-@@ -308,6 +308,8 @@ def bind_kv_cache(
+@@ -321,6 +321,8 @@ def bind_kv_cache(
                  # case. Some test code depends on runner_kv_caches, but
                  # not in a way that's impacted by ignoring this.
                  pass
-+            elif current_platform.device_name == "maca":
++            elif current_platform.is_out_of_tree():
 +                pass
              else:
                  raise NotImplementedError
