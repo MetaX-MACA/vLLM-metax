@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """Fused MoE Triton kernels."""
 
@@ -15,6 +16,7 @@ import torch
 import torch.nn.functional as F
 
 import vllm.envs as envs
+import vllm_metax.envs as mx_envs
 import vllm.model_executor.layers.fused_moe.modular_kernel as mk
 from vllm import _custom_ops as ops
 from vllm._aiter_ops import rocm_aiter_ops
@@ -674,6 +676,7 @@ def invoke_fused_moe_kernel(A: torch.Tensor,
                             use_fp8_w8a8: bool,
                             use_int8_w8a8: bool,
                             use_int8_w8a16: bool,
+                            use_int4_w4a8: bool,
                             use_int4_w4a16: bool,
                             # ┌------------------------  Metax Modification -------------------------┐
                             orig_acc_dtype: torch.dtype,
@@ -694,7 +697,7 @@ def invoke_fused_moe_kernel(A: torch.Tensor,
             B.size(-1), block_shape[1]
         ) == B_scale.size(-1)
 
-    elif use_int8_w8a16 or use_int4_w4a16:
+    elif use_int8_w8a16 or use_int4_w4a16 or use_int4_w4a8:
         assert B_scale is not None
         assert block_shape is None or block_shape[0] == 0
     else:
@@ -796,6 +799,23 @@ def invoke_fused_moe_kernel(A: torch.Tensor,
             use_int8_w8a16=use_int8_w8a16,
             **config,
         )
+    elif use_int4_w4a8:
+        assert block_shape is not None
+        assert mx_ops.mctlass_op is not None
+        mx_ops.mctlassEx_fused_moe_w4a8_gemm(A, B.view(dtype = torch.quint4x2), C, A_scale, B_scale, 
+                                             topk_weights, sorted_token_ids, expert_ids, num_tokens_post_padded, 
+                                             B.size(0), A.size(0), B.size(1), B.size(2)*8, num_tokens, EM, top_k,
+                                             mul_routed_weight, group_size=block_shape[1]) 
+    elif use_int8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+        mx_ops.cutlass_moe_mm_w8a8(A, B, C,
+                                A_scale, B_scale, topk_weights, sorted_token_ids, expert_ids,
+                                num_tokens_post_padded,
+                                B.shape[1], # N
+                                A.shape[1], # K
+                                EM,
+                                num_tokens, # num_valid_tokens
+                                top_k,
+                                mul_routed_weight)
     else:
         config = config.copy()
         BLOCK_SIZE_K = config.pop("BLOCK_SIZE_K")
@@ -1502,6 +1522,7 @@ def inplace_fused_experts(
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
+    use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
@@ -1529,6 +1550,7 @@ def inplace_fused_experts(
         use_fp8_w8a8,
         use_int8_w8a8,
         use_int8_w8a16,
+        use_int4_w4a8,
         use_int4_w4a16,
         ocp_mx_scheme,
         per_channel_quant,
@@ -1557,6 +1579,7 @@ def inplace_fused_experts_fake(
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
+    use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
@@ -1599,6 +1622,7 @@ def outplace_fused_experts(
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
+    use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
@@ -1626,6 +1650,7 @@ def outplace_fused_experts(
         use_fp8_w8a8,
         use_int8_w8a8,
         use_int8_w8a16,
+        use_int4_w4a8,
         use_int4_w4a16,
         ocp_mx_scheme,
         per_channel_quant,
@@ -1713,6 +1738,7 @@ def fused_experts(
     apply_router_weight_on_input: bool = False,
     global_num_experts: int = -1,
     expert_map: torch.Tensor | None = None,
+    use_int4_w4a8: bool = False,
     quant_config: FusedMoEQuantConfig | None = None,
     allow_deep_gemm: bool = False,
     allow_cutlass_block_scaled_grouped_gemm: bool = False,
@@ -1779,6 +1805,7 @@ def fused_experts(
             use_fp8_w8a8=quant_config.use_fp8_w8a8,
             use_int8_w8a8=quant_config.use_int8_w8a8,
             use_int8_w8a16=quant_config.use_int8_w8a16,
+            use_int4_w4a8=use_int4_w4a8,
             use_int4_w4a16=quant_config.use_int4_w4a16,
             ocp_mx_scheme=quant_config.ocp_mx_scheme,
             per_channel_quant=quant_config.per_act_token_quant,
@@ -1804,6 +1831,7 @@ RELU2_NO_MUL: str = activation_without_mul("relu2")
 def _get_config_quant_dtype(
     use_fp8_w8a8: bool,
     use_int8_w8a8: bool,
+    use_int4_w4a8: bool,
     ocp_mx_scheme: str | None,
 ) -> None | torch.dtype | str:
     """
@@ -1815,7 +1843,7 @@ def _get_config_quant_dtype(
     """
     if use_fp8_w8a8:
         return torch.float8_e4m3fn
-    elif use_int8_w8a8:
+    elif use_int4_w4a8 or use_int8_w8a8:
         return torch.int8
     elif ocp_mx_scheme == "w_mxfp4_a_mxfp4":
         return "mxfp4"
@@ -1838,6 +1866,7 @@ def fused_experts_impl(
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
+    use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
@@ -1854,7 +1883,10 @@ def fused_experts_impl(
     w2_bias: torch.Tensor | None = None,
 ) -> torch.Tensor:
     # Check constraints.
-    if use_int4_w4a16:
+    if use_int4_w4a8:
+        # 8bit activation and int4 packed weight
+        assert hidden_states.size(1) // 8 == w1.size(2), "hidden size mismatch"
+    elif use_int4_w4a16:
         assert hidden_states.size(1) // 2 == w1.size(2), "Hidden size mismatch"
     elif ocp_mx_scheme is not None:
         if ocp_mx_scheme in {
@@ -1913,6 +1945,7 @@ def fused_experts_impl(
     quant_dtype = _get_config_quant_dtype(
         use_fp8_w8a8=use_fp8_w8a8,
         use_int8_w8a8=use_int8_w8a8,
+        use_int4_w4a8=use_int4_w4a8,
         ocp_mx_scheme=ocp_mx_scheme,
     )
 
@@ -2053,21 +2086,20 @@ def fused_experts_impl(
         curr_topk_ids = topk_ids[begin_chunk_idx:end_chunk_idx]
         curr_topk_weights = topk_weights[begin_chunk_idx:end_chunk_idx]
 
+        # ┌------------------------  Metax Modification -------------------------┐
         sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
             curr_topk_ids, stage1_config["BLOCK_SIZE_M"], global_num_experts, expert_map
         )
-        # ┌------------------------  Metax Modification -------------------------┐
-        if (
+
+        use_fused_moe_kernel_on_stage1 = (
             stage1_config["BLOCK_SIZE_M"] == 128
             and not use_int8_w8a8
-            and (topk_ids.shape[1] == 1 or topk_ids.shape[1] == 2)
-            and (
-                curr_hidden_states.dtype == torch.bfloat16
-                or curr_hidden_states.dtype == torch.float16
-            )
+            and topk_ids.shape[1] in (1, 2)
+            and curr_hidden_states.dtype in (torch.bfloat16, torch.float16)
             and w1.shape[1] % 4 == 0
             and w1.shape[2] % 8 == 0
-        ):
+        )
+        if use_fused_moe_kernel_on_stage1:
             mx_ops.fused_moe_kernel(
                 curr_hidden_states,
                 w1,
@@ -2090,6 +2122,43 @@ def fused_experts_impl(
                 block_shape=block_shape,
             )
 
+            if use_int8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+                if mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API:
+                    kernel_m = mx_ops.mctlassEx_fused_moe_get_kernel_m(
+                        curr_hidden_states, w1, intermediate_cache1, top_k_num
+                    )
+                else:
+                    kernel_m = mx_ops.cutlass_moe_mm_gemm_kernel_m_w8a8(
+                        curr_topk_ids.numel(), N, curr_hidden_states.shape[1], E
+                    )
+                assert kernel_m > 0, (
+                    "cutlass_moe_w8a8 BLOCK_SIZE_M must greater than zero."
+                )
+                # override kernel_m to config["BLOCK_SIZE_M"]
+                stage1_config["BLOCK_SIZE_M"] = kernel_m
+                stage2_config["BLOCK_SIZE_M"] = kernel_m
+
+            if use_int4_w4a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API:
+                assert block_shape is not None
+                kernel_m = mx_ops.mctlassEx_fused_moe_w4a8_get_kernel_m(
+                    qcurr_hidden_states,
+                    w1.view(dtype=torch.quint4x2),
+                    intermediate_cache1,
+                    num_experts=w1.size(0),
+                    batch_size=qcurr_hidden_states.size(0),
+                    N=N,
+                    K=K,
+                    num_valid_tokens=num_tokens,
+                    topk=top_k_num,
+                    group_size=block_shape[1],
+                )
+                assert kernel_m > 0, (
+                    "cutlass_fused_moe_w4a8 BLOCK_SIZE_M must greater than zero."
+                )
+                # override kernel_m to config["BLOCK_SIZE_M"]
+                stage1_config["BLOCK_SIZE_M"] = kernel_m
+                stage2_config["BLOCK_SIZE_M"] = kernel_m
+
             invoke_fused_moe_kernel(
                 qcurr_hidden_states,
                 w1,
@@ -2108,6 +2177,7 @@ def fused_experts_impl(
                 use_fp8_w8a8=use_fp8_w8a8,
                 use_int8_w8a8=use_int8_w8a8,
                 use_int8_w8a16=use_int8_w8a16,
+                use_int4_w4a8=use_int4_w4a8,
                 use_int4_w4a16=use_int4_w4a16,
                 orig_acc_dtype=hidden_states.dtype,
                 per_channel_quant=per_channel_quant,
@@ -2141,16 +2211,41 @@ def fused_experts_impl(
             raise ValueError(f"Unsupported FusedMoe activation: {activation}.")
 
         # ┌------------------------  Metax Modification -------------------------┐
-        if (
+        use_mctlass_moe_mm_on_stage2 = (
+            mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+            and use_int8_w8a8 is False
+            and hidden_states.dtype == torch.bfloat16
+            and stage2_config["BLOCK_SIZE_M"] == 128
+            and stage2_config["BLOCK_SIZE_N"] == 128
+            and stage2_config["BLOCK_SIZE_K"] == 64
+            and stage2_config["SPLIT_K"] == 1
+            and w2.shape[1] % 128 == 0
+            and w2.shape[2] % 8 == 0
+        )
+
+        use_fused_moe_kernel_on_stage2 = (
             stage2_config["BLOCK_SIZE_M"] == 128
             and not use_int8_w8a8
             and w2.shape[1] % 4 == 0
             and w2.shape[2] % 8 == 0
-            and (
-                hidden_states.dtype == torch.bfloat16
-                or hidden_states.dtype == torch.float16
+            and hidden_states.dtype in (torch.bfloat16, torch.float16)
+        )
+
+        if use_mctlass_moe_mm_on_stage2:
+            # use mctlass_moe_mm
+            mx_ops.cutlass_moe_bf16_mm(
+                intermediate_cache3,
+                intermediate_cache2,
+                w2,
+                curr_topk_weights,
+                sorted_token_ids,
+                expert_ids,
+                num_tokens_post_padded,
+                curr_topk_ids.numel(),
+                1,
+                True,
             )
-        ):
+        elif use_fused_moe_kernel_on_stage2:
             mx_ops.fused_moe_kernel(
                 intermediate_cache2,
                 w2,
@@ -2201,6 +2296,7 @@ def fused_experts_impl(
                 use_fp8_w8a8=use_fp8_w8a8,
                 use_int8_w8a8=use_int8_w8a8,
                 use_int8_w8a16=use_int8_w8a16,
+                use_int4_w4a8=use_int4_w4a8,
                 use_int4_w4a16=use_int4_w4a16,
                 orig_acc_dtype=hidden_states.dtype,
                 per_channel_quant=per_channel_quant,
@@ -2349,6 +2445,7 @@ class TritonExperts(mk.FusedMoEPermuteExpertsUnpermute):
             use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
             use_int8_w8a8=self.quant_config.use_int8_w8a8,
             use_int8_w8a16=self.quant_config.use_int8_w8a16,
+            use_int4_w4a8=self.quant_config.use_int4_w4a8,
             use_int4_w4a16=self.quant_config.use_int4_w4a16,
             orig_acc_dtype=hidden_states.dtype,
             per_channel_quant=self.per_act_token_quant,
@@ -2388,6 +2485,7 @@ class TritonExperts(mk.FusedMoEPermuteExpertsUnpermute):
             use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
             use_int8_w8a8=self.quant_config.use_int8_w8a8,
             use_int8_w8a16=self.quant_config.use_int8_w8a16,
+            use_int4_w4a8=self.quant_config.use_int4_w4a8,
             use_int4_w4a16=self.quant_config.use_int4_w4a16,
             orig_acc_dtype=hidden_states.dtype,
             per_channel_quant=self.per_act_token_quant,

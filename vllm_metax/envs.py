@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 
 import os
 from typing import TYPE_CHECKING, Any, Callable
 
-from vllm.logger import logger
 
 if TYPE_CHECKING:
     VLLM_TARGET_DEVICE: str = "cuda"
@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     VLLM_TEST_USE_PRECOMPILED_NIGHTLY_WHEEL: bool = False
     CMAKE_BUILD_TYPE: str | None
     VERBOSE: bool = False
+    MACA_DP_OPT: bool = False
 
 environment_variables: dict[str, Callable[[], Any]] = {
     # ================== Installation Time Env Vars ==================
@@ -50,6 +51,19 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # (e.g. install vllm from source with tag v0.9.1 will cause the version set
     # as 0.9.2)
     "VLLM_OFFICIAL_VERSION": lambda: os.getenv("VLLM_OFFICIAL_VERSION", None),
+    # if set, enable loading weight by transpose
+    "MACA_VLLM_USE_TN_2_NN": lambda: os.environ.get("MACA_VLLM_USE_TN_2_NN", "0")
+    == "1",
+    # if set, enable mctlass python api, only support scaled_mm and moe_w8a8 int8
+    "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": lambda: bool(
+        int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_PYTHON_API", "0"))
+    ),
+    # if set, enable bf16 cutlass moe on stage2, or w8a8 cutlass moe on both stage1 and stage2
+    "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE": lambda: bool(
+        int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE", "0"))
+    ),
+    # if set, enable combine allreduce all2all
+    "MACA_DP_OPT": lambda: bool(os.environ.get("MACA_DP_OPT", 0)),
 }
 
 
@@ -65,6 +79,7 @@ def override_vllm_env(env_name: str, value: Any, reason: str | None) -> None:
                the env resolver will return None.
     """
     from vllm import envs
+    from vllm.logger import logger
 
     if not isinstance(env_name, str):
         raise TypeError("env_name must be a string")

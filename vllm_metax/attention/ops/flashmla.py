@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 # adapted from: https://github.com/deepseek-ai/FlashMLA/blob/main/flash_mla/flash_mla_interface.py
 
@@ -79,9 +80,21 @@ def get_mla_metadata(
     - num_splits: (batch_size + 1), dtype torch.int32.
     """
     # /------------------------  Metax Modification -------------------------\
-    return flash_mla.flash_mla_interface.get_mla_metadata(
-        cache_seqlens, num_q_tokens_per_head_k, num_heads_k
-    )
+    # return flash_mla.flash_mla_interface.get_mla_metadata(
+    #     cache_seqlens, num_q_tokens_per_head_k, num_heads_k)
+    if topk is not None:
+        return flash_mla.flash_mla_interface.get_mla_metadata(
+            cache_seqlens,
+            num_q_tokens_per_head_k,
+            num_heads_k,
+            num_heads_q,
+            is_fp8_kvcache,
+            topk,
+        )
+    else:
+        return flash_mla.flash_mla_interface.get_mla_metadata(
+            cache_seqlens, num_q_tokens_per_head_k, num_heads_k
+        )
     # \------------------------- Metax Modification -------------------------/
 
 
@@ -147,6 +160,22 @@ def flash_mla_with_kvcache(
     # /------------------------  Metax Modification -------------------------\
     if indices is None and q.element_size() == 1:
         raise NotImplementedError("flash_mla_with_kvcache does not support fp8 input. ")
+    elif indices is not None:
+        is_all_indices_valid = not (indices == -1).any()
+        out, softmax_lse = flash_mla.flash_mla_interface.flash_mla_with_kvcache(
+            q,
+            k_cache,
+            block_table,
+            cache_seqlens,
+            head_dim_v,
+            tile_scheduler_metadata,
+            num_splits,
+            softmax_scale,
+            causal,
+            is_fp8_kvcache,
+            indices,
+            is_all_indices_valid,
+        )
     else:
         out, softmax_lse = flash_mla.flash_mla_interface.flash_mla_with_kvcache(
             q,
@@ -226,10 +255,15 @@ def flash_mla_sparse_prefill(
     """
     # TODO: MetaX flash_mla support
     # /------------------------  Metax Modification -------------------------\
-    min_seq_len = -1 if (indices == -1).any() else 2049
+    # min_seq_len = -1 if (indices == -1).any() else 2049
+
+    # results = flash_mla.flash_mla_interface.flash_mla_sparse_fwd(
+    #     q, kv, indices, sm_scale, d_v, min_seq_len
+    # )
+    is_all_indices_valid = not (indices == -1).any()
 
     results = flash_mla.flash_mla_interface.flash_mla_sparse_fwd(
-        q, kv, indices, sm_scale, d_v, min_seq_len
+        q, kv, indices, sm_scale, d_v, is_all_indices_valid
     )
     # \------------------------- Metax Modification -------------------------/
     return results

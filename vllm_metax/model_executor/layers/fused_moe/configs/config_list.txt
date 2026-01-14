@@ -1,0 +1,21 @@
+ERNIE-4.5-300B-A47B-PT   ：/pde_ai/models/llm/ERNIE/ERNIE-4.5-300B-A47B-PT/   tp64  H=8192,E=64,N=448,device_name=Device_4000.json
+
+DeepSeek-V3：H=7168,E=256,N=128,device_name=Device_4000,dtype=int8_w8a8.json
+
+Qwen3-30B-BF16：H=2048,E=128,N=192,device_name=Device_4000.json
+
+Qwen3-30B-W8A8
+Qwen3-235B-BF16
+Qwen3-235B-W8A8：/pde_ai/models/llm/Qwen/Qwen3-235B-A22B     tp8  H=4096,E=128,N=192,device_name=Device_4000,dtype=int8_w8a8-v4.json
+
+Qwen3-Next-80B-A3B： H=2048,E=512,N=128,device_name=Device_4000,dtype=int8_w8a8.json
+
+H=2048,E=512,N=256,device_name=Device_4000,dtype=int8_w8a8.json
+
+glm4.5：/pde_ai/models/llm/ChatGLM/GLM-4.5-Air/    tp8    H=4096,E=128,N=1368,device_name=Device_4000.json
+
+glm4.5-air w8a8 ：  /pde_ai/models/llm/ChatGLM/GLM-4.5-Air.w8a8/     tp4  H=4096,E=128,N=2736,device_name=Device_4000,dtype=int8_w8a8.json
+
+/pde_ai/models/llm/Qwen/Qwen3-30B-A3B-AWQ/  tp1   H=2048,E=128,N=384,device_name=Device_4000,dtype=int4_w4a16-1.json
+
+/pde_ai/models/llm/Mistral/Mixtral-8x7B-v0.1  tp4  H=4096,E=8,N=3584,device_name=Device_4000.json

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """Attention layer with FlashAttention."""
 
@@ -793,6 +794,7 @@ class FlashAttentionImpl(AttentionImpl):
                             window_size=self.sliding_window,
                             alibi_slopes=self.alibi_slopes,
                             softcap=self.logits_soft_cap,
+                            s_aux=self.sinks,
                         )
                     )
                 if attn_metadata.num_decodes > 0:
@@ -812,6 +814,7 @@ class FlashAttentionImpl(AttentionImpl):
                         window_size=self.sliding_window,
                         alibi_slopes=self.alibi_slopes,
                         softcap=self.logits_soft_cap,
+                        s_aux=self.sinks,
                     )
                     output[:num_decode_tokens] = reshape_attn_output_for_spec_decode(
                         output_unreshape
@@ -844,7 +847,7 @@ class FlashAttentionImpl(AttentionImpl):
             q_descale=layer._q_scale,
             k_descale=layer._k_scale,
             v_descale=layer._v_scale,
-            s_aux=self.sinks,
+            sinks=self.sinks,
         )
         return output
 
@@ -895,6 +898,7 @@ class FlashAttentionImpl(AttentionImpl):
             # q_descale=q_descale,
             # k_descale=k_descale,
             # v_descale=v_descale,
+            s_aux=self.sinks,
         )
         # FA returns LSE in shape [ H, B ] but cp_lse_ag_out_rs wants [ B, H ]
         context_attn_out_cor, context_lse_cor = cp_lse_ag_out_rs(
@@ -923,6 +927,7 @@ class FlashAttentionImpl(AttentionImpl):
             # q_descale=q_descale,
             # k_descale=k_descale,
             # v_descale=v_descale,
+            s_aux=self.sinks,
         )
         assert context_attn_out_cor.shape == query_attn_out.shape
         assert context_lse_cor.shape == query_lse.shape
@@ -989,6 +994,7 @@ class FlashAttentionImpl(AttentionImpl):
             # q_descale=layer._q_scale.expand(descale_shape),
             # k_descale=layer._k_scale.expand(descale_shape),
             # v_descale=layer._v_scale.expand(descale_shape),
+            s_aux=self.sinks,
             num_splits=1 if self.batch_invariant_enabled else 0,
         )
 
@@ -1097,7 +1103,7 @@ def cascade_attention(
     q_descale: torch.Tensor | None = None,
     k_descale: torch.Tensor | None = None,
     v_descale: torch.Tensor | None = None,
-    s_aux: torch.Tensor | None = None,
+    sinks: torch.Tensor | None = None,
 ) -> torch.Tensor:
     assert alibi_slopes is None, "Cascade attention does not support ALiBi."
     # TODO: Support sliding window.
@@ -1132,6 +1138,7 @@ def cascade_attention(
         window_size=sliding_window,
         block_table=block_table[:1],
         softcap=logits_soft_cap,
+        s_aux=sinks,
     )
 
     descale_shape = (cu_query_lens.shape[0] - 1, key_cache.shape[-2])
@@ -1156,6 +1163,7 @@ def cascade_attention(
         block_table=block_table[:, num_common_kv_blocks:],
         softcap=logits_soft_cap,
         return_attn_probs=True,
+        s_aux=sinks,
     )
 
     # Merge prefix and suffix outputs, and store the result in output.
