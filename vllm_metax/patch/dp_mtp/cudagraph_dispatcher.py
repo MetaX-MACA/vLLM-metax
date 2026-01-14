@@ -14,6 +14,7 @@ from vllm.logger import init_logger
 
 logger = init_logger(__name__)
 
+
 class MacaCudagraphDispatcher(CudagraphDispatcher):
     def __init__(self, vllm_config: VllmConfig):
         self.vllm_config = vllm_config
@@ -161,7 +162,12 @@ class MacaCudagraphDispatcher(CudagraphDispatcher):
         # finally, just return no cudagraphs and a trivial batch descriptor
         return CUDAGraphMode.NONE, BatchDescriptor(num_tokens)
 
+
 CudagraphDispatcher.__init__ = MacaCudagraphDispatcher.__init__
-CudagraphDispatcher._create_padded_batch_descriptor = MacaCudagraphDispatcher._create_padded_batch_descriptor
-CudagraphDispatcher.initialize_cudagraph_keys = MacaCudagraphDispatcher.initialize_cudagraph_keys
+CudagraphDispatcher._create_padded_batch_descriptor = (
+    MacaCudagraphDispatcher._create_padded_batch_descriptor
+)
+CudagraphDispatcher.initialize_cudagraph_keys = (
+    MacaCudagraphDispatcher.initialize_cudagraph_keys
+)
 CudagraphDispatcher.dispatch = MacaCudagraphDispatcher.dispatch

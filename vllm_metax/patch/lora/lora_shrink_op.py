@@ -120,6 +120,7 @@ def _lora_shrink_kernel(
         USE_GDC,
     )
 
+
 import vllm.lora.ops.triton_ops.lora_shrink_op
 
 vllm.lora.ops.triton_ops.lora_shrink_op._lora_shrink_kernel = _lora_shrink_kernel

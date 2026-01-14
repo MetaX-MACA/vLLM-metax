@@ -18,6 +18,7 @@ logger = init_logger(__name__)
 
 from vllm.v1.engine.coordinator import EngineState, DPCoordinatorProc
 
+
 class MacaDPCoordinatorProc(DPCoordinatorProc):
     def process_input_socket(
         self,
@@ -97,7 +98,7 @@ class MacaDPCoordinatorProc(DPCoordinatorProc):
                     publish_front.send(msgspec.msgpack.encode(to_publish))
                     last_publish_time = int(time.time() * 1000)
                     continue
-                
+
                 events = dict(events)
                 wave_state_changed = False
 
@@ -259,6 +260,7 @@ class MacaDPCoordinatorProc(DPCoordinatorProc):
             )
         except KeyboardInterrupt:
             logger.info("DP Coordinator process exiting")
+
 
 DPCoordinatorProc.process_input_socket = MacaDPCoordinatorProc.process_input_socket
 DPCoordinatorProc.run_coordinator = MacaDPCoordinatorProc.run_coordinator

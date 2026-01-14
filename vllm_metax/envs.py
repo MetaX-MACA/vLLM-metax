@@ -50,20 +50,17 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # will be different from the version of vllm installed by pip.
     # (e.g. install vllm from source with tag v0.9.1 will cause the version set
     # as 0.9.2)
-    "VLLM_OFFICIAL_VERSION":
-    lambda: os.getenv("VLLM_OFFICIAL_VERSION", None),
-
+    "VLLM_OFFICIAL_VERSION": lambda: os.getenv("VLLM_OFFICIAL_VERSION", None),
     # if set, enable mctlass python api, only support scaled_mm and moe_w8a8 int8
-    "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API":
-    lambda: bool(int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_PYTHON_API", "0"))),
-
+    "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": lambda: bool(
+        int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_PYTHON_API", "0"))
+    ),
     # if set, enable bf16 cutlass moe on stage2, or w8a8 cutlass moe on both stage1 and stage2
-    "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE":
-    lambda: bool(int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE", "0"))),
-
+    "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE": lambda: bool(
+        int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE", "0"))
+    ),
     # if set, enable combine allreduce all2all
-    "MACA_DP_OPT":
-    lambda: bool(os.environ.get("MACA_DP_OPT", 0)),
+    "MACA_DP_OPT": lambda: bool(os.environ.get("MACA_DP_OPT", 0)),
 }
 
 

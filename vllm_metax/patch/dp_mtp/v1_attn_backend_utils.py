@@ -13,6 +13,8 @@ import vllm.v1.attention.backends.utils
 from vllm.v1.attention.backends.utils import CommonAttentionMetadata
 from vllm.v1.worker.ubatch_utils import UBatchSlice
 from vllm.v1.attention.backends.utils import slice_query_start_locs
+
+
 @dataclass
 class MacaCommonAttentionMetadata(CommonAttentionMetadata):
     # /------------------------  Metax Modification -------------------------\
@@ -39,7 +41,9 @@ class MacaCommonAttentionMetadata(CommonAttentionMetadata):
             dcp_local_seq_lens=maybe_slice_reqs(self.dcp_local_seq_lens),
             dcp_local_seq_lens_cpu=maybe_slice_reqs(self.dcp_local_seq_lens_cpu),
         )
+
     # /------------------------  Metax Modification -------------------------\
+
 
 def Maca_make_metadata_with_slice(
     ubatch_slice: UBatchSlice, attn_metadata: CommonAttentionMetadata
@@ -133,6 +137,7 @@ def Maca_make_metadata_with_slice(
         slot_mapping=slot_mapping,
     )
 
+
 def Maca_split_decodes_and_prefills(
     common_attn_metadata: CommonAttentionMetadata,
     decode_threshold: int = 1,
@@ -191,7 +196,12 @@ def Maca_split_decodes_and_prefills(
     num_prefill_tokens = num_tokens - num_decode_tokens
     return (num_decodes, num_prefills, num_decode_tokens, num_prefill_tokens)
 
+
 vllm.v1.attention.backends.utils.CommonAttentionMetadata = MacaCommonAttentionMetadata
 CommonAttentionMetadata.unpadded = MacaCommonAttentionMetadata.unpadded
-vllm.v1.attention.backends.utils.make_metadata_with_slice = Maca_make_metadata_with_slice
-vllm.v1.attention.backends.utils.split_decodes_and_prefills = Maca_split_decodes_and_prefills
+vllm.v1.attention.backends.utils.make_metadata_with_slice = (
+    Maca_make_metadata_with_slice
+)
+vllm.v1.attention.backends.utils.split_decodes_and_prefills = (
+    Maca_split_decodes_and_prefills
+)

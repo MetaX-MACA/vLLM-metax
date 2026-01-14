@@ -4,7 +4,9 @@
 
 import vllm.attention.layer as attn
 
+
 def always_true_check(dtype):
     return True
+
 
 attn.check_upstream_fa_availability = always_true_check

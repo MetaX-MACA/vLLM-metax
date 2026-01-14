@@ -31,7 +31,7 @@ from vllm.v1.attention.backends.utils import (
     AttentionCGSupport,
     AttentionMetadataBuilder,
     CommonAttentionMetadata,
-    split_decodes_and_prefills
+    split_decodes_and_prefills,
 )
 from vllm.v1.kv_cache_interface import AttentionSpec
 from vllm.attention.backends.registry import AttentionBackendEnum, register_backend
@@ -283,20 +283,21 @@ class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetad
         else:
             self.num_spec = 0
         max_num_seq = vllm_config.scheduler_config.max_num_seqs * (self.num_spec + 1)
-        self.topk_tokens_tensor = torch.full((max_num_seq,),
-                                            self.topk_tokens,
-                                            device=self.device,
-                                            dtype=torch.int32)
+        self.topk_tokens_tensor = torch.full(
+            (max_num_seq,), self.topk_tokens, device=self.device, dtype=torch.int32
+        )
 
-        self.max_model_len_tensor = torch.full((max_num_seq,),
-                                        self.model_config.max_model_len,
-                                        device=self.device,
-                                        dtype=torch.int32)
+        self.max_model_len_tensor = torch.full(
+            (max_num_seq,),
+            self.model_config.max_model_len,
+            device=self.device,
+            dtype=torch.int32,
+        )
 
         # this is ignored by `flash_mla_with_kvcache` if indices not None
-        self.dummy_block_table = torch.empty((max_num_seq, 1),
-                                            dtype=torch.int32,
-                                            device=self.device)
+        self.dummy_block_table = torch.empty(
+            (max_num_seq, 1), dtype=torch.int32, device=self.device
+        )
         # \------------------------- Metax Modification -------------------------/
 
         # Equation taken from FlashMLA/csrc/pybind.cpp
@@ -318,7 +319,7 @@ class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetad
             # We pack all the tokens into one batch for sparse attention.
             # Otherwise, we can exceed the sm of `get_mla_metadata`.
             # /------------------------  Metax Modification -------------------------\
-             (max_num_seq + 1, ),
+            (max_num_seq + 1,),
             # \------------------------  Metax Modification -------------------------/
             dtype=torch.int32,
             device=device,
@@ -351,8 +352,9 @@ class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetad
         fp8_extra_metadata = None
 
         # /------------------------  Metax Modification ---------------------------------\
-        num_decodes, num_prefills, num_decode_tokens, num_prefill_tokens = \
+        num_decodes, num_prefills, num_decode_tokens, num_prefill_tokens = (
             split_decodes_and_prefills(common_attn_metadata)
+        )
 
         if False and num_prefills == 0 and num_decodes > 0:
             tile_scheduler_metadata, num_splits = get_mla_metadata(
@@ -361,7 +363,7 @@ class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetad
                 topk=self.topk_tokens,
                 num_heads_q=self.num_heads,
                 num_heads_k=1,
-                is_fp8_kvcache=False
+                is_fp8_kvcache=False,
             )
 
             num_sm_parts = tile_scheduler_metadata.size(0)
@@ -492,7 +494,9 @@ class FlashMLASparseImpl(MLACommonBaseImpl[FlashMLASparseMetadata]):
             tile_scheduler_metadata=extra_metadata.scheduler_metadata,
             num_splits=extra_metadata.num_splits,
             is_fp8_kvcache=False,
-            indices=topk_indices.unsqueeze(1),  # unsqueeze to add seqlen dim of 1(decode)
+            indices=topk_indices.unsqueeze(
+                1
+            ),  # unsqueeze to add seqlen dim of 1(decode)
             softmax_scale=self.softmax_scale,
         )
         # \------------------------  Metax Modification -------------------------/

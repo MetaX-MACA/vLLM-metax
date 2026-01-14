@@ -8,6 +8,7 @@ from vllm.utils.math_utils import round_up
 
 from vllm.config.compilation import CompilationConfig
 
+
 class MacaCompilationConfig(CompilationConfig):
     def adjust_cudagraph_sizes_for_spec_decode(
         self, uniform_decode_query_len: int, tensor_parallel_size: int
@@ -61,4 +62,7 @@ class MacaCompilationConfig(CompilationConfig):
         # Recompute after adjusting the cudagraph sizes
         self.compute_bs_to_padded_graph_size()
 
-CompilationConfig.adjust_cudagraph_sizes_for_spec_decode = MacaCompilationConfig.adjust_cudagraph_sizes_for_spec_decode
+
+CompilationConfig.adjust_cudagraph_sizes_for_spec_decode = (
+    MacaCompilationConfig.adjust_cudagraph_sizes_for_spec_decode
+)

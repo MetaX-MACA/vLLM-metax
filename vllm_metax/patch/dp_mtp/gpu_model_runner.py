@@ -2,7 +2,7 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 
 # ------------------------------------------------------------------------
-# Note: This file is a patch to fix dp mtp hang 
+# Note: This file is a patch to fix dp mtp hang
 # ------------------------------------------------------------------------
 from typing import TypeAlias
 
@@ -32,11 +32,20 @@ from vllm.v1.spec_decode.eagle import EagleProposer
 from vllm.v1.worker.dp_utils import coordinate_batch_across_dp
 from vllm.v1.worker.ubatch_utils import UBatchSlices, check_ubatch_thresholds
 from vllm.v1.worker.utils import is_residual_scattered_for_sp
-from vllm.v1.attention.backends.utils import CommonAttentionMetadata, get_dcp_local_seq_lens, split_attn_metadata
+from vllm.v1.attention.backends.utils import (
+    CommonAttentionMetadata,
+    get_dcp_local_seq_lens,
+    split_attn_metadata,
+)
 from vllm.v1.kv_cache_interface import EncoderOnlyAttentionSpec
 from vllm.v1.attention.backends.gdn_attn import GDNAttentionMetadataBuilder
 from vllm.sequence import IntermediateTensors
-from vllm.v1.outputs import EMPTY_MODEL_RUNNER_OUTPUT, ModelRunnerOutput, make_empty_encoder_model_runner_output
+from vllm.v1.outputs import (
+    EMPTY_MODEL_RUNNER_OUTPUT,
+    ModelRunnerOutput,
+    make_empty_encoder_model_runner_output,
+)
+
 if TYPE_CHECKING:
     from vllm.v1.core.sched.output import SchedulerOutput
 from vllm.v1.utils import record_function_or_nullcontext
@@ -52,6 +61,7 @@ from vllm.v1.worker.gpu_model_runner import ExecuteModelState, GPUModelRunner
 from vllm.logger import init_logger
 
 logger = init_logger(__name__)
+
 
 class MacaGPUModelRunner(GPUModelRunner):
     def _prepare_inputs(
@@ -639,9 +649,7 @@ class MacaGPUModelRunner(GPUModelRunner):
                 (
                     logits_indices,
                     spec_decode_metadata,
-                ) = self._prepare_inputs(
-                    scheduler_output, num_scheduled_tokens_np
-                )
+                ) = self._prepare_inputs(scheduler_output, num_scheduled_tokens_np)
 
                 cascade_attn_prefix_lens = None
                 # Disable cascade attention when using microbatching (DBO)
@@ -1065,11 +1073,11 @@ class MacaGPUModelRunner(GPUModelRunner):
                     use_cudagraphs = False
 
                 self.drafter.dummy_run(
-                # /------------------------  Metax Modification -------------------------\
+                    # /------------------------  Metax Modification -------------------------\
                     num_tokens_padded,
                     use_cudagraphs=use_cudagraphs,
                     is_graph_capturing=is_graph_capturing,
-                # \------------------------  Metax Modification -------------------------/
+                    # \------------------------  Metax Modification -------------------------/
                 )
 
         # This is necessary to avoid blocking DP.
@@ -1087,7 +1095,7 @@ class MacaGPUModelRunner(GPUModelRunner):
             self.device, non_blocking=True
         )
         return hidden_states, hidden_states[logit_indices_device]
-    
+
     def _capture_cudagraphs(
         self,
         compilation_cases: list[tuple[int, bool]],
@@ -1158,10 +1166,15 @@ class MacaGPUModelRunner(GPUModelRunner):
             )
         self.maybe_remove_all_loras(self.lora_config)
 
+
 GPUModelRunner._prepare_inputs = MacaGPUModelRunner._prepare_inputs
 GPUModelRunner._build_attention_metadata = MacaGPUModelRunner._build_attention_metadata
-GPUModelRunner._determine_batch_execution_and_padding = MacaGPUModelRunner._determine_batch_execution_and_padding
-GPUModelRunner._pad_for_sequence_parallelism = MacaGPUModelRunner._pad_for_sequence_parallelism
+GPUModelRunner._determine_batch_execution_and_padding = (
+    MacaGPUModelRunner._determine_batch_execution_and_padding
+)
+GPUModelRunner._pad_for_sequence_parallelism = (
+    MacaGPUModelRunner._pad_for_sequence_parallelism
+)
 GPUModelRunner.execute_model = MacaGPUModelRunner.execute_model
 GPUModelRunner._dummy_run = MacaGPUModelRunner._dummy_run
 GPUModelRunner._capture_cudagraphs = MacaGPUModelRunner._capture_cudagraphs

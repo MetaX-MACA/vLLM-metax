@@ -3,6 +3,7 @@
 
 from .version import __version__, __version_tuple__  # noqa: F401
 
+
 def collect_env() -> None:
     from vllm_metax.collect_env import main as collect_env_main
 

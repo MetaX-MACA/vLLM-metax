@@ -6,10 +6,13 @@
 # ------------------------------------------------------------------------
 import torch
 
-from vllm.distributed import (get_tensor_model_parallel_world_size,
-                              tensor_model_parallel_all_reduce)
+from vllm.distributed import (
+    get_tensor_model_parallel_world_size,
+    tensor_model_parallel_all_reduce,
+)
 from vllm.model_executor.layers.fused_moe.layer import FusedMoE
 from vllm.model_executor.layers.fused_moe.shared_fused_moe import SharedFusedMoE
+
 
 class MacaSharedFusedMoE(SharedFusedMoE):
     def __init__(
@@ -38,7 +41,8 @@ class MacaSharedFusedMoE(SharedFusedMoE):
             if self._shared_experts is not None:
                 shared_out = self._shared_experts(hidden_states)
 
-                if (get_tensor_model_parallel_world_size() > 1
+                if (
+                    get_tensor_model_parallel_world_size() > 1
                     and self.must_reduce_shared_expert_outputs()
                 ):
                     shared_out = tensor_model_parallel_all_reduce(shared_out)
@@ -57,12 +61,14 @@ class MacaSharedFusedMoE(SharedFusedMoE):
                 router_logits=router_logits,
             )
             # ensure early TP reduction of shared expert outputs when required
-            if (shared_out is not None
+            if (
+                shared_out is not None
                 and get_tensor_model_parallel_world_size() > 1
                 and self.must_reduce_shared_expert_outputs()
             ):
                 shared_out = tensor_model_parallel_all_reduce(shared_out)
         return shared_out, fused_out
+
 
 SharedFusedMoE.__init__ = MacaSharedFusedMoE.__init__
 SharedFusedMoE.forward = MacaSharedFusedMoE.forward

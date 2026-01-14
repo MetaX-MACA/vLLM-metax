@@ -16,16 +16,23 @@ from vllm.model_executor.layers.fused_moe.fused_moe_modular_method import (
 from vllm.distributed import tensor_model_parallel_all_reduce
 
 from vllm.model_executor.layers.fused_moe.layer import FusedMoE
-from vllm_metax.model_executor.layers.fused_moe.fused_moe import grouped_topk as mx_grouped_topk
+from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
+    grouped_topk as mx_grouped_topk,
+)
+
 
 class MacaFusedMoE(FusedMoE):
-    
     @property
     def use_combine_allreduce(self):
-        return self.moe_parallel_config.dp_size > 1 and mx_envs.MACA_DP_OPT \
-            and (envs.VLLM_ALL2ALL_BACKEND == "naive" \
-                or envs.VLLM_ALL2ALL_BACKEND == "allgather_reducescatter")
-    
+        return (
+            self.moe_parallel_config.dp_size > 1
+            and mx_envs.MACA_DP_OPT
+            and (
+                envs.VLLM_ALL2ALL_BACKEND == "naive"
+                or envs.VLLM_ALL2ALL_BACKEND == "allgather_reducescatter"
+            )
+        )
+
     def must_reduce_shared_expert_outputs(self) -> bool:
         assert self.quant_method is not None
         return (
@@ -42,7 +49,7 @@ class MacaFusedMoE(FusedMoE):
             return final_hidden_states
         else:
             return tensor_model_parallel_all_reduce(final_hidden_states)
-    
+
     @staticmethod
     def select_experts(
         hidden_states: torch.Tensor,
@@ -186,7 +193,12 @@ class MacaFusedMoE(FusedMoE):
             zero_expert_result = None
         return topk_weights, topk_ids, zero_expert_result
 
+
 FusedMoE.select_experts = MacaFusedMoE.select_experts
 FusedMoE.use_combine_allreduce = MacaFusedMoE.use_combine_allreduce
-FusedMoE.must_reduce_shared_expert_outputs = MacaFusedMoE.must_reduce_shared_expert_outputs
-FusedMoE.maybe_all_reduce_tensor_model_parallel = MacaFusedMoE.maybe_all_reduce_tensor_model_parallel
+FusedMoE.must_reduce_shared_expert_outputs = (
+    MacaFusedMoE.must_reduce_shared_expert_outputs
+)
+FusedMoE.maybe_all_reduce_tensor_model_parallel = (
+    MacaFusedMoE.maybe_all_reduce_tensor_model_parallel
+)

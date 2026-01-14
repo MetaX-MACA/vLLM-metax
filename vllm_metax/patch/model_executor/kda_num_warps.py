@@ -2,8 +2,10 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 from vllm.triton_utils import tl, triton
 from vllm.model_executor.layers.fla.ops.op import log
+
 BT_LIST_AUTOTUNE = [32, 64, 128]
 NUM_WARPS_AUTOTUNE = [2, 4, 8, 16]
+
 
 @triton.autotune(
     configs=[
@@ -75,6 +77,7 @@ def kda_gate_fwd_kernel(
     b_y = b_a * sp
 
     tl.store(y_ptr, b_y.to(y.dtype.element_ty), boundary_check=(0, 1))
+
 
 import vllm.model_executor.layers.fla.ops.kda
 

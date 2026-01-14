@@ -82,11 +82,17 @@ def get_mla_metadata(
     # /------------------------  Metax Modification -------------------------\
     if topk is not None:
         return flash_mla.flash_mla_interface.get_mla_metadata(
-            cache_seqlens, num_q_tokens_per_head_k, num_heads_k,
-            num_heads_q, is_fp8_kvcache, topk)
+            cache_seqlens,
+            num_q_tokens_per_head_k,
+            num_heads_k,
+            num_heads_q,
+            is_fp8_kvcache,
+            topk,
+        )
     else:
         return flash_mla.flash_mla_interface.get_mla_metadata(
-            cache_seqlens, num_q_tokens_per_head_k, num_heads_k)
+            cache_seqlens, num_q_tokens_per_head_k, num_heads_k
+        )
     # \------------------------- Metax Modification -------------------------/
 
 
@@ -245,10 +251,11 @@ def flash_mla_sparse_prefill(
     """
     # TODO: MetaX flash_mla support
     # /------------------------  Metax Modification -------------------------\
-    is_all_indices_valid = False if (indices == -1).any() else True
+    is_all_indices_valid = not (indices == -1).any()
 
     results = flash_mla.flash_mla_interface.flash_mla_sparse_fwd(
-        q, kv, indices, sm_scale, d_v, is_all_indices_valid)
+        q, kv, indices, sm_scale, d_v, is_all_indices_valid
+    )
     # \------------------------- Metax Modification -------------------------/
     return results
 

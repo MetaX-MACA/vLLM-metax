@@ -6,6 +6,7 @@ import torch
 
 from vllm.triton_utils import tl, triton
 
+
 @triton.jit(
     do_not_specialize=[
         "num_valid_tokens",
@@ -151,7 +152,10 @@ def _fused_moe_lora_kernel(
         tl.store(c_ptrs, accumulator, mask=c_mask)
     else:
         tl.atomic_add(c_ptrs, accumulator, mask=c_mask, sem="relaxed")
-    
+
+
 import vllm.lora.ops.triton_ops.fused_moe_lora_op
 
-vllm.lora.ops.triton_ops.fused_moe_lora_op._fused_moe_lora_kernel = _fused_moe_lora_kernel
+vllm.lora.ops.triton_ops.fused_moe_lora_op._fused_moe_lora_kernel = (
+    _fused_moe_lora_kernel
+)

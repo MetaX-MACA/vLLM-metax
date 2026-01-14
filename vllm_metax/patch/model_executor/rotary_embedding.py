@@ -38,13 +38,15 @@ vllm.model_executor.layers.rotary_embedding.common.apply_rotary_emb_dispatch = (
 )
 
 
-
 # suport Qwen3-omni
 from typing import Optional, Union
 from transformers import PretrainedConfig
 from vllm.model_executor.layers.rotary_embedding.mrope import MRotaryEmbedding
+
+
 class MacaMRotaryEmbedding(MRotaryEmbedding):
     """Rotary Embedding with Multimodal Sections."""
+
     @classmethod
     def get_input_positions_tensor(
         cls,
@@ -119,5 +121,7 @@ class MacaMRotaryEmbedding(MRotaryEmbedding):
                 seq_len=seq_len,
             )
 
+
 import vllm.model_executor.layers.rotary_embedding.mrope
+
 vllm.model_executor.layers.rotary_embedding.mrope.MRotaryEmbedding.get_input_positions_tensor = MacaMRotaryEmbedding.get_input_positions_tensor

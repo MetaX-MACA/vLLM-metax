@@ -19,6 +19,7 @@ from vllm.platforms import PlatformEnum
 from vllm import _custom_ops as ops
 from vllm_metax import _custom_ops as mx_ops
 
+
 class MctlassScaledMMLinearKernel(CutlassScaledMMLinearKernel):
     @classmethod
     def can_implement(cls, c: ScaledMMLinearLayerConfig) -> tuple[bool, str | None]:

@@ -28,6 +28,7 @@ from vllm.v1.spec_decode.eagle import PADDING_SLOT_ID, EagleProposer
 
 original_init = EagleProposer.__init__
 
+
 class MacaEagleProposer(EagleProposer):
     def __init_new__(self, vllm_config, device, runner=None):
         original_init(self, vllm_config, device, runner)
@@ -51,7 +52,6 @@ class MacaEagleProposer(EagleProposer):
         sampling_metadata: SamplingMetadata,
         mm_embed_inputs: tuple[list[torch.Tensor], torch.Tensor] | None = None,
     ) -> torch.Tensor:
-        
         num_tokens = target_token_ids.shape[0]
         batch_size = next_token_ids.shape[0]
 
@@ -146,9 +146,9 @@ class MacaEagleProposer(EagleProposer):
             per_layer_attn_metadata,
             self.vllm_config,
             num_tokens=num_input_tokens,
-        # /------------------------  Metax Modification -------------------------\
+            # /------------------------  Metax Modification -------------------------\
             num_tokens_across_dp=num_tokens_across_dp,
-        # \------------------------- Metax Modification -------------------------/
+            # \------------------------- Metax Modification -------------------------/
             cudagraph_runtime_mode=cudagraph_runtime_mode,
         ):
             ret_hidden_states = self.model(
@@ -330,9 +330,9 @@ class MacaEagleProposer(EagleProposer):
                 per_layer_attn_metadata,
                 self.vllm_config,
                 num_tokens=input_batch_size,
-            # /------------------------  Metax Modification -------------------------\
+                # /------------------------  Metax Modification -------------------------\
                 num_tokens_across_dp=batch_size_across_dp,
-            # \------------------------- Metax Modification -------------------------/
+                # \------------------------- Metax Modification -------------------------/
                 cudagraph_runtime_mode=cudagraph_runtime_mode,
             ):
                 ret_hidden_states = self.model(
@@ -354,13 +354,13 @@ class MacaEagleProposer(EagleProposer):
         # [batch_size, num_speculative_tokens]
         draft_token_ids = torch.stack(draft_token_ids_list, dim=1)
         return draft_token_ids
-    
+
     @torch.inference_mode()
     def dummy_run(
         self,
         num_tokens: int,
         use_cudagraphs=True,
-    # /------------------------  Metax Modification -------------------------\
+        # /------------------------  Metax Modification -------------------------\
         is_graph_capturing=False,
     ) -> None:
         # Determine if CUDA graphs should be used for this run.
@@ -371,7 +371,7 @@ class MacaEagleProposer(EagleProposer):
         for fwd_idx in range(
             self.num_speculative_tokens if not is_graph_capturing else 1
         ):
-            if fwd_idx <= 1:     
+            if fwd_idx <= 1:
                 num_tokens_dp_padded, num_tokens_across_dp = self._pad_batch_across_dp(
                     num_tokens_unpadded=num_tokens,
                     num_tokens_padded=num_tokens,
@@ -395,7 +395,9 @@ class MacaEagleProposer(EagleProposer):
                 num_tokens=num_input_tokens,
                 num_tokens_across_dp=num_tokens_across_dp,
                 cudagraph_runtime_mode=(
-                    CUDAGraphMode.PIECEWISE if cudagraphs_enabled else CUDAGraphMode.NONE
+                    CUDAGraphMode.PIECEWISE
+                    if cudagraphs_enabled
+                    else CUDAGraphMode.NONE
                 ),
             ):
                 if self.supports_mm_inputs:
@@ -431,8 +433,13 @@ class MacaEagleProposer(EagleProposer):
 
         num_tokens_dp_padded = num_tokens_padded
         if num_toks_across_dp is not None:
-            num_tokens_dp_padded = int(num_toks_across_dp[self.vllm_config.parallel_config.data_parallel_rank].item())
+            num_tokens_dp_padded = int(
+                num_toks_across_dp[
+                    self.vllm_config.parallel_config.data_parallel_rank
+                ].item()
+            )
         return num_tokens_dp_padded, num_toks_across_dp
+
     # \------------------------- Metax Modification -------------------------/
 
     def prepare_inputs_padded(
@@ -599,6 +606,7 @@ class MacaEagleProposer(EagleProposer):
         )
 
         return spec_common_attn_metadata, token_indices
+
 
 EagleProposer.__init__ = MacaEagleProposer.__init_new__
 EagleProposer.propose = MacaEagleProposer.propose

@@ -9,6 +9,7 @@ import vllm.forward_context
 from vllm.forward_context import BatchDescriptor
 from typing import NamedTuple
 
+
 class MacaBatchDescriptor(NamedTuple):
     # /------------------------  Metax Modification -------------------------\
     """
@@ -40,7 +41,11 @@ class MacaBatchDescriptor(NamedTuple):
         return MacaBatchDescriptor(
             self.num_tokens, num_reqs=None, uniform=False, has_lora=self.has_lora
         )
+
     # \------------------------- Metax Modification -------------------------/
 
+
 vllm.forward_context.BatchDescriptor = MacaBatchDescriptor
-BatchDescriptor.relax_for_mixed_batch_cudagraphs = MacaBatchDescriptor.relax_for_mixed_batch_cudagraphs
+BatchDescriptor.relax_for_mixed_batch_cudagraphs = (
+    MacaBatchDescriptor.relax_for_mixed_batch_cudagraphs
+)

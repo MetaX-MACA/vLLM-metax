@@ -20,6 +20,7 @@ import torch.nn.functional as F
 # from vllm.utils.torch_utils import direct_register_custom_op
 from vllm.utils import direct_register_custom_op
 
+
 def xformers_attn_seqlens_wrapper(
     q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, seqlens: torch.Tensor
 ) -> torch.Tensor:

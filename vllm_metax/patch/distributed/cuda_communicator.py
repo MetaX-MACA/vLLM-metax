@@ -16,13 +16,14 @@ from vllm.distributed.device_communicators.pynccl_allocator import (
     is_symmetric_memory_enabled,
 )
 from vllm.distributed.device_communicators.cuda_communicator import CudaCommunicator
-from vllm.distributed.device_communicators.base_device_communicator import DeviceCommunicatorBase
+from vllm.distributed.device_communicators.base_device_communicator import (
+    DeviceCommunicatorBase,
+)
 
 logger = init_logger(__name__)
 
 
 class MacaCommunicator(CudaCommunicator):
-
     def __init__(
         self,
         cpu_group: ProcessGroup,
@@ -30,7 +31,9 @@ class MacaCommunicator(CudaCommunicator):
         device_group: ProcessGroup | None = None,
         unique_name: str = "",
     ):
-        DeviceCommunicatorBase.__init__(self, cpu_group, device, device_group, unique_name)
+        DeviceCommunicatorBase.__init__(
+            self, cpu_group, device, device_group, unique_name
+        )
         if "tp" not in unique_name:
             # custom allreduce or torch symm mem can be used only by tp
             use_custom_allreduce = False
@@ -69,38 +72,54 @@ class MacaCommunicator(CudaCommunicator):
 
         if self.use_all2all:
             if self.all2all_backend == "naive":
-                from vllm.distributed.device_communicators.all2all import NaiveAll2AllManager
+                from vllm.distributed.device_communicators.all2all import (
+                    NaiveAll2AllManager,
+                )
 
                 self.all2all_manager = NaiveAll2AllManager(self.cpu_group)
             elif self.all2all_backend == "allgather_reducescatter":
-                from vllm.distributed.device_communicators.all2all import AgRsAll2AllManager
+                from vllm.distributed.device_communicators.all2all import (
+                    AgRsAll2AllManager,
+                )
 
                 self.all2all_manager = AgRsAll2AllManager(self.cpu_group)
             elif self.all2all_backend == "pplx":
-                from vllm.distributed.device_communicators.all2all import PPLXAll2AllManager
+                from vllm.distributed.device_communicators.all2all import (
+                    PPLXAll2AllManager,
+                )
 
                 self.all2all_manager = PPLXAll2AllManager(self.cpu_group)
             elif self.all2all_backend == "deepep_high_throughput":
-                from vllm.distributed.device_communicators.all2all import DeepEPHTAll2AllManager
+                from vllm.distributed.device_communicators.all2all import (
+                    DeepEPHTAll2AllManager,
+                )
 
                 self.all2all_manager = DeepEPHTAll2AllManager(self.cpu_group)
             elif self.all2all_backend == "deepep_low_latency":
-                from vllm.distributed.device_communicators.all2all import DeepEPLLAll2AllManager
+                from vllm.distributed.device_communicators.all2all import (
+                    DeepEPLLAll2AllManager,
+                )
 
                 self.all2all_manager = DeepEPLLAll2AllManager(self.cpu_group)
             elif self.all2all_backend == "flashinfer_all2allv":
-                from vllm.distributed.device_communicators.all2all import FlashInferAllToAllManager
+                from vllm.distributed.device_communicators.all2all import (
+                    FlashInferAllToAllManager,
+                )
 
                 self.all2all_manager = FlashInferAllToAllManager(self.cpu_group)
             else:
                 raise ValueError(f"Unknown all2all backend: {self.all2all_backend}")
-            
+
             # /------------------------  Metax Modification -------------------------\
-            if mx_envs.MACA_DP_OPT and (self.all2all_backend == "naive" \
-                or self.all2all_backend == "allgather_reducescatter") :
-                from vllm_metax.distributed.device_communicators.all2all import CoArAll2AllManager
-                self.all2all_manager = CoArAll2AllManager(
-                    self.cpu_group)
+            if mx_envs.MACA_DP_OPT and (
+                self.all2all_backend == "naive"
+                or self.all2all_backend == "allgather_reducescatter"
+            ):
+                from vllm_metax.distributed.device_communicators.all2all import (
+                    CoArAll2AllManager,
+                )
+
+                self.all2all_manager = CoArAll2AllManager(self.cpu_group)
                 logger.info("Using combine_allreduce manager for opt.")
             # \------------------------  Metax Modification -------------------------/
 
@@ -109,5 +128,6 @@ class MacaCommunicator(CudaCommunicator):
                 self.all2all_manager.__class__.__name__,
                 scope="global",
             )
+
 
 CudaCommunicator.__init__ = MacaCommunicator.__init__

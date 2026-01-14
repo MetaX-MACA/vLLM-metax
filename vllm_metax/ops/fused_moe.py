@@ -84,7 +84,7 @@ class MacaUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
             return result, zero_expert_result
         else:
             return result
-        
+
     if current_platform.is_tpu():
         forward_native = UnquantizedFusedMoEMethod.forward_tpu
     elif current_platform.is_cpu():
