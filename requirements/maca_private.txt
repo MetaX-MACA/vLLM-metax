@@ -30,6 +30,6 @@ spconv==2.1.0+metax3.3.0.2torch2.8
 xentropy_cuda_lib==0.1+metax3.3.0.2torch2.8
 
 mcoplib==0.2.0+maca3.3.0.15.torch2.8
-ray-patch==2.48.0+maca3.3.0.10.torch2.8
-mcpy==3.3.0.1
+# ray-patch==2.48.0+maca3.3.0.10
+mcpy==2.0.0
 # uv pip install -r requirements/maca.txt -c requirements/constraints.txt  --index-strategy unsafe-best-match --extra-index-url https://repos.metax-tech.com/r/maca-pypi/simple --trusted-host repos.metax-tech.com --dry-run

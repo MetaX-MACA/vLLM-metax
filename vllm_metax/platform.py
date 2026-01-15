@@ -184,11 +184,20 @@ class MacaPlatformBase(Platform):
     def import_kernels(cls) -> None:
         """Import any platform-specific C kernels."""
         try:
-            import mcoplib._C  # noqa: F401
+            if mx_envs.USE_PRECOMPILED_KERNEL:
+                import mcoplib._C  # noqa: F401
+            else:
+                import vllm_metax._C  # noqa: F401
         except ImportError as e:
-            logger.warning("Failed to import from vllm_metax._C: %r", e)
-        with contextlib.suppress(ImportError):
-            import mcoplib._moe_C  # noqa: F401
+            logger.warning("Failed to import from mcoplib._C: %r", e)
+
+        try:
+            if mx_envs.USE_PRECOMPILED_KERNEL:
+                import mcoplib._moe_C  # noqa: F401
+            else:
+                import vllm_metax._moe_C  # noqa: F401
+        except ImportError as e:
+            logger.warning("Failed to import from vllm_metax._moe_C: %r", e)
 
     @classmethod
     def check_and_update_config(cls, vllm_config: "VllmConfig") -> None:

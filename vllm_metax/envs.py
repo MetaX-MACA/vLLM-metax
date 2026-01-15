@@ -45,15 +45,15 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # when `VLLM_NCCL_SO_PATH` is not set, vllm will try to find the nccl
     # library file in the locations specified by `LD_LIBRARY_PATH`
     "LD_LIBRARY_PATH": lambda: os.environ.get("LD_LIBRARY_PATH", None),
+    # if set, vllm-metax kernels would be imported from mcoplib and won't compile
+    # during building
+    "USE_PRECOMPILED_KERNEL": lambda: bool(os.environ.get("USE_PRECOMPILED_KERNEL", 1)),
     # ================== Runtime Env Vars ==================
     # When installing vllm from source, the version of vllm set by setuptool_scm
     # will be different from the version of vllm installed by pip.
     # (e.g. install vllm from source with tag v0.9.1 will cause the version set
     # as 0.9.2)
     "VLLM_OFFICIAL_VERSION": lambda: os.getenv("VLLM_OFFICIAL_VERSION", None),
-    # if set, enable loading weight by transpose
-    "MACA_VLLM_USE_TN_2_NN": lambda: os.environ.get("MACA_VLLM_USE_TN_2_NN", "0")
-    == "1",
     # if set, enable mctlass python api, only support scaled_mm and moe_w8a8 int8
     "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": lambda: bool(
         int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_PYTHON_API", "0"))

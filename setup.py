@@ -25,7 +25,6 @@ try:
     from torch.utils.cpp_extension import MACA_HOME
 
     USE_MACA = True
-    USE_MCOPLIB = True
 except ImportError:
     MACA_HOME = None
     USE_MACA = False
@@ -59,6 +58,7 @@ except Exception:
     logger.warning("Error getting vllm distribution path")
 
 VLLM_TARGET_DEVICE = envs.VLLM_TARGET_DEVICE
+USE_PRECOMPILED_KERNEL = envs.USE_PRECOMPILED_KERNEL
 
 if not (
     sys.platform.startswith("linux")
@@ -518,9 +518,9 @@ ext_modules = []
 if _is_cuda():
     ext_modules.append(CMakeExtension(name="vllm_metax.cumem_allocator"))
 
-if not USE_MCOPLIB and _is_cuda():
+if not USE_PRECOMPILED_KERNEL and _is_cuda():
     ext_modules.append(CMakeExtension(name="vllm_metax._moe_C"))
-if not USE_MCOPLIB and _build_custom_ops():
+if not USE_PRECOMPILED_KERNEL and _build_custom_ops():
     ext_modules.append(CMakeExtension(name="vllm_metax._C"))
 
 package_data = {
