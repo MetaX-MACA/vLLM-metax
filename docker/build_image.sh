@@ -9,8 +9,8 @@ docker build \
     --network host \
     -f docker/vllm_metax.Dockerfile \
     -t vllm_metax:v0 \
-    --build-arg VLLM_VERSION=v0.11.1 \
-    --build-arg MACA_VERSION=3.2.1 \
+    --build-arg VLLM_VERSION=v0.11.2 \
+    --build-arg MACA_VERSION=3.3.0 \
      .
 
 # debug dockerfile and run into shell with buildx:

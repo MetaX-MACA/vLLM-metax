@@ -173,7 +173,7 @@ mctlassEx==0.1.1+metax3.1.0.4torch2.6
 rotary_emb==0.1+metax3.1.0.4torch2.6
 sageattention==2.0.1+metax3.1.0.4torch2.6
 spconv==2.1.0+metax3.1.0.4torch2.6
-torch==2.6.0+metax3.1.0.4
+torch==2.8.0+metax3.1.0.4
 torchaudio==2.4.1+metax3.1.0.4
 torchvision==0.15.1+metax3.1.0.4
 triton==3.0.0+metax3.1.0.4

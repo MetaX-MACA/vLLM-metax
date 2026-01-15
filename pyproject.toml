@@ -6,7 +6,7 @@ requires = [
     "packaging>=24.2",
     "setuptools>=77.0.3,<80.0.0",
     "setuptools-scm>=8.0",
-    "torch==2.6.0+metax3.2.1.3",
+    "torch==2.8.0+metax3.3.0.2",
     "wheel",
     "jinja2",
 ]
@@ -37,7 +37,6 @@ dynamic = [ "version", "dependencies", "optional-dependencies"]
 Homepage="https://github.com/MetaX-MACA/vLLM-metax"
 
 [project.scripts]
-vllm_metax_init = "vllm_metax:post_installation"
 vllm_collect_env = "vllm_metax:collect_env"
 
 [project.entry-points."vllm.platform_plugins"]

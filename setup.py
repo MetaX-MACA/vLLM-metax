@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 
 import importlib.util
 import json
@@ -57,6 +58,7 @@ except Exception:
     logger.warning("Error getting vllm distribution path")
 
 VLLM_TARGET_DEVICE = envs.VLLM_TARGET_DEVICE
+USE_PRECOMPILED_KERNEL = envs.USE_PRECOMPILED_KERNEL
 
 if not (
     sys.platform.startswith("linux")
@@ -514,10 +516,11 @@ def get_requirements() -> list[str]:
 ext_modules = []
 
 if _is_cuda():
-    ext_modules.append(CMakeExtension(name="vllm_metax._moe_C"))
     ext_modules.append(CMakeExtension(name="vllm_metax.cumem_allocator"))
 
-if _build_custom_ops() or True:
+if not USE_PRECOMPILED_KERNEL and _is_cuda():
+    ext_modules.append(CMakeExtension(name="vllm_metax._moe_C"))
+if not USE_PRECOMPILED_KERNEL and _build_custom_ops():
     ext_modules.append(CMakeExtension(name="vllm_metax._C"))
 
 package_data = {
