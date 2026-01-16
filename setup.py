@@ -5,7 +5,6 @@ import json
 import logging
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -46,15 +45,6 @@ logger = logging.getLogger(__name__)
 #  which is not installed yet
 envs = load_module_from_path("envs", os.path.join(ROOT_DIR, "vllm_metax", "envs.py"))
 
-try:
-    vllm_dist_path = importlib.metadata.distribution("vllm").locate_file("vllm")
-    logger.info("detected vllm distribution path: %s", vllm_dist_path)
-except importlib.metadata.PackageNotFoundError:
-    vllm_dist_path = None
-    logger.warning("vllm not installed! You need to install vllm first. ")
-except Exception:
-    vllm_dist_path = None
-    logger.warning("Error getting vllm distribution path")
 
 VLLM_TARGET_DEVICE = envs.VLLM_TARGET_DEVICE
 
@@ -436,7 +426,7 @@ def get_maca_version() -> Version:
 
 
 def fixed_version_scheme(version: ScmVersion) -> str:
-    return "0.13.0"
+    return "0.14.0"
 
 
 def always_hash(version: ScmVersion) -> str:
@@ -531,62 +521,8 @@ package_data = {
 
 
 class custom_install(install):
-    def _copy_with_backup(self, src_path: Path, dest_path: Path):
-        """
-        Copy a file or directory from src_path to dest_path.
-        - If dest_path is an existing directory, copy src_path into that directory.
-        - If dest_path exists as a file or directory, back it up as .bak before copying.
-        """
-        if not os.path.exists(src_path):
-            raise FileNotFoundError(f"Source path does not exist: {src_path}")
-
-        # If dest_path is an existing directory, copy into it
-        if os.path.isdir(dest_path):
-            dest_full_path = dest_path / os.path.basename(src_path)
-        else:
-            dest_full_path = dest_path
-
-        # Backup if target path already exists (file or dir)
-        if os.path.exists(dest_full_path):
-            backup_path = dest_full_path.parent / (dest_full_path.name + ".bak")
-            logger.debug(f"{dest_full_path} exists, backing it up to {backup_path}")
-            if os.path.exists(backup_path):
-                logger.debug(f"Backup path {backup_path} already exists, removing it.")
-                if os.path.isdir(backup_path) and not os.path.islink(backup_path):
-                    shutil.rmtree(backup_path)
-                else:
-                    os.remove(backup_path)
-            os.rename(dest_full_path, backup_path)
-
-        # Perform the copy
-        if os.path.isdir(src_path):
-            shutil.copytree(src_path, dest_full_path)
-        else:
-            shutil.copy2(src_path, dest_full_path)
-
-        logger.info(f"Copied {src_path} to {dest_full_path}")
-
-    def _copy_files_to_vllm(self, src_path: Path, dest_path: Path):
-        try:
-            self._copy_with_backup(src_path, dest_path)
-        except Exception as e:
-            logger.error(f"Error copying files: {e}")
-
     def run(self):
         install.run(self)
-
-        if not vllm_dist_path:
-            return
-
-        files_to_copy = {
-            # for get_available_device: set cuda
-            "vllm_metax/patch/vllm_substitution/utils.py": vllm_dist_path
-            / "model_executor/layers/fla/ops/utils.py",
-        }
-
-        for src_path, dest_path in files_to_copy.items():
-            source_file = Path(self.build_lib) / src_path
-            self._copy_files_to_vllm(source_file, dest_path)
 
 
 if not ext_modules:

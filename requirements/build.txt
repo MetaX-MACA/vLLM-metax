@@ -4,8 +4,10 @@ ninja
 packaging>=24.2
 setuptools>=77.0.3,<81.0.0
 setuptools-scm>=8
-wheel
 torch==2.8.0+metax3.3.0.2
+wheel
 jinja2>=3.1.6
 regex
 build
+protobuf>=6.33.2
+grpcio-tools>=1.76.0

@@ -682,8 +682,3 @@ mx_envs.override_vllm_env(
     False,
     "trtllm interfaces are not supported",  # noqa
 )
-# envs.VLLM_USE_TRTLLM_RAGGED_DEEPSEEK_PREFILL = False
-# envs.VLLM_USE_CUDNN_PREFILL = False
-# envs.VLLM_USE_FLASHINFER_SAMPLER = False
-# envs.VLLM_USE_STANDALONE_COMPILE = False
-# envs.VLLM_DISABLE_SHARED_EXPERTS_STREAM = False
