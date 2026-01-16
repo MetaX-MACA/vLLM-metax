@@ -25,14 +25,24 @@ def flash_attn_maxseqlen_wrapper(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    cu_seqlens: torch.Tensor,
-    max_seqlen: torch.Tensor,
     batch_size: int,
     is_rocm_aiter: bool,
+    fa_version: int | None,
+    scale: float | None = None,
+    cu_seqlens: torch.Tensor | None = None,
+    max_seqlen: torch.Tensor | None = None,
 ) -> torch.Tensor:
     # -----------------------------------
     # Meca version of flash attention
-    from vllm_metax.attention.utils.fa_utils import flash_attn_varlen_func
+    kwargs: dict[str, object] = {}
+    from vllm_metax.v1.attention.backends.fa_utils import flash_attn_varlen_func
+
+    q_len = q.size(1)
+    if cu_seqlens is None:
+        cu_seqlens = torch.arange(
+            0, (batch_size + 1) * q_len, step=q_len, dtype=torch.int32, device=q.device
+        )
+    max_seqlen = q_len if max_seqlen is None else max_seqlen.item()
 
     q, k, v = (einops.rearrange(x, "b s ... -> (b s) ...") for x in [q, k, v])
     output = flash_attn_varlen_func(
@@ -41,10 +51,12 @@ def flash_attn_maxseqlen_wrapper(
         v,
         cu_seqlens_q=cu_seqlens,
         cu_seqlens_k=cu_seqlens,
-        max_seqlen_q=max_seqlen.item(),
-        max_seqlen_k=max_seqlen.item(),
+        max_seqlen_q=max_seqlen,
+        max_seqlen_k=max_seqlen,
         dropout_p=0.0,
         causal=False,
+        softmax_scale=scale,
+        **kwargs,
     )
     context_layer = einops.rearrange(output, "(b s) h d -> b s h d", b=batch_size)
     return context_layer
@@ -54,10 +66,12 @@ def flash_attn_maxseqlen_wrapper_fake(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    cu_seqlens: torch.Tensor,
-    max_seqlen: torch.Tensor,
     batch_size: int,
     is_rocm_aiter: bool,
+    fa_version: int | None,
+    scale: float | None = None,
+    cu_seqlens: torch.Tensor | None = None,
+    max_seqlen: torch.Tensor | None = None,
 ) -> torch.Tensor:
     return torch.empty_like(q)
 
@@ -73,11 +87,21 @@ def vit_flash_attn_wrapper(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    cu_seqlens: torch.Tensor,
-    max_seqlen: torch.Tensor,
     batch_size: int,
     is_rocm_aiter: bool,
+    fa_version: int | None,
+    scale: float | None = None,
+    cu_seqlens: torch.Tensor | None = None,
+    max_seqlen: torch.Tensor | None = None,
 ) -> torch.Tensor:
     return torch.ops.vllm.maca_flash_attn_maxseqlen_wrapper(
-        q, k, v, cu_seqlens, max_seqlen, batch_size, is_rocm_aiter
+        q,
+        k,
+        v,
+        batch_size,
+        is_rocm_aiter,
+        fa_version,
+        scale,
+        cu_seqlens,
+        max_seqlen,
     )

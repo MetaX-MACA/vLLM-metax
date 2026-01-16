@@ -60,8 +60,6 @@ from vllm.triton_utils import tl, triton
 from vllm.utils.deep_gemm import is_deep_gemm_e8m0_used
 from vllm.utils.torch_utils import direct_register_custom_op, is_torch_equal_or_newer
 
-from vllm_metax import _custom_ops as mx_ops
-
 
 @triton.jit
 def write_zeros_to_output(
@@ -2061,63 +2059,38 @@ def fused_experts_impl(
             ignore_invalid_experts=True,
         )
         # ┌------------------------  Metax Modification -------------------------┐
-        if (
-            stage1_config["BLOCK_SIZE_M"] == 128
-            and not use_int8_w8a8
-            and (topk_ids.shape[1] == 1 or topk_ids.shape[1] == 2)
-            and (
-                curr_hidden_states.dtype == torch.bfloat16
-                or curr_hidden_states.dtype == torch.float16
-            )
-            and w1.shape[1] % 4 == 0
-            and w1.shape[2] % 8 == 0
-        ):
-            mx_ops.fused_moe_kernel(
-                curr_hidden_states,
-                w1,
-                intermediate_cache1,
-                curr_topk_weights,
-                curr_topk_ids,
-                sorted_token_ids,
-                expert_ids,
-                num_tokens_post_padded,
-                False,
-                topk_ids.shape[1],
-                0,
-            )
-        else:
-            qcurr_hidden_states, a1q_scale = moe_kernel_quantize_input(
-                A=curr_hidden_states,
-                A_scale=a1_scale,
-                quant_dtype=quant_dtype,
-                per_act_token_quant=per_channel_quant,
-                block_shape=block_shape,
-            )
+        qcurr_hidden_states, a1q_scale = moe_kernel_quantize_input(
+            A=curr_hidden_states,
+            A_scale=a1_scale,
+            quant_dtype=quant_dtype,
+            per_act_token_quant=per_channel_quant,
+            block_shape=block_shape,
+        )
 
-            invoke_fused_moe_kernel(
-                qcurr_hidden_states,
-                w1,
-                intermediate_cache1,
-                a1q_scale,
-                w1_scale,
-                w1_zp,
-                curr_topk_weights,
-                sorted_token_ids,
-                expert_ids,
-                num_tokens_post_padded,
-                apply_router_weight_on_input,
-                top_k_num,
-                stage1_config,
-                compute_type=compute_type,
-                use_fp8_w8a8=use_fp8_w8a8,
-                use_int8_w8a8=use_int8_w8a8,
-                use_int8_w8a16=use_int8_w8a16,
-                use_int4_w4a16=use_int4_w4a16,
-                orig_acc_dtype=hidden_states.dtype,
-                per_channel_quant=per_channel_quant,
-                block_shape=block_shape,
-                B_bias=w1_bias,
-            )
+        invoke_fused_moe_kernel(
+            qcurr_hidden_states,
+            w1,
+            intermediate_cache1,
+            a1q_scale,
+            w1_scale,
+            w1_zp,
+            curr_topk_weights,
+            sorted_token_ids,
+            expert_ids,
+            num_tokens_post_padded,
+            apply_router_weight_on_input,
+            top_k_num,
+            stage1_config,
+            compute_type=compute_type,
+            use_fp8_w8a8=use_fp8_w8a8,
+            use_int8_w8a8=use_int8_w8a8,
+            use_int8_w8a16=use_int8_w8a16,
+            use_int4_w4a16=use_int4_w4a16,
+            orig_acc_dtype=hidden_states.dtype,
+            per_channel_quant=per_channel_quant,
+            block_shape=block_shape,
+            B_bias=w1_bias,
+        )
         # └------------------------- Metax Modification -------------------------┘
 
         # Activation function with multiplication
@@ -2144,76 +2117,49 @@ def fused_experts_impl(
         else:
             raise ValueError(f"Unsupported FusedMoe activation: {activation}.")
 
-        # ┌------------------------  Metax Modification -------------------------┐
-        if (
-            stage2_config["BLOCK_SIZE_M"] == 128
-            and not use_int8_w8a8
-            and w2.shape[1] % 4 == 0
-            and w2.shape[2] % 8 == 0
-            and (
-                hidden_states.dtype == torch.bfloat16
-                or hidden_states.dtype == torch.float16
-            )
-        ):
-            mx_ops.fused_moe_kernel(
-                intermediate_cache2,
-                w2,
-                intermediate_cache3,
-                curr_topk_weights,
+        qintermediate_cache2, a2q_scale = moe_kernel_quantize_input(
+            A=intermediate_cache2,
+            A_scale=a2_scale,
+            quant_dtype=quant_dtype,
+            per_act_token_quant=per_channel_quant,
+            block_shape=block_shape,
+        )
+
+        if stage2_config["BLOCK_SIZE_M"] != stage1_config["BLOCK_SIZE_M"]:
+            sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
                 curr_topk_ids,
-                sorted_token_ids,
-                expert_ids,
-                num_tokens_post_padded,
-                True,
-                1,
-                0,
+                stage2_config["BLOCK_SIZE_M"],
+                global_num_experts,
+                expert_map,
             )
-        else:
-            qintermediate_cache2, a2q_scale = moe_kernel_quantize_input(
-                A=intermediate_cache2,
-                A_scale=a2_scale,
-                quant_dtype=quant_dtype,
-                per_act_token_quant=per_channel_quant,
-                block_shape=block_shape,
-            )
+        # ┌------------------------  Metax Modification -------------------------┐
+        if expert_map is not None:
+            intermediate_cache3.zero_()
 
-            if stage2_config["BLOCK_SIZE_M"] != stage1_config["BLOCK_SIZE_M"]:
-                sorted_token_ids, expert_ids, num_tokens_post_padded = (
-                    moe_align_block_size(
-                        curr_topk_ids,
-                        stage2_config["BLOCK_SIZE_M"],
-                        global_num_experts,
-                        expert_map,
-                    )
-                )
-
-            if expert_map is not None:
-                intermediate_cache3.zero_()
-
-            invoke_fused_moe_kernel(
-                qintermediate_cache2,
-                w2,
-                intermediate_cache3,
-                a2q_scale,
-                w2_scale,
-                w2_zp,
-                curr_topk_weights,
-                sorted_token_ids,
-                expert_ids,
-                num_tokens_post_padded,
-                not apply_router_weight_on_input,
-                1,
-                stage2_config,
-                compute_type=compute_type,
-                use_fp8_w8a8=use_fp8_w8a8,
-                use_int8_w8a8=use_int8_w8a8,
-                use_int8_w8a16=use_int8_w8a16,
-                use_int4_w4a16=use_int4_w4a16,
-                orig_acc_dtype=hidden_states.dtype,
-                per_channel_quant=per_channel_quant,
-                block_shape=block_shape,
-                B_bias=w2_bias,
-            )
+        invoke_fused_moe_kernel(
+            qintermediate_cache2,
+            w2,
+            intermediate_cache3,
+            a2q_scale,
+            w2_scale,
+            w2_zp,
+            curr_topk_weights,
+            sorted_token_ids,
+            expert_ids,
+            num_tokens_post_padded,
+            not apply_router_weight_on_input,
+            1,
+            stage2_config,
+            compute_type=compute_type,
+            use_fp8_w8a8=use_fp8_w8a8,
+            use_int8_w8a8=use_int8_w8a8,
+            use_int8_w8a16=use_int8_w8a16,
+            use_int4_w4a16=use_int4_w4a16,
+            orig_acc_dtype=hidden_states.dtype,
+            per_channel_quant=per_channel_quant,
+            block_shape=block_shape,
+            B_bias=w2_bias,
+        )
         # └------------------------- Metax Modification -------------------------┘
         ops.moe_sum(
             intermediate_cache3.view(*intermediate_cache3.size()),

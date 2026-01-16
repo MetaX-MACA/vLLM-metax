@@ -5,29 +5,29 @@ from typing import ClassVar
 
 import torch
 
-from vllm.attention.backends.abstract import (
-    AttentionLayer,
-    AttentionType,
-    is_quantized_kv_cache,
-)
-
-# ---------------------------------------------------------------
-# Note: We need to use Maca's decode_attention due to
-#       the limit of shmem for triton kernel
-# ---------------------------------------------------------------
-from vllm_metax.attention.ops.triton_decode_attention import decode_attention_fwd
 from vllm.config.cache import CacheDType
 from vllm.logger import init_logger
 from vllm.model_executor.layers.batch_invariant import (
     vllm_is_batch_invariant,
 )
 from vllm.platforms.interface import DeviceCapability
+from vllm.v1.attention.backend import (
+    AttentionLayer,
+    AttentionType,
+    is_quantized_kv_cache,
+)
 from vllm_metax.v1.attention.backends.mla.common import (
     MLACommonBackend,
     MLACommonImpl,
     MLACommonMetadata,
 )
-from vllm.attention.backends.registry import AttentionBackendEnum, register_backend
+
+# ---------------------------------------------------------------
+# Note: We need to use Maca's decode_attention due to
+#       the limit of shmem for triton kernel
+# ---------------------------------------------------------------
+from vllm_metax.v1.attention.ops.triton_decode_attention import decode_attention_fwd
+from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
 
 logger = init_logger(__name__)
 

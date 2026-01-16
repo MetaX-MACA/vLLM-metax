@@ -1,18 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
-from vllm.attention.utils.fa_utils import logger
+from vllm.v1.attention.backends.fa_utils import logger
 from vllm.platforms import current_platform
 
 
 if current_platform.is_out_of_tree():
     from vllm import _custom_ops as ops
+    from vllm_metax._dummy_ops import dummy_ops
 
-    get_scheduler_metadata = None
+    get_scheduler_metadata = dummy_ops.get_scheduler_metadata
     reshape_and_cache_flash = ops.reshape_and_cache_flash
     from flash_attn import flash_attn_varlen_func, flash_attn_with_kvcache  # noqa: F401
-
-    get_scheduler_metadata = None
 
 
 def get_flash_attn_version(requires_alibi: bool = False) -> int | None:
@@ -23,7 +22,7 @@ def get_flash_attn_version(requires_alibi: bool = False) -> int | None:
     # Note: In maca this need to be None since
     # metax flash_attn api does not have parameter
     # for `fa_version`.
-    return None
+    return 2
 
 
 def flash_attn_supports_fp8() -> bool:

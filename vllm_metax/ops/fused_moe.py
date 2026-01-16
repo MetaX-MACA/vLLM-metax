@@ -5,6 +5,7 @@ from vllm.model_executor.layers.fused_moe.layer import (
 
 import torch
 
+from vllm.model_executor.layers.fused_moe.fused_moe_router import FusedMoERouter
 from vllm_metax.model_executor.layers.fused_moe.fused_moe import fused_experts
 from vllm.platforms import current_platform
 
@@ -14,6 +15,7 @@ class MacaUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
     def forward_oot(
         self,
         layer: "FusedMoe",  # type: ignore[name-defined] # noqa: F821
+        router: FusedMoERouter,
         x: torch.Tensor,
         router_logits: torch.Tensor,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:

@@ -2,35 +2,35 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """Attention layer with FlashAttention."""
 
+import copy
 from dataclasses import dataclass
 from typing import ClassVar
 
 import numpy as np
 import torch
 
-from vllm import envs
-from vllm.attention.backends.abstract import (
+from vllm.attention.layer import Attention
+from vllm.v1.attention.backend import (
     AttentionBackend,
     AttentionImpl,
     AttentionType,
     MultipleOf,
     is_quantized_kv_cache,
 )
-from vllm.attention.layer import Attention
-from vllm.attention.ops.common import cp_lse_ag_out_rs
-
-# --------------------------------------------------------------
-# Note: use Maca's merge_attn_states to get cuda kernel invoked
-# --------------------------------------------------------------
-from vllm_metax.attention.ops.merge_attn_states import merge_attn_states
-from vllm_metax.attention.utils.fa_utils import (
+from vllm_metax.v1.attention.backends.fa_utils import (
     flash_attn_supports_fp8,
     get_flash_attn_version,
     is_flash_attn_varlen_func_available,
 )
+from vllm.v1.attention.ops.common import cp_lse_ag_out_rs
+
+# --------------------------------------------------------------
+# Note: use Maca's merge_attn_states to get cuda kernel invoked
+# --------------------------------------------------------------
+from vllm_metax.v1.attention.ops.merge_attn_states import merge_attn_states
 
 if is_flash_attn_varlen_func_available():
-    from vllm_metax.attention.utils.fa_utils import (
+    from vllm_metax.v1.attention.backends.fa_utils import (
         flash_attn_supports_sinks,
         flash_attn_varlen_func,
         get_scheduler_metadata,
@@ -46,17 +46,18 @@ from vllm.model_executor.layers.batch_invariant import (
 )
 from vllm.platforms.interface import DeviceCapability
 from vllm.utils.math_utils import cdiv
-from vllm.v1.attention.backends.utils import (
+from vllm.v1.attention.backend import (
     AttentionCGSupport,
     AttentionMetadataBuilder,
     CommonAttentionMetadata,
+)
+from vllm.v1.attention.backends.utils import (
     get_dcp_local_seq_lens,
     get_kv_cache_layout,
     split_decodes_and_prefills,  # used for prefill decode split
     reshape_attn_output_for_spec_decode,  # used for prefill decode split with mtp
     reshape_query_for_spec_decode,  # used for prefill decode split with mtp
 )
-from vllm.attention.backends.registry import AttentionBackendEnum, register_backend
 from vllm.v1.kv_cache_interface import AttentionSpec
 
 # --------------------------------------------------------------
@@ -65,6 +66,7 @@ from vllm.v1.kv_cache_interface import AttentionSpec
 from vllm_metax.v1.attention.backends.mla.common import QueryLenSupport
 
 logger = init_logger(__name__)
+from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
 
 
 @register_backend(AttentionBackendEnum.FLASH_ATTN)
@@ -185,7 +187,7 @@ class MacaFlashAttentionBackend(AttentionBackend):
         head_size: int,
         dtype: torch.dtype,
         kv_cache_dtype: CacheDType | None,
-        block_size: int,
+        block_size: int | None,
         use_mla: bool,
         has_sink: bool,
         use_sparse: bool,
@@ -294,6 +296,7 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         self.parallel_config = vllm_config.parallel_config
         self.cache_config = vllm_config.cache_config
         self.compilation_config = vllm_config.compilation_config
+        self.attention_config = vllm_config.attention_config
 
         self.num_heads_q = self.model_config.get_num_attention_heads(
             self.parallel_config
@@ -409,7 +412,11 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
                     aot_schedule = False
 
         max_num_splits = 0  # 0 means use FA3's heuristics, not CG compatible
-        if self.use_full_cuda_graph and num_actual_tokens <= self.max_cudagraph_size:
+        if (
+            self.use_full_cuda_graph
+            and self.max_cudagraph_size is not None
+            and num_actual_tokens <= self.max_cudagraph_size
+        ):
             # NOTE(woosuk): Setting num_splits > 1 may increase the memory
             # usage, because the intermediate buffers of size [num_splits,
             # num_heads, num_tokens, head_size] are allocated. Therefore,
@@ -603,6 +610,17 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         )
         return attn_metadata
 
+    def update_block_table(
+        self,
+        metadata: FlashAttentionMetadata,
+        blk_table: torch.Tensor,
+        slot_mapping: torch.Tensor,
+    ) -> FlashAttentionMetadata:
+        new_metadata = copy.copy(metadata)
+        new_metadata.block_table = blk_table
+        new_metadata.slot_mapping = slot_mapping
+        return new_metadata
+
     def use_cascade_attention(self, *args, **kwargs) -> bool:
         return use_cascade_attention(*args, **kwargs)
 
@@ -666,8 +684,7 @@ class FlashAttentionImpl(AttentionImpl):
                 "heads in the layer"
             )
 
-    def supports_quant_query_input(self) -> bool:
-        return False
+        self.supports_quant_query_input = False
 
     def forward(
         self,
@@ -697,6 +714,9 @@ class FlashAttentionImpl(AttentionImpl):
               We use torch's .expand() to avoid duplicating values
         """
         assert output is not None, "Output tensor must be provided."
+        assert self.vllm_flash_attn_version is not None, (
+            "FlashAttention version not detected."
+        )
 
         if output_scale is not None or output_block_scale is not None:
             raise NotImplementedError(
@@ -795,6 +815,11 @@ class FlashAttentionImpl(AttentionImpl):
                 )
                 return output
             else:
+                sliding_window_size = (
+                    list(self.sliding_window)
+                    if self.sliding_window is not None
+                    else None
+                )
                 # ┌------------------------  Metax Modification -------------------------┐
                 # For handling prefill decode split
                 num_decode_tokens = attn_metadata.num_decode_tokens
@@ -809,15 +834,15 @@ class FlashAttentionImpl(AttentionImpl):
                             q=query[num_decode_tokens:num_actual_tokens],
                             k=key_cache,
                             v=value_cache,
-                            block_table=attn_metadata.prefill_block_table,
                             cu_seqlens_q=attn_metadata.prefill_query_start_loc,
                             cu_seqlens_k=cu_prefix_kv_lens,
                             max_seqlen_q=attn_metadata.max_query_len,
                             max_seqlen_k=attn_metadata.prefill_max_seq_len,
                             softmax_scale=self.scale,
                             causal=attn_metadata.causal,
-                            window_size=self.sliding_window,
                             alibi_slopes=self.alibi_slopes,
+                            window_size=self.sliding_window,
+                            block_table=attn_metadata.prefill_block_table,
                             softcap=self.logits_soft_cap,
                         )
                     )
@@ -887,12 +912,19 @@ class FlashAttentionImpl(AttentionImpl):
         k_descale: torch.Tensor | None = None,
         v_descale: torch.Tensor | None = None,
     ) -> torch.Tensor:
+        assert self.vllm_flash_attn_version is not None, (
+            "FlashAttention version not detected."
+        )
+
         cu_seqlens_q = attn_metadata.query_start_loc
         max_seqlen_q = attn_metadata.max_query_len
         block_table = attn_metadata.block_table
 
         query = query.contiguous()
         query_across_dcp = get_dcp_group().all_gather(query, dim=1)
+        sliding_window_size = (
+            list(self.sliding_window) if self.sliding_window is not None else None
+        )
         # /------------------------  Metax Modification -------------------------\
         assert attn_metadata.dcp_context_kv_lens is not None
         cu_seqlens_k = torch.tensor(
@@ -983,6 +1015,10 @@ class FlashAttentionImpl(AttentionImpl):
             attn_metadata: Encoder attention metadata
             layer: The attention layer
         """
+        assert self.vllm_flash_attn_version is not None, (
+            "FlashAttention version not detected."
+        )
+
         # For encoder attention, process FP8 quantization if needed
         if self.kv_cache_dtype.startswith("fp8"):
             raise NotImplementedError(
@@ -1001,6 +1037,9 @@ class FlashAttentionImpl(AttentionImpl):
         )
 
         # Call flash attention directly on Q, K, V tensors
+        sliding_window_size = (
+            list(self.sliding_window) if self.sliding_window is not None else None
+        )
         flash_attn_varlen_func(
             q=query,
             k=key,
