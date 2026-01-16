@@ -7,7 +7,7 @@ Used for batched e2e *inference* and *performance* benchmark.
 ## Basic Usage
 
 ```bash
-[UV=1] python launch.py [-h] [--work-dir WORK_DIR] [--model-config CONFIG_YAML_FILE] [--cluster-config CONFIG_YAML_FILE] [--infer] [--text-case LM_CASE_FILE] [--image-case IMAGE_CASE_FILE] [--resume-csv RESUME_CSV] [--perf]
+[UV=1] python launch.py [-h] [--work-dir WORK_DIR] [--model-config CONFIG_YAML_FILE] [--cluster-config CONFIG_YAML_FILE] [--infer] [--text-case LM_CASE_FILE] [--image-case IMAGE_CASE_FILE] [--resume-csv RESUME_CSV] [--perf] [--gpus] [--tag] [--dry-run] [--dump-selected]
 ```
 
 - `--work-dir`: 
@@ -42,6 +42,24 @@ Used for batched e2e *inference* and *performance* benchmark.
 - `--perf`
     Specify to run performance benchmark for all models in `--model-config`
 
+- `--gpus`
+    Filter Models by Required GPU Count
+    If not specified, no GPU-count filtering is applied.
+
+- `--tag`
+    Filter models using the tag field defined in model.yaml.
+    If a model does not define tag, it is treated as: 
+    tag:
+    - dense
+    MoE models or other models should explicitly define:
+    tag:
+    - moe (other tag)
+
+- `--dry-run`
+    Run model selection only, without executing inference or performance tests.
+
+- `--dump-selected`
+    Dump the currently selected model subset into a new YAML config file.
 Note: set **UV=1** if you are using uv instead of pip.
 
 ## Enable cluster
@@ -113,6 +131,8 @@ For example, if a model needs :
       sweep_num_runs: 1  # default
   extra_env:
     EXAMPLE_ENV_VAR: "value"
+  tag:
+  -"tag" #If tag is not defined, the model is treated as: dense
 ```
 
 - sweep_num_runs: determine how many times for running on each combination in bench_param.
@@ -160,4 +180,6 @@ model_test
         `-- deepseek-v2-lite-chat_tp8_pp1_dp1_serve.log
 ```
 
+### --dry-run
 
+Selection preview only

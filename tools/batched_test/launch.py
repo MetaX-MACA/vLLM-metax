@@ -14,7 +14,6 @@ from pprint import pprint
 import net_utils
 
 from tqdm import tqdm
-
 from ray_manager import RayClusterManager
 from gpu_manager import GPUManager
 
@@ -24,14 +23,20 @@ class SchedularArgs:
     work_dir: str
     model_config: str
 
-    cluster_config: str | None = None
-
-    infer: bool = False
     text_case: str
     image_case: str
     resume_csv: str | None = None
 
+    cluster_config: str | None = None
+    infer: bool = False
     perf: bool = False
+
+    gpus: str = None  # comma-separated GPU counts to run (e.g., '1,2,4,8')
+    tag: str | None = (
+        None  # comma-separated tags to select (e.g., 'moe' or 'dense' or 'moe,vl'); default: all
+    )
+    dump_selected: str = None  # dump selected model configs to yaml
+    dry_run: bool = False  # print selected models then exit
 
     parser_name: ClassVar[str] = "schedular"
     parser_help: ClassVar[str] = "Model Auto Testing Scheduler"
@@ -53,6 +58,10 @@ class SchedularArgs:
             resume_csv=args.resume_csv,
             infer=args.infer,
             perf=args.perf,
+            gpus=args.gpus,
+            tag=args.tag,
+            dump_selected=args.dump_selected,
+            dry_run=args.dry_run,
         )
 
     @classmethod
@@ -112,6 +121,37 @@ class SchedularArgs:
             help="Resume from the failed case in specified inference_result.csv",
         )
 
+        # Model selection / filtering
+        parser.add_argument(
+            "--gpus",
+            type=str,
+            default=None,
+            help="Only run models that require the given number(s) of GPUs. Comma-separated, e.g. '1,2,4,8'. GPU count is computed as tp*pp*dp.",
+        )
+
+        parser.add_argument(
+            "--tag",
+            type=str,
+            default=None,
+            help=(
+                "Only run models matching the given tag(s). Comma-separated, e.g. 'moe' or 'dense' or 'moe,vl'. "
+                "If not set, run all models. Models without 'tags' in model.yaml are treated as tag 'dense'."
+            ),
+        )
+
+        parser.add_argument(
+            "--dump-selected",
+            type=str,
+            default=None,
+            help="Dump the selected model subset to a yaml file and continue running.",
+        )
+
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Print the selected model list (name / gpu_count / moe) then exit.",
+        )
+
         parser.add_argument(
             "--perf",
             action="store_true",
@@ -125,10 +165,9 @@ stop_event = threading.Event()
 class Scheduler:
     def __init__(self, args: SchedularArgs):
         self.args = args
-
         self.model_list = self._load_yaml_config(args.model_config)
+        self.model_list = self._filter_model_list(self.model_list)
         self.work_dir = os.path.join(args.work_dir, net_utils.current_dt())
-
         if args.cluster_config:
             cluster_nodes_config = self._load_yaml_config(args.cluster_config)
             self.gpu_manager = RayClusterManager(cluster_nodes_config)
@@ -145,10 +184,152 @@ class Scheduler:
             config = yaml.safe_load(f)
         return config
 
+    def _required_gpus(self, model_cfg: dict) -> int:
+        sc = model_cfg.get("serve_config") or {}
+        tp = int(sc.get("tp", 1) or 1)
+        pp = int(sc.get("pp", 1) or 1)
+        dp = int(sc.get("dp", 1) or 1)
+        return tp * pp * dp
+
+    def _parse_gpus_filter(self) -> set[int] | None:
+        """Parse --gpus like '1,2,4' into a set of ints."""
+        if not self.args.gpus:
+            return None
+        out: set[int] = set()
+        for part in str(self.args.gpus).split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                out.add(int(part))
+            except ValueError as e:
+                raise ValueError(
+                    f"Invalid --gpus value '{part}'. Expected comma-separated integers."
+                ) from e
+        return out or None
+
+    def _get_tags(self, model_cfg: dict) -> set[str]:
+        """Return normalized tags for a model.
+
+        Design:
+        - If model_cfg has no 'tags' (or it's empty), treat it as {'dense'}.
+        - If model_cfg.tags is a string, treat it as a single tag.
+        - Tags are lower-cased strings.
+        """
+        tags = model_cfg.get("tags")
+        if not tags:
+            return {"dense"}
+        if isinstance(tags, str):
+            tags = [tags]
+        out = {str(t).strip().lower() for t in tags if str(t).strip()}
+        return out or {"dense"}
+
+    def _parse_tag_filter(self) -> set[str] | None:
+        """Parse --tag like 'moe,dense' into a set of tags (OR semantics)."""
+        if not self.args.tag:
+            return None
+        out: set[str] = set()
+        for part in str(self.args.tag).split(","):
+            part = part.strip().lower()
+            if part:
+                out.add(part)
+        return out or None
+
+    def _filter_model_list(self, models: list[dict]) -> list[dict]:
+        """Filter models by --gpus and --tag.
+
+        Notes:
+        - GPU count is computed as tp*pp*dp.
+        - Tag filter uses OR semantics (match any tag).
+        - Models without 'tags' are treated as tag 'dense'.
+        - We attach derived fields prefixed with '_' for logging/debugging.
+        """
+        gpus_filter = self._parse_gpus_filter()
+        tag_filter = self._parse_tag_filter()
+
+        selected: list[dict] = []
+        for m in models:
+            req = self._required_gpus(m)
+            if gpus_filter is not None and req not in gpus_filter:
+                continue
+
+            tags = self._get_tags(m)
+            if tag_filter is not None and tags.isdisjoint(tag_filter):
+                continue
+
+            mm = dict(m)  # avoid mutating original
+            mm["_required_gpus"] = req
+            mm["_tags"] = sorted(tags)
+            mm["_is_moe"] = "moe" in tags
+            selected.append(mm)
+
+        # Optional: dump selected subset for reproducibility
+        if self.args.dump_selected:
+            self._dump_selected_models(selected)
+
+        return selected
+
+    def _resolve_dump_selected_path(self, path: str) -> str:
+        """Resolve dump path.
+
+        If the user passed a bare filename (no directory component), place it under
+        the same configs directory used by --model-config default (./configs).
+        """
+        if os.path.dirname(path) == "":
+            base_dir = os.path.join(os.path.dirname(__file__), "configs")
+            return os.path.join(base_dir, path)
+        return path
+
+    def _dump_selected_models(self, selected: list[dict]) -> None:
+        dump_path = os.path.abspath(
+            self._resolve_dump_selected_path(self.args.dump_selected)
+        )
+        os.makedirs(os.path.dirname(dump_path), exist_ok=True)
+
+        # Strip derived keys before dumping
+        dump_models: list[dict] = []
+        for m in selected:
+            mm = {k: v for k, v in m.items() if not str(k).startswith("_")}
+            dump_models.append(mm)
+
+        # Write one model per list-item, with a blank line between models for readability
+        with open(dump_path, "w", encoding="utf-8") as f:
+            for i, m in enumerate(dump_models):
+                if i > 0:
+                    f.write("\n")
+                yaml.safe_dump(
+                    [m],
+                    f,
+                    sort_keys=False,
+                    allow_unicode=True,
+                    default_flow_style=False,
+                )
+
+        print(f"[Scheduler] Dumped selected models to: {dump_path}")
+
+    def _print_selected_models(self) -> None:
+        rows = []
+        for m in self.model_list:
+            name = m.get("name", "<unknown>")
+            g = m.get("_required_gpus", "?")
+            tags = ",".join(m.get("_tags") or [])
+            rows.append((str(name), g, tags))
+        rows.sort(key=lambda x: (int(x[1]) if str(x[1]).isdigit() else 10**9, x[0]))
+
+        gpus_filter = self._parse_gpus_filter()
+        tag_filter = self._parse_tag_filter()
+        if gpus_filter is not None:
+            print(f"[Scheduler] GPU count filter: {sorted(gpus_filter)}")
+        if tag_filter is not None:
+            print(f"[Scheduler] Tag filter (OR): {sorted(tag_filter)}")
+
+        print(f"[Scheduler] Selected {len(rows)} model(s):")
+        for name, g, tags in rows:
+            print(f"  - {name} | gpus={g} | tags={tags}")
+
     def record_environment(self):
         log_file = os.path.join(self.work_dir, "collect_env.txt")
         os.makedirs(os.path.dirname(os.path.abspath(log_file)), exist_ok=True)
-
         import collect_env
 
         with open(log_file, "w") as f:
@@ -242,6 +423,9 @@ class Scheduler:
 
     def run_all(self):
         self.record_environment()
+        if self.args.dry_run:
+            self._print_selected_models()
+            return
         try:
             if self.args.infer:
                 self.run_inference()
