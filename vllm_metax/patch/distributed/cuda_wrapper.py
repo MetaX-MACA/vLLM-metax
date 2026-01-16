@@ -135,8 +135,10 @@ class CudaRTLibrary:
         if so_file is None:
             so_file = find_loaded_library("libcudart")
             if so_file is None:
-                # libcudart is not loaded in the current process, try hip
+                # libcudart is not loaded in the current process, try maca
+                # ------------------Metax Patch------------------\
                 so_file = find_loaded_library("libmcruntime")
+                # -----------------------------------------------/
                 # should be safe to assume now that we are using ROCm
                 # as the following assertion should error out if the
                 # libhiprtc library is also not loaded

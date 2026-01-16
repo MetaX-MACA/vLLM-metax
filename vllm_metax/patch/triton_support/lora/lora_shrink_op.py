@@ -4,7 +4,9 @@
 # ------------------------------------------------
 
 
-from vllm_metax.patch.triton_support.lora.kernel_utils import do_shrink_kernel
+from vllm_metax.patch.triton_support.lora.kernel_utils import (
+    do_shrink_kernel as mx_do_shrink_kernel,
+)
 from vllm.triton_utils import tl, triton
 
 
@@ -82,7 +84,7 @@ def _lora_shrink_kernel(
     offset_m = tl.arange(0, BLOCK_M) % cta_m_len
     ram = tl.load(cta_lora_seq_indices + offset_m)
 
-    do_shrink_kernel(
+    mx_do_shrink_kernel(
         pid_n,
         pid_sk,
         slice_id,
