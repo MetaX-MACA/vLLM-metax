@@ -6,7 +6,7 @@ from vllm.model_executor.layers.quantization.compressed_tensors import (
 )
 
 # -----------------------------------------------------------
-# Note: We need to keep the name **consistent** with vLLM's
+# Note: We need to keep the method name **the same** as vLLM's
 # -----------------------------------------------------------
 
 
@@ -62,6 +62,7 @@ class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm.CompressedTensorsW8A8Int8MoEMe
     def apply(
         self, layer: FusedMoE, x: torch.Tensor, router_logits: torch.Tensor
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        # here we use plugin's `fused_experts`
         from vllm_metax.model_executor.layers.fused_moe import fused_experts
 
         topk_weights, topk_ids, _ = layer.select_experts(
@@ -91,6 +92,7 @@ class CompressedTensorsWNA16MoEMethod(vllm_ctm.CompressedTensorsWNA16MoEMethod):
         x: torch.Tensor,
         router_logits: torch.Tensor,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        # here we use plugin's `fused_experts`
         from vllm_metax.model_executor.layers.fused_moe import fused_experts
 
         topk_weights, topk_ids, _ = layer.select_experts(

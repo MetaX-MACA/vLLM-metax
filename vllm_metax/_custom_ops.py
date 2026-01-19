@@ -73,10 +73,6 @@ def gptq_gemm(
     )
 
 
-def gptq_shuffle(q_weight: torch.Tensor, q_perm: torch.Tensor, bit: int) -> None:
-    torch.ops._C.gptq_shuffle(q_weight, q_perm, bit)
-
-
 def fused_moe_kernel(
     A: torch.Tensor,
     B: torch.Tensor,
