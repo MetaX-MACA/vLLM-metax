@@ -88,12 +88,14 @@ Used for batched e2e *inference* and *performance* benchmark.
     nic: eth0  # Network Interface Card (used for GLOO_SOCKET_IFNAME)
 ```
 
+> *The node is assumed to be a docker or the environments of which vllm could directly run on.*
+
 If using ray for multi-node tests, you need specify `--cluster-config` for scripts. The script would try to allocate nodes according to the model config's requirement by `TP * DP * PP`. 
 
 For example, if a model needs :
-    8 cards, script would trying allocated 1 nodes and launch ray on it.
-    And if 16 cards, script would trying allocated 2 nodes and launch ray on both of them.
-    And 32 cards for 4 nodes with ray launched on all of them.
+- 8 cards, script would trying allocated 1 nodes and launch ray on it.
+- And if 16 cards, script would trying allocated 2 nodes and launch ray on both of them.
+- And 32 cards for 4 nodes with ray launched on all of them.
 
 *Note!: the script must run in one of the nodes and must be **the first node** in the cluster config file*
 
