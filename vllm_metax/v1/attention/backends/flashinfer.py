@@ -1065,8 +1065,8 @@ class FlashInferMetadataBuilder(AttentionMetadataBuilder[FlashInferMetadata]):
                         logits_soft_cap=self.logits_soft_cap,
                         q_data_type=self.q_data_type,
                         kv_data_type=self.kv_cache_dtype,
-                        fixed_split_size=self.prefill_fixed_split_size,
-                        disable_split_kv=self.disable_split_kv,
+                        # fixed_split_size=self.prefill_fixed_split_size,
+                        # disable_split_kv=self.disable_split_kv,
                     )
                 attn_metadata.prefill = FIPrefill(wrapper=prefill_wrapper)
 

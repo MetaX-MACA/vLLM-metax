@@ -15,7 +15,7 @@ from typing_extensions import ParamSpec
 import vllm_metax.envs as mx_envs
 from vllm.logger import logger
 
-from vllm.attention.backends.registry import AttentionBackendEnum, register_backend
+from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
 from vllm_metax.utils import import_pymxml
 from vllm.utils.torch_utils import cuda_device_count_stateless
 
@@ -23,7 +23,7 @@ from vllm.platforms.interface import DeviceCapability, Platform, PlatformEnum
 from vllm.utils.argparse_utils import FlexibleArgumentParser
 
 if TYPE_CHECKING:
-    from vllm.attention.selector import AttentionSelectorConfig
+    from vllm.v1.attention.selector import AttentionSelectorConfig
     from vllm.config import VllmConfig
     from vllm.config.cache import CacheDType
 else:
@@ -47,7 +47,7 @@ def _get_backend_priorities(
     device_capability: DeviceCapability,
 ) -> list[AttentionBackendEnum]:
     """Get backend priorities with lazy import to avoid circular dependency."""
-    from vllm.attention.backends.registry import AttentionBackendEnum
+    from vllm.v1.attention.backends.registry import AttentionBackendEnum
 
     if use_mla:
         return [
@@ -239,7 +239,7 @@ class MacaPlatformBase(Platform):
                 use_cutlass_mla = backend == AttentionBackendEnum.CUTLASS_MLA
                 use_flashinfer_mla = backend == AttentionBackendEnum.FLASHINFER_MLA
 
-            from vllm_metax.attention.ops.flashmla import is_flashmla_dense_supported
+            from vllm_metax.v1.attention.ops.flashmla import is_flashmla_dense_supported
 
             if (
                 use_flashmla
