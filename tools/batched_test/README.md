@@ -60,7 +60,8 @@ Used for batched e2e *inference* and *performance* benchmark.
 
 - `--dump-selected`
     Dump the currently selected model subset into a new YAML config file.
-Note: set **UV=1** if you are using uv instead of pip.
+
+> Note: set **UV=1** if you are using uv instead of pip.
 
 ## Enable cluster
 
@@ -132,9 +133,13 @@ For example, if a model needs :
   extra_env:
     EXAMPLE_ENV_VAR: "value"
   tag:
-  -"tag" #If tag is not defined, the model is treated as: dense
+    - "define"
+    - "your"
+    - "tags"
+    - "here"
 ```
 
+- tag: User defined tags for the model. If not defined, the model tag is default to be `dense`.
 - sweep_num_runs: determine how many times for running on each combination in bench_param.
 
 
