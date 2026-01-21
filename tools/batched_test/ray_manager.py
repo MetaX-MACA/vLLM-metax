@@ -157,7 +157,7 @@ class RayClusterManager:
     ) -> str:
         extra_env = {
             "GLOO_SOCKET_IFNAME": master.nic,
-            "NCCL_SOCKET_IFNAME": master.nic,
+            "MCCL_SOCKET_IFNAME": master.nic,
             "MACA_PATH": "/opt/maca",
             "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1",
         }
