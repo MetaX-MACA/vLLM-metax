@@ -68,7 +68,7 @@ class MoeWNA16Method(vllm_MoeWNA16Method):
         router_logits: torch.Tensor,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         # here we use plugin's `fused_experts`
-        from vllm_metax.model_executor.layers.fused_moe import fused_experts
+        from vllm_metax.model_executor.layers.fused_moe.fused_moe import fused_experts
 
         assert layer.activation == "silu", "Only SiLU activation is supported."
         topk_weights, topk_ids = router.select_experts(

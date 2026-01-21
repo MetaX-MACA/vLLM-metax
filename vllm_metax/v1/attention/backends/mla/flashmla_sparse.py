@@ -107,7 +107,7 @@ class MacaFlashMLASparseBackend(AttentionBackend):
 
     @classmethod
     def supports_compute_capability(cls, capability: DeviceCapability) -> bool:
-        return capability.major in [9, 10]
+        return True
 
     @staticmethod
     def get_kv_cache_shape(

@@ -4,9 +4,11 @@ pynvml. However, it should not initialize cuda context.
 """
 
 import contextlib
+import importlib
 import os
 from collections.abc import Callable
 from functools import cache, wraps
+from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar, Optional
 
 import torch
@@ -203,7 +205,6 @@ class MacaPlatformBase(Platform):
     def check_and_update_config(cls, vllm_config: "VllmConfig") -> None:
         # Config Override
         parallel_config = vllm_config.parallel_config
-        compilation_config = vllm_config.compilation_config
         model_config = vllm_config.model_config
 
         if parallel_config.worker_cls == "auto":
@@ -297,6 +298,34 @@ class MacaPlatformBase(Platform):
             attention_config.use_trtllm_ragged_deepseek_prefill = False
             attention_config.use_trtllm_attention = False
             attention_config.disable_flashinfer_prefill = True
+
+        # -------------------------------------------------------
+        # Append H=hidden_size at runtime (once model config is available)
+        # Base configs dir (no H here; H is appended at runtime once model is known)
+        _fused_moe_mod = importlib.import_module(
+            "vllm_metax.model_executor.layers.fused_moe.fused_moe"
+        )
+        _FUSED_MOE_CONFIGS_DIR = (
+            Path(_fused_moe_mod.__file__).resolve().parent / "configs"
+        )
+
+        if model_config is not None:
+            hf_cfg = getattr(model_config, "hf_config", None)
+            # common names across HF configs
+            hidden_size = (
+                getattr(hf_cfg, "hidden_size", None)
+                or getattr(hf_cfg, "n_embd", None)
+                or getattr(hf_cfg, "d_model", None)
+            )
+            assert hidden_size > 0
+            tuned_dir_with_h = os.path.join(
+                str(_FUSED_MOE_CONFIGS_DIR), f"H={hidden_size}"
+            )
+            mx_envs.override_vllm_env(
+                "VLLM_TUNED_CONFIG_FOLDER",
+                tuned_dir_with_h,
+                f"set FusedMoE tuned config dir by hidden_size={hidden_size}",
+            )
 
     @classmethod
     def get_current_memory_usage(
@@ -669,11 +698,14 @@ MacaPlatform = MxmlPlatform if mxml_available else NonMxmlMetaxPlatform
 MacaPlatform.log_warnings()
 
 
+# --------------------------------------------------
 # Note: Put all env Override here for Maca platform
 mx_envs.override_vllm_env(
     "VLLM_USE_FLASHINFER_SAMPLER", False, "flashinfer sampler are not supported on maca"
 )
 
+# --------------------------------------------------
+# Note: disable torchvision beta transforms warning
 import torchvision
 
 torchvision.disable_beta_transforms_warning()  # type: ignore
