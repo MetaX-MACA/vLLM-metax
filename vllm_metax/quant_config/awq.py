@@ -42,9 +42,9 @@ class MacaAWQConfig(AWQConfig):
             # Lazy import to avoid circular import.
             from vllm_metax.quant_config.moe_wna16 import MacaMoeWNA16Config
 
-            logger.warning_once(
-                f"Layer '{prefix}' is not supported by AWQMoeMarlin. "
-                "Falling back to Moe WNA16 kernels."
+            logger.debug(
+                f"Layer '{prefix}' is not supported by Maca AWQMoeMarlin. "
+                "Falling back to Maca Moe WNA16 kernels."
             )
             config = {
                 "quant_method": "awq",

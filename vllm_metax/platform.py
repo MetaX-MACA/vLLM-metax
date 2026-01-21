@@ -53,7 +53,7 @@ def _get_backend_priorities(
         return [
             AttentionBackendEnum.FLASHMLA,
             AttentionBackendEnum.TRITON_MLA,
-            AttentionBackendEnum.CUTLASS_MLA,
+            # AttentionBackendEnum.CUTLASS_MLA,
             # AttentionBackendEnum.FLASHINFER_MLA,
             # AttentionBackendEnum.FLASH_ATTN_MLA,
             AttentionBackendEnum.FLASHMLA_SPARSE,
@@ -287,9 +287,16 @@ class MacaPlatformBase(Platform):
             )
             scheduler_config.disable_chunked_mm_input = True
 
+        # -------------------------------------------------------
         # Disable cascade attention for Maca platform currently
         if vllm_config.model_config is not None:
             vllm_config.model_config.disable_cascade_attn = True
+
+        if attention_config := vllm_config.attention_config:
+            attention_config.use_cudnn_prefill = False
+            attention_config.use_trtllm_ragged_deepseek_prefill = False
+            attention_config.use_trtllm_attention = False
+            attention_config.disable_flashinfer_prefill = True
 
     @classmethod
     def get_current_memory_usage(
@@ -666,19 +673,7 @@ MacaPlatform.log_warnings()
 mx_envs.override_vllm_env(
     "VLLM_USE_FLASHINFER_SAMPLER", False, "flashinfer sampler are not supported on maca"
 )
-mx_envs.override_vllm_env(
-    "VLLM_USE_TRTLLM_ATTENTION", False, "trtllm interfaces are not supported"
-)
-mx_envs.override_vllm_env(
-    "VLLM_DISABLE_FLASHINFER_PREFILL",
-    True,
-    "disable flashinfer prefill(use flash_attn prefill) on maca",
-)
-mx_envs.override_vllm_env(
-    "VLLM_USE_CUDNN_PREFILL", False, "cudnn prefill interfaces are not supported"
-)
-mx_envs.override_vllm_env(
-    "VLLM_USE_TRTLLM_RAGGED_DEEPSEEK_PREFILL",
-    False,
-    "trtllm interfaces are not supported",  # noqa
-)
+
+import torchvision
+
+torchvision.disable_beta_transforms_warning()  # type: ignore
