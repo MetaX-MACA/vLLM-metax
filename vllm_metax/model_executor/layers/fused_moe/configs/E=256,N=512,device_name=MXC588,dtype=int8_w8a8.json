@@ -1,0 +1,398 @@
+{
+    "1": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": ""
+        }
+    },
+    "2": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "unroll"
+        }
+    },
+    "4": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "unroll"
+        }
+    },
+    "8": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": "unroll"
+        }
+    },
+    "16": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": ""
+        }
+    },
+    "24": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": ""
+        }
+    },
+    "32": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": ""
+        }
+    },
+    "48": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "unroll"
+        }
+    },
+    "64": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": ""
+        }
+    },
+    "96": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "unroll"
+        }
+    },
+    "128": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "unroll"
+        }
+    },
+    "256": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": ""
+        }
+    },
+    "512": {
+        "stage1": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "cpasync",
+            "scenario": ""
+        }
+    },
+    "1024": {
+        "stage1": {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": "unroll;storeCoalesce"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": "unroll;storeCoalesce"
+        }
+    },
+    "1536": {
+        "stage1": {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": "unroll;storeCoalesce"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": "unroll;storeCoalesce"
+        }
+    },
+    "2048": {
+        "stage1": {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": "unroll;storeCoalesce"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": "unroll;storeCoalesce"
+        }
+    },
+    "3072": {
+        "stage1": {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": "storeCoalesce"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": "storeCoalesce"
+        }
+    },
+    "4096": {
+        "stage1": {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": "storeCoalesce"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": "storeCoalesce"
+        }
+    }
+}
