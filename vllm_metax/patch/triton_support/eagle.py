@@ -60,7 +60,7 @@ def eagle_prepare_next_token_padded_kernel(
         is_valid_mask = (token_ids != -1) & (token_ids < vocab_size) & token_mask
 
         # /------------------------  Metax Modification -------------------------\
-        valid_count = tl.cast(is_valid_mask.to(tl.int32))
+        valid_count = tl.sum(is_valid_mask.to(tl.int32))
         # \------------------------- Metax Modification -------------------------/
         if valid_count > 0:
             # Guaranteed to be well-defined since
