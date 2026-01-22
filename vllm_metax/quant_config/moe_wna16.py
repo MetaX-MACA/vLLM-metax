@@ -46,5 +46,48 @@ class MacaMoeWNA16Config(MoeWNA16Config):
             else:
                 raise ValueError("moe_wna16 only support gptq and awq.")
         elif isinstance(layer, FusedMoE):
-            return MoeWNA16Method(self, layer.moe_config)
+            return MacaMoeWNA16Method(self, layer.moe_config)
         return None
+
+
+class MacaMoeWNA16Method(MoeWNA16Method):
+    """Linear method for MOE WNA16 (W8A16/W4A16) quantization.
+
+    Args:
+        quant_config: The MOE WNA16 (W8A16/W4A16) quantization config.
+    """
+
+    # ┌------------------------  Metax Modification --------------------------------┐
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+    # └------------------------- Metax Modification --------------------------------┘
+
+    def apply(
+        self,
+        layer: torch.nn.Module,
+        x: torch.Tensor,
+        router_logits: torch.Tensor,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        # ┌------------------------  Metax Modification --------------------------------┐
+        from vllm_metax.model_executor.layers.fused_moe import fused_experts
+        # └------------------------- Metax Modification --------------------------------┘
+
+        assert layer.activation == "silu", "Only SiLU activation is supported."
+        topk_weights, topk_ids, _ = layer.select_experts(
+            hidden_states=x,
+            router_logits=router_logits,
+        )
+
+        return fused_experts(
+            x,
+            layer.w13_qweight,
+            layer.w2_qweight,
+            topk_weights=topk_weights,
+            topk_ids=topk_ids,
+            inplace=True,
+            apply_router_weight_on_input=layer.apply_router_weight_on_input,
+            global_num_experts=layer.global_num_experts,
+            expert_map=layer.expert_map,
+            quant_config=self.moe_quant_config,
+        )
