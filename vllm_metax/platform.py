@@ -593,7 +593,8 @@ class mxsmlPlatform(MacaPlatformBase):
     @classmethod
     @with_mxsml_context
     def get_device_name(cls, device_id: int = 0) -> str:
-        return "Device 4000"
+        physical_device_id = cls.device_id_to_physical_device_id(device_id)
+        return cls._get_physical_device_name(physical_device_id)
 
     @classmethod
     @with_mxsml_context
@@ -637,9 +638,8 @@ class mxsmlPlatform(MacaPlatformBase):
 
     @classmethod
     def _get_physical_device_name(cls, device_id: int = 0) -> str:
-        return "Device 4000"
-        # handle = pymxsml.nvmlDeviceGetHandleByIndex(device_id)
-        # return pymxsml.nvmlDeviceGetName(handle)
+        handle = pymxsml.nvmlDeviceGetHandleByIndex(device_id)
+        return pymxsml.nvmlDeviceGetName(handle)
 
     @classmethod
     @with_mxsml_context
@@ -707,6 +707,16 @@ MacaPlatform.log_warnings()
 mx_envs.override_vllm_env(
     "VLLM_USE_FLASHINFER_SAMPLER", False, "flashinfer sampler are not supported on maca"
 )
+
+# vllm_metax currently does not support third-party Triton kernels; Triton upgrade required.
+import vllm.utils.import_utils as iu
+
+
+def has_triton_kernels() -> bool:
+    return False
+
+
+iu.has_triton_kernels = has_triton_kernels
 
 # --------------------------------------------------
 # Note: disable torchvision beta transforms warning
