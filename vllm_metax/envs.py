@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     VLLM_TEST_USE_PRECOMPILED_NIGHTLY_WHEEL: bool = False
     CMAKE_BUILD_TYPE: str | None
     VERBOSE: bool = False
+    MACA_DP_OPT: bool = False
 
 environment_variables: dict[str, Callable[[], Any]] = {
     # ================== Installation Time Env Vars ==================
@@ -42,12 +43,21 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # when `VLLM_NCCL_SO_PATH` is not set, vllm will try to find the nccl
     # library file in the locations specified by `LD_LIBRARY_PATH`
     "LD_LIBRARY_PATH": lambda: os.environ.get("LD_LIBRARY_PATH", None),
+    # if set, vllm-metax kernels would be imported from mcoplib and won't compile
+    # during building
+    "USE_PRECOMPILED_KERNEL": lambda: bool(os.environ.get("USE_PRECOMPILED_KERNEL", 1)),
     # ================== Runtime Env Vars ==================
-    # When installing vllm from source, the version of vllm set by setuptool_scm
-    # will be different from the version of vllm installed by pip.
-    # (e.g. install vllm from source with tag v0.9.1 will cause the version set
-    # as 0.9.2)
-    "VLLM_OFFICIAL_VERSION": lambda: os.getenv("VLLM_OFFICIAL_VERSION", None),
+    # if set, enable mctlass python api, only support scaled_mm and moe_w8a8 int8
+    "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": lambda: bool(
+        int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_PYTHON_API", "0"))
+    ),
+    # if set, enable bf16 cutlass moe on stage2
+    # or w8a8 cutlass moe on both stage1 and stage2
+    "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE": lambda: bool(
+        int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE", "0"))
+    ),
+    # if set, enable combine allreduce all2all
+    "MACA_DP_OPT": lambda: bool(os.environ.get("MACA_DP_OPT", 0)),
 }
 
 
