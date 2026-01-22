@@ -3,6 +3,7 @@ from vllm.model_executor.layers.rotary_embedding.common import ApplyRotaryEmb
 import torch
 
 
+@ApplyRotaryEmb.register_oot
 class MacaApplyRotaryEmb(ApplyRotaryEmb):
     def forward_oot(
         self,
