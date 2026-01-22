@@ -33,7 +33,8 @@ def flash_attn_supports_fp8() -> bool:
 
 
 def flash_attn_supports_sinks() -> bool:
-    return False
+    # maca fa2 supports sinks
+    return True
 
 
 def flash_attn_supports_mla():
