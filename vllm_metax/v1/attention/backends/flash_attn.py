@@ -819,6 +819,7 @@ class FlashAttentionImpl(AttentionImpl):
                             window_size=self.sliding_window,
                             alibi_slopes=self.alibi_slopes,
                             softcap=self.logits_soft_cap,
+                            s_aux=self.sinks,
                         )
                     )
                 if attn_metadata.num_decodes > 0:
@@ -838,6 +839,7 @@ class FlashAttentionImpl(AttentionImpl):
                         window_size=self.sliding_window,
                         alibi_slopes=self.alibi_slopes,
                         softcap=self.logits_soft_cap,
+                        s_aux=self.sinks,
                     )
                     output[:num_decode_tokens] = reshape_attn_output_for_spec_decode(
                         output_unreshape
@@ -921,6 +923,7 @@ class FlashAttentionImpl(AttentionImpl):
             # q_descale=q_descale,
             # k_descale=k_descale,
             # v_descale=v_descale,
+            s_aux=self.sinks,
         )
         # \------------------------- Metax Modification -------------------------/
         # FA returns LSE in shape [ H, B ] but cp_lse_ag_out_rs wants [ B, H ]
@@ -951,6 +954,7 @@ class FlashAttentionImpl(AttentionImpl):
             # q_descale=q_descale,
             # k_descale=k_descale,
             # v_descale=v_descale,
+            s_aux=self.sinks,
         )
         # \------------------------- Metax Modification -------------------------/
 
@@ -1000,12 +1004,12 @@ class FlashAttentionImpl(AttentionImpl):
             self.num_kv_heads,
         )
 
+        num_actual_tokens = attn_metadata.num_actual_tokens
         # Call flash attention directly on Q, K, V tensors
-        flash_attn_varlen_func(
+        output[:num_actual_tokens] = flash_attn_varlen_func(
             q=query,
             k=key,
             v=value,
-            out=output,
             cu_seqlens_q=cu_seqlens_q,
             cu_seqlens_k=cu_seqlens_k,
             max_seqlen_q=max_seqlen_q,
@@ -1019,7 +1023,8 @@ class FlashAttentionImpl(AttentionImpl):
             # q_descale=layer._q_scale.expand(descale_shape),
             # k_descale=layer._k_scale.expand(descale_shape),
             # v_descale=layer._v_scale.expand(descale_shape),
-            num_splits=1 if self.batch_invariant_enabled else 0,
+            s_aux=self.sinks,
+            # num_splits=1 if self.batch_invariant_enabled else 0,
         )
 
         return output
@@ -1163,6 +1168,7 @@ def cascade_attention(
         window_size=sliding_window,
         block_table=block_table[:1],
         softcap=logits_soft_cap,
+        s_aux=s_aux,
     )
     # \------------------------- Metax Modification -------------------------/
 
@@ -1188,6 +1194,7 @@ def cascade_attention(
         block_table=block_table[:, num_common_kv_blocks:],
         softcap=logits_soft_cap,
         return_attn_probs=True,
+        s_aux=s_aux,
     )
 
     # Merge prefix and suffix outputs, and store the result in output.
