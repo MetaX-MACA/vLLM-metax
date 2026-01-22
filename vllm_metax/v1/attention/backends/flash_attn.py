@@ -221,7 +221,6 @@ class FlashAttentionMetadata:
     num_decodes: int
     num_decode_tokens: int
     decode_query_start_loc: torch.Tensor
-    decode_max_seq_len: int
     decode_seq_lens: torch.Tensor
     decode_block_table: torch.Tensor
 
@@ -426,9 +425,6 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         # /------------------------  Metax Modification -------------------------\
         # For handling prefill decode split
         if num_decodes > 0:
-            decode_max_seq_len = int(
-                common_attn_metadata.seq_lens_cpu[:num_decodes].max()
-            )
             decode_query_start_loc = common_attn_metadata.query_start_loc[
                 : num_decodes + 1
             ]
@@ -437,27 +433,24 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
                 :num_decodes
             ]
         else:
-            decode_max_seq_len = 0
             decode_query_start_loc = None
             decode_seq_lens = None
             decode_block_table_tensor = None
 
         if num_prefills > 0:
-            prefill_max_seq_len = int(
-                common_attn_metadata.seq_lens_cpu[num_decodes:num_reqs].max()
-            )
             prefill_query_start_loc = (
                 common_attn_metadata.query_start_loc[num_decodes : num_reqs + 1]
                 - common_attn_metadata.query_start_loc[num_decodes]
             )
             prefill_seq_lens = common_attn_metadata.seq_lens[num_decodes:num_reqs]
+            prefill_max_seq_len = int(prefill_seq_lens.max().item())
             prefill_block_table_tensor = common_attn_metadata.block_table_tensor[
                 num_decodes:num_reqs
             ]
         else:
-            prefill_max_seq_len = 0
             prefill_query_start_loc = None
             prefill_seq_lens = None
+            prefill_max_seq_len = 0
             prefill_block_table_tensor = None
         # \------------------------- Metax Modification -------------------------/
 
@@ -584,7 +577,6 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
             num_decodes=num_decodes,
             num_decode_tokens=num_decode_tokens,
             decode_query_start_loc=decode_query_start_loc,
-            decode_max_seq_len=decode_max_seq_len,
             decode_seq_lens=decode_seq_lens,
             decode_block_table=decode_block_table_tensor,
             num_prefills=num_prefills,
