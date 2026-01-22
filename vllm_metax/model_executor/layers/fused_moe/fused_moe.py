@@ -1123,9 +1123,6 @@ def get_moe_configs(
     dtype: str | None,
     block_n: int | None = None,
     block_k: int | None = None,
-    # ┌------------------------  Metax Modification -------------------------┐
-    H: int = 0,
-    # └------------------------- Metax Modification -------------------------┘
 ) -> dict[int, Any] | None:
     """
     Return optimized configurations for the fused MoE kernel.
@@ -1144,29 +1141,28 @@ def get_moe_configs(
     # directory
     block_shape = [block_n, block_k] if block_n and block_k else None
     json_file_name = get_config_file_name(E, N, dtype, block_shape)
-    json_file_name_with_H = f"H={H},{json_file_name}"  # metax modify
     config_file_paths = []
 
     # note that we prioritize user defined config
+    # --------------------------------------------------------
+    # Note!: Metax defined additional
+    #       - H dimension
+    #
+    # in the config file name. This is to address the scenario
+    # where different models (with different H values) share
+    # the same E and N values.
+    # --------------------------------------------------------
     user_defined_config_folder = envs.VLLM_TUNED_CONFIG_FOLDER
     logger.info("User defined config folder: %s", user_defined_config_folder)
     if user_defined_config_folder is not None:
-        user_defined_config_file_path_with_H = os.path.join(
-            user_defined_config_folder, json_file_name_with_H
-        )
         user_defined_config_file_path = os.path.join(
             user_defined_config_folder, json_file_name
         )
-        config_file_paths.append(user_defined_config_file_path_with_H)
         config_file_paths.append(user_defined_config_file_path)
 
-    default_config_file_path_with_H = os.path.join(
-        os.path.dirname(os.path.realpath(__file__)), "configs", json_file_name_with_H
-    )
     default_config_file_path = os.path.join(
         os.path.dirname(os.path.realpath(__file__)), "configs", json_file_name
     )
-    config_file_paths.append(default_config_file_path_with_H)
     config_file_paths.append(default_config_file_path)
 
     for config_file_path in config_file_paths:
@@ -1406,9 +1402,6 @@ def try_get_optimal_moe_config(
     dtype: str | None,
     M: int,
     block_shape: list[int] | None = None,
-    # ┌------------------------  Metax Modification -------------------------┐
-    H: int = 0,
-    # └------------------------- Metax Modification -------------------------┘
 ) -> dict[str, dict[str, Any]]:
     from vllm.model_executor.layers.fused_moe import get_config
 
@@ -1422,7 +1415,7 @@ def try_get_optimal_moe_config(
         #     N = N * 2
         block_n = block_shape[0] if block_shape else 0
         block_k = block_shape[1] if block_shape else 0
-        configs = get_moe_configs(E, N, dtype, block_n, block_k, H)
+        configs = get_moe_configs(E, N, dtype, block_n, block_k)
 
         if configs:
             # If an optimal configuration map has been found, look up the
@@ -2088,9 +2081,6 @@ def fused_experts_impl(
     assert w1.stride(-1) == 1, "Stride of last dimension must be 1"
     assert w2.stride(-1) == 1, "Stride of last dimension must be 1"
     assert hidden_states.dtype in [torch.float32, torch.float16, torch.bfloat16]
-    # ┌------------------------  Metax Modification -------------------------┐
-    H = hidden_states.shape[-1]
-    # └------------------------- Metax Modification -------------------------┘
     num_tokens = hidden_states.size(0)
     E, N, _ = w1.size()
     K = w2.size(1)
@@ -2128,9 +2118,6 @@ def fused_experts_impl(
         top_k_num,
         config_dtype,
         block_shape=block_shape,
-        # ┌------------------------  Metax Modification -------------------------┐
-        H=H,
-        # └------------------------- Metax Modification -------------------------┘
     )
 
     config = get_config_func(M)
@@ -2457,7 +2444,6 @@ class TritonExperts(mk.FusedMoEPermuteExpertsUnpermute):
             global_num_experts = E
 
         # ┌------------------------  Metax Modification -------------------------┐
-        H = hidden_states.shape[-1]
         config_dtype = get_config_dtype_str(
             dtype=hidden_states.dtype,
             use_int4_w4a16=self.quant_config.use_int4_w4a16,
@@ -2475,9 +2461,6 @@ class TritonExperts(mk.FusedMoEPermuteExpertsUnpermute):
             config_dtype,
             num_tokens,
             block_shape=self.block_shape,
-            # ┌------------------------  Metax Modification -------------------------┐
-            H=H,
-            # └------------------------- Metax Modification -------------------------┘
         )
 
         stage1_config = config.get("stage1", config)
@@ -2651,7 +2634,6 @@ class TritonWNA16Experts(TritonExperts):
             global_num_experts = E
 
         # ┌------------------------  Metax Modification -------------------------┐
-        H = hidden_states.shape[-1]
         config_dtype = get_config_dtype_str(
             dtype=hidden_states.dtype,
             use_int4_w4a16=self.quant_config.use_int4_w4a16,
@@ -2669,9 +2651,6 @@ class TritonWNA16Experts(TritonExperts):
             config_dtype,
             num_tokens,
             block_shape=self.block_shape,
-            # ┌------------------------  Metax Modification -------------------------┐
-            H=H,
-            # └------------------------- Metax Modification -------------------------┘
         )
 
         stage1_config = config.get("stage1", config).copy()
