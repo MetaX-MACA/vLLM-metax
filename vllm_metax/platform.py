@@ -14,9 +14,8 @@ from typing_extensions import ParamSpec
 
 import vllm_metax.envs as mx_envs
 from vllm.logger import logger
-
 from vllm.attention.backends.registry import AttentionBackendEnum, register_backend
-from vllm_metax.utils import import_pymxml
+from vllm_metax.utils import import_pymxsml
 from vllm.utils.torch_utils import cuda_device_count_stateless
 
 from vllm.platforms.interface import DeviceCapability, Platform, PlatformEnum
@@ -33,7 +32,7 @@ else:
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
-pymxml = import_pymxml()
+pymxsml = import_pymxsml()
 
 # pytorch 2.5 uses cudnn sdpa by default, which will cause crash on some models
 # see https://github.com/huggingface/diffusers/issues/9704 for details
@@ -104,14 +103,14 @@ def register_attention_backends() -> None:
     )
 
 
-def with_mxml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
+def with_mxsml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
     @wraps(fn)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
-        pymxml.nvmlInit()
+        pymxsml.nvmlInit()
         try:
             return fn(*args, **kwargs)
         finally:
-            pymxml.nvmlShutdown()
+            pymxsml.nvmlShutdown()
 
     return wrapper
 
@@ -188,16 +187,20 @@ class MacaPlatformBase(Platform):
     def import_kernels(cls) -> None:
         """Import any platform-specific C kernels."""
         try:
-            import vllm_metax._C  # noqa: F401
+            if mx_envs.USE_PRECOMPILED_KERNEL:
+                import mcoplib._C  # noqa: F401
+            else:
+                import vllm_metax._C  # noqa: F401
         except ImportError as e:
-            logger.warning("Failed to import from vllm_metax._C: %r", e)
+            logger.warning("Failed to import from mcoplib._C: %r", e)
 
         try:
-            import vllm_metax._moe_C  # noqa: F401
+            if mx_envs.USE_PRECOMPILED_KERNEL:
+                import mcoplib._moe_C  # noqa: F401
+            else:
+                import vllm_metax._moe_C  # noqa: F401
         except ImportError as e:
             logger.warning("Failed to import from vllm_metax._moe_C: %r", e)
-        # with contextlib.suppress(ImportError):
-        #     import vllm_metax._moe_C  # noqa: F401
 
     @classmethod
     def check_and_update_config(cls, vllm_config: "VllmConfig") -> None:
@@ -290,6 +293,8 @@ class MacaPlatformBase(Platform):
         # Disable cascade attention for Maca platform currently
         if vllm_config.model_config is not None:
             vllm_config.model_config.disable_cascade_attn = True
+
+        compilation_config._attention_ops.append("vllm::mx_sparse_attn_indexer")
 
     @classmethod
     def get_current_memory_usage(
@@ -525,21 +530,21 @@ class MacaPlatformBase(Platform):
 # Note that NVML is not affected by `CUDA_VISIBLE_DEVICES`,
 # all the related functions work on real physical device ids.
 # the major benefit of using NVML is that it will not initialize CUDA
-class MxmlPlatform(MacaPlatformBase):
+class MxsmlPlatform(MacaPlatformBase):
     @classmethod
     @cache
-    @with_mxml_context
+    @with_mxsml_context
     def get_device_capability(cls, device_id: int = 0) -> DeviceCapability | None:
         try:
             physical_device_id = cls.device_id_to_physical_device_id(device_id)
-            handle = pymxml.nvmlDeviceGetHandleByIndex(physical_device_id)
-            major, minor = pymxml.nvmlDeviceGetCudaComputeCapability(handle)
+            handle = pymxsml.nvmlDeviceGetHandleByIndex(physical_device_id)
+            major, minor = pymxsml.nvmlDeviceGetCudaComputeCapability(handle)
             return DeviceCapability(major=major, minor=minor)
         except RuntimeError:
             return None
 
     @classmethod
-    @with_mxml_context
+    @with_mxsml_context
     def has_device_capability(
         cls,
         capability: tuple[int, int] | int,
@@ -551,43 +556,44 @@ class MxmlPlatform(MacaPlatformBase):
             return False
 
     @classmethod
-    @with_mxml_context
+    @with_mxsml_context
     def get_device_name(cls, device_id: int = 0) -> str:
-        return "Device 4000"
+        physical_device_id = cls.device_id_to_physical_device_id(device_id)
+        return cls._get_physical_device_name(physical_device_id)
 
     @classmethod
-    @with_mxml_context
+    @with_mxsml_context
     def get_device_uuid(cls, device_id: int = 0) -> str:
         physical_device_id = cls.device_id_to_physical_device_id(device_id)
-        handle = pymxml.nvmlDeviceGetHandleByIndex(physical_device_id)
-        return pymxml.nvmlDeviceGetUUID(handle)
+        handle = pymxsml.nvmlDeviceGetHandleByIndex(physical_device_id)
+        return pymxsml.nvmlDeviceGetUUID(handle)
 
     @classmethod
-    @with_mxml_context
+    @with_mxsml_context
     def get_device_total_memory(cls, device_id: int = 0) -> int:
         physical_device_id = cls.device_id_to_physical_device_id(device_id)
-        handle = pymxml.nvmlDeviceGetHandleByIndex(physical_device_id)
-        return int(pymxml.nvmlDeviceGetMemoryInfo(handle).total)
+        handle = pymxsml.nvmlDeviceGetHandleByIndex(physical_device_id)
+        return int(pymxsml.nvmlDeviceGetMemoryInfo(handle).total)
 
     @classmethod
-    @with_mxml_context
+    @with_mxsml_context
     def is_fully_connected(cls, physical_device_ids: list[int]) -> bool:
         """
         query if the set of gpus are fully connected by nvlink (1 hop)
         """
-        handles = [pymxml.nvmlDeviceGetHandleByIndex(i) for i in physical_device_ids]
+        handles = [pymxsml.nvmlDeviceGetHandleByIndex(i) for i in physical_device_ids]
         for i, handle in enumerate(handles):
             for j, peer_handle in enumerate(handles):
                 if i < j:
                     try:
-                        p2p_status = pymxml.nvmlDeviceGetP2PStatus(
+                        p2p_status = pymxsml.nvmlDeviceGetP2PStatus(
                             handle,
                             peer_handle,
-                            pymxml.NVML_P2P_CAPS_INDEX_NVLINK,
+                            pymxsml.NVML_P2P_CAPS_INDEX_NVLINK,
                         )
-                        if p2p_status != pymxml.NVML_P2P_STATUS_OK:
+                        if p2p_status != pymxsml.NVML_P2P_STATUS_OK:
                             return False
-                    except pymxml.NVMLError:
+                    except pymxsml.NVMLError:
                         logger.exception(
                             "NVLink detection failed. This is normal if"
                             " your machine has no NVLink equipped."
@@ -597,14 +603,13 @@ class MxmlPlatform(MacaPlatformBase):
 
     @classmethod
     def _get_physical_device_name(cls, device_id: int = 0) -> str:
-        return "Device 4000"
-        # handle = pymxml.nvmlDeviceGetHandleByIndex(device_id)
-        # return pymxml.nvmlDeviceGetName(handle)
+        handle = pymxsml.nvmlDeviceGetHandleByIndex(device_id)
+        return pymxsml.nvmlDeviceGetName(handle)
 
     @classmethod
-    @with_mxml_context
+    @with_mxsml_context
     def log_warnings(cls):
-        device_ids: int = pymxml.nvmlDeviceGetCount()
+        device_ids: int = pymxsml.nvmlDeviceGetCount()
         if device_ids > 1:
             device_names = [cls._get_physical_device_name(i) for i in range(device_ids)]
             if (
@@ -619,7 +624,7 @@ class MxmlPlatform(MacaPlatformBase):
                 )
 
 
-class NonMxmlMetaxPlatform(MacaPlatformBase):
+class NonMxsmlMetaxPlatform(MacaPlatformBase):
     @classmethod
     @cache
     def get_device_capability(cls, device_id: int = 0) -> DeviceCapability:
@@ -628,7 +633,7 @@ class NonMxmlMetaxPlatform(MacaPlatformBase):
 
     @classmethod
     def get_device_name(cls, device_id: int = 0) -> str:
-        return "Device 4000"
+        return torch.cuda.get_device_name(device_id)
 
     @classmethod
     def get_device_total_memory(cls, device_id: int = 0) -> int:
@@ -646,19 +651,19 @@ class NonMxmlMetaxPlatform(MacaPlatformBase):
 
 # Autodetect either NVML-enabled or non-NVML platform
 # based on whether NVML is available.
-mxml_available = False
+mxsml_available = False
 try:
     try:
-        pymxml.nvmlInit()
-        mxml_available = True
+        pymxsml.nvmlInit()
+        mxsml_available = True
     except Exception:
         # On Jetson, NVML is not supported.
-        mxml_available = False
+        mxsml_available = False
 finally:
-    if mxml_available:
-        pymxml.nvmlShutdown()
+    if mxsml_available:
+        pymxsml.nvmlShutdown()
 
-MacaPlatform = MxmlPlatform if mxml_available else NonMxmlMetaxPlatform
+MacaPlatform = MxsmlPlatform if mxsml_available else NonMxsmlMetaxPlatform
 MacaPlatform.log_warnings()
 
 
@@ -682,8 +687,18 @@ mx_envs.override_vllm_env(
     False,
     "trtllm interfaces are not supported",  # noqa
 )
-# envs.VLLM_USE_TRTLLM_RAGGED_DEEPSEEK_PREFILL = False
-# envs.VLLM_USE_CUDNN_PREFILL = False
-# envs.VLLM_USE_FLASHINFER_SAMPLER = False
-# envs.VLLM_USE_STANDALONE_COMPILE = False
-# envs.VLLM_DISABLE_SHARED_EXPERTS_STREAM = False
+mx_envs.override_vllm_env(
+    "VLLM_DISABLE_SHARED_EXPERTS_STREAM",
+    True,
+    "shared expert stream may cause hang",
+)
+
+# vllm_metax currently does not support third-party Triton kernels; Triton upgrade required.
+import vllm.utils.import_utils as iu
+
+
+def has_triton_kernels() -> bool:
+    return False
+
+
+iu.has_triton_kernels = has_triton_kernels
