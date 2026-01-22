@@ -226,10 +226,10 @@ def flash_mla_sparse_prefill(
     """
     # TODO: MetaX flash_mla support
     # /------------------------  Metax Modification -------------------------\
-    min_seq_len = -1 if (indices == -1).any() else 2049
+    is_all_indices_valid = not (indices == -1).any()
 
     results = flash_mla.flash_mla_interface.flash_mla_sparse_fwd(
-        q, kv, indices, sm_scale, d_v, min_seq_len
+        q, kv, indices, sm_scale, d_v, is_all_indices_valid
     )
     # \------------------------- Metax Modification -------------------------/
     return results

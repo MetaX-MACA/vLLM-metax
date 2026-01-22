@@ -370,7 +370,9 @@ def get_prefill_workspace_size(max_model_len: int):
 
 
 class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetadata]):
-    _cudagraph_support: ClassVar[AttentionCGSupport] = AttentionCGSupport.UNIFORM_BATCH
+    # /------------------------  Metax Modification -------------------------\
+    _cudagraph_support: ClassVar[AttentionCGSupport] = AttentionCGSupport.NEVER
+    # \------------------------  Metax Modification -------------------------/
 
     def __init__(
         self,

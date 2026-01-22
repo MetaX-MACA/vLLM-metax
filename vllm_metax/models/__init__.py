@@ -5,9 +5,10 @@ from vllm import ModelRegistry
 
 def register_model():
 
-    # ModelRegistry.register_model(
-    #     "DeepSeekMTPModel", "vllm_metax.models.deepseek_mtp:DeepSeekMTP"
-    # )
+    # support dsv32
+    ModelRegistry.register_model(
+        "DeepSeekMTPModel", "vllm_metax.models.deepseek_mtp:DeepSeekMTP"
+    )
 
     ModelRegistry.register_model(
         "DeepseekV2ForCausalLM", "vllm_metax.models.deepseek_v2:DeepseekV2ForCausalLM"
