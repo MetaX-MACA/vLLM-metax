@@ -7,7 +7,7 @@
 # Copyright 2024 The vLLM team.
 
 
-def import_pymxml():
+def import_pymxsml():
     """
     Historical comments:
 
@@ -34,9 +34,9 @@ def import_pymxml():
     After all the troubles, we decide to copy the official `pynvml`
     module to our codebase, and use it directly.
     """
-    import vllm_metax.third_party.pymxml as pymxml
+    import vllm_metax.third_party.pymxsml as pymxsml
 
-    return pymxml
+    return pymxsml
 
 
 def vllm_version():
