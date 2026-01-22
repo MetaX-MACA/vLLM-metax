@@ -105,6 +105,7 @@ def fused_moe_kernel(
     )
 
 
+# dsv32
 def indexer_k_quant_and_cache(
     k: torch.Tensor,
     kv_cache: torch.Tensor,

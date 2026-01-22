@@ -3,6 +3,7 @@
 """Fused MoE Triton kernels."""
 
 import functools
+import importlib
 import json
 import math
 import os
@@ -15,6 +16,7 @@ import torch
 import torch.nn.functional as F
 
 import vllm.envs as envs
+import vllm_metax.envs as mx_envs
 import vllm.model_executor.layers.fused_moe.modular_kernel as mk
 from vllm import _custom_ops as ops
 from vllm._aiter_ops import rocm_aiter_ops
@@ -61,6 +63,13 @@ from vllm.utils.deep_gemm import is_deep_gemm_e8m0_used
 from vllm.utils.torch_utils import direct_register_custom_op, is_torch_equal_or_newer
 
 from vllm_metax import _custom_ops as mx_ops
+
+_mctlass_modname = (
+    "vllm_metax.model_executor.layers.quantization._python_api_ops"
+    if mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API
+    else "vllm_metax.model_executor.layers.quantization._cutlass_ops"
+)
+mctlass_ops: Any = importlib.import_module(_mctlass_modname)
 
 
 @triton.jit
@@ -796,6 +805,9 @@ def invoke_fused_moe_kernel(A: torch.Tensor,
             use_int8_w8a16=use_int8_w8a16,
             **config,
         )
+    elif use_int8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+        mctlass_ops.cutlass_moe_mm_w8a8(A, B, C, A_scale, B_scale, topk_weights, sorted_token_ids, expert_ids,
+                                        num_tokens_post_padded, EM, top_k, mul_routed_weight)
     else:
         config = config.copy()
         BLOCK_SIZE_K = config.pop("BLOCK_SIZE_K")
@@ -2053,6 +2065,16 @@ def fused_experts_impl(
         curr_topk_ids = topk_ids[begin_chunk_idx:end_chunk_idx]
         curr_topk_weights = topk_weights[begin_chunk_idx:end_chunk_idx]
 
+        # ┌------------------------  Metax Modification -------------------------┐
+        if use_int8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+            kernel_m = mctlass_ops.cutlass_moe_mm_w8a8_get_kernel_m(
+                curr_hidden_states, w1, intermediate_cache1, top_k_num
+            )
+            assert kernel_m > 0, "cutlass_moe_w8a8 BLOCK_SIZE_M must greater than zero."
+            # override kernel_m to config["BLOCK_SIZE_M"]
+            stage1_config["BLOCK_SIZE_M"] = kernel_m
+            stage2_config["BLOCK_SIZE_M"] = kernel_m
+
         sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
             curr_topk_ids,
             stage1_config["BLOCK_SIZE_M"],
@@ -2060,18 +2082,16 @@ def fused_experts_impl(
             expert_map,
             ignore_invalid_experts=True,
         )
-        # ┌------------------------  Metax Modification -------------------------┐
-        if (
+
+        use_fused_moe_kernel_on_stage1 = (
             stage1_config["BLOCK_SIZE_M"] == 128
             and not use_int8_w8a8
-            and (topk_ids.shape[1] == 1 or topk_ids.shape[1] == 2)
-            and (
-                curr_hidden_states.dtype == torch.bfloat16
-                or curr_hidden_states.dtype == torch.float16
-            )
+            and topk_ids.shape[1] in (1, 2)
+            and curr_hidden_states.dtype in (torch.bfloat16, torch.float16)
             and w1.shape[1] % 4 == 0
             and w1.shape[2] % 8 == 0
-        ):
+        )
+        if use_fused_moe_kernel_on_stage1:
             mx_ops.fused_moe_kernel(
                 curr_hidden_states,
                 w1,
@@ -2145,16 +2165,41 @@ def fused_experts_impl(
             raise ValueError(f"Unsupported FusedMoe activation: {activation}.")
 
         # ┌------------------------  Metax Modification -------------------------┐
-        if (
+        use_mctlass_moe_mm_on_stage2 = (
+            mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+            and use_int8_w8a8 is False
+            and hidden_states.dtype == torch.bfloat16
+            and stage2_config["BLOCK_SIZE_M"] == 128
+            and stage2_config["BLOCK_SIZE_N"] == 128
+            and stage2_config["BLOCK_SIZE_K"] == 64
+            and stage2_config["SPLIT_K"] == 1
+            and w2.shape[1] % 128 == 0
+            and w2.shape[2] % 8 == 0
+        )
+
+        use_fused_moe_kernel_on_stage2 = (
             stage2_config["BLOCK_SIZE_M"] == 128
             and not use_int8_w8a8
             and w2.shape[1] % 4 == 0
             and w2.shape[2] % 8 == 0
-            and (
-                hidden_states.dtype == torch.bfloat16
-                or hidden_states.dtype == torch.float16
+            and hidden_states.dtype in (torch.bfloat16, torch.float16)
+        )
+
+        if use_mctlass_moe_mm_on_stage2:
+            # use mctlass_moe_mm
+            mctlass_ops.cutlass_moe_bf16_mm(
+                intermediate_cache3,
+                intermediate_cache2,
+                w2,
+                curr_topk_weights,
+                sorted_token_ids,
+                expert_ids,
+                num_tokens_post_padded,
+                curr_topk_ids.numel(),
+                1,
+                True,
             )
-        ):
+        elif use_fused_moe_kernel_on_stage2:
             mx_ops.fused_moe_kernel(
                 intermediate_cache2,
                 w2,
