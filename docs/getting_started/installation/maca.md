@@ -4,6 +4,7 @@
 
 - OS: Linux
 - Python: 3.10 -- 3.12
+- torch:2.8
 
 ## Set up using pip (without UV)
 
@@ -13,7 +14,12 @@
     If using pip, all the build and installation steps are based on *corresponding docker images*. You can find them on [quick start](../quickstart.md).
     We need to add `-no-build-isolation` flag (or an equivalent one) during package building, since all the requirements are already pre-installed in released docker image.
 
-#### Setup environment variables
+#### Pull the corresponding image
+```bash
+docker pull cr.metax-tech.com/public-ai-release/maca/vllm-metax:0.11.2-maca.ai3.3.0.103-torch2.8-py310-ubuntu22.04-amd64 
+```
+
+#### Step 1:Setup environment variables
 
 ```bash
 # setup MACA path
@@ -31,12 +37,12 @@ export LD_LIBRARY_PATH=${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu
 export VLLM_INSTALL_PUNICA_KERNELS=1
 ```
 
-#### Build vllm
+#### Step 2:Build vllm
 
 Clone vllm project:
 
 ```bash 
-git clone  --depth 1 --branch main https://github.com/vllm-project/vllm
+git clone  --depth 1 --branch releases/v0.11.2 https://github.com/vllm-project/vllm
 cd vllm
 ```
 
@@ -48,8 +54,13 @@ pip install -r requirements/build.txt
 VLLM_TARGET_DEVICE=empty pip install -v . --no-build-isolation
 ```
 
-#### Build plugin
+#### Step 3:Build plugin
+Clone vLLM-metax project:
 
+```bash 
+git clone --depth 1 --branch releases/v0.11.2 https://github.com/MetaX-MACA/vLLM-metax
+cd vLLM-metax
+```
 Install the build requirments first:
 
 ```bash
@@ -57,7 +68,7 @@ python use_existing_metax.py
 pip install -r requirements/build.txt
 ```
 
-Build and install vLLM:
+Build and install vLLM-metax:
 
 ```bash
 pip install . -v --no-build-isolation
