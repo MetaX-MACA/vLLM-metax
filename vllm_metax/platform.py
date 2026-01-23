@@ -322,12 +322,11 @@ class MacaPlatformBase(Platform):
         )
 
         if model_config is not None:
-            from vllm_metax.utils.moe_config import infer_hidden_size_from_model_config
-
-            hidden_size = infer_hidden_size_from_model_config(model_config)
+            hidden_size = model_config.get_hidden_size()
             assert hidden_size > 0, (
                 "Failed to infer hidden_size from model_config (multimodal?)"
             )
+
             tuned_dir_with_h = os.path.join(
                 str(_FUSED_MOE_CONFIGS_DIR), f"H={hidden_size}"
             )

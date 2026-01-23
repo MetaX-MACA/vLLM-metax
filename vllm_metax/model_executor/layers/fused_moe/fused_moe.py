@@ -1180,11 +1180,11 @@ def get_moe_configs(
     user_defined_config_folder = envs.VLLM_TUNED_CONFIG_FOLDER
     logger.info("User defined config folder: %s", user_defined_config_folder)
     if user_defined_config_folder is not None:
-        from vllm_metax.utils.moe_config import _MOE_CONFIG_PREFIX
+        from vllm_metax.utils import get_moe_config_prefix
 
-        json_file_name_WITH_H = f"{_MOE_CONFIG_PREFIX},{json_file_name}"
+        json_file_name_WITH_PREFIX = f"{get_moe_config_prefix()},{json_file_name}"
         user_defined_config_file_path = os.path.join(
-            user_defined_config_folder, json_file_name_WITH_H
+            user_defined_config_folder, json_file_name_WITH_PREFIX
         )
         config_file_paths.append(user_defined_config_file_path)
 
