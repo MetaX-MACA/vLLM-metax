@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import torch
 from vllm.model_executor.layers.fused_moe import FusedMoE
+from vllm.model_executor.layers.fused_moe.fused_moe_router import FusedMoERouter
 from vllm.model_executor.layers.quantization.compressed_tensors import (
     compressed_tensors_moe as vllm_ctm,
 )
@@ -63,12 +64,16 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
 # -----------------------------------------------------------
 class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm.CompressedTensorsW8A8Int8MoEMethod):
     def apply(
-        self, layer: FusedMoE, x: torch.Tensor, router_logits: torch.Tensor
+        self,
+        layer: FusedMoE,
+        router: FusedMoERouter,
+        x: torch.Tensor,
+        router_logits: torch.Tensor,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         # here we use Metax's `fused_experts`
         from vllm_metax.model_executor.layers.fused_moe.fused_moe import fused_experts
 
-        topk_weights, topk_ids, _ = layer.select_experts(
+        topk_weights, topk_ids = router.select_experts(
             hidden_states=x,
             router_logits=router_logits,
         )
@@ -121,13 +126,14 @@ class CompressedTensorsWNA16MoEMethod(vllm_ctm.CompressedTensorsWNA16MoEMethod):
     def apply(
         self,
         layer: FusedMoE,
+        router: FusedMoERouter,
         x: torch.Tensor,
         router_logits: torch.Tensor,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         # here we use Metax's `fused_experts`
         from vllm_metax.model_executor.layers.fused_moe.fused_moe import fused_experts
 
-        topk_weights, topk_ids, _ = layer.select_experts(
+        topk_weights, topk_ids = router.select_experts(
             hidden_states=x,
             router_logits=router_logits,
         )

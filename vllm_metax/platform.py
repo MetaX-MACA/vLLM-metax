@@ -195,7 +195,11 @@ class MacaPlatformBase(Platform):
             else:
                 import vllm_metax._C  # noqa: F401
         except ImportError as e:
-            logger.warning("Failed to import  _C: %r", e)
+            logger.warning(
+                "Failed to import  _C: %r with USE_PRECOMPILED_KERNEL=%s",
+                e,
+                mx_envs.USE_PRECOMPILED_KERNEL,
+            )
 
         try:
             if mx_envs.USE_PRECOMPILED_KERNEL:
@@ -203,7 +207,11 @@ class MacaPlatformBase(Platform):
             else:
                 import vllm_metax._moe_C  # noqa: F401
         except ImportError as e:
-            logger.warning("Failed to import _moe_C: %r", e)
+            logger.warning(
+                "Failed to import _moe_C: %r with USE_PRECOMPILED_KERNEL=%s",
+                e,
+                mx_envs.USE_PRECOMPILED_KERNEL,
+            )
 
     @classmethod
     def check_and_update_config(cls, vllm_config: "VllmConfig") -> None:
@@ -314,14 +322,12 @@ class MacaPlatformBase(Platform):
         )
 
         if model_config is not None:
-            hf_cfg = getattr(model_config, "hf_config", None)
-            # common names across HF configs
-            hidden_size = (
-                getattr(hf_cfg, "hidden_size", None)
-                or getattr(hf_cfg, "n_embd", None)
-                or getattr(hf_cfg, "d_model", None)
+            from vllm_metax.utils.moe_config import infer_hidden_size_from_model_config
+
+            hidden_size = infer_hidden_size_from_model_config(model_config)
+            assert hidden_size > 0, (
+                "Failed to infer hidden_size from model_config (multimodal?)"
             )
-            assert hidden_size > 0
             tuned_dir_with_h = os.path.join(
                 str(_FUSED_MOE_CONFIGS_DIR), f"H={hidden_size}"
             )
