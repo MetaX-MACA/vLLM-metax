@@ -154,6 +154,8 @@ class ModelConfigManager:
             "--dataset-name",
             bench_cfg.get("dataset_name", "random"),
             "--trust-remote-code",
+            "--ready-check-timeout-sec",
+            "6000",
         ]
         if bench_cfg.get("ignore_eos"):
             bench_cmd.append("--ignore-eos")
