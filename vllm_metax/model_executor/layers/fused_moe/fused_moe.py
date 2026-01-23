@@ -1176,15 +1176,19 @@ def get_moe_configs(
     # in the config file name. This is to address the scenario
     # where different models (with different H values) share
     # the same E and N values.
+    #
+    # The priority order is:
+    #   1. sub-folder of `configs/H={hidden_size}/`
+    #   2. default config folder `configs/`
     # --------------------------------------------------------
     user_defined_config_folder = envs.VLLM_TUNED_CONFIG_FOLDER
     logger.info("User defined config folder: %s", user_defined_config_folder)
     if user_defined_config_folder is not None:
         from vllm_metax.utils import get_moe_config_prefix
 
-        json_file_name_WITH_PREFIX = f"{get_moe_config_prefix()},{json_file_name}"
+        json_file_name_WITH_H_PREFIX = f"{get_moe_config_prefix()},{json_file_name}"
         user_defined_config_file_path = os.path.join(
-            user_defined_config_folder, json_file_name_WITH_PREFIX
+            user_defined_config_folder, json_file_name_WITH_H_PREFIX
         )
         config_file_paths.append(user_defined_config_file_path)
 
