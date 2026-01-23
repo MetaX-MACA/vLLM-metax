@@ -126,7 +126,10 @@ class SchedularArgs:
             "--gpus",
             type=str,
             default=None,
-            help="Only run models that require the given number(s) of GPUs. Comma-separated, e.g. '1,2,4,8'. GPU count is computed as tp*pp*dp.",
+            help=(
+                "Only run models that require the given number(s) of GPUs (tp*pp*dp). Comma-separated, e.g. '1,2,4,8'. "
+                "If not set, default to '1,2,4,8'."
+            ),
         )
 
         parser.add_argument(
@@ -192,9 +195,19 @@ class Scheduler:
         return tp * pp * dp
 
     def _parse_gpus_filter(self) -> set[int] | None:
-        """Parse --gpus like '1,2,4' into a set of ints."""
-        if not self.args.gpus:
-            return None
+        """Parse --gpus like '1,2,4' into a set of ints.
+
+        Default behavior:
+          - If --gpus is not provided, run models requiring {1,2,4,8} GPUs by default.
+          - If --gpus is provided, use the user-specified set.
+        """
+        if self.args.gpus is None:
+            return {1, 2, 4, 8}
+
+        # If user provided empty string (rare), treat as no filter or default? Here we treat as default too.
+        if str(self.args.gpus).strip() == "":
+            return {1, 2, 4, 8}
+
         out: set[int] = set()
         for part in str(self.args.gpus).split(","):
             part = part.strip()
@@ -206,7 +219,7 @@ class Scheduler:
                 raise ValueError(
                     f"Invalid --gpus value '{part}'. Expected comma-separated integers."
                 ) from e
-        return out or None
+        return out or {1, 2, 4, 8}
 
     def _get_tags(self, model_cfg: dict) -> set[str]:
         """Return normalized tags for a model.
