@@ -42,7 +42,7 @@ export VLLM_INSTALL_PUNICA_KERNELS=1
 Clone vllm project:
 
 ```bash 
-git clone  --depth 1 --branch releases/v0.11.2 https://github.com/vllm-project/vllm
+git clone --depth 1 --branch releases/v0.11.2 https://github.com/vllm-project/vllm
 cd vllm
 ```
 
