@@ -36,13 +36,13 @@ export VLLM_INSTALL_PUNICA_KERNELS=1
 Clone vllm project:
 
 ```bash 
-git clone  --depth 1 --branch main https://github.com/vllm-project/vllm
-cd vllm
+git clone  --depth 1 --branch releases/v0.11.2 https://github.com/vllm-project/vllm
 ```
 
 Build with *empty device*:
 
 ```bash
+cd vllm
 python use_existing_torch.py
 pip install -r requirements/build.txt
 VLLM_TARGET_DEVICE=empty pip install -v . --no-build-isolation
@@ -50,20 +50,27 @@ VLLM_TARGET_DEVICE=empty pip install -v . --no-build-isolation
 
 #### Build plugin
 
+Clone vllm-metax project:
+
+```bash 
+git clone --branch releases/v0.11.2 https://github.com/MetaX-MACA/vLLM-metax
+```
+
 Install the build requirments first:
 
 ```bash
+cd vLLM-metax
 python use_existing_metax.py
 pip install -r requirements/build.txt
 ```
 
-Build and install vLLM:
+Build and install vLLM-metax:
 
 ```bash
 pip install . -v --no-build-isolation
 ```
 
-If you want to develop vLLM, install it in editable mode instead.
+If you want to develop  vLLM-metax, install it in editable mode instead.
 
 ```bash
 pip install . -e -v --no-build-isolation
