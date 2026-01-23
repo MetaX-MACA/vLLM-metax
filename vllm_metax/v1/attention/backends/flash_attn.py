@@ -7,6 +7,7 @@ from typing import ClassVar
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 from vllm import envs
 from vllm.attention.backends.abstract import (
@@ -799,10 +800,10 @@ class FlashAttentionImpl(AttentionImpl):
                 # For handling prefill decode split
                 num_decode_tokens = attn_metadata.num_decode_tokens
                 if attn_metadata.num_prefills > 0:
-                    cu_prefix_kv_lens = torch.tensor(
-                        [0] + attn_metadata.prefill_seq_lens.tolist(),
-                        device=attn_metadata.prefill_seq_lens.device,
-                        dtype=torch.int32,
+                    cu_prefix_kv_lens = F.pad(
+                        attn_metadata.prefill_seq_lens,
+                        (1, 0),
+                        value=0,
                     ).cumsum(dim=0, dtype=torch.int32)
                     output[num_decode_tokens:num_actual_tokens] = (
                         flash_attn_varlen_func(
@@ -895,10 +896,10 @@ class FlashAttentionImpl(AttentionImpl):
         query_across_dcp = get_dcp_group().all_gather(query, dim=1)
         # /------------------------  Metax Modification -------------------------\
         assert attn_metadata.dcp_context_kv_lens is not None
-        cu_seqlens_k = torch.tensor(
-            [0] + attn_metadata.dcp_context_kv_lens.tolist(),
-            device=attn_metadata.dcp_context_kv_lens.device,
-            dtype=torch.int32,
+        cu_seqlens_k = F.pad(
+            attn_metadata.dcp_context_kv_lens,
+            (1, 0),
+            value=0,
         ).cumsum(dim=0, dtype=torch.int32)
 
         context_attn_out, context_lse, _ = flash_attn_varlen_func(
@@ -1143,8 +1144,10 @@ def cascade_attention(
     descale_shape = (cu_prefix_query_lens.shape[0] - 1, key_cache.shape[-2])
 
     # /------------------------  Metax Modification -------------------------\
-    cu_prefix_kv_lens = torch.tensor(
-        [0] + prefix_kv_lens.tolist(), device=prefix_kv_lens.device, dtype=torch.int32
+    cu_prefix_kv_lens = F.pad(
+        prefix_kv_lens,
+        (1, 0),
+        value=0,
     ).cumsum(dim=0, dtype=torch.int32)
     # \------------------------  Metax Modification -------------------------/
 
@@ -1168,8 +1171,10 @@ def cascade_attention(
 
     descale_shape = (cu_query_lens.shape[0] - 1, key_cache.shape[-2])
     # /------------------------  Metax Modification -------------------------\
-    cu_suffix_kv_lens = torch.tensor(
-        [0] + suffix_kv_lens.tolist(), device=suffix_kv_lens.device, dtype=torch.int32
+    cu_suffix_kv_lens = F.pad(
+        suffix_kv_lens,
+        (1, 0),
+        value=0,
     ).cumsum(dim=0, dtype=torch.int32)
     # \------------------------  Metax Modification -------------------------/
 
