@@ -10,7 +10,6 @@ You could get the docker image at [MetaX develop community](https://developer.me
 |:--------------:|:------------:|:-----------------------:|
 |v0.8.5          |maca2.33.1.13 | vllm:maca.ai2.33.1.13-torch2.6-py310-ubuntu22.04-amd64 |
 |v0.9.1          |maca3.0.0.5   | vllm:maca.ai3.0.0.5-torch2.6-py310-ubuntu22.04-amd64 |
-|v0.10.1.1 (dev) |maca3.1.0.7   | not released |
 |v0.10.2         |maca3.2.1.7   | vllm-metax:0.10.2-maca.ai3.2.1.7-torch2.6-py310-ubuntu22.04-amd64 |
 |v0.11.0         |maca3.3.x.x   | not released |
 |v0.11.1rc6      |maca3.3.x.x   | not released |
