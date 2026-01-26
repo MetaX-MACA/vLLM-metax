@@ -5,15 +5,13 @@
 - OS: Linux
 - Python: 3.10 -- 3.12
 
-## Set up using pip (without UV)
-
-### Build wheel from source
+## Install vllm-metax from scratch (with pip)
 
 !!! note
     If using pip, all the build and installation steps are based on *corresponding docker images*. You can find them on [quick start](../quickstart.md).
-    We need to add `-no-build-isolation` flag (or an equivalent one) during package building, since all the requirements are already pre-installed in released docker image.
+    We need to add `--no-build-isolation` flag during package building since all the requirements are already pre-installed in released docker image.
 
-#### Setup environment variables
+### Setup environment variables
 
 ```bash
 # setup MACA path
@@ -31,53 +29,59 @@ export LD_LIBRARY_PATH=${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu
 export VLLM_INSTALL_PUNICA_KERNELS=1
 ```
 
-#### Build vllm
+### Build vllm
 
 Clone vllm project:
 
 ```bash 
-git clone  --depth 1 --branch main https://github.com/vllm-project/vllm
-cd vllm
+git clone  --depth 1 --branch v0.14.1 https://github.com/vllm-project/vllm && cd vllm
 ```
 
 Build with *empty device*:
 
 ```bash
+# To build vLLM using an existing PyTorch installation:
 python use_existing_torch.py
 pip install -r requirements/build.txt
-VLLM_TARGET_DEVICE=empty pip install -v . --no-build-isolation
+VLLM_TARGET_DEVICE=empty pip install . --no-build-isolation
 ```
 
-#### Build plugin
+### Build plugin
 
-Install the build requirments first:
+Clone vllm-metax project:
+
+```bash 
+git clone --branch v0.14.0-dev https://github.com/MetaX-MACA/vLLM-metax
+```
+
+
+Build and install vLLM-MetaX plugin:
 
 ```bash
 python use_existing_metax.py
 pip install -r requirements/build.txt
-```
-
-Build and install vLLM:
-
-```bash
 pip install . -v --no-build-isolation
 ```
 
-If you want to develop vLLM, install it in editable mode instead.
+!!! note
+    If you want to develop vLLM, install it in editable mode instead.
 
-```bash
-pip install . -e -v --no-build-isolation
-```
+    ```bash
+    pip install . -e -v --no-build-isolation
+    ```
 
-Optionally, build a portable wheel which you can then install elsewhere:
+    Optionally, build a portable wheel which you can then install elsewhere.
 
-```bash
-python -m build -w -n
-pip install dist/*.whl
-``` 
+    ```bash 
+    python -m build -w -n 
+    pip install dist/*.whl
+    ```
 
-## Set up using UV (experimental)
+## Install with UV (experimental)
 
 Todo
 
 ## Extra information
+
+!!! note
+    After v0.11.2, vLLM-MetaX moved its kernel to a separate package called *punica-kernels*.

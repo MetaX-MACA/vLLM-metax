@@ -25,9 +25,6 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # By default this is 1.
     # If set, `MAX_JOBS` will be reduced to avoid oversubscribing the CPU.
     "NVCC_THREADS": lambda: os.getenv("NVCC_THREADS", None),
-    # If set, vllm will use precompiled binaries (*.so)
-    "VLLM_USE_PRECOMPILED": lambda: bool(os.environ.get("VLLM_USE_PRECOMPILED"))
-    or bool(os.environ.get("VLLM_PRECOMPILED_WHEEL_LOCATION")),
     # CMake build type
     # If not set, defaults to "Debug" or "RelWithDebInfo"
     # Available options: "Debug", "Release", "RelWithDebInfo"
@@ -84,7 +81,7 @@ def override_vllm_env(env_name: str, value: Any, reason: str | None) -> None:
         raise KeyError(f"{env_name} is not a recognized vLLM environment variable")
 
     logger.info_once(
-        "Note!: set %s to %s. Reason: %s",
+        "Plugin sets %s to %s. Reason: %s",
         env_name,
         value,
         reason,
