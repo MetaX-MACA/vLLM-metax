@@ -13,6 +13,9 @@ cmake_minimum_required(VERSION 3.26)
 # cmake --install . --component _C
 project(vllm_extensions LANGUAGES CXX)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # CUDA by default, can be overridden by using -DVLLM_TARGET_DEVICE=... (used by setup.py)
 set(VLLM_TARGET_DEVICE "cuda" CACHE STRING "Target device backend for vLLM")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
@@ -58,8 +61,8 @@ set(PYTHON_SUPPORTED_VERSIONS "3.9" "3.10" "3.11" "3.12")
 # versions are derived from docker/Dockerfile.rocm
 #
 
-set(TORCH_SUPPORTED_VERSION_CUDA "2.6.0")
-set(TORCH_SUPPORTED_VERSION_ROCM "2.6.0")
+set(TORCH_SUPPORTED_VERSION_CUDA "2.8.0")
+set(TORCH_SUPPORTED_VERSION_ROCM "2.8.0")
 
 #
 # Try to find python package with an executable that exactly matches
@@ -114,7 +117,7 @@ if (CUDA_FOUND)
   endif()
 
 else()
-  message(FATAL_ERROR "Can't find CUDA")
+  message(FATAL_ERROR "Can't find CUDA installation")
 endif()
 
 

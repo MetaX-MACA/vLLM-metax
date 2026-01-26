@@ -1,18 +1,29 @@
 # Installation
 
+!!! warning "Breaking Change Notice"
+    After v0.11.2, vLLM-MetaX moved its `_C` and `_moe_C` kernel into a separate package named `mcoplib`. 
+    
+    mcoplib is open-sourced at [MetaX-mcoplib](https://github.com/MetaX-MACA/mcoplib) and would maintain its own release cycle. Please always install the corresponding version of mcoplib when using vLLM-MetaX.
+
+    Though the *csrc* folder is still kept in this repo for development convenience, and there is no guarantee that the code is always in sync with mcoplib. Not only the performance but also the correctness may differ from mcoplib. 
+
+    To build and use the vllm-metax csrc , you need to set: 
+    
+        `USE_PRECOMPILED_KERNEL=0`  
+    
+    in both build and runtime environment variables.
+    
+    **Please always use mcoplib for production usage.**
+
 ## Requirements
 
 - OS: Linux
 - Python: 3.10 -- 3.12
 
-## Install vllm-metax from scratch (with pip)
 
-!!! note
-    If using pip, all the build and installation steps are based on *corresponding docker images*. You can find them on [quick start](../quickstart.md).
-    We need to add `--no-build-isolation` flag during package building since all the requirements are already pre-installed in released docker image.
+## Build from source
 
-### Setup environment variables
-
+### Prepare environment
 ```bash
 # setup MACA path
 export MACA_PATH="/opt/maca"
@@ -25,26 +36,12 @@ export CUCC_CMAKE_ENTRY=2
 # update PATH
 export PATH=${MACA_PATH}/mxgpu_llvm/bin:${MACA_PATH}/bin:${CUCC_PATH}/tools:${CUCC_PATH}/bin:${PATH}
 export LD_LIBRARY_PATH=${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu_llvm/lib:${LD_LIBRARY_PATH}
-
-export VLLM_INSTALL_PUNICA_KERNELS=1
 ```
 
-### Build vllm
-
-Clone vllm project:
-
-```bash 
-git clone  --depth 1 --branch v0.14.1 https://github.com/vllm-project/vllm && cd vllm
-```
-
-Build with *empty device*:
-
-```bash
-# To build vLLM using an existing PyTorch installation:
-python use_existing_torch.py
-pip install -r requirements/build.txt
-VLLM_TARGET_DEVICE=empty pip install . --no-build-isolation
-```
+=== "PIP"
+    --8<-- "docs/getting_started/installation/pip.inc.md:prepare-env"
+=== "UV"
+    --8<-- "docs/getting_started/installation/uv.inc.md:prepare-env"
 
 ### Build plugin
 
@@ -52,36 +49,35 @@ Clone vllm-metax project:
 
 ```bash 
 git clone --branch v0.14.0-dev https://github.com/MetaX-MACA/vLLM-metax
+cd vLLM-metax
 ```
-
 
 Build and install vLLM-MetaX plugin:
 
-```bash
-python use_existing_metax.py
-pip install -r requirements/build.txt
-pip install . -v --no-build-isolation
+=== "PIP"
+    --8<-- "docs/getting_started/installation/pip.inc.md:build-vllm-metax"
+=== "UV"
+    --8<-- "docs/getting_started/installation/uv.inc.md:build-vllm-metax"
+
+
+### Build vllm
+
+Clone vllm project:
+
+```bash 
+git clone  --depth 1 --branch v0.14.1 https://github.com/vllm-project/vllm 
+cd vllm
 ```
 
-!!! note
-    If you want to develop vLLM, install it in editable mode instead.
+Build with *empty device*:
 
-    ```bash
-    pip install . -e -v --no-build-isolation
-    ```
+=== "PIP"
+    --8<-- "docs/getting_started/installation/pip.inc.md:build-vllm"
+=== "UV"
+    --8<-- "docs/getting_started/installation/uv.inc.md:build-vllm"
 
-    Optionally, build a portable wheel which you can then install elsewhere.
+!!! warning 
+    Make sure you install vllm-metax **first**, this skipped the `requirements/build.txt` requirements during vllm installation since it has already installed in vllm-metax installation. We don't need to execute them twice.
 
-    ```bash 
-    python -m build -w -n 
-    pip install dist/*.whl
-    ```
-
-## Install with UV (experimental)
-
-Todo
 
 ## Extra information
-
-!!! note
-    After v0.11.2, vLLM-MetaX moved its kernel to a separate package called *punica-kernels*.
