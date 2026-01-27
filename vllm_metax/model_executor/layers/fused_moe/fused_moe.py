@@ -490,6 +490,10 @@ def fused_moe_kernel(
             pid_m,  # first element = pid_m
             num_valid_tokens,  # remaining elements = constant
         )
+    # ┌------------------------  Metax Modification -------------------------┐
+    if UPGRADE_A_OFFS:
+        offs_token = offs_token.to(tl.int64)
+    # └----------------------------------------------------------------------┘
 
     token_mask = offs_token < num_valid_tokens
 
@@ -498,10 +502,7 @@ def fused_moe_kernel(
         off_experts = tl.load(expert_ids_ptr + pid_m).to(tl.int64)
     else:
         off_experts = tl.load(expert_ids_ptr + pid_m)
-
-    if UPGRADE_A_OFFS:
-        offs_token = offs_token.to(tl.int64)
-    # └------------------------- Metax Modification -------------------------┘
+    # └----------------------------------------------------------------------┘
 
     if off_experts == -1:
         # -----------------------------------------------------------
@@ -527,7 +528,6 @@ def fused_moe_kernel(
         offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
     offs_k = pid_z * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
     # └------------------------- Metax Modification -------------------------┘
-
     a_ptrs = a_ptr + (
         offs_token[:, None] // top_k * stride_am + offs_k[None, :] * stride_ak
     )
@@ -574,8 +574,9 @@ def fused_moe_kernel(
     # of fp32 values for higher accuracy.
     # `accumulator` will be converted back to fp16 after the loop.
 
-    # ┌------------------------  Metax Modification -------------------------┐
-    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+    accumulator = tl.zeros(
+        (BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.int32 if use_int8_w8a8 else tl.float32
+    )
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K * SPLIT_K)):
         # Load the next block of A and B, generate a mask by checking the
         # K dimension.
@@ -612,7 +613,6 @@ def fused_moe_kernel(
         # Advance the ptrs to the next K block.
         a_ptrs += BLOCK_SIZE_K * stride_ak * SPLIT_K
         b_ptrs += BLOCK_SIZE_K * stride_bk * SPLIT_K
-    # └------------------------- Metax Modification -------------------------┘
 
     # Dequantization for supported quantization schemes:
     #   - int8_w8a16

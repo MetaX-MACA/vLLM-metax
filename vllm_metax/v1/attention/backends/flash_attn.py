@@ -229,7 +229,6 @@ class FlashAttentionMetadata:
     num_prefill_tokens: int
     prefill_query_start_loc: torch.Tensor
     prefill_max_seq_len: int
-    prefill_seq_lens: torch.Tensor
     prefill_block_table: torch.Tensor
 
     cu_prefix_kv_lens: torch.Tensor | None
@@ -599,7 +598,6 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
             num_prefill_tokens=num_prefill_tokens,
             prefill_query_start_loc=prefill_query_start_loc,
             prefill_max_seq_len=prefill_max_seq_len,
-            prefill_seq_lens=prefill_seq_lens,
             prefill_block_table=prefill_block_table_tensor,
             cu_prefix_kv_lens=cu_prefix_kv_lens,
             cu_seqlens_k=cu_seqlens_k,
