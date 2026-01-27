@@ -192,6 +192,9 @@ class cmake_build_ext(build_ext):
         if _is_maca():
             cmake_args += [f"-DCMAKE_CUDA_COMPILER={CUDA_HOME}/bin/nvcc"]
             cmake_args += ["-DUSE_MACA=1"]
+
+        if not _build_custom_ops():
+            cmake_args += ["-DUSE_PRECOMPILED_KERNEL=ON"]
         subprocess.check_call(
             [CMAKE_EXECUTABLE, ext.cmake_lists_dir, *build_tool, *cmake_args],
             cwd=self.build_temp,

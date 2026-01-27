@@ -24,6 +24,7 @@ message(STATUS "Target device: ${VLLM_TARGET_DEVICE}")
 # /-------------------- MACA Support --------------------/
 option(USE_MACA "Enable MACA Support" ON)
 option(ENABLE_BLAS_API "Enable blas api for fused moe" ON)
+option(USE_PRECOMPILED_KERNEL "Build custom op" ON)
 
 set(MACA_PATH "$ENV{MACA_PATH}")
 
@@ -437,6 +438,9 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
 # if CUDA endif
 endif()
 
+if(USE_PRECOMPILED_KERNEL)
+  message(STATUS "Skipping _C extension as USE_PRECOMPILED_KERNEL is ON.")
+else()
 message(STATUS "Enabling C extension.")
 define_gpu_extension_target(
   _C
@@ -464,6 +468,8 @@ target_compile_options(_C PRIVATE
 # driver API. This causes problems when linking with earlier versions of CUDA.
 # Setting this variable sidesteps the issue by calling the driver directly.
 target_compile_definitions(_C PRIVATE CUTLASS_ENABLE_DIRECT_CUDA_DRIVER_CALL=1)
+endif()
+
 
 #
 # _moe_C extension
@@ -513,6 +519,10 @@ if(USE_MACA AND ENABLE_BLAS_API)
       LIBRARIES ${MCBLAS_LIB})
 endif()
 
+
+if (USE_PRECOMPILED_KERNEL)
+  message(STATUS "Skipping _moe_C extension as USE_PRECOMPILED_KERNEL is ON.")
+else()
 define_gpu_extension_target(
   _moe_C
   DESTINATION vllm_metax
@@ -525,4 +535,4 @@ define_gpu_extension_target(
   ${BLAS_API_ARGS}
   USE_SABI 3
   WITH_SOABI)
-
+endif()
