@@ -24,7 +24,7 @@ message(STATUS "Target device: ${VLLM_TARGET_DEVICE}")
 # /-------------------- MACA Support --------------------/
 option(USE_MACA "Enable MACA Support" ON)
 option(ENABLE_BLAS_API "Enable blas api for fused moe" ON)
-option(USE_PRECOMPILED_KERNEL "Build custom op" ON)
+option(USE_PRECOMPILED_KERNEL "Build custom op" OFF)
 
 set(MACA_PATH "$ENV{MACA_PATH}")
 
