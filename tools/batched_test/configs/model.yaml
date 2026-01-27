@@ -462,6 +462,36 @@
     sweep_num_runs: 1
   extra_env:
 
+- name: Qwen2.5-7B-Instruct-W4A16-AWQ
+  model_path: /pde_ai/share/whzhou/modelQ/Qwen2.5-7B-Instruct-W4A16-AWQ
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+
+- name: Qwen3-30B-A3B-Quarot_W4A16_Pack_Sym_QuantGate
+  model_path: /mxstorage/pde_ai/models/Tangle/Qwen/Qwen3-30B-A3B-Quarot_W4A16_Pack_Sym_QuantGate/vllm_quant_model
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+
 - name: Qwen3-Reranker-8B
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-Reranker-8B
   serve_config:
