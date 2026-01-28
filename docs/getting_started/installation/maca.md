@@ -43,23 +43,6 @@ export LD_LIBRARY_PATH=${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu
 === "UV"
     --8<-- "docs/getting_started/installation/uv.inc.md:prepare-env"
 
-### Build plugin
-
-Clone vllm-metax project:
-
-```bash 
-git clone --branch v0.14.0-dev https://github.com/MetaX-MACA/vLLM-metax
-cd vLLM-metax
-```
-
-Build and install vLLM-MetaX plugin:
-
-=== "PIP"
-    --8<-- "docs/getting_started/installation/pip.inc.md:build-vllm-metax"
-=== "UV"
-    --8<-- "docs/getting_started/installation/uv.inc.md:build-vllm-metax"
-
-
 ### Build vllm
 
 Clone vllm project:
@@ -76,8 +59,20 @@ Build with *empty device*:
 === "UV"
     --8<-- "docs/getting_started/installation/uv.inc.md:build-vllm"
 
-!!! warning 
-    Make sure you install vllm-metax **first**, this skipped the `requirements/build.txt` requirements during vllm installation since it has already installed in vllm-metax installation. We don't need to execute them twice.
+### Build plugin
 
+Clone vllm-metax project:
+
+```bash 
+git clone --branch v0.14.0-dev https://github.com/MetaX-MACA/vLLM-metax
+cd vLLM-metax
+```
+
+Build and install vLLM-MetaX plugin:
+
+=== "PIP"
+    --8<-- "docs/getting_started/installation/pip.inc.md:build-vllm-metax"
+=== "UV"
+    --8<-- "docs/getting_started/installation/uv.inc.md:build-vllm-metax"
 
 ## Extra information
