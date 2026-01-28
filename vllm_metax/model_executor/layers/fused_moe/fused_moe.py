@@ -2309,6 +2309,11 @@ def fused_experts_impl(
             num_tokens_post_padded.fill_(max_num_tokens_padded)
             sorted_token_ids = None
 
+        # -------- stage1 --------
+        # SPLIT_K>1 uses tl.atomic_add, so output must be zero-initialized.
+        if stage1_config.get("SPLIT_K", 1) > 1:
+            intermediate_cache1.zero_()
+
         dispatch_fused_moe_kernel(
             qcurr_hidden_states,
             w1,
@@ -2393,7 +2398,7 @@ def fused_experts_impl(
                     num_tokens_post_padded.fill_(max_num_tokens_padded)
                     sorted_token_ids = None
 
-            if expert_map is not None:
+            if expert_map is not None or stage2_config.get("SPLIT_K", 1) > 1:
                 intermediate_cache3.zero_()
 
             dispatch_fused_moe_kernel(
