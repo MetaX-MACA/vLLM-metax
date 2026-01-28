@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 from vllm.attention.utils.fa_utils import logger
@@ -34,7 +35,8 @@ def flash_attn_supports_fp8() -> bool:
 
 
 def flash_attn_supports_sinks() -> bool:
-    return False
+    # maca fa2 supports sinks
+    return True
 
 
 def flash_attn_supports_mla():

@@ -13,6 +13,9 @@ cmake_minimum_required(VERSION 3.26)
 # cmake --install . --component _C
 project(vllm_extensions LANGUAGES CXX)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # CUDA by default, can be overridden by using -DVLLM_TARGET_DEVICE=... (used by setup.py)
 set(VLLM_TARGET_DEVICE "cuda" CACHE STRING "Target device backend for vLLM")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
@@ -21,6 +24,7 @@ message(STATUS "Target device: ${VLLM_TARGET_DEVICE}")
 # /-------------------- MACA Support --------------------/
 option(USE_MACA "Enable MACA Support" ON)
 option(ENABLE_BLAS_API "Enable blas api for fused moe" ON)
+option(USE_PRECOMPILED_KERNEL "Build custom op" OFF)
 
 set(MACA_PATH "$ENV{MACA_PATH}")
 
@@ -58,8 +62,8 @@ set(PYTHON_SUPPORTED_VERSIONS "3.9" "3.10" "3.11" "3.12")
 # versions are derived from docker/Dockerfile.rocm
 #
 
-set(TORCH_SUPPORTED_VERSION_CUDA "2.6.0")
-set(TORCH_SUPPORTED_VERSION_ROCM "2.6.0")
+set(TORCH_SUPPORTED_VERSION_CUDA "2.8.0")
+set(TORCH_SUPPORTED_VERSION_ROCM "2.8.0")
 
 #
 # Try to find python package with an executable that exactly matches
@@ -114,7 +118,7 @@ if (CUDA_FOUND)
   endif()
 
 else()
-  message(FATAL_ERROR "Can't find CUDA")
+  message(FATAL_ERROR "Can't find CUDA installation")
 endif()
 
 
@@ -434,6 +438,9 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
 # if CUDA endif
 endif()
 
+if(USE_PRECOMPILED_KERNEL)
+  message(STATUS "Skipping _C extension as USE_PRECOMPILED_KERNEL is ON.")
+else()
 message(STATUS "Enabling C extension.")
 define_gpu_extension_target(
   _C
@@ -461,6 +468,8 @@ target_compile_options(_C PRIVATE
 # driver API. This causes problems when linking with earlier versions of CUDA.
 # Setting this variable sidesteps the issue by calling the driver directly.
 target_compile_definitions(_C PRIVATE CUTLASS_ENABLE_DIRECT_CUDA_DRIVER_CALL=1)
+endif()
+
 
 #
 # _moe_C extension
@@ -478,8 +487,11 @@ if (USE_MACA AND ENABLE_BLAS_API)
   set(MCBLAS_LIB $ENV{MACA_PATH}/lib/libmcblas.so)
 endif()
 
-if(VLLM_GPU_LANG STREQUAL "CUDA"  AND NOT USE_MACA)
-  list(APPEND VLLM_MOE_EXT_SRC "csrc/moe/moe_wna16.cu")
+if(USE_MACA)
+  list(APPEND VLLM_MOE_EXT_SRC 
+    # "csrc/moe/moe_wna16.cu"
+    # "csrc/moe/grouped_topk_kernels.cu"
+  )
 endif()
 
 set_gencode_flags_for_srcs(
@@ -507,6 +519,10 @@ if(USE_MACA AND ENABLE_BLAS_API)
       LIBRARIES ${MCBLAS_LIB})
 endif()
 
+
+if (USE_PRECOMPILED_KERNEL)
+  message(STATUS "Skipping _moe_C extension as USE_PRECOMPILED_KERNEL is ON.")
+else()
 define_gpu_extension_target(
   _moe_C
   DESTINATION vllm_metax
@@ -519,4 +535,4 @@ define_gpu_extension_target(
   ${BLAS_API_ARGS}
   USE_SABI 3
   WITH_SOABI)
-
+endif()

@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # ---------------------------------------------------------------------------
 # Note: fix dp crash and mtp hang
 # ---------------------------------------------------------------------------
 
-from typing import TypeAlias
+from copy import copy
+from typing import TYPE_CHECKING, TypeAlias
 
 import numpy as np
 import torch
@@ -12,21 +14,28 @@ import torch.distributed
 from vllm.attention.backends.abstract import (
     AttentionMetadata,
 )
-from vllm.config import (
-    CUDAGraphMode,
-)
-from vllm.distributed.parallel_state import (
-    get_pp_group,
-)
+from vllm.config import CUDAGraphMode
+from vllm.distributed.parallel_state import get_pp_group
 from vllm.forward_context import set_forward_context
+from vllm.sequence import IntermediateTensors
 from vllm.utils.math_utils import cdiv
+from vllm.v1.outputs import (
+    EMPTY_MODEL_RUNNER_OUTPUT,
+    AsyncModelRunnerOutput,
+    ModelRunnerOutput,
+)
 from vllm.v1.spec_decode.eagle import EagleProposer
+from vllm.v1.structured_output.utils import apply_grammar_bitmask
+from vllm.v1.utils import record_function_or_nullcontext
+
+if TYPE_CHECKING:
+    from vllm.v1.core.sched.output import GrammarOutput
 
 AttnMetadataDict: TypeAlias = dict[str, AttentionMetadata]
 # list when ubatching is enabled
 PerLayerAttnMetadata: TypeAlias = list[AttnMetadataDict] | AttnMetadataDict
 
-from vllm.v1.worker.gpu_model_runner import GPUModelRunner
+from vllm.v1.worker.gpu_model_runner import AsyncGPUModelRunnerOutput, GPUModelRunner
 
 
 class MacaGPUModelRunner(GPUModelRunner):
@@ -72,6 +81,13 @@ class MacaGPUModelRunner(GPUModelRunner):
             cudagraph_runtime_mode is None
             or cudagraph_runtime_mode.valid_runtime_modes()
         )
+
+        # /------------------------  Metax Modification -------------------------\
+        if cudagraph_runtime_mode is not None:
+            cudagraph_runtime_mode_tmp = cudagraph_runtime_mode
+        else:
+            cudagraph_runtime_mode_tmp = CUDAGraphMode.PIECEWISE
+        # \------------------------  Metax Modification -------------------------/
 
         # If cudagraph_mode.decode_mode() == FULL and
         # cudagraph_mode.separate_routine(). This means that we are using
@@ -155,10 +171,6 @@ class MacaGPUModelRunner(GPUModelRunner):
             )
 
         num_tokens_padded = batch_desc.num_tokens
-        num_reqs_padded = (
-            batch_desc.num_reqs if batch_desc.num_reqs is not None else num_reqs
-        )
-
         attn_metadata: PerLayerAttnMetadata | None = None
 
         # If force_attention is True, we always capture attention. Otherwise,
@@ -273,9 +285,17 @@ class MacaGPUModelRunner(GPUModelRunner):
             if self.speculative_config and self.speculative_config.use_eagle():
                 assert isinstance(self.drafter, EagleProposer)
                 use_cudagraphs = (
-                    cudagraph_runtime_mode.has_mode(CUDAGraphMode.PIECEWISE)
-                    and not self.speculative_config.enforce_eager
-                )
+                    # /------------------------  Metax Modification -------------------------\
+                    (
+                        is_graph_capturing
+                        and cudagraph_runtime_mode == CUDAGraphMode.PIECEWISE
+                    )
+                    or (
+                        not is_graph_capturing
+                        and cudagraph_runtime_mode_tmp != CUDAGraphMode.NONE
+                    )
+                ) and not self.speculative_config.enforce_eager
+                # \------------------------- Metax Modification -------------------------/
 
                 # Note(gnovack) - We need to disable cudagraphs for one of the two
                 # lora cases when cudagraph_specialize_lora is enabled. This is a
@@ -285,9 +305,7 @@ class MacaGPUModelRunner(GPUModelRunner):
                     use_cudagraphs = False
 
                 self.drafter.dummy_run(
-                    # /------------------------  Metax Modification -------------------------\
-                    num_tokens_padded,
-                    # \------------------------- Metax Modification -------------------------/
+                    num_tokens,
                     use_cudagraphs=use_cudagraphs,
                     is_graph_capturing=is_graph_capturing,
                 )
@@ -308,5 +326,194 @@ class MacaGPUModelRunner(GPUModelRunner):
         )
         return hidden_states, hidden_states[logit_indices_device]
 
+    @torch.inference_mode
+    def sample_tokens(
+        self, grammar_output: "GrammarOutput | None"
+    ) -> ModelRunnerOutput | AsyncModelRunnerOutput | IntermediateTensors:
+        kv_connector_output = self.kv_connector_output
+        self.kv_connector_output = None
+
+        if self.execute_model_state is None:
+            # Nothing to do (PP non-final rank case), output isn't used.
+            if not kv_connector_output:
+                return None  # type: ignore[return-value]
+
+            # In case of PP with kv transfer, we need to pass through the
+            # kv_connector_output
+            if kv_connector_output.is_empty():
+                return EMPTY_MODEL_RUNNER_OUTPUT
+
+            output = copy(EMPTY_MODEL_RUNNER_OUTPUT)
+            output.kv_connector_output = kv_connector_output
+            return output
+
+        # Unpack ephemeral state.
+        (
+            scheduler_output,
+            logits,
+            spec_decode_metadata,
+            spec_decode_common_attn_metadata,
+            hidden_states,
+            sample_hidden_states,
+            aux_hidden_states,
+            ec_connector_output,
+        ) = self.execute_model_state
+        # Clear ephemeral state.
+        self.execute_model_state = None
+
+        # Apply structured output bitmasks if present.
+        if grammar_output is not None:
+            apply_grammar_bitmask(
+                scheduler_output, grammar_output, self.input_batch, logits
+            )
+
+        with record_function_or_nullcontext("gpu_model_runner: sample"):
+            sampler_output = self._sample(logits, spec_decode_metadata)
+
+        self.input_batch.prev_sampled_token_ids = None
+
+        def propose_draft_token_ids(sampled_token_ids):
+            assert spec_decode_common_attn_metadata is not None
+            with record_function_or_nullcontext("gpu_model_runner: draft"):
+                self._draft_token_ids = self.propose_draft_token_ids(
+                    scheduler_output,
+                    sampled_token_ids,
+                    self.input_batch.sampling_metadata,
+                    hidden_states,
+                    sample_hidden_states,
+                    aux_hidden_states,
+                    spec_decode_metadata,
+                    spec_decode_common_attn_metadata,
+                )
+
+        spec_config = self.speculative_config
+        use_padded_batch_for_eagle = (
+            spec_config is not None
+            and spec_config.use_eagle()
+            and not spec_config.disable_padded_drafter_batch
+        )
+        effective_drafter_max_model_len = self.max_model_len
+        if effective_drafter_max_model_len is None:
+            effective_drafter_max_model_len = self.model_config.max_model_len
+        if (
+            spec_config is not None
+            and spec_config.draft_model_config is not None
+            and spec_config.draft_model_config.max_model_len is not None
+        ):
+            effective_drafter_max_model_len = (
+                spec_config.draft_model_config.max_model_len
+            )
+        input_fits_in_drafter = spec_decode_common_attn_metadata and (
+            spec_decode_common_attn_metadata.max_seq_len + self.num_spec_tokens
+            <= effective_drafter_max_model_len
+        )
+
+        # /------------------------- Metax Modification -------------------------\
+        if spec_decode_common_attn_metadata and (
+            spec_decode_common_attn_metadata.max_seq_len + self.num_spec_tokens
+            > effective_drafter_max_model_len
+        ):
+            raise RuntimeError(
+                f"State error: max_seq_len {spec_decode_common_attn_metadata.max_seq_len}"
+                f" + num_spec_tokens {self.num_spec_tokens} > "
+                f"drafter_max_model_len {effective_drafter_max_model_len}, "
+                f"propose_draft_token_ids will not be executed, which may cause hang. "
+                f"Try increasing max_model_len."
+            )
+        # \------------------------- Metax Modification -------------------------/
+
+        if use_padded_batch_for_eagle:
+            assert self.speculative_config is not None
+            assert isinstance(self.drafter, EagleProposer)
+            sampled_token_ids = sampler_output.sampled_token_ids
+            if input_fits_in_drafter:
+                # EAGLE speculative decoding can use the GPU sampled tokens
+                # as inputs, and does not need to wait for bookkeeping to finish.
+                propose_draft_token_ids(sampled_token_ids)
+            elif self.valid_sampled_token_count_event is not None:
+                assert spec_decode_common_attn_metadata is not None
+                next_token_ids, valid_sampled_tokens_count = (
+                    self.drafter.prepare_next_token_ids_padded(
+                        spec_decode_common_attn_metadata,
+                        sampled_token_ids,
+                        self.requests,
+                        self.input_batch,
+                        self.discard_request_mask.gpu,
+                    )
+                )
+                self._copy_valid_sampled_token_count(
+                    next_token_ids, valid_sampled_tokens_count
+                )
+
+        with record_function_or_nullcontext("gpu_model_runner: bookkeep"):
+            (
+                num_nans_in_logits,
+                logprobs_lists,
+                valid_sampled_token_ids,
+                prompt_logprobs_dict,
+                req_ids_output_copy,
+                req_id_to_index_output_copy,
+                invalid_req_indices,
+            ) = self._bookkeeping_sync(
+                scheduler_output,
+                sampler_output,
+                logits,
+                hidden_states,
+                scheduler_output.total_num_scheduled_tokens,
+                spec_decode_metadata,
+            )
+
+        if (
+            self.speculative_config
+            and not use_padded_batch_for_eagle
+            and input_fits_in_drafter
+        ):
+            # ngram and other speculative decoding methods use the sampled
+            # tokens on the CPU, so they are run after bookkeeping.
+            propose_draft_token_ids(valid_sampled_token_ids)
+
+        with record_function_or_nullcontext("gpu_model_runner: eplb"):
+            self.eplb_step()
+        with record_function_or_nullcontext("gpu_model_runner: ModelRunnerOutput"):
+            output = ModelRunnerOutput(
+                req_ids=req_ids_output_copy,
+                req_id_to_index=req_id_to_index_output_copy,
+                sampled_token_ids=valid_sampled_token_ids,
+                logprobs=logprobs_lists,
+                prompt_logprobs_dict=prompt_logprobs_dict,
+                pooler_output=[],
+                kv_connector_output=kv_connector_output,
+                ec_connector_output=ec_connector_output
+                if self.supports_mm_inputs
+                else None,
+                num_nans_in_logits=num_nans_in_logits,
+            )
+
+        if not self.use_async_scheduling:
+            return output
+        with record_function_or_nullcontext(
+            "gpu_model_runner: AsyncGPUModelRunnerOutput"
+        ):
+            async_output = AsyncGPUModelRunnerOutput(
+                model_runner_output=output,
+                sampled_token_ids=sampler_output.sampled_token_ids,
+                logprobs_tensors=sampler_output.logprobs_tensors,
+                invalid_req_indices=invalid_req_indices,
+                async_output_copy_stream=self.async_output_copy_stream,
+                vocab_size=self.input_batch.vocab_size,
+            )
+        with record_function_or_nullcontext(
+            "gpu_model_runner: set_async_sampled_token_ids"
+        ):
+            # Save ref of sampled_token_ids CPU tensor if the batch contains
+            # any requests with sampling params that require output ids.
+            self.input_batch.set_async_sampled_token_ids(
+                async_output.sampled_token_ids_cpu,
+                async_output.async_copy_ready_event,
+            )
+
+        return async_output
+
 
 GPUModelRunner._dummy_run = MacaGPUModelRunner._dummy_run
+GPUModelRunner.sample_tokens = MacaGPUModelRunner.sample_tokens

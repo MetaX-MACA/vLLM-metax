@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 
 from vllm import ModelRegistry
 
@@ -26,10 +27,15 @@ def register_model():
         "Qwen3VLForConditionalGeneration",
         "vllm_metax.models.qwen3_vl:Qwen3VLForConditionalGeneration",
     )
+    ModelRegistry.register_model(
+        "Glm4vMoeForConditionalGeneration",
+        "vllm_metax.models.glm4_1v:Glm4vMoeForConditionalGeneration",
+    )
 
-    # ModelRegistry.register_model(
-    #     "DeepSeekMTPModel", "vllm_metax.models.deepseek_mtp:DeepSeekMTP"
-    # )
+    # support dsv32
+    ModelRegistry.register_model(
+        "DeepSeekMTPModel", "vllm_metax.models.deepseek_mtp:DeepSeekMTP"
+    )
 
     ModelRegistry.register_model(
         "DeepseekV2ForCausalLM", "vllm_metax.models.deepseek_v2:DeepseekV2ForCausalLM"
@@ -42,3 +48,7 @@ def register_model():
     ModelRegistry.register_model(
         "DeepseekV32ForCausalLM", "vllm_metax.models.deepseek_v2:DeepseekV3ForCausalLM"
     )
+    ModelRegistry.register_model(
+        "KimiLinearForCausalLM","vllm_metax.models.kimi_linear:KimiLinearForCausalLM",
+    )
+

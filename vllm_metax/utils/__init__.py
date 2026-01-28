@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
-
-# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 
 # Adapted from
 # https://github.com/huggingface/transformers/blob/v4.28.0/src/transformers/models/llama/modeling_llama.py
 # Copyright 2024 The vLLM team.
 
 
-def import_pymxml():
+def import_pymxsml():
     """
     Historical comments:
 
@@ -34,9 +33,9 @@ def import_pymxml():
     After all the troubles, we decide to copy the official `pynvml`
     module to our codebase, and use it directly.
     """
-    import vllm_metax.third_party.pymxml as pymxml
+    import vllm_metax.third_party.pymxsml as pymxsml
 
-    return pymxml
+    return pymxsml
 
 
 def vllm_version():

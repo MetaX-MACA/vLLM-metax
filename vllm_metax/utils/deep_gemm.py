@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """Compatibility wrapper for DeepGEMM API changes.
 
@@ -18,6 +19,7 @@ import vllm.envs as envs
 from vllm.utils.import_utils import has_deep_gemm
 
 
+@functools.cache
 def is_deep_gemm_supported() -> bool:
     """Return `True` if DeepGEMM is supported on the current platform.
     Currently, only Hopper and Blackwell GPUs are supported.
@@ -57,7 +59,6 @@ def _lazy_init() -> None:
     _bf16_paged_mqa_logits_impl = getattr(_dg, "bf16_paged_mqa_logits", None)
 
 
-@functools.cache
 def bf16_mqa_logits(
     q: torch.Tensor,
     kv: tuple[torch.Tensor, torch.Tensor],

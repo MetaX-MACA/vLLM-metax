@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 # SPDX-FileCopyrightText: Songlin Yang, Yu Zhang
 #
@@ -215,6 +216,9 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
             if K > 192:
                 b_h4 = b_h4 * b_g_last
         if USE_GK:
+            # /------------------------- Metax Modification -------------------------\
+            last_idx = min((i_t + 1) * BT, T) - 1
+            # \------------------------- Metax Modification -------------------------/
             o_k1 = tl.arange(0, 64)
             b_gk_last1 = tl.load(
                 gk + (bos + last_idx) * H * K + i_h * K + o_k1,
