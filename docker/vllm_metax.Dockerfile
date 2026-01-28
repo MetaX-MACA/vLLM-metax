@@ -1,10 +1,8 @@
 ARG BUILD_BASE_IMAGE=registry.access.redhat.com/ubi9/ubi:9.6
 ARG PYTHON_VERSION=3.10
-ARG PIP_INDEX_URL
-ARG PIP_EXTRA_INDEX_URL=https://repos.metax-tech.com/r/maca-pypi/simple
+# ARG UV_INDEX_URL=https://repos.metax-tech.com/r/maca-pypi/simple
+ARG UV_EXTRA_INDEX_URL=https://repos.metax-tech.com/r/maca-pypi/simple
 ARG UV_TRUSTED_HOST=repos.metax-tech.com
-ARG UV_INDEX_URL=${PIP_INDEX_URL}
-ARG UV_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}
 
 # may need passing a particular vllm version during build
 ARG VLLM_VERSION
@@ -15,10 +13,7 @@ ARG CU_BRIDGE_VERSION=${MACA_VERSION}
 FROM ${BUILD_BASE_IMAGE} AS base
 
 ARG PYTHON_VERSION
-ARG PIP_INDEX_URL UV_INDEX_URL
-ARG PIP_EXTRA_INDEX_URL UV_EXTRA_INDEX_URL
-ARG UV_INDEX_URL=${PIP_INDEX_URL}
-ARG UV_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}
+# ARG UV_INDEX_URL
 ARG UV_TRUSTED_HOST
 
 ENV VIRTUAL_ENV=/opt/venv
@@ -37,11 +32,12 @@ ENV UV_INDEX_STRATEGY="unsafe-best-match"
 
 # Use copy mode to avoid hardlink failures with Docker cache mounts
 ENV UV_LINK_MODE=copy
-
+# ENV UV_INDEX_URL=${UV_INDEX_URL}
+ENV UV_EXTRA_INDEX_URL=${UV_EXTRA_INDEX_URL}
 
 WORKDIR /workspace
 
-# install build and runtime dependencies
+# install build and runtime dependencies and cache them
 COPY requirements/common.txt requirements/common.txt
 COPY requirements/maca.txt requirements/maca.txt
 COPY requirements/maca_private.txt requirements/maca_private.txt
@@ -49,16 +45,23 @@ COPY requirements/constraints.txt requirements/constraints.txt
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install -r requirements/maca.txt \
-    --extra-index-url ${UV_EXTRA_INDEX_URL} --trusted-host ${UV_TRUSTED_HOST}
+    --trusted-host ${UV_TRUSTED_HOST}
 
-# The following packages need subscription, so we just SKIP them. 
-# `lapack-devel librdmacm-utils libibverbs-utils`
+# install empty vllm
+ARG VLLM_VERSION
+RUN --mount=type=cache,target=/root/.cache/uv \
+    VLLM_TARGET_DEVICE=empty \
+    UV_OVERRIDE=requirements/maca_private.txt \
+    uv pip install --no-binary=vllm vllm==${VLLM_VERSION} \
+    --trusted-host ${UV_TRUSTED_HOST}
+#################### BASE BUILD IMAGE ####################
+
+#################### Install MACA SDK and Metax-Driver ####################
+FROM base AS full_maca
 
 RUN yum makecache && yum install -y \
-    wget zip unzip tar tzdata vim git \
-    openblas-devel make cmake patch \
-    ninja-build gcc gcc-c++ \
-    procps-ng libxml2 libXau \
+    unzip vim git openblas-devel make cmake \
+    ninja-build gcc g++ procps-ng \
     libibverbs librdmacm libibumad \
     && yum clean all
 
@@ -91,6 +94,8 @@ RUN yum makecache && \
     yum clean all && rm -rf /var/cache/yum /tmp/*
 
 ## Install cu-bridge
+# CU_BRIDGE 3.2.1 has some bugs and can't work with MACA SDK 3.2.1 properly.
+# So here we install CU_BRIDGE 3.1.0 instead.
 ARG CU_BRIDGE_VERSION=3.1.0
 RUN cd /tmp/ && \
     export MACA_PATH=/opt/maca && \
@@ -102,6 +107,12 @@ RUN cd /tmp/ && \
     mkdir build && cd ./build && \
     cmake -DCMAKE_INSTALL_PREFIX=/opt/maca/tools/cu-bridge ../ && \
     make && make install
+
+#################### Install MACA SDK and Metax-Driver ####################
+
+
+#################### WHEEL BUILD IMAGE ####################
+FROM full_maca AS wheel_build
 
 ## Update environment variables
 # setup MACA path
@@ -116,22 +127,10 @@ ENV PATH=/opt/mxdriver/bin:${MACA_PATH}/bin:${MACA_PATH}/mxgpu_llvm/bin:${MACA_P
 ENV LD_LIBRARY_PATH=/opt/mxdriver/lib:${MACA_PATH}/lib:${MACA_PATH}/mxgpu_llvm/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/ucx/lib:${LD_LIBRARY_PATH}
 # vllm compile option
 ENV VLLM_INSTALL_PUNICA_KERNELS=1
-#################### BASE BUILD IMAGE ####################
 
-
-#################### WHEEL BUILD IMAGE ####################
-FROM base AS build
-
-ARG PIP_INDEX_URL UV_INDEX_URL
-ARG PIP_EXTRA_INDEX_URL UV_EXTRA_INDEX_URL
-
-ARG VLLM_VERSION
-
-RUN --mount=type=cache,target=/root/.cache/uv \
-    VLLM_TARGET_DEVICE=empty UV_EXTRA_INDEX_URL=https://repos.metax-tech.com/r/maca-pypi/simple \
-    UV_INDEX_STRATEGY=unsafe-best-match \
-    UV_OVERRIDE=requirements/maca_private.txt \
-    uv pip install --no-binary=vllm vllm==${VLLM_VERSION}
+WORKDIR /workspace
+ARG UV_EXTRA_INDEX_URL
+ENV UV_EXTRA_INDEX_URL=${UV_EXTRA_INDEX_URL}
 
 # install vllm-metax build dependencies
 COPY requirements/build.txt requirements/build.txt
@@ -144,27 +143,55 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,src=.,target=/workspace/vllm-metax,rw \
     cd /workspace/vllm-metax && \
-    uv pip install \
-        --extra-index-url ${UV_EXTRA_INDEX_URL} \
-        . -v && \
-        vllm_metax_init
+    uv build --wheel --out-dir=/workspace/vllm_metax_wheel_dist
 
-# We need `vllm_metax_init` to copy .so files to vllm's location.
-# This can be removed once when master supports loading of external `.so`s   (might be v0.11.1)
+#################### WHEEL BUILD IMAGE ####################
+
+
+#################### CLEANUP ####################
+FROM full_maca AS clean_maca
+
+RUN rpm -e --nodeps \
+        mcflashattn_${MACA_VERSION} \
+        mcflashinfer_${MACA_VERSION} \
+        mxreport-${MACA_VERSION} \
+        mccltests-${MACA_VERSION} && \
+    find /opt/maca/ -type f -name "*.a" -delete && \
+    yum clean all && rm -rf /var/cache/yum /tmp/*
+
+#################### CLEANUP ####################
+
+#################### FINAL IMAGE ####################
+FROM base AS final
+ARG MACA_VERSION
+
+ENV MACA_PATH=/opt/maca
+ENV PATH=/opt/mxdriver/bin:${MACA_PATH}/bin:${MACA_PATH}/mxgpu_llvm/bin:${MACA_PATH}/tools/cu-bridge/tools:${MACA_PATH}/tools/cu-bridge/bin:${PATH} 
+ENV LD_LIBRARY_PATH=/opt/mxdriver/lib:${MACA_PATH}/lib:${MACA_PATH}/mxgpu_llvm/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/ucx/lib:${LD_LIBRARY_PATH}
+
+RUN yum makecache && yum install -y \
+    gcc \
+    binutils \
+    procps-ng \
+    libibverbs \
+    librdmacm \
+    libibumad \
+    openblas \
+    numactl-libs \
+    && yum clean all && rm -rf /var/cache/yum /tmp/*
+
+COPY --from=clean_maca /opt/maca /opt/maca
+COPY --from=clean_maca /opt/mxdriver /opt/mxdriver
 
 WORKDIR /workspace
+ARG UV_EXTRA_INDEX_URL
+ENV UV_EXTRA_INDEX_URL=${UV_EXTRA_INDEX_URL}
 
+# install vllm-metax from built wheels
+COPY --from=wheel_build /workspace/vllm_metax_wheel_dist /tmp/wheels
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install /tmp/wheels/* 
 
-## Install ray
-
-# Currently, skipped ray patch
-
-# COPY ray-patch.zip /tmp/
-# RUN cd /tmp && unzip ray-patch.zip && \
-#     mv ray-patch /workspace && \
-#     cd /workspace/ray-patch/ray_patch && \
-#     source $HOME/.local/bin/env && \
-#     source /opt/venv/bin/activate && \
-#     python apply_ray_patch.py mx_ray_2.46.batch && \
-#     if [ -f "/opt/conda/bin/ray" ]; then ln -sf /opt/conda/bin/ray /bin/ray; fi
-#################### WHEEL BUILD IMAGE ####################
+# Fix(hank): don't know why vllm installation also brings in flashinfer-python, remove it here.
+RUN uv pip uninstall flashinfer-python cupy-cuda12x
+#################### FINAL IMAGE ####################
