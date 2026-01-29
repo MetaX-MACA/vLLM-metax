@@ -1,0 +1,59 @@
+- name: "example-model"
+  model_path: "/path/to/example-model"
+  timeout: 600 # default is 600 seconds
+  serve_config:
+    tp: 99
+    pp: 99
+    dp: 99
+    distributed_executor_backend: "ray"  # default
+    gpu_memory_utilization: 0.8  # default
+    swap_space: 16  # default
+    max_model_len: 4096  # default
+
+    # Optional extra arguments for vllm serve command
+    # won't overwrite the default args
+    # won't check the validity of these args
+    extra_args:
+      -mtp:
+      --chat-template: "/relative/path/to/scheduler.py"
+  infer_type: # one of the following types (required)
+    - text-only  # supported
+    - single-image # supported
+    - multi-image # TODO(hank): not supported yet
+    - multi-modal # TODO(hank): not supported yet
+    - video # TODO(hank): not supported yet
+    - audio # TODO(hank): not supported yet
+  benchmark:
+      bench_param: "configs/bench_params/bench_default.yaml" # default
+      dataset_name: "random"  # default
+      ignore_eos: true  # default
+      sweep_num_runs: 1  # default
+  extra_env:
+    EXAMPLE_ENV_VAR: "value"
+
+- name: "deepseek-v2-lite-chat"
+  model_path: "/data/models/deepseek-ai/DeepSeek-V2-Lite-Chat"
+  timeout: 600 # default is 600 seconds
+  serve_config:
+    tp: 8
+    pp: 1
+    dp: 1
+    distributed_executor_backend: "ray"  # default
+    gpu_memory_utilization: 0.9  # default
+    swap_space: 16  # default
+    max_model_len: 4096  # default
+
+    # Optional extra arguments for vllm serve command
+    # won't overwrite the default args
+    # won't check the validity of these args
+    extra_args:
+  infer_type: # one of the following types (required)
+    - text-only  # supported
+  benchmark:
+      bench_param: "configs/bench_params/bench_2.json" # default
+      dataset_name: "random"  # default
+      ignore_eos: true  # default
+      sweep_num_runs: 1  # default
+  extra_env:
+    VLLM_DEBUG_LEVEL: DEBUG
+

@@ -1,0 +1,36 @@
+# 集群配置
+# Note: this is the docker ssh, not host ssh
+#       we assume that the docker is pre-launched 
+#       already
+
+# the first node is the script launcher node
+
+- ssh:
+    hostname: 127.0.0.1 # SSH hostname
+    port: 22  # SSH port
+    user: root  # SSH user
+    auth_type: password  # Authentication type: "password" or "key"
+    private_key: ~/.ssh/id_rsa  # SSH key path (used when auth_type="key")
+    password: "1"  # SSH password (used when auth_type="password")
+  ray:
+    nic: eth0  # Network Interface Card (used for GLOO_SOCKET_IFNAME)
+
+- ssh:
+    hostname: 127.0.0.1 # SSH hostname
+    port: 22  # SSH port
+    user: root  # SSH user
+    auth_type: password  # Authentication type: "password" or "key"
+    private_key: ~/.ssh/id_rsa  # SSH key path (used when auth_type="key")
+    password: "1"  # SSH password (used when auth_type="password")
+  ray:
+    nic: eth0  # Network Interface Card (used for GLOO_SOCKET_IFNAME)
+
+- ssh:
+    hostname: 127.0.0.1 # SSH hostname
+    port: 22  # SSH port
+    user: root  # SSH user
+    auth_type: password  # Authentication type: "password" or "key"
+    private_key: ~/.ssh/id_rsa  # SSH key path (used when auth_type="key")
+    password: "1"  # SSH password (used when auth_type="password")
+  ray:
+    nic: eth0  # Network Interface Card (used for GLOO_SOCKET_IFNAME)
