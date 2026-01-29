@@ -48,7 +48,7 @@ export LD_LIBRARY_PATH=${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu
 Clone vllm project:
 
 ```bash 
-git clone  --depth 1 --branch v0.14.1 https://github.com/vllm-project/vllm 
+git clone  --depth 1 --branch v0.14.0 https://github.com/vllm-project/vllm 
 cd vllm
 ```
 
@@ -64,7 +64,7 @@ Build with *empty device*:
 Clone vllm-metax project:
 
 ```bash 
-git clone --branch v0.14.1-dev https://github.com/MetaX-MACA/vLLM-metax
+git clone --branch v0.14.0-dev https://github.com/MetaX-MACA/vLLM-metax
 cd vLLM-metax
 ```
 
