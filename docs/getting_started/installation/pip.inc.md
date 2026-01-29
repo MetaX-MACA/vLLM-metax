@@ -14,7 +14,7 @@
     ```
 
     ??? console "Additional installation options"
-        If you want to develop vLLM, install it in editable mode instead.
+        If you want to develop vllm-metax, install it in **editable mode** instead.
 
         ```bash
         pip install -v -e . --no-build-isolation
@@ -29,7 +29,7 @@
 # --8<-- [end:build-vllm-metax]
 
 # --8<-- [start:build-vllm]
-!!! note "To build vLLM using an existing PyTorch installation"
+!!! note "To build vllm-metax using an existing PyTorch installation"
 
     ```bash
     python use_existing_pytorch.py

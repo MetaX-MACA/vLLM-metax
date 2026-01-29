@@ -13,13 +13,13 @@
         Then create the virtual environment with python 3.10 or above:
 
         ```bash
-        uv venv .venv --python python3.10
+        uv venv /opt/venv --python python3.10
         ```
 
         And activate the virtual environment:
 
         ```bash
-        source .venv/bin/activate
+        source /opt/venv/bin/activate
         ```
 
     You need to manually set Metax PyPi repo to download maca-related dependencies.
@@ -65,6 +65,7 @@
 !!! note "To build vLLM using local uv environment"
 
     ```bash
+    uv pip install -r requirements/build.txt
     VLLM_TARGET_DEVICE=empty uv pip install . --no-build-isolation
     ```
 

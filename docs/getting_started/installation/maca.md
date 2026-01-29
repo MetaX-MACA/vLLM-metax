@@ -3,15 +3,17 @@
 !!! warning "Breaking Change Notice"
     After v0.11.2, vLLM-MetaX moved its `_C` and `_moe_C` kernel into a separate package named `mcoplib`. 
     
-    mcoplib is open-sourced at [MetaX-mcoplib](https://github.com/MetaX-MACA/mcoplib) and would maintain its own release cycle. Please always install the corresponding version of mcoplib when using vLLM-MetaX.
+    mcoplib is open-sourced at [MetaX-mcoplib](https://github.com/MetaX-MACA/mcoplib) and would maintain its own release cycle. vllm-metax's release rely on its corresponding version of mcoplib. Check it at the [Release Page](../quickstart.md#releases).
 
     Though the *csrc* folder is still kept in this repo for development convenience, and there is no guarantee that the code is always in sync with mcoplib. Not only the performance but also the correctness may differ from mcoplib. 
 
     To build and use the vllm-metax csrc , you need to set: 
+
+    ```bash    
+    export USE_PRECOMPILED_KERNEL=0
+    ```
     
-        `USE_PRECOMPILED_KERNEL=0`  
-    
-    in both build and runtime environment variables.
+    in both *build* and *runtime* environment variables.
     
     **Please always use mcoplib for production usage.**
 
@@ -48,7 +50,7 @@ export LD_LIBRARY_PATH=${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu
 Clone vllm project:
 
 ```bash 
-git clone  --depth 1 --branch v0.14.0 https://github.com/vllm-project/vllm 
+git clone  --depth 1 --branch releases/v0.15.0 https://github.com/vllm-project/vllm 
 cd vllm
 ```
 
@@ -64,11 +66,11 @@ Build with *empty device*:
 Clone vllm-metax project:
 
 ```bash 
-git clone --branch v0.14.0-dev https://github.com/MetaX-MACA/vLLM-metax
+git clone --branch support-vllm-0.15.0 https://github.com/MetaX-MACA/vLLM-metax
 cd vLLM-metax
 ```
 
-Build and install vLLM-MetaX plugin:
+Build the plugin:
 
 === "PIP"
     --8<-- "docs/getting_started/installation/pip.inc.md:build-vllm-metax"
