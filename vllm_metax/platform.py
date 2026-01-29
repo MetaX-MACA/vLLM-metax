@@ -4,9 +4,11 @@ pynvml. However, it should not initialize cuda context.
 """
 
 import contextlib
+import importlib
 import os
 from collections.abc import Callable
 from functools import cache, wraps
+from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar, Optional
 
 import torch
@@ -15,15 +17,15 @@ from typing_extensions import ParamSpec
 import vllm_metax.envs as mx_envs
 from vllm.logger import logger
 
-from vllm.attention.backends.registry import AttentionBackendEnum, register_backend
-from vllm_metax.utils import import_pymxml
+from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
+from vllm_metax.utils import import_pymxsml
 from vllm.utils.torch_utils import cuda_device_count_stateless
 
 from vllm.platforms.interface import DeviceCapability, Platform, PlatformEnum
 from vllm.utils.argparse_utils import FlexibleArgumentParser
 
 if TYPE_CHECKING:
-    from vllm.attention.selector import AttentionSelectorConfig
+    from vllm.v1.attention.selector import AttentionSelectorConfig
     from vllm.config import VllmConfig
     from vllm.config.cache import CacheDType
 else:
@@ -33,7 +35,7 @@ else:
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
-pymxml = import_pymxml()
+pymxsml = import_pymxsml()
 
 # pytorch 2.5 uses cudnn sdpa by default, which will cause crash on some models
 # see https://github.com/huggingface/diffusers/issues/9704 for details
@@ -47,13 +49,13 @@ def _get_backend_priorities(
     device_capability: DeviceCapability,
 ) -> list[AttentionBackendEnum]:
     """Get backend priorities with lazy import to avoid circular dependency."""
-    from vllm.attention.backends.registry import AttentionBackendEnum
+    from vllm.v1.attention.backends.registry import AttentionBackendEnum
 
     if use_mla:
         return [
             AttentionBackendEnum.FLASHMLA,
             AttentionBackendEnum.TRITON_MLA,
-            AttentionBackendEnum.CUTLASS_MLA,
+            # AttentionBackendEnum.CUTLASS_MLA,
             # AttentionBackendEnum.FLASHINFER_MLA,
             # AttentionBackendEnum.FLASH_ATTN_MLA,
             AttentionBackendEnum.FLASHMLA_SPARSE,
@@ -104,14 +106,14 @@ def register_attention_backends() -> None:
     )
 
 
-def with_mxml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
+def with_mxsml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
     @wraps(fn)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
-        pymxml.nvmlInit()
+        pymxsml.nvmlInit()
         try:
             return fn(*args, **kwargs)
         finally:
-            pymxml.nvmlShutdown()
+            pymxsml.nvmlShutdown()
 
     return wrapper
 
@@ -188,22 +190,33 @@ class MacaPlatformBase(Platform):
     def import_kernels(cls) -> None:
         """Import any platform-specific C kernels."""
         try:
-            import vllm_metax._C  # noqa: F401
+            if mx_envs.USE_PRECOMPILED_KERNEL:
+                import mcoplib._C  # noqa: F401
+            else:
+                import vllm_metax._C  # noqa: F401
         except ImportError as e:
-            logger.warning("Failed to import from vllm_metax._C: %r", e)
+            logger.warning(
+                "Failed to import  _C: %r with USE_PRECOMPILED_KERNEL=%s",
+                e,
+                mx_envs.USE_PRECOMPILED_KERNEL,
+            )
 
         try:
-            import vllm_metax._moe_C  # noqa: F401
+            if mx_envs.USE_PRECOMPILED_KERNEL:
+                import mcoplib._moe_C  # noqa: F401
+            else:
+                import vllm_metax._moe_C  # noqa: F401
         except ImportError as e:
-            logger.warning("Failed to import from vllm_metax._moe_C: %r", e)
-        # with contextlib.suppress(ImportError):
-        #     import vllm_metax._moe_C  # noqa: F401
+            logger.warning(
+                "Failed to import _moe_C: %r with USE_PRECOMPILED_KERNEL=%s",
+                e,
+                mx_envs.USE_PRECOMPILED_KERNEL,
+            )
 
     @classmethod
     def check_and_update_config(cls, vllm_config: "VllmConfig") -> None:
         # Config Override
         parallel_config = vllm_config.parallel_config
-        compilation_config = vllm_config.compilation_config
         model_config = vllm_config.model_config
 
         if parallel_config.worker_cls == "auto":
@@ -239,7 +252,7 @@ class MacaPlatformBase(Platform):
                 use_cutlass_mla = backend == AttentionBackendEnum.CUTLASS_MLA
                 use_flashinfer_mla = backend == AttentionBackendEnum.FLASHINFER_MLA
 
-            from vllm_metax.attention.ops.flashmla import is_flashmla_dense_supported
+            from vllm_metax.v1.attention.ops.flashmla import is_flashmla_dense_supported
 
             if (
                 use_flashmla
@@ -287,9 +300,41 @@ class MacaPlatformBase(Platform):
             )
             scheduler_config.disable_chunked_mm_input = True
 
+        # -------------------------------------------------------
         # Disable cascade attention for Maca platform currently
         if vllm_config.model_config is not None:
             vllm_config.model_config.disable_cascade_attn = True
+
+        if attention_config := vllm_config.attention_config:
+            attention_config.use_cudnn_prefill = False
+            attention_config.use_trtllm_ragged_deepseek_prefill = False
+            attention_config.use_trtllm_attention = False
+            attention_config.disable_flashinfer_prefill = True
+
+        # -------------------------------------------------------
+        # Append H=hidden_size at runtime (once model config is available)
+        # Base configs dir (no H here; H is appended at runtime once model is known)
+        _fused_moe_mod = importlib.import_module(
+            "vllm_metax.model_executor.layers.fused_moe.fused_moe"
+        )
+        _FUSED_MOE_CONFIGS_DIR = (
+            Path(_fused_moe_mod.__file__).resolve().parent / "configs"
+        )
+
+        if model_config is not None:
+            hidden_size = model_config.get_hidden_size()
+            assert hidden_size > 0, (
+                "Failed to infer hidden_size from model_config (multimodal?)"
+            )
+
+            tuned_dir_with_h = os.path.join(
+                str(_FUSED_MOE_CONFIGS_DIR), f"H={hidden_size}"
+            )
+            mx_envs.override_vllm_env(
+                "VLLM_TUNED_CONFIG_FOLDER",
+                tuned_dir_with_h,
+                f"set FusedMoE tuned config dir by hidden_size={hidden_size}",
+            )
 
     @classmethod
     def get_current_memory_usage(
@@ -525,21 +570,21 @@ class MacaPlatformBase(Platform):
 # Note that NVML is not affected by `CUDA_VISIBLE_DEVICES`,
 # all the related functions work on real physical device ids.
 # the major benefit of using NVML is that it will not initialize CUDA
-class MxmlPlatform(MacaPlatformBase):
+class mxsmlPlatform(MacaPlatformBase):
     @classmethod
     @cache
-    @with_mxml_context
+    @with_mxsml_context
     def get_device_capability(cls, device_id: int = 0) -> DeviceCapability | None:
         try:
             physical_device_id = cls.device_id_to_physical_device_id(device_id)
-            handle = pymxml.nvmlDeviceGetHandleByIndex(physical_device_id)
-            major, minor = pymxml.nvmlDeviceGetCudaComputeCapability(handle)
+            handle = pymxsml.nvmlDeviceGetHandleByIndex(physical_device_id)
+            major, minor = pymxsml.nvmlDeviceGetCudaComputeCapability(handle)
             return DeviceCapability(major=major, minor=minor)
         except RuntimeError:
             return None
 
     @classmethod
-    @with_mxml_context
+    @with_mxsml_context
     def has_device_capability(
         cls,
         capability: tuple[int, int] | int,
@@ -551,43 +596,44 @@ class MxmlPlatform(MacaPlatformBase):
             return False
 
     @classmethod
-    @with_mxml_context
+    @with_mxsml_context
     def get_device_name(cls, device_id: int = 0) -> str:
-        return "Device 4000"
+        physical_device_id = cls.device_id_to_physical_device_id(device_id)
+        return cls._get_physical_device_name(physical_device_id)
 
     @classmethod
-    @with_mxml_context
+    @with_mxsml_context
     def get_device_uuid(cls, device_id: int = 0) -> str:
         physical_device_id = cls.device_id_to_physical_device_id(device_id)
-        handle = pymxml.nvmlDeviceGetHandleByIndex(physical_device_id)
-        return pymxml.nvmlDeviceGetUUID(handle)
+        handle = pymxsml.nvmlDeviceGetHandleByIndex(physical_device_id)
+        return pymxsml.nvmlDeviceGetUUID(handle)
 
     @classmethod
-    @with_mxml_context
+    @with_mxsml_context
     def get_device_total_memory(cls, device_id: int = 0) -> int:
         physical_device_id = cls.device_id_to_physical_device_id(device_id)
-        handle = pymxml.nvmlDeviceGetHandleByIndex(physical_device_id)
-        return int(pymxml.nvmlDeviceGetMemoryInfo(handle).total)
+        handle = pymxsml.nvmlDeviceGetHandleByIndex(physical_device_id)
+        return int(pymxsml.nvmlDeviceGetMemoryInfo(handle).total)
 
     @classmethod
-    @with_mxml_context
+    @with_mxsml_context
     def is_fully_connected(cls, physical_device_ids: list[int]) -> bool:
         """
         query if the set of gpus are fully connected by nvlink (1 hop)
         """
-        handles = [pymxml.nvmlDeviceGetHandleByIndex(i) for i in physical_device_ids]
+        handles = [pymxsml.nvmlDeviceGetHandleByIndex(i) for i in physical_device_ids]
         for i, handle in enumerate(handles):
             for j, peer_handle in enumerate(handles):
                 if i < j:
                     try:
-                        p2p_status = pymxml.nvmlDeviceGetP2PStatus(
+                        p2p_status = pymxsml.nvmlDeviceGetP2PStatus(
                             handle,
                             peer_handle,
-                            pymxml.NVML_P2P_CAPS_INDEX_NVLINK,
+                            pymxsml.NVML_P2P_CAPS_INDEX_NVLINK,
                         )
-                        if p2p_status != pymxml.NVML_P2P_STATUS_OK:
+                        if p2p_status != pymxsml.NVML_P2P_STATUS_OK:
                             return False
-                    except pymxml.NVMLError:
+                    except pymxsml.NVMLError:
                         logger.exception(
                             "NVLink detection failed. This is normal if"
                             " your machine has no NVLink equipped."
@@ -597,14 +643,13 @@ class MxmlPlatform(MacaPlatformBase):
 
     @classmethod
     def _get_physical_device_name(cls, device_id: int = 0) -> str:
-        return "Device 4000"
-        # handle = pymxml.nvmlDeviceGetHandleByIndex(device_id)
-        # return pymxml.nvmlDeviceGetName(handle)
+        handle = pymxsml.nvmlDeviceGetHandleByIndex(device_id)
+        return pymxsml.nvmlDeviceGetName(handle)
 
     @classmethod
-    @with_mxml_context
+    @with_mxsml_context
     def log_warnings(cls):
-        device_ids: int = pymxml.nvmlDeviceGetCount()
+        device_ids: int = pymxsml.nvmlDeviceGetCount()
         if device_ids > 1:
             device_names = [cls._get_physical_device_name(i) for i in range(device_ids)]
             if (
@@ -619,7 +664,7 @@ class MxmlPlatform(MacaPlatformBase):
                 )
 
 
-class NonMxmlMetaxPlatform(MacaPlatformBase):
+class NonmxsmlMetaxPlatform(MacaPlatformBase):
     @classmethod
     @cache
     def get_device_capability(cls, device_id: int = 0) -> DeviceCapability:
@@ -646,44 +691,40 @@ class NonMxmlMetaxPlatform(MacaPlatformBase):
 
 # Autodetect either NVML-enabled or non-NVML platform
 # based on whether NVML is available.
-mxml_available = False
+mxsml_available = False
 try:
     try:
-        pymxml.nvmlInit()
-        mxml_available = True
+        pymxsml.nvmlInit()
+        mxsml_available = True
     except Exception:
         # On Jetson, NVML is not supported.
-        mxml_available = False
+        mxsml_available = False
 finally:
-    if mxml_available:
-        pymxml.nvmlShutdown()
+    if mxsml_available:
+        pymxsml.nvmlShutdown()
 
-MacaPlatform = MxmlPlatform if mxml_available else NonMxmlMetaxPlatform
+MacaPlatform = mxsmlPlatform if mxsml_available else NonmxsmlMetaxPlatform
 MacaPlatform.log_warnings()
 
 
+# --------------------------------------------------
 # Note: Put all env Override here for Maca platform
 mx_envs.override_vllm_env(
     "VLLM_USE_FLASHINFER_SAMPLER", False, "flashinfer sampler are not supported on maca"
 )
-mx_envs.override_vllm_env(
-    "VLLM_USE_TRTLLM_ATTENTION", False, "trtllm interfaces are not supported"
-)
-mx_envs.override_vllm_env(
-    "VLLM_DISABLE_FLASHINFER_PREFILL",
-    True,
-    "disable flashinfer prefill(use flash_attn prefill) on maca",
-)
-mx_envs.override_vllm_env(
-    "VLLM_USE_CUDNN_PREFILL", False, "cudnn prefill interfaces are not supported"
-)
-mx_envs.override_vllm_env(
-    "VLLM_USE_TRTLLM_RAGGED_DEEPSEEK_PREFILL",
-    False,
-    "trtllm interfaces are not supported",  # noqa
-)
-# envs.VLLM_USE_TRTLLM_RAGGED_DEEPSEEK_PREFILL = False
-# envs.VLLM_USE_CUDNN_PREFILL = False
-# envs.VLLM_USE_FLASHINFER_SAMPLER = False
-# envs.VLLM_USE_STANDALONE_COMPILE = False
-# envs.VLLM_DISABLE_SHARED_EXPERTS_STREAM = False
+
+# vllm_metax currently does not support third-party Triton kernels; Triton upgrade required.
+import vllm.utils.import_utils as iu
+
+
+def has_triton_kernels() -> bool:
+    return False
+
+
+iu.has_triton_kernels = has_triton_kernels
+
+# --------------------------------------------------
+# Note: disable torchvision beta transforms warning
+import torchvision
+
+torchvision.disable_beta_transforms_warning()  # type: ignore

@@ -128,10 +128,24 @@ def _fused_moe_lora_kernel(
         + offs_bn[None, :] * stride_bn
     )
 
+    # /----------------------- Metax Modification ------------------\
+    # if USE_GDC and IS_PRIMARY:
+    #     # GDC launch dependents hints the runtime system to launch dependent kernels.
+    #     tl.extra.cuda.gdc_launch_dependents()
+    # \------------------------------------------------------------/
+
     # accumulator
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+
+    # /----------------------- Metax Modification ------------------\
+    # if USE_GDC and not IS_PRIMARY:
+    #     tl.extra.cuda.gdc_wait()
+    # \------------------------------------------------------------/
+
     for k in range(0, grid_k):
         k_remaining = K - k * (BLOCK_SIZE_K * SPLIT_K)
+        # GDC wait waits for ALL programs in the prior kernel to complete
+        # before continuing.
         # pre-fetch lora weight
         b = tl.load(b_ptrs, mask=offs_k[:, None] < k_remaining, other=0.0)
 
@@ -154,11 +168,6 @@ def _fused_moe_lora_kernel(
     if MUL_ROUTED_WEIGHT:
         moe_weight = tl.load(topk_weights_ptr + offs_token, mask=token_mask, other=0)
         accumulator = accumulator * moe_weight[:, None]
-    # /----------------------- Metax Modification ------------------\
-    # if USE_GDC and IS_PRIMARY:
-    #     # GDC launch dependents hints the runtime system to launch dependent kernels.
-    #     tl.extra.cuda.gdc_launch_dependents()
-    # \------------------------------------------------------------/
     accumulator = accumulator.to(c_ptr.dtype.element_ty)
     # Write back the block of the output
     offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)

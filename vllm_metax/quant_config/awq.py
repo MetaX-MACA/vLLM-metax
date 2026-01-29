@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import Optional, Union
+from typing import Union
 
 import torch
 from vllm.model_executor.layers.fused_moe.layer import FusedMoE
@@ -17,7 +17,7 @@ from vllm.model_executor.layers.quantization.awq import is_layer_skipped, logger
 from vllm.model_executor.layers.quantization.base_config import QuantizeMethodBase
 from vllm.utils.torch_utils import direct_register_custom_op
 
-from vllm_metax import _custom_ops as ops
+from vllm_metax import _custom_ops as mx_ops
 from vllm.model_executor.layers.quantization import register_quantization_config
 
 
@@ -42,9 +42,9 @@ class MacaAWQConfig(AWQConfig):
             # Lazy import to avoid circular import.
             from vllm_metax.quant_config.moe_wna16 import MacaMoeWNA16Config
 
-            logger.warning_once(
-                f"Layer '{prefix}' is not supported by AWQMoeMarlin. "
-                "Falling back to Moe WNA16 kernels."
+            logger.debug(
+                f"Layer '{prefix}' is not supported by Maca AWQMoeMarlin. "
+                "Falling back to Maca Moe WNA16 kernels."
             )
             config = {
                 "quant_method": "awq",
@@ -59,6 +59,9 @@ class MacaAWQConfig(AWQConfig):
         return None
 
 
+# -----------------------------------------------------------
+# Note: We need to keep the method name **the same** as vLLM's
+# -----------------------------------------------------------
 class AWQLinearMethod(vllm_AWQLinearMethod):
     """Linear method for AWQ.
 
@@ -75,7 +78,7 @@ class AWQLinearMethod(vllm_AWQLinearMethod):
         if self.quant_config.group_size % 32:
             pass
         else:
-            qweight = ops.awq_to_gptq_4bit(layer.qweight)
+            qweight = mx_ops.awq_to_gptq_4bit(layer.qweight)
             layer.qweight = torch.nn.Parameter(qweight, requires_grad=False)
         # └------------------------- Metax Modification -------------------------┘
 
@@ -83,7 +86,7 @@ class AWQLinearMethod(vllm_AWQLinearMethod):
         self,
         layer: torch.nn.Module,
         x: torch.Tensor,
-        bias: Optional[torch.Tensor] = None,
+        bias: torch.Tensor | None = None,
     ) -> torch.Tensor:
         qweight = layer.qweight
         scales = layer.scales
@@ -132,7 +135,7 @@ def _apply_awq(
     # if (FP16_MATMUL_HEURISTIC_CONDITION and reshaped_x.dtype == torch.half) or self.quant_config.group_size != 128:
     if group_size % 32:
         out_shape = x.shape[:-1] + (qweight.shape[-1] * pack_factor,)
-        out = ops.awq_dequantize(qweight, scales, qzeros, 0, 0, 0)
+        out = mx_ops.awq_dequantize(qweight, scales, qzeros, 0, 0, 0)
         out = torch.matmul(reshaped_x, out)
     else:
         num_out_channel = qweight.shape[0]
@@ -145,7 +148,7 @@ def _apply_awq(
                 dtype=torch.float32,
                 device=x.device,
             )
-        out = ops.awq_gemm(
+        out = mx_ops.awq_gemm(
             reshaped_x,
             qweight,
             qzeros,

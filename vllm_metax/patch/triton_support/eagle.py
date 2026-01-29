@@ -60,7 +60,7 @@ def eagle_prepare_next_token_padded_kernel(
         is_valid_mask = (token_ids != -1) & (token_ids < vocab_size) & token_mask
 
         # /------------------------  Metax Modification -------------------------\
-        valid_count = tl.cast(is_valid_mask.to(tl.int32))
+        valid_count = tl.sum(is_valid_mask.to(tl.int32))
         # \------------------------- Metax Modification -------------------------/
         if valid_count > 0:
             # Guaranteed to be well-defined since
@@ -117,7 +117,7 @@ class MacaEagleProposer(EagleProposer):
         assert discard_request_mask.dtype == torch.bool
         assert backup_tokens_gpu.dtype == torch.int32
 
-        next_token_ids = torch.empty((batch_size,), dtype=torch.int32, device=device)
+        next_token_ids = torch.empty(batch_size, dtype=torch.int32, device=device)
         valid_sampled_tokens_count = torch.empty(
             (batch_size,), dtype=torch.int32, device=device
         )

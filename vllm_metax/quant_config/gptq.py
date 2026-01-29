@@ -15,7 +15,8 @@ from vllm.model_executor.layers.quantization.utils.gptq_utils import (
 )
 from vllm.utils.torch_utils import direct_register_custom_op
 
-from vllm_metax import _custom_ops as ops
+from vllm import _custom_ops as ops
+from vllm_metax import _custom_ops as mx_ops
 from vllm.model_executor.layers.quantization import register_quantization_config
 
 
@@ -45,6 +46,9 @@ class MacaGPTQConfig(GPTQConfig):
         return get_linear_quant_method(self, layer, prefix, GPTQLinearMethod)
 
 
+# -----------------------------------------------------------
+# Note: We need to keep the method name **the same** as vLLM's
+# -----------------------------------------------------------
 class GPTQLinearMethod(vllm_GPTQLinearMethod):
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
         # for torch.compile
@@ -80,7 +84,7 @@ class GPTQLinearMethod(vllm_GPTQLinearMethod):
                         dtype=layer.scales.dtype,
                         device="cuda",
                     )
-                    _ = ops.gptq_gemm(
+                    _ = mx_ops.gptq_gemm(
                         reshaped_x,
                         layer.qweight,
                         layer.qzeros,
@@ -101,7 +105,7 @@ class GPTQLinearMethod(vllm_GPTQLinearMethod):
                         dtype=layer.scales.dtype,
                         device="cuda",
                     )
-                    _ = ops.gptq_gemm(
+                    _ = mx_ops.gptq_gemm(
                         reshaped_x,
                         layer.qweight,
                         layer.qzeros,
@@ -210,7 +214,7 @@ def _apply_gptq(
                 device=x.device,
             )
 
-    output = ops.gptq_gemm(
+    output = mx_ops.gptq_gemm(
         reshaped_x,
         qweight,
         qzeros,

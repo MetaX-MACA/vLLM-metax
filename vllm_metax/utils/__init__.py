@@ -6,8 +6,20 @@
 # https://github.com/huggingface/transformers/blob/v4.28.0/src/transformers/models/llama/modeling_llama.py
 # Copyright 2024 The vLLM team.
 
+from vllm import envs as mx_envs
+import regex as re
 
-def import_pymxml():
+
+def get_moe_config_prefix() -> str | None:
+    """Return cached MoE config prefix like 'H=4096'."""
+    tuned_dir = mx_envs.VLLM_TUNED_CONFIG_FOLDER
+    if tuned_dir:
+        m = re.search(r"(?:^|/)(H=\d+)(?:/|$)", tuned_dir)
+        if m:
+            return m.group(1)
+
+
+def import_pymxsml():
     """
     Historical comments:
 
@@ -34,9 +46,9 @@ def import_pymxml():
     After all the troubles, we decide to copy the official `pynvml`
     module to our codebase, and use it directly.
     """
-    import vllm_metax.third_party.pymxml as pymxml
+    import vllm_metax.third_party.pymxsml as pymxsml
 
-    return pymxml
+    return pymxsml
 
 
 def vllm_version():

@@ -1,15 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 import torch
 from vllm.model_executor.layers.fused_moe import FusedMoE
+from vllm.model_executor.layers.fused_moe.fused_moe_router import FusedMoERouter
 from vllm.model_executor.layers.quantization.compressed_tensors import (
     compressed_tensors_moe as vllm_ctm,
 )
+import vllm.model_executor.layers.fused_moe.modular_kernel as mk
+
 
 # -----------------------------------------------------------
-# Note: We need to keep the name **consistent** with vLLM's
+# Note: We need to keep the method name **the same** as vLLM's
 # -----------------------------------------------------------
-
-
 class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
     @staticmethod
     def get_moe_method(
@@ -58,13 +59,21 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
             )
 
 
+# -----------------------------------------------------------
+# Note: We need to keep the method name **the same** as vLLM's
+# -----------------------------------------------------------
 class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm.CompressedTensorsW8A8Int8MoEMethod):
     def apply(
-        self, layer: FusedMoE, x: torch.Tensor, router_logits: torch.Tensor
+        self,
+        layer: FusedMoE,
+        router: FusedMoERouter,
+        x: torch.Tensor,
+        router_logits: torch.Tensor,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-        from vllm_metax.model_executor.layers.fused_moe import fused_experts
+        # here we use Metax's `fused_experts`
+        from vllm_metax.model_executor.layers.fused_moe.fused_moe import fused_experts
 
-        topk_weights, topk_ids, _ = layer.select_experts(
+        topk_weights, topk_ids = router.select_experts(
             hidden_states=x,
             router_logits=router_logits,
         )
@@ -84,16 +93,47 @@ class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm.CompressedTensorsW8A8Int8MoEMe
         )
 
 
+# -----------------------------------------------------------
+# Note: We need to keep the method name **the same** as vLLM's
+# -----------------------------------------------------------
 class CompressedTensorsWNA16MoEMethod(vllm_ctm.CompressedTensorsWNA16MoEMethod):
+    def select_gemm_impl(
+        self,
+        prepare_finalize: mk.FusedMoEPrepareAndFinalize,
+        layer: torch.nn.Module,
+    ) -> mk.FusedMoEPermuteExpertsUnpermute:
+        if self.moe.is_lora_enabled:
+            assert self.moe_quant_config is not None
+            from vllm.triton_utils import HAS_TRITON
+
+            if HAS_TRITON:
+                # use Metax's TritonWNA16Experts
+                from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
+                    TritonWNA16Experts,
+                )
+
+                layer.w13_weight = layer.w13_weight_packed
+                layer.w2_weight = layer.w2_weight_packed
+                return TritonWNA16Experts(quant_config=self.moe_quant_config)
+            else:
+                raise NotImplementedError(
+                    "TritonExperts requires Triton. "
+                    "Install triton or disable LoRA for MoE."
+                )
+
+        raise NotImplementedError
+
     def apply(
         self,
         layer: FusedMoE,
+        router: FusedMoERouter,
         x: torch.Tensor,
         router_logits: torch.Tensor,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-        from vllm_metax.model_executor.layers.fused_moe import fused_experts
+        # here we use Metax's `fused_experts`
+        from vllm_metax.model_executor.layers.fused_moe.fused_moe import fused_experts
 
-        topk_weights, topk_ids, _ = layer.select_experts(
+        topk_weights, topk_ids = router.select_experts(
             hidden_states=x,
             router_logits=router_logits,
         )
