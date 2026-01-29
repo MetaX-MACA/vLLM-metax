@@ -217,6 +217,7 @@ class MacaPlatformBase(Platform):
     def check_and_update_config(cls, vllm_config: "VllmConfig") -> None:
         # Config Override
         parallel_config = vllm_config.parallel_config
+        compilation_config = vllm_config.compilation_config
         model_config = vllm_config.model_config
 
         if parallel_config.worker_cls == "auto":
@@ -299,6 +300,11 @@ class MacaPlatformBase(Platform):
                 "with multimodal-bidirectional attention."
             )
             scheduler_config.disable_chunked_mm_input = True
+
+        # -------------------------------------------------------
+        # Append sparse attention op for Maca platform
+        if compilation_config is not None:
+            compilation_config._attention_ops.append("vllm::mx_sparse_attn_indexer")
 
         # -------------------------------------------------------
         # Disable cascade attention for Maca platform currently
