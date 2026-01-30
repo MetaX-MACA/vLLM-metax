@@ -508,7 +508,6 @@ def _fused_moe_lora_expand(
     grid = lambda META: (
         triton.cdiv(EM, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
         len(lora_b_stacked),
-        ## max_loras + 1 to handle the no-lora case (lora_id == -1)
         lora_b_stacked[0].shape[0],
     )
 
