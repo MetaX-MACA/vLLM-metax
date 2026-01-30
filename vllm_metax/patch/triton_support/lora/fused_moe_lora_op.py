@@ -19,7 +19,7 @@ from vllm.utils.torch_utils import direct_register_custom_op
 
 from vllm.lora.ops.triton_ops.utils import supports_pdl
 
-_LORA_PTR_DICT: dict[tuple[int, ...], torch.tensor] = {}
+_LORA_PTR_DICT: dict[tuple[int, ...], torch.Tensor] = {}
 
 
 def _get_ptr(lora_weights: list[torch.Tensor], device: torch.device):
