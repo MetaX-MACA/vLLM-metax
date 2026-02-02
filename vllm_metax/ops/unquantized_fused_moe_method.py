@@ -5,7 +5,6 @@ from vllm.model_executor.layers.fused_moe.layer import (
 
 import torch
 
-from vllm.model_executor.layers.fused_moe.fused_moe_router import FusedMoERouter
 from vllm.platforms import current_platform, logger
 
 import vllm.model_executor.layers.fused_moe.modular_kernel as mk
@@ -41,36 +40,38 @@ class UnquantizedFusedMoEMethod(vllm_UnquantizedFusedMoEMethod):
         ):
             logger.debug("BatchedTritonExperts %s", self.moe)
             return BatchedTritonExperts(
+                moe_config=self.moe,
+                quant_config=self.moe_quant_config,
                 max_num_tokens=self.moe.max_num_tokens,
                 num_dispatchers=prepare_finalize.num_dispatchers(),
-                quant_config=self.moe_quant_config,
             )
         else:
             logger.debug("TritonExperts %s", self.moe)
-            return mx_TritonExperts(self.moe_quant_config)
+            return mx_TritonExperts(
+                moe_config=self.moe,
+                quant_config=self.moe_quant_config,
+            )
 
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
         super().process_weights_after_loading(layer)
+        # Here in maca we choose `UnquantizedMoeBackend.TRITON` for kernel selection
         self.use_inplace = True
         self.kernel = mk.FusedMoEModularKernel(
             MoEPrepareAndFinalizeNoEP(),
-            mx_TritonExperts(self.moe_quant_config),
-            shared_experts=None,
+            mx_TritonExperts(
+                moe_config=self.moe,
+                quant_config=self.moe_quant_config,
+            ),
         )
 
     def forward_oot(
         self,
         layer: "FusedMoE",  # type: ignore[name-defined] # noqa: F821
-        router: FusedMoERouter,
         x: torch.Tensor,
-        router_logits: torch.Tensor,
+        topk_weights: torch.Tensor,
+        topk_ids: torch.Tensor,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-        topk_weights, topk_ids = router.select_experts(
-            hidden_states=x,
-            router_logits=router_logits,
-        )
-
-        result = self.kernel(
+        return self.kernel(
             hidden_states=x,
             w1=layer.w13_weight,
             w2=layer.w2_weight,
@@ -82,8 +83,6 @@ class UnquantizedFusedMoEMethod(vllm_UnquantizedFusedMoEMethod):
             global_num_experts=layer.global_num_experts,
             expert_map=layer.expert_map,
         )
-
-        return result
 
     if current_platform.is_out_of_tree():
         forward_native = forward_oot

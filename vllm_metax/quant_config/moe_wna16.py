@@ -16,7 +16,6 @@ from vllm_metax.ops.unquantized_fused_moe_method import (
     UnquantizedFusedMoEMethod,
 )
 
-from vllm.model_executor.layers.fused_moe.fused_moe_router import FusedMoERouter
 from vllm.model_executor.layers.quantization import register_quantization_config
 
 
@@ -63,18 +62,14 @@ class MoeWNA16Method(vllm_MoeWNA16Method):
     def apply(
         self,
         layer: FusedMoE,
-        router: FusedMoERouter,
         x: torch.Tensor,
-        router_logits: torch.Tensor,
+        topk_weights: torch.Tensor,
+        topk_ids: torch.Tensor,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         # here we use plugin's `fused_experts`
         from vllm_metax.model_executor.layers.fused_moe.fused_moe import fused_experts
 
         assert layer.activation == "silu", "Only SiLU activation is supported."
-        topk_weights, topk_ids = router.select_experts(
-            hidden_states=x,
-            router_logits=router_logits,
-        )
 
         return fused_experts(
             x,
