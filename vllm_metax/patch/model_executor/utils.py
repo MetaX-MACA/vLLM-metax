@@ -1,8 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from typing import Optional
-
 import torch
-import vllm
 from vllm.logger import init_logger
 from vllm.model_executor.layers.quantization.utils.int8_utils import (
     per_token_group_quant_int8,

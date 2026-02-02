@@ -1,8 +1,21 @@
 # SPDX-License-Identifier: Apache-2.0
-# ------------------------------------------------
-# Note: Substite `do_shrink_kernel` from vllm_metax
-# ------------------------------------------------
 
+
+# ------------------------------------------------
+# Note: replace `do_shrink_kernel` in vllm.lora.ops.triton_ops.lora_shrink
+# ------------------------------------------------
+"""
+Not sure wether this is the best way to patch the function,
+but it works for now. This kernel is invoked in lora_shrink,
+maybe we need `direct_register_custom_op` for another lora_shrink:
+    direct_register_custom_op(
+        op_name="maca_lora_shrink",
+        op_func=_lora_shrink,
+        mutates_args=["output_tensor"],
+        fake_impl=_lora_shrink_fake,
+    )
+    lora_shrink = torch.ops.vllm.maca_lora_shrink
+"""
 
 from vllm_metax.patch.triton_support.lora.kernel_utils import (
     do_shrink_kernel as mx_do_shrink_kernel,

@@ -9,7 +9,7 @@ from typing import Any
 import torch
 
 from vllm.model_executor.layers.quantization.kernels.scaled_mm.cutlass import (
-    CutlassScaledMMLinearKernel,
+    CutlassInt8ScaledMMLinearKernel,
 )
 from vllm.model_executor.layers.quantization.kernels.scaled_mm.ScaledMMLinearKernel import (  # noqa: E501
     ScaledMMLinearKernel,
@@ -28,7 +28,7 @@ _mctlass_modname = (
 mctlass_ops: Any = importlib.import_module(_mctlass_modname)
 
 
-class MctlassScaledMMLinearKernel(CutlassScaledMMLinearKernel):
+class MctlassScaledMMLinearKernel(CutlassInt8ScaledMMLinearKernel):
     @classmethod
     def is_supported(
         cls, compute_capability: int | None = None
@@ -75,13 +75,13 @@ class MctlassScaledMMLinearKernel(CutlassScaledMMLinearKernel):
 
 
 # /------------------------  Metax Modification ----------------------------\
-_POSSIBLE_KERNELS: dict[PlatformEnum, list[type[ScaledMMLinearKernel]]] = {
+_POSSIBLE_INT8_KERNELS: dict[PlatformEnum, list[type[ScaledMMLinearKernel]]] = {
     PlatformEnum.OOT: [MctlassScaledMMLinearKernel]
 }
 # \------------------------- Metax Modification ----------------------------/
 
 import vllm.model_executor.layers.quantization.kernels.scaled_mm
 
-vllm.model_executor.layers.quantization.kernels.scaled_mm._POSSIBLE_KERNELS = (
-    _POSSIBLE_KERNELS
+vllm.model_executor.layers.quantization.kernels.scaled_mm._POSSIBLE_INT8_KERNELS = (
+    _POSSIBLE_INT8_KERNELS
 )

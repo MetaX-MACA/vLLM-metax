@@ -127,6 +127,3 @@ class MacaCommunicator(CudaCommunicator):
                 self.all2all_manager.__class__.__name__,
                 scope="global",
             )
-
-
-CudaCommunicator.__init__ = MacaCommunicator.__init__
