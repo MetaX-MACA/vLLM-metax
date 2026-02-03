@@ -133,6 +133,7 @@ def cp_gather_indexer_k_quant_cache(
         )
 
 
+# TODO: remove duplicates with vllm/_custom_ops.py
 def top_k_per_row(
     logits: torch.Tensor,
     row_starts: torch.Tensor,
