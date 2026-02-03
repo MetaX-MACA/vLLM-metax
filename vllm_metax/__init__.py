@@ -21,29 +21,21 @@ def register_patch():
     import vllm_metax.patch  # noqa: F401
 
 
-def register_ops():
+def register_custom_op():
+    import vllm_metax.customized  # noqa: F401
+
+
+def register_quant_configs():
+    import vllm_metax.quant_config  # noqa: F401
+
+
+def register_customized():
     register_patch()
-    import vllm_metax.ops  # noqa: F401
+    register_custom_op()
+    register_quant_configs()
 
 
 def register_model():
     from .models import register_model
 
     register_model()
-
-
-def register_quant_configs():
-    from vllm_metax.quant_config.awq import MacaAWQConfig  # noqa: F401
-    from vllm_metax.quant_config.awq_marlin import (  # noqa: F401
-        MacaAWQMarlinConfig,
-    )
-    from vllm_metax.quant_config.gptq import MacaGPTQConfig  # noqa: F401
-    from vllm_metax.quant_config.gptq_marlin import (  # noqa: F401
-        MacaGPTQMarlinConfig,
-    )
-    from vllm_metax.quant_config.moe_wna16 import (  # noqa: F401
-        MacaMoeWNA16Config,
-    )
-    from vllm_metax.quant_config.compressed_tensors import (  # noqa: F401
-        MacaCompressedTensorsConfig,
-    )

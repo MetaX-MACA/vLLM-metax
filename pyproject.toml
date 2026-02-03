@@ -43,9 +43,7 @@ vllm_collect_env = "vllm_metax:collect_env"
 metax = "vllm_metax:register"
 
 [project.entry-points."vllm.general_plugins"]
-metax_A_patch = "vllm_metax:register_patch"
-metax_enhanced_ops = "vllm_metax:register_ops"
-metax_enhanced_quant_conf = "vllm_metax:register_quant_configs"
+metax_enhanced_customized = "vllm_metax:register_customized"
 metax_enhanced_model = "vllm_metax:register_model"
 
 [tool.setuptools_scm]
