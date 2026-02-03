@@ -16,17 +16,14 @@ import vllm.envs as envs
 import vllm_metax.envs as mx_envs
 import vllm.model_executor.layers.fused_moe.modular_kernel as mk
 from vllm import _custom_ops as ops
-from vllm._aiter_ops import rocm_aiter_ops
 from vllm.model_executor.layers.batch_invariant import (
     vllm_is_batch_invariant,
 )
 from vllm.model_executor.layers.fused_moe.config import (
     FUSED_MOE_UNQUANTIZED_CONFIG,
+    FusedMoEConfig,
+    FusedMoEParallelConfig,
     FusedMoEQuantConfig,
-)
-from vllm.model_executor.layers.fused_moe.deep_gemm_moe import (
-    _valid_deep_gemm,
-    deep_gemm_moe_fp8,
 )
 from vllm.model_executor.layers.fused_moe.moe_align_block_size import (
     moe_align_block_size,
@@ -46,10 +43,16 @@ from vllm.model_executor.layers.fused_moe.utils import (
 from vllm.model_executor.layers.quantization.utils.mxfp4_utils import dequant_mxfp4
 from vllm.model_executor.layers.quantization.utils.mxfp6_utils import dequant_mxfp6
 from vllm.model_executor.layers.quantization.utils.ocp_mx_utils import OCP_MX_Scheme
-from vllm.model_executor.utils import maybe_disable_graph_partition
+from vllm.model_executor.layers.quantization.utils.quant_utils import (
+    QuantKey,
+    kFp8Dynamic128Sym,
+    kFp8DynamicTokenSym,
+    kFp8Static128BlockSym,
+    kFp8StaticChannelSym,
+    kFp8StaticTensorSym,
+)
 from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
-from vllm.utils.deep_gemm import is_deep_gemm_e8m0_used
 from vllm.utils.torch_utils import direct_register_custom_op, is_torch_equal_or_newer
 
 from vllm.model_executor.layers.fused_moe.fused_moe import logger
@@ -521,6 +524,7 @@ def fused_moe_kernel(
             compute_type,
         )
         return
+
     # ┌------------------------  Metax Modification -------------------------┐
     if UPGRADE_B_OFFS:
         offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)) % N
@@ -573,7 +577,6 @@ def fused_moe_kernel(
     # We accumulate into a `[BLOCK_SIZE_M, BLOCK_SIZE_N]` block
     # of fp32 values for higher accuracy.
     # `accumulator` will be converted back to fp16 after the loop.
-
     accumulator = tl.zeros(
         (BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.int32 if use_int8_w8a8 else tl.float32
     )
@@ -897,7 +900,6 @@ def invoke_fused_moe_triton_kernel(
         BLOCK_SIZE_K = config.pop("BLOCK_SIZE_K")
         if block_shape is not None:
             BLOCK_SIZE_K = min(BLOCK_SIZE_K, min(block_shape[0], block_shape[1]))
-
         fused_moe_kernel[grid](
             A,
             B,
@@ -1025,6 +1027,7 @@ def dispatch_fused_moe_kernel(
             use_int4_w4a16,
             block_shape,
         )
+
     else:
         invoke_fused_moe_triton_kernel(
             A,
@@ -1166,23 +1169,23 @@ def get_moe_configs(
     # directory
     block_shape = [block_n, block_k] if block_n and block_k else None
     json_file_name = get_config_file_name(E, N, dtype, block_shape)
+
     config_file_paths = []
 
     # note that we prioritize user defined config
     # --------------------------------------------------------
-    # Note!: Metax defined additional
+    # Metax Note: Metax defined additional parameter:
     #       - H dimension
-    #
     # in the config file name. This is to address the scenario
     # where different models (with different H values) share
     # the same E and N values.
     #
-    # The priority order is:
-    #   1. sub-folder of `configs/H={hidden_size}/`
+    # The priority order for searching config in maca is:
+    #   1. user_defined_config_folder of `configs/H={hidden_size}/`
     #   2. default config folder `configs/`
     # --------------------------------------------------------
     user_defined_config_folder = envs.VLLM_TUNED_CONFIG_FOLDER
-    logger.info("User defined config folder: %s", user_defined_config_folder)
+    logger.info_once("User defined config folder: %s", user_defined_config_folder)
     if user_defined_config_folder is not None:
         from vllm_metax.utils import get_moe_config_prefix
 
@@ -1379,24 +1382,20 @@ def get_default_config(
             "num_warps": 4,
             "num_stages": 3 if not current_platform.is_rocm() else 2,
         }
-    # ┌------------------------  Metax Modification -------------------------┐
-    # TODO: missing config for BLOCK_SIZE_K
-    # elif dtype in ["int4_w4a16", "int8_w8a16"] and block_shape is not None:
-    #     # moe wna16 kernels
-    #     # only set BLOCK_SIZE_M
-    #     # BLOCK_SIZE_N and BLOCK_SIZE_K would be set later
-    #     bit = 4 if dtype == "int4_w4a16" else 8
-    #     use_moe_wna16_cuda = should_moe_wna16_use_cuda(M * topk,
-    #                                                    block_shape[1], E, bit)
-    #     if use_moe_wna16_cuda:
-    #         config = {"BLOCK_SIZE_M": min(16, M)}
-    #     elif M <= 20:
-    #         config = {"BLOCK_SIZE_M": 16, "GROUP_SIZE_M": 1}
-    #     elif M <= 40:
-    #         config = {"BLOCK_SIZE_M": 32, "GROUP_SIZE_M": 1}
-    #     else:
-    #         config = {"BLOCK_SIZE_M": 64, "GROUP_SIZE_M": 1}
-    # └------------------------- Metax Modification -------------------------┘
+    elif dtype in ["int4_w4a16", "int8_w8a16"] and block_shape is not None:
+        # moe wna16 kernels
+        # only set BLOCK_SIZE_M
+        # BLOCK_SIZE_N and BLOCK_SIZE_K would be set later
+        bit = 4 if dtype == "int4_w4a16" else 8
+        use_moe_wna16_cuda = should_moe_wna16_use_cuda(M * topk, block_shape[1], E, bit)
+        if use_moe_wna16_cuda:
+            config = {"BLOCK_SIZE_M": min(16, M), "SPLIT_K": 1}
+        elif M <= 20:
+            config = {"BLOCK_SIZE_M": 16, "GROUP_SIZE_M": 1, "SPLIT_K": 1}
+        elif M <= 40:
+            config = {"BLOCK_SIZE_M": 32, "GROUP_SIZE_M": 1, "SPLIT_K": 1}
+        else:
+            config = {"BLOCK_SIZE_M": 64, "GROUP_SIZE_M": 1, "SPLIT_K": 1}
     elif M <= E:
         config = {
             "BLOCK_SIZE_M": 16,
@@ -1443,8 +1442,8 @@ def try_get_optimal_moe_config(
     else:
         # First try to load optimal config from the file
         E, _, N = w2_shape
-        # if dtype == "int4_w4a16":
-        #     N = N * 2
+        if dtype == "int4_w4a16":
+            N = N * 2
         block_n = block_shape[0] if block_shape else 0
         block_k = block_shape[1] if block_shape else 0
         configs = get_moe_configs(E, N, dtype, block_n, block_k)
@@ -1457,293 +1456,6 @@ def try_get_optimal_moe_config(
             # Else use the default config
             config = get_default_config(M, E, N, w1_shape[2], top_k, dtype, block_shape)
     return config
-
-
-def vllm_topk_softmax(
-    topk_weights: torch.Tensor,
-    topk_indices: torch.Tensor,
-    token_expert_indices: torch.Tensor,
-    gating_output: torch.Tensor,
-    renormalize: bool,
-) -> tuple[torch.Tensor, ...]:
-    ops.topk_softmax(
-        topk_weights,
-        topk_indices,
-        token_expert_indices,
-        gating_output,
-        renormalize,
-    )
-
-    return topk_weights, topk_indices
-
-
-def dispatch_topk_func(
-    use_rocm_aiter: bool = False,
-) -> Callable[..., tuple[torch.Tensor, ...]]:
-    if use_rocm_aiter:
-        return rocm_aiter_ops.topk_softmax
-    return vllm_topk_softmax
-
-
-def fused_topk(
-    hidden_states: torch.Tensor,
-    gating_output: torch.Tensor,
-    topk: int,
-    renormalize: bool,
-    indices_type: torch.dtype | None = None,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    assert hidden_states.size(0) == gating_output.size(0), "Number of tokens mismatch"
-
-    M, _ = hidden_states.size()
-
-    topk_weights = torch.empty(
-        M, topk, dtype=torch.float32, device=hidden_states.device
-    )
-    topk_ids = torch.empty(
-        M,
-        topk,
-        dtype=torch.int32 if indices_type is None else indices_type,
-        device=hidden_states.device,
-    )
-    token_expert_indices = torch.empty(
-        M, topk, dtype=torch.int32, device=hidden_states.device
-    )
-
-    topk_func = dispatch_topk_func(use_rocm_aiter=rocm_aiter_ops.is_fused_moe_enabled())
-    topk_weights, topk_ids = topk_func(
-        topk_weights, topk_ids, token_expert_indices, gating_output, renormalize
-    )
-
-    return topk_weights, topk_ids, token_expert_indices
-
-
-def fused_topk_bias(
-    hidden_states: torch.Tensor,
-    gating_output: torch.Tensor,
-    e_score_correction_bias: torch.Tensor,
-    topk: int,
-    renormalize: bool,
-):
-    n_routed_experts = gating_output.shape[-1]
-    scores = gating_output.softmax(dim=-1)
-    scores_for_choice = scores.view(
-        -1, n_routed_experts
-    ) + e_score_correction_bias.unsqueeze(0)
-
-    # For batch invariance, use sorted=True to ensure deterministic expert selection
-    use_sorted = vllm_is_batch_invariant()
-    topk_indices = torch.topk(scores_for_choice, k=topk, dim=-1, sorted=use_sorted)[1]
-    topk_weights = scores.gather(1, topk_indices)
-    if renormalize:
-        topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
-    return topk_weights.to(torch.float32), topk_indices.to(torch.int32)
-
-
-# This is used by the Deepseek-V2 and Deepseek-V3 model
-@torch.compile(
-    dynamic=True,
-    backend=current_platform.simple_compile_backend,
-    options=maybe_disable_graph_partition(current_platform.simple_compile_backend),
-)
-def grouped_topk(
-    hidden_states: torch.Tensor,
-    gating_output: torch.Tensor,
-    topk: int,
-    renormalize: bool,
-    num_expert_group: int = 0,
-    topk_group: int = 0,
-    scoring_func: str = "softmax",
-    routed_scaling_factor: float = 1.0,
-    e_score_correction_bias: torch.Tensor | None = None,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    if (
-        envs.VLLM_USE_FUSED_MOE_GROUPED_TOPK
-        and current_platform.is_cuda()
-        and num_expert_group <= 32
-        and topk <= 32
-        and e_score_correction_bias is not None
-    ):
-        return fused_grouped_topk(
-            hidden_states=hidden_states,
-            gating_output=gating_output,
-            topk=topk,
-            renormalize=renormalize,
-            e_score_correction_bias=e_score_correction_bias,
-            num_expert_group=num_expert_group,
-            topk_group=topk_group,
-            scoring_func=scoring_func,
-            routed_scaling_factor=routed_scaling_factor,
-        )
-
-    assert hidden_states.size(0) == gating_output.size(0), "Number of tokens mismatch"
-
-    if scoring_func == "softmax":
-        scores = torch.softmax(gating_output, dim=-1)
-    elif scoring_func == "sigmoid":
-        scores = gating_output.sigmoid()
-    else:
-        raise ValueError(f"Unsupported scoring function: {scoring_func}")
-
-    num_token = scores.size(0)
-    if e_score_correction_bias is not None:
-        # Store original scores before applying correction bias. We use biased
-        # scores for expert selection but original scores for routing weights
-        original_scores = scores
-        scores = scores + e_score_correction_bias.unsqueeze(0)
-        group_scores = (
-            scores.view(num_token, num_expert_group, -1).topk(2, dim=-1)[0].sum(dim=-1)
-        )
-    else:
-        group_scores = (
-            scores.view(num_token, num_expert_group, -1).max(dim=-1).values
-        )  # [n, n_group]
-
-    # For batch invariance, use sorted=True to ensure deterministic expert selection
-    use_sorted = vllm_is_batch_invariant()
-    group_idx = torch.topk(group_scores, k=topk_group, dim=-1, sorted=use_sorted)[
-        1
-    ]  # [n, top_k_group]
-    group_mask = torch.zeros_like(group_scores)  # [n, n_group]
-    group_mask.scatter_(1, group_idx, 1)  # [n, n_group]
-    score_mask = (
-        group_mask.unsqueeze(-1)
-        .expand(num_token, num_expert_group, scores.size(-1) // num_expert_group)
-        .reshape(num_token, -1)
-    )  # [n, e]
-    tmp_scores = scores.masked_fill(~score_mask.bool(), float("-inf"))  # [n, e]
-
-    if e_score_correction_bias is not None:
-        topk_ids = torch.topk(tmp_scores, k=topk, dim=-1, sorted=use_sorted)[1]
-        # Use original unbiased scores for the routing weights
-        topk_weights = original_scores.gather(1, topk_ids)
-    else:
-        topk_weights, topk_ids = torch.topk(
-            tmp_scores, k=topk, dim=-1, sorted=use_sorted
-        )
-
-    if renormalize:
-        topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
-
-    if routed_scaling_factor != 1.0:
-        topk_weights = topk_weights * routed_scaling_factor
-    return topk_weights.to(torch.float32), topk_ids.to(torch.int32)
-
-
-@torch.compile(dynamic=True, backend=current_platform.simple_compile_backend)
-def eplb_map_to_physical_and_record(
-    topk_ids: torch.Tensor,
-    expert_load_view: torch.Tensor,
-    logical_to_physical_map: torch.Tensor,
-    logical_replica_count: torch.Tensor,
-) -> torch.Tensor:
-    """
-    Map the logical expert ids to physical expert ids
-    and record the expert load metrics.
-
-    This will select a pseudo-random replica for each logical expert.
-    Only used for EPLB.
-
-    Args:
-        topk_ids: The logical expert ids.
-        expert_load_view: The expert load view.
-        logical_to_physical_map: The logical to physical map.
-        logical_replica_count: The logical replica count.
-
-    Returns:
-        The physical expert ids.
-    """
-
-    # 1. Convert the logical expert ids to physical expert ids
-    # Directly select a random replica for each logical expert
-
-    # In case `indices_type` is not `torch.long` or `torch.int`,
-    # e.g. `torch.uint32` as required by dispatch/combine kernels
-    topk_ids_long = topk_ids.long()
-    # Use (token position) modulo (replica count)
-    # to deterministically choose a replica
-    replica_count = logical_replica_count[topk_ids_long]
-    # Flatten-position based index, reshaped back to `topk_ids` shape
-    pos_indices = torch.arange(
-        topk_ids.numel(), device=topk_ids.device, dtype=torch.long
-    ).reshape_as(topk_ids)
-    # Compute pseudo-random indices by modulo
-    replica_indices = (pos_indices % replica_count).unsqueeze(-1)
-    physical_ids = (
-        logical_to_physical_map[topk_ids_long].gather(-1, replica_indices).squeeze(-1)
-    )
-
-    topk_ids = physical_ids
-
-    # 2. Record expert load metrics.
-
-    # TODO(bowen): When using `FusedMoEModularKernel`, this
-    # can be done in a more unified way, since
-    # `FusedMoEPrepareAndFinalize` will return the expert
-    # token count, in some cases directly from the kernel.
-    # However, now there are many code paths not using
-    # the modular kernel, e.g. calling `fused_experts`,
-    # so we decide to keep the logic here.
-    #
-    # If later refactor moved all the MoE kernel calls
-    # to the modular kernel, we can move this logic there
-    # to achieve better efficiency.
-
-    # `expert_load_view`: (num_physical_experts,)
-
-    # `torch.bincount` is not compilable, so use `scatter_add_` instead.
-    topk_ids_flatten = topk_ids.flatten()
-    expert_load_view.scatter_add_(
-        dim=0,
-        index=topk_ids_flatten.long(),
-        src=torch.ones_like(topk_ids_flatten).to(expert_load_view),
-    )
-    return topk_ids
-
-
-def fused_grouped_topk(
-    hidden_states: torch.Tensor,
-    gating_output: torch.Tensor,
-    topk: int,
-    renormalize: bool,
-    e_score_correction_bias: torch.Tensor,
-    num_expert_group: int = 0,
-    topk_group: int = 0,
-    scoring_func: str = "softmax",
-    routed_scaling_factor: float = 1.0,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    assert hidden_states.size(0) == gating_output.size(0), "Number of tokens mismatch"
-
-    if scoring_func == "sigmoid":
-        # Fully fused kernel path for sigmoid
-        topk_values, topk_indices = ops.grouped_topk(
-            gating_output,  # raw logits
-            num_expert_group,
-            topk_group,
-            topk,
-            renormalize,
-            routed_scaling_factor,
-            e_score_correction_bias,
-            1,  # scoring_func=1 for sigmoid
-        )
-    elif scoring_func == "softmax":
-        # Apply softmax in Python, then use fused kernel
-        # TODO: Add support for softmax in kernel
-        scores = torch.softmax(gating_output, dim=-1)
-        topk_values, topk_indices = ops.grouped_topk(
-            scores,  # pre-computed scores
-            num_expert_group,
-            topk_group,
-            topk,
-            renormalize,
-            routed_scaling_factor,
-            e_score_correction_bias,
-            0,  # scoring_func=0 (no activation, scores already computed)
-        )
-    else:
-        raise ValueError(f"Unsupported scoring function: {scoring_func}")
-
-    # Fused kernel outputs float32 values and int32 indices directly
-    return topk_values, topk_indices
 
 
 def inplace_fused_experts(
@@ -1929,7 +1641,6 @@ def outplace_fused_experts_fake(
 direct_register_custom_op(
     op_name="maca_outplace_fused_experts",
     op_func=outplace_fused_experts,
-    mutates_args=[],
     fake_impl=outplace_fused_experts_fake,
     tags=(
         ()
@@ -1969,66 +1680,36 @@ def fused_experts(
     global_num_experts: int = -1,
     expert_map: torch.Tensor | None = None,
     quant_config: FusedMoEQuantConfig | None = None,
-    allow_deep_gemm: bool = False,
 ) -> torch.Tensor:
     if quant_config is None:
         quant_config = FUSED_MOE_UNQUANTIZED_CONFIG
 
-    # For now, disable DeepGemm for small N (<= 512) until better
-    # permute/unpermute ops are available.
-    # However, on B200, we use DeepGemm for all cases because they only support
-    # E8M0 scale, which means we requantize the weight and input to the specific
-    # scale. Fallen back to cutlass or triton for some cases would cause
-    # accuracy issue.
-    if (
-        allow_deep_gemm
-        and quant_config.use_fp8_w8a8
-        and (is_deep_gemm_e8m0_used() or _valid_deep_gemm(hidden_states, w1, w2))
-    ):
-        assert quant_config is not None
-        return deep_gemm_moe_fp8(
-            hidden_states=hidden_states,
-            w1=w1,
-            w2=w2,
-            topk_weights=topk_weights,
-            topk_ids=topk_ids,
-            inplace=inplace,
-            activation=activation,
-            global_num_experts=global_num_experts,
-            expert_map=expert_map,
-            w1_scale=quant_config.w1_scale,
-            w2_scale=quant_config.w2_scale,
-            a1_scale=quant_config.a1_scale,
-            a2_scale=quant_config.a2_scale,
-            apply_router_weight_on_input=apply_router_weight_on_input,
-        )
-    else:
-        return dispatch_fused_experts_func(inplace)(
-            hidden_states=hidden_states,
-            w1=w1,
-            w2=w2,
-            topk_weights=topk_weights,
-            topk_ids=topk_ids,
-            activation=activation,
-            apply_router_weight_on_input=apply_router_weight_on_input,
-            use_fp8_w8a8=quant_config.use_fp8_w8a8,
-            use_int8_w8a8=quant_config.use_int8_w8a8,
-            use_int8_w8a16=quant_config.use_int8_w8a16,
-            use_int4_w4a16=quant_config.use_int4_w4a16,
-            ocp_mx_scheme=quant_config.ocp_mx_scheme,
-            per_channel_quant=quant_config.per_act_token_quant,
-            global_num_experts=global_num_experts,
-            expert_map=expert_map,
-            w1_scale=quant_config.w1_scale,
-            w2_scale=quant_config.w2_scale,
-            w1_zp=quant_config.w1_zp,
-            w2_zp=quant_config.w2_zp,
-            a1_scale=quant_config.a1_scale,
-            a2_scale=quant_config.a2_scale,
-            block_shape=quant_config.block_shape,
-            w1_bias=quant_config.w1_bias,
-            w2_bias=quant_config.w2_bias,
-        )
+    return dispatch_fused_experts_func(inplace)(
+        hidden_states=hidden_states,
+        w1=w1,
+        w2=w2,
+        topk_weights=topk_weights,
+        topk_ids=topk_ids,
+        activation=activation,
+        apply_router_weight_on_input=apply_router_weight_on_input,
+        use_fp8_w8a8=quant_config.use_fp8_w8a8,
+        use_int8_w8a8=quant_config.use_int8_w8a8,
+        use_int8_w8a16=quant_config.use_int8_w8a16,
+        use_int4_w4a16=quant_config.use_int4_w4a16,
+        ocp_mx_scheme=quant_config.ocp_mx_scheme,
+        per_channel_quant=quant_config.per_act_token_quant,
+        global_num_experts=global_num_experts,
+        expert_map=expert_map,
+        w1_scale=quant_config.w1_scale,
+        w2_scale=quant_config.w2_scale,
+        w1_zp=quant_config.w1_zp,
+        w2_zp=quant_config.w2_zp,
+        a1_scale=quant_config.a1_scale,
+        a2_scale=quant_config.a2_scale,
+        block_shape=quant_config.block_shape,
+        w1_bias=quant_config.w1_bias,
+        w2_bias=quant_config.w2_bias,
+    )
 
 
 def _get_config_quant_dtype(
@@ -2113,6 +1794,7 @@ def fused_experts_impl(
     assert w1.stride(-1) == 1, "Stride of last dimension must be 1"
     assert w2.stride(-1) == 1, "Stride of last dimension must be 1"
     assert hidden_states.dtype in [torch.float32, torch.float16, torch.bfloat16]
+
     num_tokens = hidden_states.size(0)
     E, N, _ = w1.size()
     K = w2.size(1)
@@ -2124,6 +1806,10 @@ def fused_experts_impl(
     CHUNK_SIZE = envs.VLLM_FUSED_MOE_CHUNK_SIZE
     M = min(num_tokens, CHUNK_SIZE)
 
+    # ---------------------------------------------------------------
+    # Metax Note: here we need to add `int8_w8a8` option for later use.
+    # So we use our own version of `get_config_dtype_str`.
+    # ---------------------------------------------------------------
     config_dtype = get_config_dtype_str(
         use_fp8_w8a8=use_fp8_w8a8,
         # ┌------------------------  Metax Modification -------------------------┐
@@ -2157,13 +1843,7 @@ def fused_experts_impl(
     # We can reuse the memory between these because by the time we need
     # cache3, we're done with cache1
     # ┌------------------------  Metax Modification -------------------------┐
-    stage1_config = config.get("stage1", config)
-    stage1_config.setdefault("SPLIT_K", 1)
-    stage1_config.pop("ACCF32", None)
-
-    stage2_config = config.get("stage2", config)
-    stage2_config.setdefault("SPLIT_K", 1)
-    stage2_config.pop("ACCF32", None)
+    stage1_config, stage2_config = initialize_staged_config(config)
     # └------------------------- Metax Modification -------------------------┘
 
     cache13 = torch.empty(
@@ -2435,18 +2115,59 @@ def fused_experts_impl(
 class TritonExperts(mk.FusedMoEPermuteExpertsUnpermute):
     def __init__(
         self,
+        moe_config: FusedMoEConfig,
         quant_config: FusedMoEQuantConfig,
     ):
-        super().__init__(quant_config)
+        super().__init__(moe_config, quant_config)
 
-    @property
-    def activation_formats(
-        self,
-    ) -> tuple[mk.FusedMoEActivationFormat, mk.FusedMoEActivationFormat]:
-        return (
-            mk.FusedMoEActivationFormat.Standard,
-            mk.FusedMoEActivationFormat.Standard,
+    @staticmethod
+    def activation_format() -> mk.FusedMoEActivationFormat:
+        return mk.FusedMoEActivationFormat.Standard
+
+    @staticmethod
+    def _supports_current_device() -> bool:
+        return current_platform.is_cuda_alike()
+
+    @staticmethod
+    def _supports_no_act_and_mul() -> bool:
+        return False
+
+    @staticmethod
+    def _supports_quant_scheme(
+        weight_key: QuantKey | None,
+        activation_key: QuantKey | None,
+    ) -> bool:
+        p = current_platform
+        if p.is_rocm():
+            from vllm.platforms.rocm import on_gfx9
+
+            is_rocm_on_gfx9 = on_gfx9()
+        else:
+            is_rocm_on_gfx9 = False
+
+        device_supports_fp8 = is_rocm_on_gfx9 or (
+            p.is_cuda() and p.has_device_capability((8, 9))
         )
+
+        if not device_supports_fp8:
+            return (weight_key, activation_key) == (None, None)
+
+        SUPPORTED_W_A = [
+            (None, None),
+            (kFp8Static128BlockSym, kFp8Dynamic128Sym),
+            (kFp8StaticChannelSym, kFp8DynamicTokenSym),
+            (kFp8StaticTensorSym, kFp8DynamicTokenSym),
+            (kFp8StaticTensorSym, kFp8StaticTensorSym),
+        ]
+        return (weight_key, activation_key) in SUPPORTED_W_A
+
+    @staticmethod
+    def _supports_activation(activation: str) -> bool:
+        return activation in ["silu", "gelu", "swigluoai"]
+
+    @staticmethod
+    def _supports_parallel_config(moe_parallel_config: FusedMoEParallelConfig) -> bool:
+        return True
 
     def supports_chunking(self) -> bool:
         return True
@@ -2538,13 +2259,9 @@ class TritonExperts(mk.FusedMoEPermuteExpertsUnpermute):
             num_tokens,
             block_shape=self.block_shape,
         )
-
-        stage1_config = config.get("stage1", config)
-        stage1_config.setdefault("SPLIT_K", 1)
-        stage1_config.pop("ACCF32", None)
-        stage2_config = config.get("stage2", config)
-        stage2_config.setdefault("SPLIT_K", 1)
-        stage2_config.pop("ACCF32", None)
+        # /------------------------- Metax MOdification --------------------------\
+        stage1_config, stage2_config = initialize_staged_config(config)
+        # \-----------------------------------------------------------------------/
 
         if hidden_states.dtype == torch.bfloat16:
             compute_type = tl.bfloat16
@@ -2658,11 +2375,43 @@ class TritonExperts(mk.FusedMoEPermuteExpertsUnpermute):
 
 
 class TritonWNA16Experts(TritonExperts):
-    def __init__(
-        self,
-        quant_config: FusedMoEQuantConfig,
-    ):
-        super().__init__(quant_config)
+    @staticmethod
+    def _supports_current_device() -> bool:
+        raise NotImplementedError(
+            "TritonWNA16Experts is not yet used by an Oracle. "
+            "This method should not be called."
+        )
+
+    @staticmethod
+    def _supports_no_act_and_mul() -> bool:
+        raise NotImplementedError(
+            "TritonWNA16Experts is not yet used by an Oracle. "
+            "This method should not be called."
+        )
+
+    @staticmethod
+    def _supports_quant_scheme(
+        weight_key: QuantKey | None,
+        activation_key: QuantKey | None,
+    ) -> bool:
+        raise NotImplementedError(
+            "TritonWNA16Experts is not yet used by an Oracle. "
+            "This method should not be called."
+        )
+
+    @staticmethod
+    def _supports_activation(activation: str) -> bool:
+        raise NotImplementedError(
+            "TritonWNA16Experts is not yet used by an Oracle. "
+            "This method should not be called."
+        )
+
+    @staticmethod
+    def _supports_parallel_config(moe_parallel_config: FusedMoEParallelConfig) -> bool:
+        raise NotImplementedError(
+            "TritonWNA16Experts is not yet used by an Oracle. "
+            "This method should not be called."
+        )
 
     def apply(
         self,
@@ -2835,13 +2584,29 @@ class TritonWNA16Experts(TritonExperts):
 
 
 def modular_triton_fused_moe(
-    quant_config: FusedMoEQuantConfig, shared_experts: torch.nn.Module | None = None
+    moe_config: FusedMoEConfig,
+    quant_config: FusedMoEQuantConfig,
+    shared_experts: torch.nn.Module | None = None,
 ) -> mk.FusedMoEModularKernel:
     return mk.FusedMoEModularKernel(
         MoEPrepareAndFinalizeNoEP(),
-        TritonExperts(quant_config),
+        TritonExperts(moe_config, quant_config),
         shared_experts,
     )
+
+
+def initialize_staged_config(
+    config: dict[str, dict[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    # Metax Modification: prepare staged config for MACA
+    stage1_config = config.get("stage1", config).copy()
+    stage1_config.setdefault("SPLIT_K", 1)
+    stage1_config.pop("ACCF32", None)
+
+    stage2_config = config.get("stage2", config).copy()
+    stage2_config.setdefault("SPLIT_K", 1)
+    stage2_config.pop("ACCF32", None)
+    return stage1_config, stage2_config
 
 
 def get_config_dtype_str(

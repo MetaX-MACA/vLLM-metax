@@ -229,13 +229,17 @@ class MacaPlatformBase(Platform):
 
         # TODO(lucas): handle this more gracefully
         # Note: model_config may be None during testing
+        # Note: block_size is initialized in
+        # HybridAttentionMambaModelConfig.verify_and_update_config
+        # for models with both attention and mamba,
+        # and doesn't need to be reinitialized here
         if (
             model_config is not None
             and model_config.use_mla
             and cache_config.block_size is not None
         ):
             use_sparse = hasattr(vllm_config.model_config.hf_config, "index_topk")
-            # If `VLLM_ATTENTION_BACKEND` is not set and we are using MLA,
+            # If `--attention-config.backend` is not set and we are using MLA,
             # then we default to FlashMLA backend for non-blackwell GPUs,
             # else we default to CutlassMLA. For each case, we force the
             # required block_size.
@@ -247,6 +251,7 @@ class MacaPlatformBase(Platform):
                 use_flashmla = True
             else:
                 # Forced case
+                backend = vllm_config.attention_config.backend
                 use_flashmla = backend == AttentionBackendEnum.FLASHMLA
 
                 # TODO(hank) Not implemented yet
@@ -388,11 +393,10 @@ class MacaPlatformBase(Platform):
         attn_selector_config: "AttentionSelectorConfig",
     ) -> str:
         register_attention_backends()
-
-        attn_selector_config = attn_selector_config._replace(block_size=None)
         device_capability = cls.get_device_capability()
         assert device_capability is not None
 
+        attn_selector_config = attn_selector_config._replace(block_size=None)
         # First try checking just the selected backend, if there is one.
         if selected_backend is not None:
             try:
@@ -502,9 +506,7 @@ class MacaPlatformBase(Platform):
 
     @classmethod
     def get_device_communicator_cls(cls) -> str:
-        return (
-            "vllm.distributed.device_communicators.cuda_communicator.CudaCommunicator"  # noqa
-        )
+        return "vllm_metax.distributed.device_communicators.cuda_communicator.MacaCommunicator"  # noqa
 
     @classmethod
     def supports_fp8(cls) -> bool:
