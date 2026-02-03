@@ -34,7 +34,7 @@ from vllm.model_executor.layers.batch_invariant import (
 from vllm.model_executor.layers.quantization.utils.quant_utils import (
     QuantKey,
     kFp8StaticTensorSym,
-    kNvfp4Quant,
+    kNvfp4Dynamic,
 )
 from vllm.platforms import current_platform
 from vllm.platforms.interface import DeviceCapability
@@ -427,7 +427,7 @@ class TRTLLMPrefill:
 
     max_q_len: int
     """
-    The maximum query length *among prefill requests*. 
+    The maximum query length *among prefill requests*.
     """
 
     max_seq_len: int
@@ -616,7 +616,12 @@ class FlashInferMetadataBuilder(AttentionMetadataBuilder[FlashInferMetadata]):
                 "earlier GPUs."
             )
         # Preparing persistent buffers
-        self.pin_memory = is_pin_memory_available()
+        # Since we do not have explicit synchronization in ModelRunnerV2, we do not pin
+        # reused CPU buffers to avoid a race condition between step N async copies to
+        # GPU and step N+1 buffer updates.
+        self.pin_memory = (
+            not envs.VLLM_USE_V2_MODEL_RUNNER and is_pin_memory_available()
+        )
         self.paged_kv_indptr = self._make_buffer(max_num_reqs + 1)
         self.paged_kv_indptr_cpu_buffer = torch.zeros_like(
             self.paged_kv_indptr.cpu, pin_memory=self.pin_memory
@@ -1050,6 +1055,12 @@ class FlashInferMetadataBuilder(AttentionMetadataBuilder[FlashInferMetadata]):
                         prefill_wrapper,
                         BatchPrefillWithPagedKVCacheWrapper,
                     )
+                    # /-----------------------------------
+                    # Note: maca's BatchPrefillWithPagedKVCacheWrapper
+                    #       doesn't not have these params yet:
+                    #       - o_data_type
+                    #       - fixed_split_size
+                    #       - disable_split_kv
                     prefill_wrapper.plan(
                         qo_indptr_prefill_cpu,
                         paged_kv_indptr_prefill_cpu,
@@ -1065,6 +1076,7 @@ class FlashInferMetadataBuilder(AttentionMetadataBuilder[FlashInferMetadata]):
                         logits_soft_cap=self.logits_soft_cap,
                         q_data_type=self.q_data_type,
                         kv_data_type=self.kv_cache_dtype,
+                        # o_data_type=self.model_config.dtype,
                         # fixed_split_size=self.prefill_fixed_split_size,
                         # disable_split_kv=self.disable_split_kv,
                     )
@@ -1113,6 +1125,7 @@ class FlashInferMetadataBuilder(AttentionMetadataBuilder[FlashInferMetadata]):
                     logits_soft_cap=self.logits_soft_cap,
                     q_data_type=self.q_data_type,
                     kv_data_type=self.kv_cache_dtype,
+                    o_data_type=self.model_config.dtype,
                     fixed_split_size=self.decode_fixed_split_size,
                     disable_split_kv=self.disable_split_kv,
                 )
@@ -1197,7 +1210,7 @@ class FlashInferImpl(AttentionImpl):
         return (
             self.support_trtllm_attn
             and self.kv_cache_dtype.startswith("fp8")
-            and quant_key in (kFp8StaticTensorSym, kNvfp4Quant)
+            and quant_key in (kFp8StaticTensorSym, kNvfp4Dynamic)
         )
 
     # FlashInfer requires attention sinks to be float32
@@ -1468,6 +1481,7 @@ def fast_plan_decode(
     logits_soft_cap: float | None = None,
     q_data_type: str | torch.dtype | None = "float16",
     kv_data_type: str | torch.dtype | None = None,
+    o_data_type: str | torch.dtype | None = None,
     data_type: str | torch.dtype | None = None,
     sm_scale: float | None = None,
     rope_scale: float | None = None,
@@ -1506,12 +1520,21 @@ def fast_plan_decode(
             logits_soft_cap,
             q_data_type,
             kv_data_type,
+            # o_data_type,
             data_type,
             sm_scale,
             rope_scale,
             rope_theta,
             non_blocking,
-            # --- maca does not support args below
+            # /-----------------------------------
+            # Note: maca's plan method
+            #       doesn't not have these params yet:
+            #       - o_data_type
+            #       - block_tables
+            #       - seq_lens
+            #       - fixed_split_size
+            #       - disable_split_kv
+            # ------------------------------------
             # None,  # block_tables
             # None,  # seq_lens
             # fixed_split_size,

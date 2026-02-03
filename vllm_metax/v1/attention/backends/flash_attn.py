@@ -64,7 +64,7 @@ from vllm.v1.kv_cache_interface import AttentionSpec
 # --------------------------------------------------------------
 # Note: used for prefill decode split with mtp on maca
 # --------------------------------------------------------------
-from vllm_metax.v1.attention.backends.mla.common import QueryLenSupport
+from vllm_metax.model_executor.layers.atttention.mla_attention import QueryLenSupport
 
 logger = init_logger(__name__)
 from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
@@ -94,6 +94,8 @@ class MacaFlashAttentionBackend(AttentionBackend):
             # https://github.com/Dao-AILab/flash-attention/issues/1974
             return [16, 32, 64]
         return [MultipleOf(16)]
+
+    forward_includes_kv_cache_update: bool = False
 
     @staticmethod
     def get_name() -> str:
@@ -170,7 +172,7 @@ class MacaFlashAttentionBackend(AttentionBackend):
             return True
         if kv_cache_dtype.startswith("fp8"):
             return flash_attn_supports_fp8()
-        return kv_cache_dtype in ["auto"]
+        return kv_cache_dtype in ["auto", "bfloat16"]
 
     @classmethod
     def supports_sink(cls) -> bool:
@@ -285,6 +287,28 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
     # when speculative decoding is enabled.
     reorder_batch_threshold: int = 128  # process small prefills with decode pathway
     # \------------------------- Metax Modification -------------------------/
+
+    supports_update_block_table: bool = True
+
+    @classmethod
+    def get_cudagraph_support(
+        cls,
+        vllm_config: "VllmConfig",
+        kv_cache_spec: "AttentionSpec",
+    ) -> AttentionCGSupport:
+        # FA2 does not support CUDA graphs with encoder-decoder models due to
+        # accuracy issues reported in https://github.com/vllm-project/vllm/issues/33091
+        if (
+            vllm_config.model_config.is_encoder_decoder
+            and get_flash_attn_version() == 2
+        ):
+            logger.warning_once(
+                "FlashAttention2 does not support CUDA graphs with "
+                "encoder-decoder models due to accuracy issues reported in #33091. "
+                "Disabling CUDA graph."
+            )
+            return AttentionCGSupport.NEVER
+        return cls._cudagraph_support
 
     def __init__(
         self,
@@ -498,6 +522,8 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         max_dcp_context_kv_len = 0
         dcp_context_kv_lens = None
 
+        # --------------------
+        # For metax GQA DCP
         cu_seqlens_k = None
         cu_prefix_query_lens = None
         prefix_kv_lens = None
@@ -531,6 +557,8 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
                 max_seq_len=max_dcp_context_kv_len,
                 causal=False,
             )
+            # --------------------
+            # For metax GQA DCP
             cu_seqlens_k = F.pad(
                 dcp_context_kv_lens,
                 (1, 0),
@@ -693,6 +721,11 @@ class FlashAttentionImpl(AttentionImpl):
             )
 
         self.supports_quant_query_input = False
+        self.supports_per_head_quant_scales = (
+            self.vllm_flash_attn_version >= 3
+            if self.vllm_flash_attn_version is not None
+            else False
+        )
 
     def forward(
         self,
@@ -764,32 +797,6 @@ class FlashAttentionImpl(AttentionImpl):
         # For decoder and cross-attention, use KV cache as before
         key_cache, value_cache = kv_cache.unbind(0)
 
-        # key and value may be None in the case of cross attention. They are
-        # calculated once based on the output from the encoder and then cached
-        # in KV cache.
-        if (
-            self.kv_sharing_target_layer_name is None
-            and key is not None
-            and value is not None
-        ):
-            # Reshape the input keys and values and store them in the cache.
-            # Skip this if sharing KV cache with an earlier attention layer.
-            # NOTE(woosuk): Here, key and value are padded while slot_mapping is
-            # not padded. However, we don't need to do key[:num_actual_tokens]
-            # and value[:num_actual_tokens] because the reshape_and_cache_flash
-            # op uses the slot_mapping's shape to determine the number of
-            # actual tokens.
-            reshape_and_cache_flash(
-                key,
-                value,
-                key_cache,
-                value_cache,
-                attn_metadata.slot_mapping,
-                self.kv_cache_dtype,
-                layer._k_scale,
-                layer._v_scale,
-            )
-
         if self.kv_cache_dtype.startswith("fp8"):
             # queries are quantized in the attention layer
             dtype = MacaFlashAttentionBackend.get_fp8_dtype_for_flashattn(
@@ -808,6 +815,10 @@ class FlashAttentionImpl(AttentionImpl):
 
             descale_shape = (cu_seqlens_q.shape[0] - 1, self.num_kv_heads)
 
+            q_descale = layer._q_scale.expand(descale_shape)
+            k_descale = layer._k_scale.expand(descale_shape)
+            v_descale = layer._v_scale.expand(descale_shape)
+
             if self.dcp_world_size > 1:
                 self._forward_with_dcp(
                     query[:num_actual_tokens],
@@ -817,9 +828,9 @@ class FlashAttentionImpl(AttentionImpl):
                     value_cache,
                     output[:num_actual_tokens],
                     attn_metadata,
-                    q_descale=layer._q_scale.expand(descale_shape),
-                    k_descale=layer._k_scale.expand(descale_shape),
-                    v_descale=layer._v_scale.expand(descale_shape),
+                    q_descale=q_descale,
+                    k_descale=k_descale,
+                    v_descale=v_descale,
                 )
                 return output
             else:
@@ -903,6 +914,49 @@ class FlashAttentionImpl(AttentionImpl):
             s_aux=self.sinks,
         )
         return output
+
+    def do_kv_cache_update(
+        self,
+        layer: torch.nn.Module,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        kv_cache: torch.Tensor,
+        slot_mapping: torch.Tensor,
+    ) -> None:
+        if self.attn_type in (AttentionType.ENCODER_ONLY, AttentionType.ENCODER):
+            # For encoder attention,
+            # we use direct Q, K, V tensors without caching
+            return
+
+        # key and value may be None in the case of cross attention. They are
+        # calculated once based on the output from the encoder and then cached
+        # in KV cache.
+        if (
+            self.kv_sharing_target_layer_name is not None
+            or key is None
+            or value is None
+        ):
+            return
+
+        key_cache, value_cache = kv_cache.unbind(0)
+
+        # Reshape the input keys and values and store them in the cache.
+        # Skip this if sharing KV cache with an earlier attention layer.
+        # NOTE(woosuk): Here, key and value are padded while slot_mapping is
+        # not padded. However, we don't need to do key[:num_actual_tokens]
+        # and value[:num_actual_tokens] because the reshape_and_cache_flash
+        # op uses the slot_mapping's shape to determine the number of
+        # actual tokens.
+        reshape_and_cache_flash(
+            key,
+            value,
+            key_cache,
+            value_cache,
+            slot_mapping,
+            self.kv_cache_dtype,
+            layer._k_scale,
+            layer._v_scale,
+        )
 
     def _forward_with_dcp(
         self,

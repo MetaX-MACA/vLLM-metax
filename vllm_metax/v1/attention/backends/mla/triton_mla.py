@@ -7,6 +7,11 @@ import torch
 
 from vllm.config.cache import CacheDType
 from vllm.logger import init_logger
+from vllm_metax.model_executor.layers.attention.mla_attention import (
+    MLACommonBackend,
+    MLACommonImpl,
+    MLACommonMetadata,
+)
 from vllm.model_executor.layers.batch_invariant import (
     vllm_is_batch_invariant,
 )
@@ -16,11 +21,7 @@ from vllm.v1.attention.backend import (
     AttentionType,
     is_quantized_kv_cache,
 )
-from vllm_metax.v1.attention.backends.mla.common import (
-    MLACommonBackend,
-    MLACommonImpl,
-    MLACommonMetadata,
-)
+
 
 # ---------------------------------------------------------------
 # Note: We need to use Maca's decode_attention due to
@@ -35,7 +36,10 @@ logger = init_logger(__name__)
 @register_backend(AttentionBackendEnum.TRITON_MLA)
 class MacaTritonMLABackend(MLACommonBackend):
     supported_dtypes: ClassVar[list[torch.dtype]] = [torch.float16, torch.bfloat16]
-    supported_kv_cache_dtypes: ClassVar[list[CacheDType]] = ["auto"]
+    supported_kv_cache_dtypes: ClassVar[list[CacheDType]] = [
+        "auto",
+        "bfloat16",
+    ]
 
     @staticmethod
     def get_name() -> str:

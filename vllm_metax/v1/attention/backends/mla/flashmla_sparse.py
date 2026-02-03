@@ -6,14 +6,18 @@ from typing import TYPE_CHECKING, ClassVar, Optional
 import numpy as np
 import torch
 
+from triton import cdiv
 from vllm import _custom_ops as ops
 from vllm.config import VllmConfig, get_current_vllm_config
 from vllm.config.cache import CacheDType
 from vllm.logger import init_logger
+from vllm.model_executor.layers.attention.mla_attention import (
+    MLACommonBaseImpl,
+    get_mla_dims,
+)
 from vllm.platforms import current_platform
 from vllm.platforms.interface import DeviceCapability
 from vllm.triton_utils import tl, triton
-from vllm.utils.math_utils import cdiv
 from vllm.v1.attention.backend import (
     AttentionBackend,
     AttentionCGSupport,
@@ -23,7 +27,6 @@ from vllm.v1.attention.backend import (
     CommonAttentionMetadata,
     MultipleOf,
 )
-from vllm_metax.v1.attention.backends.mla.common import MLACommonBaseImpl, get_mla_dims
 from vllm.v1.attention.backends.utils import (
     reshape_attn_output_for_spec_decode,
     reshape_query_for_spec_decode,
@@ -31,7 +34,7 @@ from vllm.v1.attention.backends.utils import (
     split_prefill_chunks,
 )
 from vllm_metax.v1.attention.ops.flashmla import (
-    flash_mla_sparse_prefill,
+    flash_mla_sparse_fwd,
     flash_mla_with_kvcache,
     get_mla_metadata,
 )
@@ -370,7 +373,8 @@ def get_prefill_workspace_size(max_model_len: int):
 
 
 class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetadata]):
-    _cudagraph_support: ClassVar[AttentionCGSupport] = AttentionCGSupport.UNIFORM_BATCH
+    # Matax Note: not support AttentionCGSupport.UNIFORM_BATCH for now
+    _cudagraph_support: ClassVar[AttentionCGSupport] = AttentionCGSupport.NEVER
 
     def __init__(
         self,
@@ -940,8 +944,12 @@ class FlashMLASparseImpl(MLACommonBaseImpl[FlashMLASparseMetadata]):
             q = q_padded
 
         topk_indices = topk_indices.view(num_tokens, 1, -1)
-        output = flash_mla_sparse_prefill(
-            q, kv_c_and_k_pe_cache, topk_indices, self.softmax_scale
+        output = flash_mla_sparse_fwd(
+            q,
+            kv_c_and_k_pe_cache,
+            topk_indices,
+            self.softmax_scale,
+            is_all_indices_valid=not (topk_indices == -1).any(),
         )[0]
         output = output[:, : self.num_heads, :]
         return output
