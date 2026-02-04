@@ -12,7 +12,7 @@ from vllm.model_executor.layers.quantization.moe_wna16 import (
     is_layer_skipped_quant,
     MoeWNA16Method as vllm_MoeWNA16Method,
 )
-from vllm_metax.ops.unquantized_fused_moe_method import (
+from vllm.model_executor.layers.fused_moe.unquantized_fused_moe_method import (
     UnquantizedFusedMoEMethod,
 )
 

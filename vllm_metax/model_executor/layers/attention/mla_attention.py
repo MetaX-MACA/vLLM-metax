@@ -200,14 +200,12 @@ from vllm._aiter_ops import rocm_aiter_ops
 from vllm.config import ModelConfig, VllmConfig, get_current_vllm_config
 from vllm.distributed.parallel_state import get_dcp_group
 from vllm.logger import init_logger
-from vllm.model_executor.custom_op import CustomOp
 from vllm.model_executor.layers.batch_invariant import (
     vllm_is_batch_invariant,
 )
 from vllm.model_executor.layers.linear import (
     ColumnParallelLinear,
 )
-from vllm.model_executor.layers.quantization.input_quant_fp8 import QuantFP8
 from vllm.model_executor.layers.quantization.utils.quant_utils import (
     GroupShape,
     get_and_maybe_dequant_weights,
@@ -238,6 +236,7 @@ from vllm.v1.attention.ops.common import cp_lse_ag_out_rs
 # --------------------------------------------------------------
 from vllm_metax.v1.attention.ops.merge_attn_states import merge_attn_states
 from vllm.v1.kv_cache_interface import AttentionSpec
+from vllm.model_executor.layers.attention.mla_attention import _DecodeConcatQuantFP8
 
 
 class QueryLenSupport(Enum):
@@ -290,36 +289,6 @@ def dynamic_per_batched_tensor_quant(
 
 
 logger = init_logger(__name__)
-
-
-@CustomOp.register("mla_decode_concat_quant_fp8")
-class _DecodeConcatQuantFP8(QuantFP8):
-    """
-    QuantFP8 variant that concatenates decode_ql_nope and decode_q_pe before
-    quantization. When disabled, forward_native is compiled via torch.compile,
-    fusing cat/reshape/quant/view together.
-    """
-
-    def _make_forward(quant_fn):  # noqa: N805
-        """Factory to create forward methods that concat before quantization."""
-
-        def forward(
-            self,
-            decode_ql_nope: torch.Tensor,
-            decode_q_pe: torch.Tensor,
-            scale: torch.Tensor,
-            scale_ub: torch.Tensor | None = None,
-        ) -> torch.Tensor:
-            decode_q0 = torch.cat((decode_ql_nope, decode_q_pe), dim=-1)
-            decode_q_flat = decode_q0.reshape(decode_q0.shape[0], -1)
-            decode_q, _ = quant_fn(self, decode_q_flat, scale, scale_ub)
-            return decode_q.view(decode_q0.shape)
-
-        return forward
-
-    forward_native = _make_forward(QuantFP8.forward_native)  # type: ignore[arg-type]
-    forward_cuda = _make_forward(QuantFP8.forward_cuda)  # type: ignore[arg-type]
-    forward_hip = _make_forward(QuantFP8.forward_hip)  # type: ignore[arg-type]
 
 
 CUDNN_WORKSPACE_SIZE = 12800

@@ -314,8 +314,10 @@ class FlashMLAImpl(MLACommonImpl[FlashMLAMetadata]):
             num_splits=num_splits,
             softmax_scale=self.scale,
             causal=True,
-            descale_q=layer._q_scale.reshape(1),
-            descale_k=layer._k_scale.reshape(1),
+            # ------------------------------------------------
+            # Note: flashmla on maca does not support fp8 descale yet
+            # descale_q=layer._q_scale.reshape(1),
+            # descale_k=layer._k_scale.reshape(1),
         )
 
         o = reshape_attn_output_for_spec_decode(o)

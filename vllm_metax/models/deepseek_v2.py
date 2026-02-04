@@ -647,7 +647,7 @@ class Indexer(nn.Module):
         # Metax Note: DeepseekV32IndexerCache uses bfloat16 for keys
         # So we adjust head_dim accordingly
         self.k_cache = DeepseekV32IndexerCache(
-            head_dim=self.head_dim # + self.head_dim // self.quant_block_size * 4,
+            head_dim=self.head_dim, # + self.head_dim // self.quant_block_size * 4
             dtype=torch.bfloat16,
             prefix=f"{prefix}.k_cache",
             cache_config=cache_config,
