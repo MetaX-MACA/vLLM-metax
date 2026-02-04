@@ -30,4 +30,7 @@ class MacaCompressedTensorsConfig(vllm_ct.CompressedTensorsConfig):
             return CompressedTensorsMoEMethod.get_moe_method(
                 self, layer, layer_name=prefix
             )
+        if isinstance(origin_quant_method, vllm_ct.CompressedTensorsLinearMethod):
+            pass
+
         return origin_quant_method
