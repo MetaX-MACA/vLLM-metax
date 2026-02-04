@@ -64,7 +64,7 @@ from vllm.v1.kv_cache_interface import AttentionSpec
 # --------------------------------------------------------------
 # Note: used for prefill decode split with mtp on maca
 # --------------------------------------------------------------
-from vllm_metax.model_executor.layers.atttention.mla_attention import QueryLenSupport
+from vllm_metax.model_executor.layers.attention.mla_attention import QueryLenSupport
 
 logger = init_logger(__name__)
 from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend

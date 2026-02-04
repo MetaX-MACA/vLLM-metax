@@ -3,7 +3,6 @@ from vllm.model_executor.layers.attention.mm_encoder_attention import (
     MMEncoderAttention,
 )
 import torch
-from vllm.config import MultiModalConfig
 from vllm_metax.v1.attention.ops.vit_attn_wrappers import (
     vit_flash_attn_wrapper as mx_vit_fa_wrapper,
 )
@@ -22,7 +21,6 @@ class MacaMMEncoderAttention(MMEncoderAttention):
         scale: float | None = None,
         num_kv_heads: int | None = None,
         prefix: str = "",
-        multimodal_config: MultiModalConfig | None = None,
     ) -> None:
         super().__init__(
             num_heads,
@@ -30,7 +28,6 @@ class MacaMMEncoderAttention(MMEncoderAttention):
             scale,
             num_kv_heads,
             prefix,
-            multimodal_config,
         )
 
         # /------------------ Metax Modification -------------------\
