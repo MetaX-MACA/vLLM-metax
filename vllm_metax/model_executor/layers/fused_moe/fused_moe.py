@@ -762,20 +762,20 @@ def invoke_fused_moe_wna16_triton_kernel(
         triton.cdiv(EM, META["BLOCK_SIZE_M"])
         * triton.cdiv(B.size(1), META["BLOCK_SIZE_N"]),
     )
-    # config = config.copy()
-    # config.update(
-    #     get_moe_wna16_block_config(
-    #         config=config,
-    #         use_moe_wna16_cuda=False,
-    #         num_valid_tokens=num_tokens,
-    #         size_k=A.size(1),
-    #         size_n=B.size(1),
-    #         num_experts=B.size(1),
-    #         group_size=block_shape[1],
-    #         real_top_k=top_k,
-    #         block_size_m=config["BLOCK_SIZE_M"],
-    #     )
-    # )
+    config = config.copy()
+    config.update(
+        get_moe_wna16_block_config(
+            config=config,
+            use_moe_wna16_cuda=False,
+            num_valid_tokens=num_tokens,
+            size_k=A.size(1),
+            size_n=B.size(1),
+            num_experts=B.size(1),
+            group_size=block_shape[1],
+            real_top_k=top_k,
+            block_size_m=config["BLOCK_SIZE_M"],
+        )
+    )
 
     fused_moe_kernel_gptq_awq[grid](
         A,

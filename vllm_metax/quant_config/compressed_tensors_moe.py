@@ -27,6 +27,7 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
         #           - `weight_quant`
         #           - `input_quant`
         #       to construct the corresponding class.
+        # -------------------------------------------
         quant_config._add_fused_moe_to_target_scheme_map()
         unfused_names = [
             layer_name + proj_name
@@ -48,7 +49,18 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
         # Replace with Metax's MoE quantization methods by:
         #  - `weights_quant`
         #  - `input_quant`
-        if isinstance(origin_moe_method, vllm_ctm.CompressedTensorsWNA16MoEMethod):
+        # -------------------------------------------
+        if isinstance(
+            origin_moe_method,
+            (
+                vllm_ctm.CompressedTensorsWNA16MoEMethod,
+                vllm_ctm.CompressedTensorsWNA16MarlinMoEMethod,
+            ),
+        ):
+            # -----------------------------------------------------------
+            # We do not support CompressedTensors-MarlinMoEMethod currently
+            # Fallback to non-Marlin methods
+            # -----------------------------------------------------------
             return CompressedTensorsWNA16MoEMethod(
                 weight_quant, input_quant, layer.moe_config
             )
@@ -56,6 +68,7 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
             return CompressedTensorsW8A8Int8MoEMethod(
                 weight_quant, input_quant, layer.moe_config
             )
+        return origin_moe_method
 
 
 # -----------------------------------------------------------

@@ -7,6 +7,10 @@ from vllm.platforms import current_platform
 
 import torch
 
+# --------------------------------
+# ensure maca gptq is registered
+import vllm_metax.quant_config.gptq  # noqa F401
+
 
 class MacaExllamaLinearKernel(vllm_ExllamaLinearKernel):
     @classmethod
@@ -33,6 +37,9 @@ class MacaExllamaLinearKernel(vllm_ExllamaLinearKernel):
                 "pack the zero points",
             )
 
+        # ------------------------------------------------
+        # On maca we support both float16 and bfloat16
+        # ------------------------------------------------
         if c.act_type not in (torch.float16, torch.bfloat16):
             return False, "Exllama only supports float16 and bfloat16 activations"
 
@@ -53,6 +60,41 @@ class MacaExllamaLinearKernel(vllm_ExllamaLinearKernel):
             )
 
         return True, None
+
+    def apply_weights(
+        self,
+        layer: torch.nn.Module,
+        x: torch.Tensor,
+        bias: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        c = self.config
+
+        w_q, w_s, w_zp, w_g_idx = self._get_weight_params(layer)
+
+        assert w_zp is not None, "Zero points are required by Exllama"
+        assert w_g_idx is not None, "Group index is required by Exllama"
+        # ----------------------------------------------------------------
+        # Note: The following code is adapted from maca vllm.ops.gptq_gemm
+        #
+        # output = ops.gptq_gemm(
+        #     x_2d, w_q, w_zp, w_s, w_g_idx, True, use_v2_format, c.weight_type.size_bits
+        # )
+        # if bias is not None:
+        #     output.add_(bias)
+        # return output.reshape(out_shape)
+
+        return torch.ops.vllm._apply_gptq(
+            x,
+            w_q,
+            w_s,
+            w_zp,
+            bias,
+            w_g_idx,
+            True,
+            c.weight_type.size_bits,
+            c.group_size,
+            c.has_g_idx,
+        )
 
 
 import vllm.model_executor.layers.quantization.kernels.mixed_precision
