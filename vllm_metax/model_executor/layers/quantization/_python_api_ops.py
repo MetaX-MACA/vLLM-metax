@@ -233,6 +233,12 @@ direct_register_custom_op(
 )
 
 
+# -------------------------------------------------
+# Note:
+#
+# This is different from `cutlass_scaled_mm` in `_cutlass_ops.py`.
+# It invokes mctlassEx python API directly.
+# -------------------------------------------------
 def cutlass_scaled_mm(
     a: torch.Tensor,
     b: torch.Tensor,
@@ -255,6 +261,12 @@ def cutlass_scaled_mm(
     return out.view(*target_shape)
 
 
+# -------------------------------------------------
+# Note:
+#
+# This is different from `cutlass_scaled_mm_azp` in `_cutlass_ops.py`.
+# It invokes mctlassEx python API directly.
+# -------------------------------------------------
 def cutlass_scaled_mm_azp(
     a: torch.Tensor,
     b: torch.Tensor,
@@ -282,6 +294,12 @@ def cutlass_scaled_mm_azp(
     return out.view(*target_shape)
 
 
+# -------------------------------------------------
+# Note:
+#
+# This is different from `cutlass_moe_mm_w8a8_get_kernel_m` in `_cutlass_ops.py`.
+# It invokes mctlassEx python API directly.
+# -------------------------------------------------
 def cutlass_moe_mm_w8a8_get_kernel_m(
     a: torch.Tensor, b: torch.Tensor, c: torch.Tensor, topk: int
 ) -> int:
@@ -292,6 +310,12 @@ def cutlass_moe_mm_w8a8_get_kernel_m(
     return mctlass_op.mctlass_fuse_moe_get_kernel_m(qa, qb, c1, topk)
 
 
+# -------------------------------------------------
+# Note:
+#
+# This is different from `cutlass_moe_mm_w8a8` in `_cutlass_ops.py`.
+# It invokes mctlassEx python API directly.
+# -------------------------------------------------
 def cutlass_moe_mm_w8a8(
     a: torch.Tensor,
     b: torch.Tensor,
