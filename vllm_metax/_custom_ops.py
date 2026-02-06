@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 # ---------------------------------------------------
@@ -14,7 +15,6 @@
 # When *adding* new custom ops, make sure you checked the
 # latest vllm/_custom_ops.py first to avoid adding duplicates.
 # ---------------------------------------------------
-
 import torch
 import vllm.envs as envs
 

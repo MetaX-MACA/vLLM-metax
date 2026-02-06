@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """Fused MoE Triton kernels."""
 
@@ -61,8 +62,6 @@ from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
 from vllm.utils.deep_gemm import is_deep_gemm_e8m0_used
 from vllm.utils.torch_utils import direct_register_custom_op, is_torch_equal_or_newer
-
-from vllm_metax import _custom_ops as mx_ops
 
 _mctlass_modname = (
     "vllm_metax.model_executor.layers.quantization._python_api_ops"
@@ -987,7 +986,7 @@ def get_moe_configs(
     # directory
     block_shape = [block_n, block_k] if block_n and block_k else None
     json_file_name = get_config_file_name(E, N, dtype, block_shape)
-    json_file_name = f"H={H},{json_file_name}"  # metax modify
+    json_file_name_WITH_H = f"H={H},{json_file_name}"  # metax modify
     config_file_paths = []
 
     # note that we prioritize user defined config
@@ -1001,7 +1000,14 @@ def get_moe_configs(
     default_config_file_path = os.path.join(
         os.path.dirname(os.path.realpath(__file__)), "configs", json_file_name
     )
+    # metax modify: try H specific config first
+    default_config_file_path_WITH_H = os.path.join(
+        os.path.dirname(os.path.realpath(__file__)),
+        "configs",
+        json_file_name_WITH_H,
+    )
     config_file_paths.append(default_config_file_path)
+    config_file_paths.append(default_config_file_path_WITH_H)
 
     for config_file_path in config_file_paths:
         if os.path.exists(config_file_path):
@@ -2083,61 +2089,38 @@ def fused_experts_impl(
             ignore_invalid_experts=True,
         )
 
-        use_fused_moe_kernel_on_stage1 = (
-            stage1_config["BLOCK_SIZE_M"] == 128
-            and not use_int8_w8a8
-            and topk_ids.shape[1] in (1, 2)
-            and curr_hidden_states.dtype in (torch.bfloat16, torch.float16)
-            and w1.shape[1] % 4 == 0
-            and w1.shape[2] % 8 == 0
+        qcurr_hidden_states, a1q_scale = moe_kernel_quantize_input(
+            A=curr_hidden_states,
+            A_scale=a1_scale,
+            quant_dtype=quant_dtype,
+            per_act_token_quant=per_channel_quant,
+            block_shape=block_shape,
         )
-        if use_fused_moe_kernel_on_stage1:
-            mx_ops.fused_moe_kernel(
-                curr_hidden_states,
-                w1,
-                intermediate_cache1,
-                curr_topk_weights,
-                curr_topk_ids,
-                sorted_token_ids,
-                expert_ids,
-                num_tokens_post_padded,
-                False,
-                topk_ids.shape[1],
-                0,
-            )
-        else:
-            qcurr_hidden_states, a1q_scale = moe_kernel_quantize_input(
-                A=curr_hidden_states,
-                A_scale=a1_scale,
-                quant_dtype=quant_dtype,
-                per_act_token_quant=per_channel_quant,
-                block_shape=block_shape,
-            )
 
-            invoke_fused_moe_kernel(
-                qcurr_hidden_states,
-                w1,
-                intermediate_cache1,
-                a1q_scale,
-                w1_scale,
-                w1_zp,
-                curr_topk_weights,
-                sorted_token_ids,
-                expert_ids,
-                num_tokens_post_padded,
-                apply_router_weight_on_input,
-                top_k_num,
-                stage1_config,
-                compute_type=compute_type,
-                use_fp8_w8a8=use_fp8_w8a8,
-                use_int8_w8a8=use_int8_w8a8,
-                use_int8_w8a16=use_int8_w8a16,
-                use_int4_w4a16=use_int4_w4a16,
-                orig_acc_dtype=hidden_states.dtype,
-                per_channel_quant=per_channel_quant,
-                block_shape=block_shape,
-                B_bias=w1_bias,
-            )
+        invoke_fused_moe_kernel(
+            qcurr_hidden_states,
+            w1,
+            intermediate_cache1,
+            a1q_scale,
+            w1_scale,
+            w1_zp,
+            curr_topk_weights,
+            sorted_token_ids,
+            expert_ids,
+            num_tokens_post_padded,
+            apply_router_weight_on_input,
+            top_k_num,
+            stage1_config,
+            compute_type=compute_type,
+            use_fp8_w8a8=use_fp8_w8a8,
+            use_int8_w8a8=use_int8_w8a8,
+            use_int8_w8a16=use_int8_w8a16,
+            use_int4_w4a16=use_int4_w4a16,
+            orig_acc_dtype=hidden_states.dtype,
+            per_channel_quant=per_channel_quant,
+            block_shape=block_shape,
+            B_bias=w1_bias,
+        )
         # └------------------------- Metax Modification -------------------------┘
 
         # Activation function with multiplication
@@ -2177,14 +2160,6 @@ def fused_experts_impl(
             and w2.shape[2] % 8 == 0
         )
 
-        use_fused_moe_kernel_on_stage2 = (
-            stage2_config["BLOCK_SIZE_M"] == 128
-            and not use_int8_w8a8
-            and w2.shape[1] % 4 == 0
-            and w2.shape[2] % 8 == 0
-            and hidden_states.dtype in (torch.bfloat16, torch.float16)
-        )
-
         if use_mctlass_moe_mm_on_stage2:
             # use mctlass_moe_mm
             mctlass_ops.cutlass_moe_bf16_mm(
@@ -2198,20 +2173,6 @@ def fused_experts_impl(
                 curr_topk_ids.numel(),
                 1,
                 True,
-            )
-        elif use_fused_moe_kernel_on_stage2:
-            mx_ops.fused_moe_kernel(
-                intermediate_cache2,
-                w2,
-                intermediate_cache3,
-                curr_topk_weights,
-                curr_topk_ids,
-                sorted_token_ids,
-                expert_ids,
-                num_tokens_post_padded,
-                True,
-                1,
-                0,
             )
         else:
             qintermediate_cache2, a2q_scale = moe_kernel_quantize_input(
