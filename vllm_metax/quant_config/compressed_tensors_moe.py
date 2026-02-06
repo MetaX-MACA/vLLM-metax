@@ -29,10 +29,6 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
         layer: torch.nn.Module,
         layer_name: str,
     ) -> "CompressedTensorsMoEMethod":
-        origin_moe_method = vllm_ctm.CompressedTensorsMoEMethod.get_moe_method(
-            quant_config, layer, layer_name
-        )
-
         # -------------------------------------------
         # Note: all these are copied from vllm's logic
         #       we just need the
@@ -62,6 +58,16 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
         #  - `weights_quant`
         #  - `input_quant`
         # -------------------------------------------
+        try:
+            origin_moe_method = vllm_ctm.CompressedTensorsMoEMethod.get_moe_method(
+                quant_config, layer, layer_name
+            )
+        except ValueError:
+            # only handle CompressedTensorsW4A8Int4MoEMethod
+            assert quant_config._is_dynamic_token_w4a8_int(weight_quant, input_quant)
+        except Exception:
+            raise
+
         if isinstance(
             origin_moe_method,
             (
@@ -80,7 +86,7 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
             return CompressedTensorsW8A8Int8MoEMethod(
                 weight_quant, input_quant, layer.moe_config
             )
-        elif isinstance(origin_moe_method, vllm_ctm.CompressedTensorsW4A8Int8MoEMethod):
+        elif quant_config._is_dynamic_token_w4a8_int(weight_quant, input_quant):
             # --------------------------------------------------------------------
             # Note!: On maca W4A8 is hardware supported. The quantization scheme
             #       is selected by `quant_config._is_dynamic_token_w4a8_int`. So we
@@ -89,6 +95,7 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
             return CompressedTensorsW4A8Int4MoEMethod(
                 weight_quant, input_quant, layer.moe_config
             )
+
         return origin_moe_method
 
 
