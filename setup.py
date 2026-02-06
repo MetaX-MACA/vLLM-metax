@@ -1,11 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import importlib.util
-import json
 import logging
 import os
-import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -46,26 +43,17 @@ logger = logging.getLogger(__name__)
 #  which is not installed yet
 envs = load_module_from_path("envs", os.path.join(ROOT_DIR, "vllm_metax", "envs.py"))
 
-try:
-    vllm_dist_path = importlib.metadata.distribution("vllm").locate_file("vllm")
-    logger.info("detected vllm distribution path: %s", vllm_dist_path)
-except importlib.metadata.PackageNotFoundError:
-    vllm_dist_path = None
-    logger.warning("vllm not installed! You need to install vllm first. ")
-except Exception:
-    vllm_dist_path = None
-    logger.warning("Error getting vllm distribution path")
 
 VLLM_TARGET_DEVICE = envs.VLLM_TARGET_DEVICE
+USE_PRECOMPILED_KERNEL = envs.USE_PRECOMPILED_KERNEL
 
 if not (
     sys.platform.startswith("linux")
     or torch.version.cuda is None
     or os.getenv("VLLM_TARGET_DEVICE") != "cuda"
 ):
-    # if cuda or hip is not available and VLLM_TARGET_DEVICE is not set,
-    # fallback to cpu
-    raise AssertionError("Plugin only support cuda on linux platform. ")
+    # if cuda is not available and VLLM_TARGET_DEVICE is not set, abort
+    raise AssertionError("Plugin only support cuda on Linux platform.")
 
 MAIN_CUDA_VERSION = "12.8"
 
@@ -201,10 +189,12 @@ class cmake_build_ext(build_ext):
             build_tool = []
 
         # Make sure we use the nvcc from CUDA_HOME
-        if _is_cuda() and not USE_MACA:
+        if _is_maca():
             cmake_args += [f"-DCMAKE_CUDA_COMPILER={CUDA_HOME}/bin/nvcc"]
-        if USE_MACA:
             cmake_args += ["-DUSE_MACA=1"]
+
+        if not _build_custom_ops():
+            cmake_args += ["-DUSE_PRECOMPILED_KERNEL=ON"]
         subprocess.check_call(
             [CMAKE_EXECUTABLE, ext.cmake_lists_dir, *build_tool, *cmake_args],
             cwd=self.build_temp,
@@ -215,7 +205,7 @@ class cmake_build_ext(build_ext):
         try:
             subprocess.check_output([CMAKE_EXECUTABLE, "--version"])
         except OSError as e:
-            raise RuntimeError("Cannot find CMake executable") from e
+            raise RuntimeError("Cannot find cmake_maca executable") from e
 
         # Create build directory if it does not exist.
         if not os.path.exists(self.build_temp):
@@ -274,152 +264,13 @@ class cmake_build_ext(build_ext):
         super().run()
 
 
-class repackage_wheel(build_ext):
-    """Extracts libraries and other files from an existing wheel."""
-
-    def get_base_commit_in_main_branch(self) -> str:
-        # Force to use the nightly wheel. This is mainly used for CI testing.
-        if envs.VLLM_TEST_USE_PRECOMPILED_NIGHTLY_WHEEL:
-            return "nightly"
-
-        try:
-            # Get the latest commit hash of the upstream main branch.
-            resp_json = subprocess.check_output(
-                [
-                    "curl",
-                    "-s",
-                    "https://api.github.com/repos/vllm-project/vllm/commits/main",
-                ]
-            ).decode("utf-8")
-            upstream_main_commit = json.loads(resp_json)["sha"]
-
-            # Check if the upstream_main_commit exists in the local repo
-            try:
-                subprocess.check_output(
-                    ["git", "cat-file", "-e", f"{upstream_main_commit}"]
-                )
-            except subprocess.CalledProcessError:
-                # If not present, fetch it from the remote repository.
-                # Note that this does not update any local branches,
-                # but ensures that this commit ref and its history are
-                # available in our local repo.
-                subprocess.check_call(
-                    ["git", "fetch", "https://github.com/vllm-project/vllm", "main"]
-                )
-
-            # Then get the commit hash of the current branch that is the same as
-            # the upstream main commit.
-            current_branch = (
-                subprocess.check_output(["git", "branch", "--show-current"])
-                .decode("utf-8")
-                .strip()
-            )
-
-            base_commit = (
-                subprocess.check_output(
-                    ["git", "merge-base", f"{upstream_main_commit}", current_branch]
-                )
-                .decode("utf-8")
-                .strip()
-            )
-            return base_commit
-        except ValueError as err:
-            raise ValueError(err) from None
-        except Exception as err:
-            logger.warning(
-                "Failed to get the base commit in the main branch. "
-                "Using the nightly wheel. The libraries in this "
-                "wheel may not be compatible with your dev branch: %s",
-                err,
-            )
-            return "nightly"
-
-    def run(self) -> None:
-        assert _is_cuda(), "VLLM_USE_PRECOMPILED is only supported for CUDA builds"
-
-        wheel_location = os.getenv("VLLM_PRECOMPILED_WHEEL_LOCATION", None)
-        if wheel_location is None:
-            base_commit = self.get_base_commit_in_main_branch()
-            wheel_location = f"https://wheels.vllm.ai/{base_commit}/vllm-1.0.0.dev-cp38-abi3-manylinux1_x86_64.whl"
-            # Fallback to nightly wheel if latest commit wheel is unavailable,
-            # in this rare case, the nightly release CI hasn't finished on main.
-            if not is_url_available(wheel_location):
-                wheel_location = "https://wheels.vllm.ai/nightly/vllm-1.0.0.dev-cp38-abi3-manylinux1_x86_64.whl"
-
-        import zipfile
-
-        if os.path.isfile(wheel_location):
-            wheel_path = wheel_location
-            print(f"Using existing wheel={wheel_path}")
-        else:
-            # Download the wheel from a given URL, assume
-            # the filename is the last part of the URL
-            wheel_filename = wheel_location.split("/")[-1]
-
-            import tempfile
-
-            # create a temporary directory to store the wheel
-            temp_dir = tempfile.mkdtemp(prefix="vllm-wheels")
-            wheel_path = os.path.join(temp_dir, wheel_filename)
-
-            print(f"Downloading wheel from {wheel_location} to {wheel_path}")
-
-            from urllib.request import urlretrieve
-
-            try:
-                urlretrieve(wheel_location, filename=wheel_path)
-            except Exception as e:
-                from setuptools.errors import SetupError
-
-                raise SetupError(
-                    f"Failed to get vLLM wheel from {wheel_location}"
-                ) from e
-
-        with zipfile.ZipFile(wheel_path) as wheel:
-            files_to_copy = [
-                "vllm_metax/_C.abi3.so",
-                "vllm_metax/_moe_C.abi3.so",
-                "vllm_metax/cumem_allocator.abi3.so",
-                # "vllm/_version.py", # not available in nightly wheels yet
-            ]
-
-            file_members = list(
-                filter(lambda x: x.filename in files_to_copy, wheel.filelist)
-            )
-
-            # vllm_flash_attn python code:
-            # Regex from
-            #  `glob.translate('vllm/vllm_flash_attn/**/*.py', recursive=True)`
-            compiled_regex = re.compile(
-                r"vllm/vllm_flash_attn/(?:[^/.][^/]*/)*(?!\.)[^/]*\.py"
-            )
-            file_members += list(
-                filter(lambda x: compiled_regex.match(x.filename), wheel.filelist)
-            )
-
-            for file in file_members:
-                print(f"Extracting and including {file.filename} from existing wheel")
-                package_name = os.path.dirname(file.filename).replace("/", ".")
-                file_name = os.path.basename(file.filename)
-
-                if package_name not in package_data:
-                    package_data[package_name] = []
-
-                wheel.extract(file)
-                if file_name.endswith(".py"):
-                    # python files shouldn't be added to package_data
-                    continue
-
-                package_data[package_name].append(file_name)
-
-
-def _is_cuda() -> bool:
+def _is_maca() -> bool:
     has_cuda = torch.version.cuda is not None
     return VLLM_TARGET_DEVICE == "cuda" and has_cuda
 
 
 def _build_custom_ops() -> bool:
-    return _is_cuda()
+    return _is_maca() and not envs.USE_PRECOMPILED_KERNEL
 
 
 def get_maca_version() -> Version:
@@ -460,14 +311,11 @@ def get_plugin_version() -> str:
     )
     sep = "+" if "+" not in version else "."  # dev versions might contain +
 
-    if _is_cuda():
-        if envs.VLLM_USE_PRECOMPILED:
-            version += f"{sep}precompiled"
-        else:
-            maca_version_str = str(get_maca_version())
-            torch_version = torch.__version__
-            major_minor_version = ".".join(torch_version.split(".")[:2])
-            version += f"{sep}maca{maca_version_str}.torch{major_minor_version}"
+    if _is_maca():
+        maca_version_str = str(get_maca_version())
+        torch_version = torch.__version__
+        major_minor_version = ".".join(torch_version.split(".")[:2])
+        version += f"{sep}maca{maca_version_str}.torch{major_minor_version}"
     else:
         raise RuntimeError("Unknown runtime environment")
 
@@ -493,109 +341,49 @@ def get_requirements() -> list[str]:
                 resolved_requirements.append(line)
         return resolved_requirements
 
-    if _is_cuda():
+    if _is_maca():
         requirements = _read_requirements("maca.txt")
-        cuda_major, cuda_minor = torch.version.cuda.split(".")
         modified_requirements = []
         for req in requirements:
-            if "vllm-flash-attn" in req and cuda_major != "12":
-                # vllm-flash-attn is built only for CUDA 12.x.
-                # Skip for other versions.
-                continue
             modified_requirements.append(req)
         requirements = modified_requirements
     else:
-        raise ValueError(
-            "Unsupported platform, please use CUDA, ROCm, Neuron, HPU, or CPU."
-        )
+        raise ValueError("Unsupported platform, please use CUDA.")
     return requirements
 
 
 ext_modules = []
 
-if _is_cuda():
-    ext_modules.append(CMakeExtension(name="vllm_metax._moe_C"))
-    ext_modules.append(CMakeExtension(name="vllm_metax.cumem_allocator"))
 
-if _build_custom_ops() or True:
+ext_modules.append(CMakeExtension(name="vllm_metax.cumem_allocator"))
+
+if _build_custom_ops():
     ext_modules.append(CMakeExtension(name="vllm_metax._C"))
+    ext_modules.append(CMakeExtension(name="vllm_metax._moe_C"))
+else:
+    print("Using precompiled kernels, skipping building custom ops.")
+
 
 package_data = {
     "vllm_metax": [
         "py.typed",
         "model_executor/layers/fused_moe/configs/*.json",
-        "model_executor/layers/quantization/utils/configs/*.json",
-        "attention/backends/configs/*.json",
     ]
 }
 
 
 class custom_install(install):
-    def _copy_with_backup(self, src_path: Path, dest_path: Path):
-        """
-        Copy a file or directory from src_path to dest_path.
-        - If dest_path is an existing directory, copy src_path into that directory.
-        - If dest_path exists as a file or directory, back it up as .bak before copying.
-        """
-        if not os.path.exists(src_path):
-            raise FileNotFoundError(f"Source path does not exist: {src_path}")
-
-        # If dest_path is an existing directory, copy into it
-        if os.path.isdir(dest_path):
-            dest_full_path = dest_path / os.path.basename(src_path)
-        else:
-            dest_full_path = dest_path
-
-        # Backup if target path already exists (file or dir)
-        if os.path.exists(dest_full_path):
-            backup_path = dest_full_path.parent / (dest_full_path.name + ".bak")
-            logger.debug(f"{dest_full_path} exists, backing it up to {backup_path}")
-            if os.path.exists(backup_path):
-                logger.debug(f"Backup path {backup_path} already exists, removing it.")
-                if os.path.isdir(backup_path) and not os.path.islink(backup_path):
-                    shutil.rmtree(backup_path)
-                else:
-                    os.remove(backup_path)
-            os.rename(dest_full_path, backup_path)
-
-        # Perform the copy
-        if os.path.isdir(src_path):
-            shutil.copytree(src_path, dest_full_path)
-        else:
-            shutil.copy2(src_path, dest_full_path)
-
-        logger.info(f"Copied {src_path} to {dest_full_path}")
-
-    def _copy_files_to_vllm(self, src_path: Path, dest_path: Path):
-        try:
-            self._copy_with_backup(src_path, dest_path)
-        except Exception as e:
-            logger.error(f"Error copying files: {e}")
-
     def run(self):
         install.run(self)
 
-        if not vllm_dist_path:
-            return
 
-        files_to_copy = {
-            # for get_available_device: set cuda
-            "vllm_metax/patch/vllm_substitution/utils.py": vllm_dist_path
-            / "model_executor/layers/fla/ops/utils.py",
-        }
-
-        for src_path, dest_path in files_to_copy.items():
-            source_file = Path(self.build_lib) / src_path
-            self._copy_files_to_vllm(source_file, dest_path)
-
-
-if not ext_modules:
-    cmdclass = {}
-else:
-    cmdclass = {
-        "build_ext": repackage_wheel if envs.VLLM_USE_PRECOMPILED else cmake_build_ext,
-        # "install": custom_install,
+cmdclass = (
+    {
+        "build_ext": cmake_build_ext,
     }
+    if ext_modules
+    else {}
+)
 
 setup(
     # static metadata should rather go in pyproject.toml

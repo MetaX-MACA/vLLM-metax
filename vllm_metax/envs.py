@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 
 import os
 from typing import TYPE_CHECKING, Any, Callable
@@ -47,6 +48,11 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # during building
     "USE_PRECOMPILED_KERNEL": lambda: bool(os.environ.get("USE_PRECOMPILED_KERNEL", 1)),
     # ================== Runtime Env Vars ==================
+    # When installing vllm from source, the version of vllm set by setuptool_scm
+    # will be different from the version of vllm installed by pip.
+    # (e.g. install vllm from source with tag v0.9.1 will cause the version set
+    # as 0.9.2)
+    "VLLM_OFFICIAL_VERSION": lambda: os.getenv("VLLM_OFFICIAL_VERSION", None),
     # if set, enable mctlass python api, only support scaled_mm and moe_w8a8 int8
     "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": lambda: bool(
         int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_PYTHON_API", "0"))
