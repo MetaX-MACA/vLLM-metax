@@ -7,6 +7,7 @@
 apex==0.1+metax3.3.0.2
 torch==2.8.0+metax3.3.0.2
 torchaudio==2.4.1+metax3.3.0.2
+torchcodec==0.6.0+metax3.3.0.2
 torchvision==0.15.1+metax3.3.0.2
 triton==3.0.0+metax3.3.0.2
 
@@ -15,6 +16,7 @@ dropout_layer_norm==0.1+metax3.3.0.2torch2.8
 
 # attention
 flash_attn==2.6.3+metax3.3.0.2torch2.8
+flash-linear-attention==0.1+metax3.3.0.2torch2.8
 flash_mla==1.0.1+metax3.3.0.2torch2.8
 flashinfer==0.2.6+metax3.3.0.2torch2.8
 fused_dense_lib==2.6.3+metax3.3.0.2torch2.8
@@ -28,7 +30,7 @@ xentropy_cuda_lib==0.1+metax3.3.0.2torch2.8
 
 mcpy==3.3.0.2
 
-# deep_gemm==0.0.1+maca3.3.0.10
-# mcoplib==0.2.0+maca3.3.0.2.torch2.8
+deep_gemm==0.0.1+maca3.3.0.301
+mcoplib==0.3.1+maca3.3.0.15.torch2.8
 
 # uv pip install -r requirements/maca.txt -c requirements/constraints.txt  --index-strategy unsafe-best-match --extra-index-url https://repos.metax-tech.com/r/maca-pypi/simple --trusted-host repos.metax-tech.com --dry-run

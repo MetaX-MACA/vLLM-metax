@@ -1,1 +1,5 @@
-lmcache
+lmcache==0.3.11+maca3.3.0.303
+
+# Maca would need a customized nixl to fit kv_connectors, which is not ready yet.
+# So the dependency is temporarily disabled here.
+# nixl >= 0.7.1+maca
