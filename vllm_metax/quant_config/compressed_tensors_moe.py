@@ -92,7 +92,7 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
             #       is selected by `quant_config._is_dynamic_token_w4a8_int`. So we
             #       just need to re-implement and map with Int4MoEMethod here.
             # --------------------------------------------------------------------
-            return CompressedTensorsW4A8Int4MoEMethod(
+            return CompressedTensorsW4A8Int8MoEMethod(
                 weight_quant, input_quant, layer.moe_config
             )
 
@@ -183,7 +183,7 @@ class CompressedTensorsWNA16MoEMethod(vllm_ctm.CompressedTensorsWNA16MoEMethod):
         )
 
 
-class CompressedTensorsW4A8Int4MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
+class CompressedTensorsW4A8Int8MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
     """
     On maca W4A8 is hardware supported. But on maca the weights is
     packed to int32 nibbles instead of int8 values. Still we name it
