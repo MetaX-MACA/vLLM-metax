@@ -23,4 +23,16 @@ def register_model():
 
     ModelRegistry.register_model(
         "KimiK25ForConditionalGeneration", "vllm_metax.models.kimi_k25:KimiK25ForConditionalGeneration"
-    )
+    ),
+    ModelRegistry.register_model(
+        "Qwen3_5ForConditionalGeneration", "vllm_metax.models.qwen3_5:Qwen3_5ForConditionalGeneration"
+    ),
+    ModelRegistry.register_model(
+        "Qwen3_5MoeForConditionalGeneration", "vllm_metax.models.qwen3_5:Qwen3_5MoeForConditionalGeneration"
+    ),
+    ModelRegistry.register_model(
+        "Qwen3_5MTP", "vllm_metax.models.qwen3_5_mtp:Qwen3_5MTP"
+    ),
+    ModelRegistry.register_model(
+        "Qwen3_5MoeMTP", "vllm_metax.models.qwen3_5_mtp:Qwen3_5MoeMTP"
+    ),
