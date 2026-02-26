@@ -26,7 +26,6 @@ def update_environment_variables_with_maca(
     envs = envs_list[self.rpc_rank]
     key = "CUDA_VISIBLE_DEVICES"
     # /------------------------  Metax Modification -------------------------\
-
     envs["MACA_VISIBLE_DEVICES"] = envs.get(key, "")
     # \------------------------- Metax Modification -------------------------/
     if key in envs and key in os.environ:
