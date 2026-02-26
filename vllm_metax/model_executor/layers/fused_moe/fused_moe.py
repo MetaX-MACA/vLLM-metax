@@ -1442,6 +1442,9 @@ def try_get_optimal_moe_config(
     else:
         # First try to load optimal config from the file
         E, _, N = w2_shape
+        # TODO: This is a temporary fix for deepseek-r1-awq.
+        # The N = N * 2 adjustment causes issues with Triton compilation for
+        # this model. A proper fix should be investigated.
         # if dtype == "int4_w4a16":
         #     N = N * 2
         block_n = block_shape[0] if block_shape else 0
