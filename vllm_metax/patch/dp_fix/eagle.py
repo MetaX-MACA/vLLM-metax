@@ -1,9 +1,4 @@
 # SPDX-License-Identifier: Apache-2.0
-
-# ---------------------------------------------------------------------------
-# Note: fix triton kernel compilation errors
-# ---------------------------------------------------------------------------
-
 import torch
 
 from vllm.config import (

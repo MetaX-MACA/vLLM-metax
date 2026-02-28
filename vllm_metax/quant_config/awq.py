@@ -52,6 +52,7 @@ class MacaAWQConfig(AWQConfig):
                 "group_size": self.group_size,
                 "zero_point": self.zero_point,
                 "lm_head": False,
+                "modules_to_not_convert": self.modules_to_not_convert,
             }
             return MacaMoeWNA16Config.from_config(config).get_quant_method(
                 layer, prefix

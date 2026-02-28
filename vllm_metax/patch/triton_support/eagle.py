@@ -141,6 +141,12 @@ class MacaEagleProposer(EagleProposer):
         return next_token_ids, valid_sampled_tokens_count
 
 
-EagleProposer.prepare_next_token_ids_padded = (
-    MacaEagleProposer.prepare_next_token_ids_padded
-)
+# Todo(hank): if this works well, remove the original
+# EagleProposer.prepare_next_token_ids_padded to avoid confusion.
+from vllm.v1.spec_decode import eagle
+
+eagle.eagle_prepare_next_token_padded_kernel = eagle_prepare_next_token_padded_kernel
+
+# EagleProposer.prepare_next_token_ids_padded = (
+#     MacaEagleProposer.prepare_next_token_ids_padded
+# )

@@ -1,4 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
+
+# ------------------------------------------------------
+# Note: This patch is for `TritonExperts` instance type
+#       mismatch between vllm's and maca's.
+#       (to make isinstance assertion happy)
+# ------------------------------------------------------
+
 from vllm import envs
 from vllm.distributed.utils import divide
 from vllm.model_executor.layers.fused_moe.config import (
@@ -7,6 +14,9 @@ from vllm.model_executor.layers.fused_moe.config import (
 from vllm.model_executor.layers.fused_moe.fused_marlin_moe import (
     MarlinExperts,
 )
+
+# ----------------------------------------------------------
+# Note: import the TritonExperts from plugin other than vllm
 from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
     TritonExperts,
 )

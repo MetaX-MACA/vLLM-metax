@@ -25,7 +25,7 @@ class MacaSharedFusedMoE(SharedFusedMoE):
                 # Reduce shared expert outputs if necessary, since the MLP
                 # should have been created with reduce_results=False.
                 # ----------------------------------------------------------
-                # reduce_results is defaultly to be true in MacaSharedFusedMoE
+                # Note: reduce_results is defaultly to be true in MacaSharedFusedMoE
                 if (
                     get_tensor_model_parallel_world_size() > 1
                     and self.must_reduce_shared_expert_outputs()
@@ -45,7 +45,7 @@ class MacaSharedFusedMoE(SharedFusedMoE):
             )
             # ensure early TP reduction of shared expert outputs when required
             # ----------------------------------------------------------
-            # reduce_results is defaultly to be true in MacaSharedFusedMoE
+            # Note: reduce_results is defaultly to be true in MacaSharedFusedMoE
             if (
                 shared_out is not None
                 and get_tensor_model_parallel_world_size() > 1
