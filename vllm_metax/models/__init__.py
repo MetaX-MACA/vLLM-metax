@@ -21,6 +21,11 @@ def register_model():
         "DeepseekV32ForCausalLM", "vllm_metax.models.deepseek_v2:DeepseekV3ForCausalLM"
     )
 
+    # TODO(hank): we may not need to manually register it since the metax dependency is removed.
     ModelRegistry.register_model(
         "KimiK25ForConditionalGeneration", "vllm_metax.models.kimi_k25:KimiK25ForConditionalGeneration"
+    )
+
+    ModelRegistry.register_model(
+        "GlmMoeDsaForCausalLM", "vllm_metax.models.deepseek_v2:GlmMoeDsaForCausalLM"
     )
