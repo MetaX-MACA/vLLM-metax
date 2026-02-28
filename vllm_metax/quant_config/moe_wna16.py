@@ -18,6 +18,8 @@ from vllm.model_executor.layers.fused_moe.unquantized_fused_moe_method import (
 
 from vllm.model_executor.layers.quantization import register_quantization_config
 
+import vllm_metax.envs as mx_envs
+
 
 # Remove configs of marlin
 @register_quantization_config("moe_wna16")
@@ -67,10 +69,20 @@ class MoeWNA16Method(vllm_MoeWNA16Method):
         topk_ids: torch.Tensor,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         # here we use plugin's `fused_experts`
-        from vllm_metax.model_executor.layers.fused_moe.fused_moe import fused_experts
+        from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
+            fused_experts as mx_fused_experts,
+        )
+        from vllm.model_executor.layers.fused_moe.fused_moe import (
+            fused_experts as vllm_fused_experts,
+        )
 
         assert layer.activation == "silu", "Only SiLU activation is supported."
 
+        fused_experts = (
+            mx_fused_experts
+            if not mx_envs.USE_VLLM_TRITON_EXPERT
+            else vllm_fused_experts
+        )
         return fused_experts(
             x,
             layer.w13_qweight,

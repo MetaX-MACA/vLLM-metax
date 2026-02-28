@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import torch
+import vllm_metax.envs as envs
 from vllm.model_executor.layers.fused_moe import FusedMoE
 from vllm.model_executor.layers.quantization.compressed_tensors import (
     compressed_tensors_moe as vllm_ctm,
@@ -144,12 +145,20 @@ class CompressedTensorsWNA16MoEMethod(vllm_ctm.CompressedTensorsWNA16MoEMethod):
             if HAS_TRITON:
                 # use Metax's TritonWNA16Experts
                 from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
-                    TritonWNA16Experts,
+                    TritonWNA16Experts as mx_TritonWNA16Experts,
+                )
+                from vllm.model_executor.layers.fused_moe.fused_moe import (
+                    TritonWNA16Experts as vllm_TritonWNA16Experts,
                 )
 
                 layer.w13_weight = layer.w13_weight_packed
                 layer.w2_weight = layer.w2_weight_packed
-                return TritonWNA16Experts(quant_config=self.moe_quant_config)
+
+                return (
+                    mx_TritonWNA16Experts(quant_config=self.moe_quant_config)
+                    if not envs.USE_VLLM_TRITON_EXPERT
+                    else vllm_TritonWNA16Experts(quant_config=self.moe_quant_config)
+                )
             else:
                 raise NotImplementedError(
                     "TritonExperts requires Triton. "
@@ -166,7 +175,16 @@ class CompressedTensorsWNA16MoEMethod(vllm_ctm.CompressedTensorsWNA16MoEMethod):
         topk_ids: torch.Tensor,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         # here we use Metax's `fused_experts`
-        from vllm_metax.model_executor.layers.fused_moe.fused_moe import fused_experts
+        from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
+            fused_experts as mx_fused_experts,
+        )
+        from vllm.model_executor.layers.fused_moe.fused_moe import (
+            fused_experts as vllm_fused_experts,
+        )
+
+        fused_experts = (
+            mx_fused_experts if not envs.USE_VLLM_TRITON_EXPERT else vllm_fused_experts
+        )
 
         return fused_experts(
             x,
@@ -364,8 +382,16 @@ class CompressedTensorsW4A8Int8MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
         topk_ids: torch.Tensor,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         # here we use Metax's `fused_experts`
-        from vllm_metax.model_executor.layers.fused_moe.fused_moe import fused_experts
+        from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
+            fused_experts as mx_fused_experts,
+        )
+        from vllm.model_executor.layers.fused_moe.fused_moe import (
+            fused_experts as vllm_fused_experts,
+        )
 
+        fused_experts = (
+            mx_fused_experts if not envs.USE_VLLM_TRITON_EXPERT else vllm_fused_experts
+        )
         return fused_experts(
             x,
             layer.w13_weight_packed,

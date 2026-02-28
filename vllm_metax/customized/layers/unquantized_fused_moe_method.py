@@ -6,6 +6,7 @@ from vllm.model_executor.layers.fused_moe.layer import (
 import torch
 
 from vllm.platforms import current_platform, logger
+import vllm_metax.envs as envs
 
 import vllm.model_executor.layers.fused_moe.modular_kernel as mk
 from vllm.model_executor.layers.fused_moe.modular_kernel import (
@@ -13,14 +14,37 @@ from vllm.model_executor.layers.fused_moe.modular_kernel import (
     FusedMoEPermuteExpertsUnpermute,
     FusedMoEPrepareAndFinalize,
 )
-
+from vllm.model_executor.layers.fused_moe.config import (
+    FusedMoEConfig,
+)
 from vllm.model_executor.layers.fused_moe.prepare_finalize import (
     MoEPrepareAndFinalizeNoEP,
 )
+from vllm.model_executor.layers.fused_moe.fused_batched_moe import BatchedTritonExperts
+
+from vllm.model_executor.layers.fused_moe.oracle.unquantized import (
+    UnquantizedMoeBackend,
+)
+
 from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
     TritonExperts as mx_TritonExperts,
 )
-from vllm.model_executor.layers.fused_moe.fused_batched_moe import BatchedTritonExperts
+
+from vllm.model_executor.layers.fused_moe.fused_moe import (
+    TritonExperts as vllm_TritonExperts,
+)
+
+
+def get_triton_experts_cls():
+    if envs.USE_VLLM_TRITON_EXPERT:
+        logger.info(
+            "Using vLLM's fused MoE implementation for debugging and comparison."
+        )
+        return vllm_TritonExperts
+    return mx_TritonExperts
+
+
+TritonExperts = get_triton_experts_cls()
 
 
 # -----------------------------------------------------------
@@ -28,6 +52,12 @@ from vllm.model_executor.layers.fused_moe.fused_batched_moe import BatchedTriton
 # -----------------------------------------------------------
 @vllm_UnquantizedFusedMoEMethod.register_oot
 class UnquantizedFusedMoEMethod(vllm_UnquantizedFusedMoEMethod):
+    def __init__(self, moe: FusedMoEConfig):
+        super().__init__(moe)
+        # -------------------------------------------------
+        # Here in maca we use Triton for Modular MoE kernel
+        self.unquantized_backend = UnquantizedMoeBackend.TRITON
+
     def select_gemm_impl(
         self,
         prepare_finalize: FusedMoEPrepareAndFinalize,
@@ -47,7 +77,7 @@ class UnquantizedFusedMoEMethod(vllm_UnquantizedFusedMoEMethod):
             )
         else:
             logger.debug("TritonExperts %s", self.moe)
-            return mx_TritonExperts(
+            return TritonExperts(
                 moe_config=self.moe,
                 quant_config=self.moe_quant_config,
             )
@@ -58,7 +88,7 @@ class UnquantizedFusedMoEMethod(vllm_UnquantizedFusedMoEMethod):
         self.use_inplace = True
         self.kernel = mk.FusedMoEModularKernel(
             MoEPrepareAndFinalizeNoEP(),
-            mx_TritonExperts(
+            TritonExperts(
                 moe_config=self.moe,
                 quant_config=self.moe_quant_config,
             ),
