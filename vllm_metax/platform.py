@@ -126,6 +126,9 @@ class MacaPlatformBase(Platform):
     ray_device_key: str = "GPU"
     dist_backend: str = "nccl"
     device_control_env_var: str = "CUDA_VISIBLE_DEVICES"
+    ray_noset_device_env_vars: list[str] = [
+        "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES",
+    ]
 
     supported_quantization: list[str] = [
         "awq",
@@ -578,7 +581,7 @@ class MacaPlatformBase(Platform):
 # Note that NVML is not affected by `CUDA_VISIBLE_DEVICES`,
 # all the related functions work on real physical device ids.
 # the major benefit of using NVML is that it will not initialize CUDA
-class mxsmlPlatform(MacaPlatformBase):
+class MxmslMacaPlatform(MacaPlatformBase):
     @classmethod
     @cache
     @with_mxsml_context
@@ -672,7 +675,7 @@ class mxsmlPlatform(MacaPlatformBase):
                 )
 
 
-class NonmxsmlMetaxPlatform(MacaPlatformBase):
+class NonMxsmlMacaPlatform(MacaPlatformBase):
     @classmethod
     @cache
     def get_device_capability(cls, device_id: int = 0) -> DeviceCapability:
@@ -711,7 +714,7 @@ finally:
     if mxsml_available:
         pymxsml.nvmlShutdown()
 
-MacaPlatform = mxsmlPlatform if mxsml_available else NonmxsmlMetaxPlatform
+MacaPlatform = MxmslMacaPlatform if mxsml_available else NonMxsmlMacaPlatform
 MacaPlatform.log_warnings()
 
 
@@ -721,15 +724,12 @@ mx_envs.override_vllm_env(
     "VLLM_USE_FLASHINFER_SAMPLER", False, "flashinfer sampler are not supported on maca"
 )
 
-# vllm_metax currently does not support third-party Triton kernels; Triton upgrade required.
+# --------------------------------------------------
+# Note: vllm_metax currently does not support third-party
+#       Triton kernels; Triton upgrade required.
 import vllm.utils.import_utils as iu
 
-
-def has_triton_kernels() -> bool:
-    return False
-
-
-iu.has_triton_kernels = has_triton_kernels
+iu.has_triton_kernels = lambda: False
 
 # --------------------------------------------------
 # Note: disable torchvision beta transforms warning

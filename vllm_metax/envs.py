@@ -12,6 +12,9 @@ if TYPE_CHECKING:
     CMAKE_BUILD_TYPE: str | None
     VERBOSE: bool = False
     MACA_DP_OPT: bool = False
+    MACA_VLLM_ENABLE_MCTLASS_PYTHON_API: bool = False
+    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: bool = False
+    USE_VLLM_TRITON_EXPERT: bool = False
 
 environment_variables: dict[str, Callable[[], Any]] = {
     # ================== Installation Time Env Vars ==================
@@ -57,6 +60,11 @@ environment_variables: dict[str, Callable[[], Any]] = {
     ),
     # if set, enable combine allreduce all2all
     "MACA_DP_OPT": lambda: bool(int(os.environ.get("MACA_DP_OPT", "0"))),
+    # =================== Debug Env Vars ==================
+    # if set, use vllm's fused_moe implementation instead of maca's one for debugging and comparison
+    "USE_VLLM_TRITON_EXPERT": lambda: bool(
+        int(os.getenv("USE_VLLM_TRITON_EXPERT", "0"))
+    ),
 }
 
 

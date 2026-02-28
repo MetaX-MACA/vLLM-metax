@@ -18,6 +18,10 @@
 import torch
 import vllm.envs as envs
 
+from vllm.platforms import current_platform
+
+current_platform.import_kernels()
+
 
 def awq_gemm(
     input: torch.Tensor,
