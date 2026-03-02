@@ -24,8 +24,8 @@ from vllm.model_executor.layers.vocab_parallel_embedding import (
     VocabParallelEmbedding,
 )
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
-from vllm.model_executor.models.qwen3_5 import Qwen3_5DecoderLayer, Qwen3_5RMSNorm
-from vllm.model_executor.models.qwen3_next import QwenNextMixtureOfExperts
+from vllm_metax.models.qwen3_5 import Qwen3_5DecoderLayer, Qwen3_5RMSNorm
+from vllm_metax.models.qwen3_next import QwenNextMixtureOfExperts
 from vllm.sequence import IntermediateTensors
 
 from vllm.model_executor.models.interfaces import (
