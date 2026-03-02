@@ -21,8 +21,8 @@ def is_flashmla_dense_supported() -> tuple[bool, str | None]:
     """
     Return: is_supported_flag, unsupported_reason (optional).
     """
-    is_availble, maybe_reason = _is_flashmla_available()
-    if not is_availble:
+    is_available, maybe_reason = _is_flashmla_available()
+    if not is_available:
         return False, maybe_reason
     return True, None
 
@@ -31,8 +31,8 @@ def is_flashmla_sparse_supported() -> tuple[bool, str | None]:
     """
     Return: is_supported_flag, unsupported_reason (optional).
     """
-    is_availble, maybe_reason = _is_flashmla_available()
-    if not is_availble:
+    is_available, maybe_reason = _is_flashmla_available()
+    if not is_available:
         return False, maybe_reason
     return True, None
 
