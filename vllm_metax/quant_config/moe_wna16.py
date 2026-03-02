@@ -68,7 +68,6 @@ class MoeWNA16Method(vllm_MoeWNA16Method):
         topk_weights: torch.Tensor,
         topk_ids: torch.Tensor,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-        # here we use plugin's `fused_experts`
         from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
             fused_experts as mx_fused_experts,
         )

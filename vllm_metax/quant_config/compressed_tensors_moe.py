@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import torch
 import vllm_metax.envs as envs
-from vllm.model_executor.layers.fused_moe import FusedMoE
+from vllm.model_executor.layers.fused_moe import FusedMoE, FusedMoEMethodBase
 from vllm.model_executor.layers.quantization.compressed_tensors import (
     compressed_tensors_moe as vllm_ctm,
 )
@@ -29,7 +29,7 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
         quant_config: "CompressedTensorsConfig",  # type: ignore # noqa E501
         layer: torch.nn.Module,
         layer_name: str,
-    ) -> "CompressedTensorsMoEMethod":
+    ) -> FusedMoEMethodBase:
         # -------------------------------------------
         # Note: all these are copied from vllm's logic
         #       we just need the
@@ -112,7 +112,16 @@ class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm.CompressedTensorsW8A8Int8MoEMe
         topk_ids: torch.Tensor,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         # here we use Metax's `fused_experts`
-        from vllm_metax.model_executor.layers.fused_moe.fused_moe import fused_experts
+        from vllm.model_executor.layers.fused_moe.fused_moe import (
+            fused_experts as vllm_fused_experts,
+        )
+        from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
+            fused_experts as mx_fused_experts,
+        )
+
+        fused_experts = (
+            mx_fused_experts if not envs.USE_VLLM_TRITON_EXPERT else vllm_fused_experts
+        )
 
         return fused_experts(
             hidden_states=x,
@@ -120,7 +129,7 @@ class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm.CompressedTensorsW8A8Int8MoEMe
             w2=layer.w2_weight,
             topk_weights=topk_weights,
             topk_ids=topk_ids,
-            inplace=True,
+            inplace=not self.moe.disable_inplace,
             activation=layer.activation,
             apply_router_weight_on_input=layer.apply_router_weight_on_input,
             global_num_experts=layer.global_num_experts,
@@ -155,9 +164,13 @@ class CompressedTensorsWNA16MoEMethod(vllm_ctm.CompressedTensorsWNA16MoEMethod):
                 layer.w2_weight = layer.w2_weight_packed
 
                 return (
-                    mx_TritonWNA16Experts(quant_config=self.moe_quant_config)
+                    mx_TritonWNA16Experts(
+                        moe_config=self.moe, quant_config=self.moe_quant_config
+                    )
                     if not envs.USE_VLLM_TRITON_EXPERT
-                    else vllm_TritonWNA16Experts(quant_config=self.moe_quant_config)
+                    else vllm_TritonWNA16Experts(
+                        moe_config=self.moe, quant_config=self.moe_quant_config
+                    )
                 )
             else:
                 raise NotImplementedError(
@@ -192,7 +205,7 @@ class CompressedTensorsWNA16MoEMethod(vllm_ctm.CompressedTensorsWNA16MoEMethod):
             layer.w2_weight_packed,
             topk_weights=topk_weights,
             topk_ids=topk_ids,
-            inplace=True,
+            inplace=not self.moe.disable_inplace,
             activation=layer.activation,
             apply_router_weight_on_input=layer.apply_router_weight_on_input,
             global_num_experts=layer.global_num_experts,

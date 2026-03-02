@@ -101,6 +101,8 @@ class UnquantizedFusedMoEMethod(vllm_UnquantizedFusedMoEMethod):
         topk_weights: torch.Tensor,
         topk_ids: torch.Tensor,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        assert self.kernel is not None
+
         return self.kernel(
             hidden_states=x,
             w1=layer.w13_weight,
