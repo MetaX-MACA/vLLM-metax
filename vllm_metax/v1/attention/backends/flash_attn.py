@@ -67,6 +67,7 @@ from vllm.v1.kv_cache_interface import AttentionSpec
 from vllm_metax.model_executor.layers.attention.mla_attention import QueryLenSupport
 
 logger = init_logger(__name__)
+import vllm_metax.envs as mx_envs
 from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
 import vllm_metax.envs as mx_envs
 
@@ -369,6 +370,11 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         )
         self.max_cudagraph_size = self.compilation_config.max_cudagraph_capture_size
 
+        # Note: This is used for dcp=1 and without prefill-decode split.
+        # Pre-allocated buffer for cu_seqlens_k to avoid allocations / CPU sync
+        # in the forward pass (important for CUDA graph capture/replay).
+        self._cu_seqlens_k_buffer: torch.Tensor | None = None
+
         if self.use_full_cuda_graph and self.aot_schedule:
             self.scheduler_metadata = torch.zeros(
                 vllm_config.scheduler_config.max_num_seqs + 1,
@@ -380,6 +386,14 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
             # pre-allocated during capture.
             self.max_num_splits = (
                 self.attention_config.flash_attn_max_num_splits_for_cuda_graph
+            )
+
+        if self.use_full_cuda_graph:
+            # Note: num_seqs is the upper bound for batch size during capture.
+            self._cu_seqlens_k_buffer = torch.zeros(
+                vllm_config.scheduler_config.max_num_seqs + 1,
+                dtype=torch.int32,
+                device=self.device,
             )
 
         # Sliding window size to be used with the AOT scheduler will be
@@ -599,6 +613,26 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
                 max_seq_len=max_seq_len,
                 causal=causal,
             )
+
+            # --------------------------------------------------------------
+            # Note: Precompute cu_seqlens_k (prefix sums over KV lengths) on GPU.
+            # This replaces any forward-time construction that would require
+            # CPU sync (e.g. via .tolist()), which breaks CUDA graph capture.
+            if self.use_full_cuda_graph and self._cu_seqlens_k_buffer is not None:
+                n = num_reqs + 1
+                buf = self._cu_seqlens_k_buffer
+                # Leading 0, then inclusive cumsum into buf[1:n].
+                buf[0].zero_()
+                seq_lens_i32 = seq_lens[:num_reqs].to(dtype=torch.int32)
+                torch.cumsum(seq_lens_i32, dim=0, dtype=torch.int32, out=buf[1:n])
+                cu_seqlens_k = buf[:n]
+            else:
+                cu_seqlens_k = F.pad(
+                    seq_lens[:num_reqs],
+                    (1, 0),
+                    value=0,
+                ).cumsum(dim=0, dtype=torch.int32)
+
         # For FA3 + full cudagraph
         if self.use_full_cuda_graph and scheduler_metadata is not None:
             n = scheduler_metadata.shape[0]
@@ -888,11 +922,14 @@ class FlashAttentionImpl(AttentionImpl):
                     return output
                 # └------------------------- Metax Modification -------------------------┘
                 else:
-                    cu_seqlens_k = F.pad(
-                        attn_metadata.seq_lens,
-                        (1, 0),
-                        value=0,
-                    ).cumsum(dim=0, dtype=torch.int32)
+                    cu_seqlens_k = attn_metadata.cu_seqlens_k
+                    if cu_seqlens_k is None:
+                        # Fallback for legacy metadata paths: keep it GPU-only.
+                        cu_seqlens_k = F.pad(
+                            attn_metadata.seq_lens,
+                            (1, 0),
+                            value=0,
+                        ).cumsum(dim=0, dtype=torch.int32)
 
                     output[:num_actual_tokens] = flash_attn_varlen_func(
                         q=query[:num_actual_tokens],
