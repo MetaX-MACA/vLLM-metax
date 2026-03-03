@@ -67,6 +67,7 @@ from vllm.v1.kv_cache_interface import AttentionSpec
 from vllm_metax.model_executor.layers.attention.mla_attention import QueryLenSupport
 
 logger = init_logger(__name__)
+import vllm_metax.envs as mx_envs
 from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
 
 
@@ -368,6 +369,11 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         )
         self.max_cudagraph_size = self.compilation_config.max_cudagraph_capture_size
 
+        # Note: This is used for dcp=1 and without prefill-decode split.
+        # Pre-allocated buffer for cu_seqlens_k to avoid allocations / CPU sync
+        # in the forward pass (important for CUDA graph capture/replay).
+        self._cu_seqlens_k_buffer: torch.Tensor | None = None
+
         if self.use_full_cuda_graph and self.aot_schedule:
             self.scheduler_metadata = torch.zeros(
                 vllm_config.scheduler_config.max_num_seqs + 1,
@@ -379,6 +385,14 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
             # pre-allocated during capture.
             self.max_num_splits = (
                 self.attention_config.flash_attn_max_num_splits_for_cuda_graph
+            )
+
+        if self.use_full_cuda_graph:
+            # Note: num_seqs is the upper bound for batch size during capture.
+            self._cu_seqlens_k_buffer = torch.zeros(
+                vllm_config.scheduler_config.max_num_seqs + 1,
+                dtype=torch.int32,
+                device=self.device,
             )
 
         # Sliding window size to be used with the AOT scheduler will be
@@ -598,6 +612,26 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
                 max_seq_len=max_seq_len,
                 causal=causal,
             )
+
+            # --------------------------------------------------------------
+            # Note: Precompute cu_seqlens_k (prefix sums over KV lengths) on GPU.
+            # This replaces any forward-time construction that would require
+            # CPU sync (e.g. via .tolist()), which breaks CUDA graph capture.
+            if self.use_full_cuda_graph and self._cu_seqlens_k_buffer is not None:
+                n = num_reqs + 1
+                buf = self._cu_seqlens_k_buffer
+                # Leading 0, then inclusive cumsum into buf[1:n].
+                buf[0].zero_()
+                seq_lens_i32 = seq_lens[:num_reqs].to(dtype=torch.int32)
+                torch.cumsum(seq_lens_i32, dim=0, dtype=torch.int32, out=buf[1:n])
+                cu_seqlens_k = buf[:n]
+            else:
+                cu_seqlens_k = F.pad(
+                    seq_lens[:num_reqs],
+                    (1, 0),
+                    value=0,
+                ).cumsum(dim=0, dtype=torch.int32)
+
         # For FA3 + full cudagraph
         if self.use_full_cuda_graph and scheduler_metadata is not None:
             n = scheduler_metadata.shape[0]
@@ -839,52 +873,79 @@ class FlashAttentionImpl(AttentionImpl):
                     if self.sliding_window is not None
                     else None
                 )
-                # ┌------------------------  Metax Modification -------------------------┐
-                # For handling prefill decode split
-                num_decode_tokens = attn_metadata.num_decode_tokens
-                if attn_metadata.num_prefills > 0:
-                    output[num_decode_tokens:num_actual_tokens] = (
-                        flash_attn_varlen_func(
-                            q=query[num_decode_tokens:num_actual_tokens],
-                            k=key_cache,
-                            v=value_cache,
-                            cu_seqlens_q=attn_metadata.prefill_query_start_loc,
-                            cu_seqlens_k=attn_metadata.cu_prefix_kv_lens,
-                            max_seqlen_q=attn_metadata.max_query_len,
-                            max_seqlen_k=attn_metadata.prefill_max_seq_len,
+                if mx_envs.VLLM_METAX_ENABLE_FA_SPLIT_FORWARD:
+                    # ┌------------------------  Metax Modification -------------------------┐
+                    # For handling prefill decode split
+                    num_decode_tokens = attn_metadata.num_decode_tokens
+                    if attn_metadata.num_prefills > 0:
+                        output[num_decode_tokens:num_actual_tokens] = (
+                            flash_attn_varlen_func(
+                                q=query[num_decode_tokens:num_actual_tokens],
+                                k=key_cache,
+                                v=value_cache,
+                                cu_seqlens_q=attn_metadata.prefill_query_start_loc,
+                                cu_seqlens_k=attn_metadata.cu_prefix_kv_lens,
+                                max_seqlen_q=attn_metadata.max_query_len,
+                                max_seqlen_k=attn_metadata.prefill_max_seq_len,
+                                softmax_scale=self.scale,
+                                causal=attn_metadata.causal,
+                                alibi_slopes=self.alibi_slopes,
+                                window_size=self.sliding_window,
+                                block_table=attn_metadata.prefill_block_table,
+                                softcap=self.logits_soft_cap,
+                                s_aux=self.sinks,
+                            )
+                        )
+                    if attn_metadata.num_decodes > 0:
+                        # Use flash_attn_with_kvcache for normal decoding.
+                        decode_query = query[:num_decode_tokens]
+                        decode_query = reshape_query_for_spec_decode(
+                            decode_query, attn_metadata.num_decodes
+                        )
+                        output_unreshape = flash_attn_with_kvcache(
+                            q=decode_query,
+                            k_cache=key_cache,
+                            v_cache=value_cache,
+                            block_table=attn_metadata.decode_block_table,
+                            cache_seqlens=attn_metadata.decode_seq_lens,
                             softmax_scale=self.scale,
-                            causal=attn_metadata.causal,
-                            alibi_slopes=self.alibi_slopes,
+                            causal=True,
                             window_size=self.sliding_window,
-                            block_table=attn_metadata.prefill_block_table,
+                            alibi_slopes=self.alibi_slopes,
                             softcap=self.logits_soft_cap,
                             s_aux=self.sinks,
                         )
-                    )
-                if attn_metadata.num_decodes > 0:
-                    # Use flash_attn_with_kvcache for normal decoding.
-                    decode_query = query[:num_decode_tokens]
-                    decode_query = reshape_query_for_spec_decode(
-                        decode_query, attn_metadata.num_decodes
-                    )
-                    output_unreshape = flash_attn_with_kvcache(
-                        q=decode_query,
-                        k_cache=key_cache,
-                        v_cache=value_cache,
-                        block_table=attn_metadata.decode_block_table,
-                        cache_seqlens=attn_metadata.decode_seq_lens,
+                        output[:num_decode_tokens] = (
+                            reshape_attn_output_for_spec_decode(output_unreshape)
+                        )
+                    return output
+                # └------------------------- Metax Modification -------------------------┘
+                else:
+                    cu_seqlens_k = attn_metadata.cu_seqlens_k
+                    if cu_seqlens_k is None:
+                        # Fallback for legacy metadata paths: keep it GPU-only.
+                        cu_seqlens_k = F.pad(
+                            attn_metadata.seq_lens,
+                            (1, 0),
+                            value=0,
+                        ).cumsum(dim=0, dtype=torch.int32)
+
+                    output[:num_actual_tokens] = flash_attn_varlen_func(
+                        q=query[:num_actual_tokens],
+                        k=key_cache,
+                        v=value_cache,
+                        cu_seqlens_q=cu_seqlens_q,
+                        max_seqlen_q=max_seqlen_q,
+                        cu_seqlens_k=cu_seqlens_k,
+                        max_seqlen_k=max_seqlen_k,
                         softmax_scale=self.scale,
                         causal=True,
-                        window_size=self.sliding_window,
                         alibi_slopes=self.alibi_slopes,
+                        window_size=self.sliding_window,
+                        block_table=block_table,
                         softcap=self.logits_soft_cap,
-                        s_aux=self.sinks,
                     )
-                    output[:num_decode_tokens] = reshape_attn_output_for_spec_decode(
-                        output_unreshape
-                    )
-                return output
-            # └------------------------- Metax Modification -------------------------┘
+                    return output
 
         # Cascade attention (rare case).
         cascade_attention(
