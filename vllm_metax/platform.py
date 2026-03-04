@@ -581,7 +581,7 @@ class MacaPlatformBase(Platform):
 # Note that NVML is not affected by `CUDA_VISIBLE_DEVICES`,
 # all the related functions work on real physical device ids.
 # the major benefit of using NVML is that it will not initialize CUDA
-class MxmslMacaPlatform(MacaPlatformBase):
+class MxsmlMacaPlatform(MacaPlatformBase):
     @classmethod
     @cache
     @with_mxsml_context
@@ -714,7 +714,7 @@ finally:
     if mxsml_available:
         pymxsml.nvmlShutdown()
 
-MacaPlatform = MxmslMacaPlatform if mxsml_available else NonMxsmlMacaPlatform
+MacaPlatform = MxsmlMacaPlatform if mxsml_available else NonMxsmlMacaPlatform
 MacaPlatform.log_warnings()
 
 
