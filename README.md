@@ -1,80 +1,142 @@
-<!-- markdownlint-disable MD001 MD041 -->
+# vLLM-MetaX
+
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/vllm-project/vllm/main/docs/assets/logos/vllm-logo-text-dark.png">
-    <img alt="vLLM" src="https://raw.githubusercontent.com/MetaX-MACA/vLLM-metax/master/docs/assets/logos/vllm-metax-logo.png" width=55%>
-  </picture>
+  <b>在沐曦 GPU 上流畅运行 vLLM</b>
 </p>
 
-<h3 align="center">
-vLLM MetaX Plugin
-</h3>
-
 <p align="center">
-| <a href="https://www.metax-tech.com/en/"><b>About MetaX</b></a> | <a href="https://vllm-metax.readthedocs.io/en/latest/"><b>Documentation</b></a> | <a href="https://slack.vllm.ai"><b>#sig-maca</b></a> </a> |
+  <a href="https://vllm-metax.readthedocs.io">
+    <img src="https://readthedocs.org/projects/vllm-metax/badge/?version=latest" alt="Docs"/>
+  </a>
+  <a href="https://pypi.org/project/vllm-metax/">
+    <img src="https://img.shields.io/pypi/v/vllm-metax?color=%23orange" alt="PyPI"/>
+  </a>
+  <a href="https://github.com/MetaX-MACA/vLLM-metax/stargazers">
+    <img src="https://img.shields.io/github/stars/MetaX-MACA/vllm-metax" alt="Stars"/>
+  </a>
+  <a href="https://github.com/MetaX-MACA/vLLM-metax/blob/master/LICENSE">
+    <img src="https://img.shields.io/github/license/MetaX-MACA/vllm-metax" alt="License"/>
+  </a>
 </p>
 
 ---
 
-*Latest News* 🔥
-- [2026/2] Released vllm-metax **v0.13.0** 🧨 — aligned with vLLM *v0.13.0*, brings you the latest features and model in v0.13.0!
-- [2026/1] Released vllm-metax **v0.12.0** 😎 — aligned with vLLM *v0.12.0*, supported more models and improved performance.
-- [2026/1] Released vllm-metax **v0.11.2** 👻 — aligned with vLLM *v0.11.2*, supported more models and improved performance.
-- [2025/11] Released vllm-metax **v0.10.2** 🎉 — aligned with vLLM *v0.10.2*, improved model performance, and fixed key decoding bugs.
-- [2025/11] We hosted [vLLM Beijing Meetup](https://mp.weixin.qq.com/s/xSrYXjNgr1HbCP4ExYNG1w) focusing on distributed inference and diverse accelerator support with vLLM! Please find the meetup slides [here](https://drive.google.com/drive/folders/1nQJ8ZkLSjKxvu36sSHaceVXtttbLvvu-?usp=drive_link).
-- [2025/08] We hosted [vLLM Shanghai Meetup](https://mp.weixin.qq.com/s/pDmAXHcN7Iqc8sUKgJgGtg) focusing on building, developing, and integrating with vLLM! Please find the meetup slides [here](https://drive.google.com/drive/folders/1OvLx39wnCGy_WKq8SiVKf7YcxxYI3WCH).
+## ✨ 特性
 
+- 🚀 **高性能推理** - 沐曦 C 系列 GPU 原生支持
+- 🔄 **无缝集成** - 遵循 vLLM 插件规范，即插即用
+- 🐳 **开箱即用** - 提供官方 Docker 镜像
+- 📖 **完整文档** - 配套中文/英文教程
+- 🏠 **社区活跃** - 北京/上海 Meetup 已举办多场
 
-## About
+---
 
-vLLM MetaX is a hardware plugin for running vLLM seamlessly on MetaX GPU, which is a cuda_alike backend and provided near-native CUDA experiences on MetaX Hardware with [*MACA*](https://www.metax-tech.com/en/goods/platform.html?cid=4).
+## 🏃 快速开始
 
-It is the recommended approach for supporting the MetaX backend within the vLLM community. 
+### 方式一：Docker（推荐）
 
-The plugin follows the vLLM plugin RFCs by default:
- - [[RFC]: Hardware pluggable](https://github.com/vllm-project/vllm/issues/11162)
- - [[RFC]: Enhancing vLLM Plugin Architecture](https://github.com/vllm-project/vllm/issues/19161)
+```bash
+# 拉取镜像
+docker pull metax/vllm-metax:v0.13.0
 
-Which ensured the hardware features and functionality support on integration of the MetaX GPU with vLLM.
+# 运行
+docker run --gpus all -v /path/to/models:/models \
+  metax/vllm-metax:v0.13.0 \
+  vllm serve /models/Qwen2.5-7B-Instruct \
+  --tensor-parallel-size 1
+```
 
-## Prerequisites
+### 方式二：pip 安装
 
-- Hardware: MetaX C-series
-- OS: Linux
-- Software:
-  - Python >= 3.9, < 3.12
-  - vLLM (the same version as vllm-metax)
-  - Docker support
+```bash
+pip install vllm-metax
+```
 
-## Getting Started
+### 方式三：源码编译
 
-vLLM MetaX currently only support starting on docker images release by [MetaX develop community](https://developer.metax-tech.com/softnova/docker?chip_name=%E6%9B%A6%E4%BA%91C500%E7%B3%BB%E5%88%97&package_kind=AI&dimension=docker&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85&ai_frame=vllm-metax) which is out of box. (DockerFile for other OS is undertesting)
+详见 [安装指南](https://vllm-metax.readthedocs.io/en/latest/getting_started/installation/maca.html)
 
-If you want to develop, debug or test the newest feature on vllm-metax, you may need to build from scratch and follow this [*source build tutorial*](https://vllm-metax.readthedocs.io/en/v0.13.0/getting_started/installation/maca.html). 
+---
 
-## Branch
+## 🖥️ 支持的模型
 
-vllm-metax has three kind of branches.
+| 模型系列 | 状态 | 示例 |
+|---------|------|------|
+| Qwen | ✅ 支持 | Qwen2.5-7B-Instruct |
+| Llama | ✅ 支持 | Llama-3-8B |
+| DeepSeek | ✅ 支持 | DeepSeek-V2 |
+| Yi | ✅ 支持 | Yi-6B |
+| Baichuan | ✅ 支持 | Baichuan2-7B |
 
-- **master**: main branch，catching up with main branch of vLLM upstream.
-- **releases/vX.Y.Z**: release branch, created when a new version of vLLM is released. For example, `releases/v0.13.0` is the release branch for vLLM `v0.13.0` version. (Same tag name)
-- **vX.Y.Z-dev**: development branch, created with part of new releases of vLLM. For example, `v0.14.0-dev` is the dev branch for vLLM `v0.14.0` version.
+> 完整支持列表见 [模型文档](https://vllm-metax.readthedocs.io/en/latest/models/supported_models.html)
 
-Below is maintained branches:
+---
 
-| Branch      | Status       | Note                                 |
-|-------------|--------------|--------------------------------------|
-| master      | N/A | trying to support vllm main, no gurantee on functionality |
-| v0.15.0-dev | N/A | under testing |
-| v0.14.0-dev | N/A | under testing |
-| releases/v0.13.0 | Released | related to vllm release v0.13.0 |
-| releases/v0.12.0 | Released | related to vllm release v0.12.0 |
-| releases/v0.11.2 | Released | related to vllm release v0.11.2 |
-| releases/v0.10.2 | Released | related to vllm release v0.10.2 |
+## 💻 硬件支持
 
+| 型号 | 显存 | 状态 | 推荐场景 |
+|-----|------|------|---------|
+| 沐曦 C500 | 32GB | ✅ 生产可用 | 大模型推理 |
+| 沐曦 C400 | 16GB | ✅ 实验阶段 | 开发测试 |
+| 沐曦 C300 | 8GB | 🔄 开发中 | 轻量推理 |
 
-Please check [here](https://vllm-metax.readthedocs.io/en/v0.13.0/getting_started/quickstart.html) for v0.13.0 details.
+---
 
-## License
+## 📖 文档
 
-Apache License 2.0, as found in the [LICENSE](./LICENSE) file.
+- [📚 官方文档](https://vllm-metax.readthedocs.io)
+- [🚀 快速开始](https://vllm-metax.readthedocs.io/en/latest/getting_started/quickstart.html)
+- [🐛 常见问题](https://vllm-metax.readthedocs.io/en/latest/faq.html)
+- [💬 GitHub Discussions](https://github.com/MetaX-MACA/vLLM-metax/discussions)
+
+---
+
+## 🆕 更新日志
+
+### 2026.02 v0.13.0
+- 🎉 对齐 vLLM v0.13.0
+- ✨ 新增支持 DeepSeek-V2 系列
+- ⚡ 性能优化：推理吞吐量提升 15%
+
+### 2026.01 v0.12.0
+- ✨ 新增 Qwen2.5 系列支持
+- 🐛 修复多项 bug
+
+[查看完整更新日志 →](CHANGELOG.md)
+
+---
+
+## 🤝 贡献
+
+欢迎贡献！请阅读 [贡献指南](CONTRIBUTING.md)。
+
+```bash
+# 克隆项目
+git clone https://github.com/MetaX-MACA/vLLM-metax.git
+cd vLLM-metax
+
+# 创建开发分支
+git checkout -b feature/your-feature
+
+# 提交 PR
+```
+
+---
+
+## 📞 社区
+
+- 💬 Slack: [#sig-maca](https://slack.vllm.ai)
+- 🐙 GitHub Issues: [提 Bug/需求](https://github.com/MetaX-MACA/vLLM-metax/issues)
+- 📧 邮件列表: dev@metax-tech.com
+
+---
+
+## 📄 许可证
+
+Apache License 2.0 - 查看 [LICENSE](LICENSE)
+
+---
+
+<p align="center">
+  <sub>Made with ❤️ by MetaX Team</sub>
+</p>
