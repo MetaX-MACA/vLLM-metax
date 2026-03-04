@@ -80,6 +80,9 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
             # We do not support CompressedTensors-MarlinMoEMethod currently
             # Fallback to non-Marlin methods
             # -----------------------------------------------------------
+            vllm_ctm.logger.info_once(
+                "Fallback to non-marlin CompressedTensorsWNA16MoEMethod"
+            )
             return CompressedTensorsWNA16MoEMethod(
                 weight_quant, input_quant, layer.moe_config
             )

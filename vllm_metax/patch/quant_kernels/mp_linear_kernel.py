@@ -8,7 +8,7 @@ from vllm.model_executor.layers.quantization.kernels.mixed_precision import (
     ExllamaLinearKernel as vllm_ExllamaLinearKernel,
     MPLinearLayerConfig,
 )
-from vllm.platforms import current_platform
+from vllm.platforms import PlatformEnum, current_platform
 
 import torch
 
@@ -104,6 +104,6 @@ class MacaExllamaLinearKernel(vllm_ExllamaLinearKernel):
 
 import vllm.model_executor.layers.quantization.kernels.mixed_precision
 
-vllm.model_executor.layers.quantization.kernels.mixed_precision._POSSIBLE_KERNELS = [
-    MacaExllamaLinearKernel
-]
+vllm.model_executor.layers.quantization.kernels.mixed_precision._POSSIBLE_KERNELS = {
+    PlatformEnum.OOT: [MacaExllamaLinearKernel]
+}
