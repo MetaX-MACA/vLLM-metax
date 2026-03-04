@@ -833,6 +833,7 @@ def invoke_fused_moe_triton_kernel(
     use_fp8_w8a8: bool,
     use_int8_w8a8: bool,
     use_int8_w8a16: bool,
+    use_int4_w4a8: bool,
     use_int4_w4a16: bool,
     per_channel_quant: bool,
     block_shape: list[int] | None = None,
@@ -850,7 +851,7 @@ def invoke_fused_moe_triton_kernel(
         assert block_shape is None or triton.cdiv(
             B.size(-1), block_shape[1]
         ) == B_scale.size(-1)
-    elif use_int8_w8a16 or use_int4_w4a16:
+    elif use_int8_w8a16 or use_int4_w4a16 or use_int4_w4a8:
         assert B_scale is not None
         assert block_shape is None or block_shape[0] == 0
     else:
@@ -893,6 +894,46 @@ def invoke_fused_moe_triton_kernel(
             top_k,
             mul_routed_weight,
         )
+    elif use_int4_w4a8:
+        # if block_shape is None，then Per-Channel
+        if block_shape is None:
+            # is Per-Channel
+            mctlass_ops.cutlass_moe_mm_w4a8_per_channel(
+                a=A,
+                b=B,
+                c=C,
+                a_scales=A_scale,
+                b_scales=B_scale,
+                b_bias=B_bias,
+                topk_weights=topk_weights,
+                token_ids=sorted_token_ids,
+                expert_ids=expert_ids,
+                num_tokens_post_padded=num_tokens_post_padded,
+                EM=EM,
+                topk=top_k,
+                mul_routed_weight=mul_routed_weight
+            )
+        else:
+            mctlass_ops.cutlass_moe_w4a8_gemm(
+                A, 
+                B.view(dtype = torch.quint4x2), 
+                C, 
+                A_scale, 
+                B_scale, 
+                topk_weights, 
+                sorted_token_ids, 
+                expert_ids, 
+                num_tokens_post_padded, 
+                B.size(0), 
+                A.size(0), 
+                B.size(1), 
+                B.size(2)*8, 
+                num_tokens, 
+                EM, 
+                top_k,
+                mul_routed_weight, 
+                group_size=block_shape[1]
+            )
     else:
         config = config.copy()
         if HAS_BIAS and config.get("SPLIT_K", 1) != 1:
@@ -967,6 +1008,7 @@ def dispatch_fused_moe_kernel(
     use_fp8_w8a8: bool,
     use_int8_w8a8: bool,
     use_int8_w8a16: bool,
+    use_int4_w4a8: bool,
     use_int4_w4a16: bool,
     per_channel_quant: bool,
     block_shape: list[int] | None = None,
@@ -1046,6 +1088,7 @@ def dispatch_fused_moe_kernel(
             use_fp8_w8a8,
             use_int8_w8a8,
             use_int8_w8a16,
+            use_int4_w4a8,
             use_int4_w4a16,
             per_channel_quant,
             block_shape,
@@ -1472,6 +1515,7 @@ def inplace_fused_experts(
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
+    use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
@@ -1499,6 +1543,7 @@ def inplace_fused_experts(
         use_fp8_w8a8,
         use_int8_w8a8,
         use_int8_w8a16,
+        use_int4_w4a8,
         use_int4_w4a16,
         ocp_mx_scheme,
         per_channel_quant,
@@ -1527,6 +1572,7 @@ def inplace_fused_experts_fake(
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
+    use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
@@ -1569,6 +1615,7 @@ def outplace_fused_experts(
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
+    use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
@@ -1596,6 +1643,7 @@ def outplace_fused_experts(
         use_fp8_w8a8,
         use_int8_w8a8,
         use_int8_w8a16,
+        use_int4_w4a8,
         use_int4_w4a16,
         ocp_mx_scheme,
         per_channel_quant,
@@ -1623,6 +1671,7 @@ def outplace_fused_experts_fake(
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
+    use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
@@ -1644,6 +1693,7 @@ def outplace_fused_experts_fake(
 direct_register_custom_op(
     op_name="maca_outplace_fused_experts",
     op_func=outplace_fused_experts,
+    mutates_args=[],
     fake_impl=outplace_fused_experts_fake,
     tags=(
         ()
@@ -1682,6 +1732,7 @@ def fused_experts(
     apply_router_weight_on_input: bool = False,
     global_num_experts: int = -1,
     expert_map: torch.Tensor | None = None,
+    use_int4_w4a8: bool = False,
     quant_config: FusedMoEQuantConfig | None = None,
 ) -> torch.Tensor:
     if quant_config is None:
@@ -1698,6 +1749,7 @@ def fused_experts(
         use_fp8_w8a8=quant_config.use_fp8_w8a8,
         use_int8_w8a8=quant_config.use_int8_w8a8,
         use_int8_w8a16=quant_config.use_int8_w8a16,
+        use_int4_w4a8=use_int4_w4a8,
         use_int4_w4a16=quant_config.use_int4_w4a16,
         ocp_mx_scheme=quant_config.ocp_mx_scheme,
         per_channel_quant=quant_config.per_act_token_quant,
@@ -1718,6 +1770,7 @@ def fused_experts(
 def _get_config_quant_dtype(
     use_fp8_w8a8: bool,
     use_int8_w8a8: bool,
+    use_int4_w4a8: bool,
     ocp_mx_scheme: str | None,
 ) -> None | torch.dtype | str:
     """
@@ -1729,6 +1782,8 @@ def _get_config_quant_dtype(
     """
     if use_fp8_w8a8:
         return torch.float8_e4m3fn
+    elif use_int4_w4a8:
+        return torch.int8
     elif use_int8_w8a8:
         return torch.int8
     elif ocp_mx_scheme == "w_mxfp4_a_mxfp4":
@@ -1752,6 +1807,7 @@ def fused_experts_impl(
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
+    use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
@@ -1768,7 +1824,10 @@ def fused_experts_impl(
     w2_bias: torch.Tensor | None = None,
 ) -> torch.Tensor:
     # Check constraints.
-    if use_int4_w4a16:
+    if use_int4_w4a8:
+        # 8bit activation and int4 packed weight
+        assert hidden_states.size(1) // 8 == w1.size(2), "hidden size mismatch"
+    elif use_int4_w4a16:
         assert hidden_states.size(1) // 2 == w1.size(2), "Hidden size mismatch"
     elif ocp_mx_scheme is not None:
         if ocp_mx_scheme in {
@@ -1829,6 +1888,7 @@ def fused_experts_impl(
     quant_dtype = _get_config_quant_dtype(
         use_fp8_w8a8=use_fp8_w8a8,
         use_int8_w8a8=use_int8_w8a8,
+        use_int4_w4a8=use_int4_w4a8,
         ocp_mx_scheme=ocp_mx_scheme,
     )
 
@@ -1960,9 +2020,8 @@ def fused_experts_impl(
                 (use_int8_w8a16 or use_int4_w4a16)
                 and block_shape is not None
                 and block_shape[1] > 0
-            )
-            and not (
-                use_int8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+            ) and not (
+                (use_int8_w8a8 or use_int4_w4a8) and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
             )
         )
 
@@ -1975,6 +2034,35 @@ def fused_experts_impl(
                 assert kernel_m > 0, (
                     "cutlass_moe_w8a8 BLOCK_SIZE_M must greater than zero."
                 )
+                # override kernel_m to config["BLOCK_SIZE_M"]
+                stage1_config["BLOCK_SIZE_M"] = kernel_m
+                stage2_config["BLOCK_SIZE_M"] = kernel_m
+            if use_int4_w4a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API:
+                if block_shape is None:
+                    # is Per-Channel
+                    kernel_m = mctlass_ops.cutlass_moe_mm_w4a8_get_kernel_m_per_channel(
+                        a=curr_hidden_states,
+                        b=w1,
+                        c=intermediate_cache1,
+                        K=K,
+                        num_valid_tokens=curr_hidden_states.size(0) * top_k_num,
+                        topk=top_k_num
+                    )
+                else:
+                    # is Per-Block
+                    kernel_m = mctlass_ops.mctlassEx_fused_moe_w4a8_get_kernel_m(
+                        qcurr_hidden_states, 
+                        w1.view(dtype = torch.quint4x2), 
+                        intermediate_cache1, 
+                        num_experts=w1.size(0), 
+                        batch_size=qcurr_hidden_states.size(0), 
+                        N=N, 
+                        K=K, 
+                        num_valid_tokens=num_tokens, 
+                        topk=top_k_num, 
+                        group_size=block_shape[1]
+                    )
+                assert kernel_m > 0, ("cutlass_fused_moe_w4a8 BLOCK_SIZE_M must greater than zero.")
                 # override kernel_m to config["BLOCK_SIZE_M"]
                 stage1_config["BLOCK_SIZE_M"] = kernel_m
                 stage2_config["BLOCK_SIZE_M"] = kernel_m
@@ -2018,6 +2106,7 @@ def fused_experts_impl(
             use_fp8_w8a8=use_fp8_w8a8,
             use_int8_w8a8=use_int8_w8a8,
             use_int8_w8a16=use_int8_w8a16,
+            use_int4_w4a8=use_int4_w4a8,
             use_int4_w4a16=use_int4_w4a16,
             per_channel_quant=per_channel_quant,
             block_shape=block_shape,
@@ -2105,6 +2194,7 @@ def fused_experts_impl(
                 use_fp8_w8a8=use_fp8_w8a8,
                 use_int8_w8a8=use_int8_w8a8,
                 use_int8_w8a16=use_int8_w8a16,
+                use_int4_w4a8=use_int4_w4a8,
                 use_int4_w4a16=use_int4_w4a16,
                 per_channel_quant=per_channel_quant,
                 block_shape=block_shape,
@@ -2320,6 +2410,7 @@ class TritonExperts(mk.FusedMoEPermuteExpertsUnpermute):
             use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
             use_int8_w8a8=self.quant_config.use_int8_w8a8,
             use_int8_w8a16=self.quant_config.use_int8_w8a16,
+            use_int4_w4a8=self.quant_config.use_int4_w4a8,
             use_int4_w4a16=self.quant_config.use_int4_w4a16,
             per_channel_quant=self.per_act_token_quant,
             block_shape=self.block_shape,
@@ -2367,6 +2458,7 @@ class TritonExperts(mk.FusedMoEPermuteExpertsUnpermute):
             use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
             use_int8_w8a8=self.quant_config.use_int8_w8a8,
             use_int8_w8a16=self.quant_config.use_int8_w8a16,
+            use_int4_w4a8=self.quant_config.use_int4_w4a8,
             use_int4_w4a16=self.quant_config.use_int4_w4a16,
             per_channel_quant=self.per_act_token_quant,
             block_shape=self.block_shape,

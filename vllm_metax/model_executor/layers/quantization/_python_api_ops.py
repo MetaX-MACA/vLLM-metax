@@ -8,6 +8,57 @@ import contextlib
 from vllm.utils.torch_utils import direct_register_custom_op, is_torch_equal_or_newer
 from vllm.logger import logger
 
+# support W4A8 Per-Channel start
+# Init FusedMoeGEMM instance
+mctlass_op_per_channel = None
+with contextlib.suppress(ImportError):
+    if mctlass_op_per_channel is None:
+        from mctlassEx import FusedMoeGEMM
+
+        mctlass_op_per_channel = FusedMoeGEMM()
+
+# GEMM
+def mctlassEx_fused_moe_w4a8_gemm_per_channel(
+    batch_size: int, N: int, K: int, num_experts: int,
+    EM: int, topk: int,
+    a: torch.Tensor, b: torch.Tensor, c: torch.Tensor,
+    a_scales: torch.Tensor, b_scales: torch.Tensor, b_bias: torch.Tensor,
+    topk_weights: torch.Tensor, token_ids: torch.Tensor, expert_ids: torch.Tensor,
+    num_tokens_post_padded: torch.Tensor, mul_routed_weight: bool
+) -> torch.Tensor:
+    mctlass_op_per_channel(
+        batch_size, N, K, num_experts,
+        EM, topk, a, b, c,
+        a_scales, b_scales, b_bias,
+        topk_weights, token_ids, expert_ids,
+        num_tokens_post_padded, mul_routed_weight
+    )
+    return c
+# Fake
+def mctlassEx_fused_moe_w4a8_gemm_per_channel_fake(
+    batch_size, N, K, num_experts, EM, topk, a, b, c,
+    a_scales, b_scales, b_bias, topk_weights, token_ids,
+    expert_ids, num_tokens_post_padded, mul_routed_weight
+) -> torch.Tensor:
+    return c
+
+direct_register_custom_op(
+    op_name="mctlassEx_fused_moe_w4a8_gemm_per_channel",
+    op_func=mctlassEx_fused_moe_w4a8_gemm_per_channel,
+    mutates_args=["c"],
+    fake_impl=mctlassEx_fused_moe_w4a8_gemm_per_channel_fake,
+    tags=(torch.Tag.needs_fixed_stride_order,),
+)
+
+#  get Kernel M 
+def mctlassEx_fused_moe_w4a8_get_kernel_m_per_channel(
+    a: torch.Tensor, b: torch.Tensor, c: torch.Tensor,
+    num_experts: int, batch_size: int, N: int, K: int, topk: int
+) -> int:
+    return mctlass_op_per_channel.get_kernel_m(
+        a, b, c, num_experts, batch_size, N, K, topk)
+# end
+
 mctlass_op = None
 mctlass_scaled_gemm = None
 with contextlib.suppress(ImportError):
@@ -344,3 +395,75 @@ def cutlass_moe_mm_w8a8(
         topk,
         mul_routed_weight,
     )
+
+# support W4A8 Per-Channel  start
+# Kernel M 
+def cutlass_moe_mm_w4a8_get_kernel_m_per_channel(
+    a: torch.Tensor, 
+    b: torch.Tensor, 
+    c: torch.Tensor,
+    K: int,
+    num_valid_tokens: int,
+    topk: int
+) -> int:
+    batch_size = a.size(0)
+    num_experts, N, _ = b.size()
+    
+    # a to int8
+    a = a.to(torch.int8)
+    b = b.view(dtype=torch.quint4x2)
+    
+    return mctlassEx_fused_moe_w4a8_get_kernel_m_per_channel(
+        a=a, 
+        b=b, 
+        c=c, 
+        num_experts=num_experts, 
+        batch_size=batch_size, 
+        N=N, 
+        K=K, 
+        topk=topk
+    )
+
+# support W4A8 Per-Channel 
+# GEMM 
+def cutlass_moe_mm_w4a8_per_channel(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    c: torch.Tensor,
+    a_scales: torch.Tensor,
+    b_scales: torch.Tensor,
+    b_bias: torch.Tensor,
+    topk_weights: torch.Tensor,
+    token_ids: torch.Tensor,
+    expert_ids: torch.Tensor,
+    num_tokens_post_padded: torch.Tensor,
+    EM: int,
+    topk: int,
+    mul_routed_weight: bool
+) -> torch.Tensor:
+    
+    batch_size = a.size(0)
+    num_experts = b.size(0)
+    N = b.size(1)
+    K = b.size(2) * 8
+    
+    return torch.ops.vllm.mctlassEx_fused_moe_w4a8_gemm_per_channel(
+        batch_size=batch_size,
+        N=N,
+        K=K,
+        num_experts=num_experts,
+        EM=EM,
+        topk=topk,
+        a=a,
+        b=b.view(dtype=torch.quint4x2),
+        c=c,
+        a_scales=a_scales,
+        b_scales=b_scales,
+        b_bias=b_bias,
+        topk_weights=topk_weights,
+        token_ids=token_ids,
+        expert_ids=expert_ids,
+        num_tokens_post_padded=num_tokens_post_padded,
+        mul_routed_weight=mul_routed_weight
+    )
+# end
