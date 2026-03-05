@@ -721,6 +721,10 @@ mx_envs.override_vllm_env(
     "VLLM_USE_FLASHINFER_SAMPLER", False, "flashinfer sampler are not supported on maca"
 )
 
+mx_envs.override_vllm_env(
+    "VLLM_ENGINE_READY_TIMEOUT_S", 3600, "set timeout to 3600s for model loading"
+)
+
 # vllm_metax currently does not support third-party Triton kernels; Triton upgrade required.
 import vllm.utils.import_utils as iu
 
