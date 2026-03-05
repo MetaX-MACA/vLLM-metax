@@ -12,3 +12,5 @@ from . import chores  # noqa: F401
 from . import lora  # noqa: F401
 
 from . import fa_utils
+
+from . import benchmarks
