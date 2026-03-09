@@ -209,6 +209,7 @@ endif()
 set(VLLM_EXT_SRC
   "csrc/mamba/mamba_ssm/selective_scan_fwd.cu"
   "csrc/cache_kernels.cu"
+  "csrc/cache_kernels_fused.cu"
   "csrc/attention/paged_attention_v1.cu"
   "csrc/attention/paged_attention_v2.cu"
   "csrc/attention/merge_attn_states.cu"
@@ -221,8 +222,8 @@ set(VLLM_EXT_SRC
   "csrc/sampler.cu"
   "csrc/cuda_view.cu"
   "csrc/quantization/gptq/q_gemm.cu"
-  "csrc/quantization/compressed_tensors/int8_quant_kernels.cu"
-  "csrc/quantization/fp8/common.cu"
+  "csrc/quantization/w8a8/int8/scaled_quant.cu"
+  "csrc/quantization/w8a8/fp8/common.cu"
   "csrc/quantization/fused_kernels/fused_layernorm_dynamic_per_token_quant.cu"
   "csrc/quantization/gguf/gguf_kernel.cu"
   "csrc/quantization/activation_kernels.cu"
@@ -260,12 +261,14 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
   list(APPEND VLLM_EXT_SRC
     "csrc/quantization/awq/gemm_kernels.cu"
     "csrc/permute_cols.cu"
-    "csrc/quantization/cutlass_w8a8/scaled_mm_entry.cu"
+    "csrc/quantization/w8a8/cutlass/scaled_mm_entry.cu"
     "csrc/quantization/fp4/nvfp4_quant_entry.cu"
     "csrc/quantization/fp4/nvfp4_scaled_mm_entry.cu"
     "csrc/sparse/cutlass/sparse_scaled_mm_entry.cu"
     "csrc/cutlass_extensions/common.cpp"
-    "csrc/attention/mla/cutlass_mla_entry.cu")
+    "csrc/attention/mla/cutlass_mla_entry.cu"
+    "csrc/quantization/w8a8/fp8/per_token_group_quant.cu"
+    "csrc/quantization/w8a8/int8/per_token_group_quant.cu")
 
   set_gencode_flags_for_srcs(
     SRCS "${VLLM_EXT_SRC}"
@@ -280,7 +283,7 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
 
   # support opt of cutlass w8a8 scale mm
   set_source_files_properties(
-    "csrc/quantization/cutlass_w8a8/scaled_mm_entry.cu"
+    "csrc/quantization/w8a8/cutlass/scaled_mm_entry.cu"
     PROPERTIES
     COMPILE_FLAGS " -mllvm -metaxgpu-igroup=true -mllvm -misched-postra=true"
   )  
@@ -294,7 +297,7 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
   # subtract out the archs that are already built for 3x
   list(REMOVE_ITEM SCALED_MM_2X_ARCHS ${SCALED_MM_3X_ARCHS})
   if (SCALED_MM_2X_ARCHS)
-    set(SRCS "csrc/quantization/cutlass_w8a8/scaled_mm_c2x.cu")
+    set(SRCS "csrc/quantization/w8a8/cutlass/scaled_mm_c2x.cu")
     set_gencode_flags_for_srcs(
       SRCS "${SRCS}"
       CUDA_ARCHS "${SCALED_MM_2X_ARCHS}")
@@ -303,7 +306,7 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
     
     # support opt of cutlass w8a8 scale mm
     set_source_files_properties(
-      "csrc/quantization/cutlass_w8a8/scaled_mm_c2x.cu"
+      "csrc/quantization/w8a8/cutlass/scaled_mm_c2x.cu"
       PROPERTIES
       COMPILE_FLAGS " -mllvm -metaxgpu-igroup=true -mllvm -misched-postra=true"
     )
@@ -347,8 +350,8 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
   # if it's possible to compile MoE kernels that use its output.
   cuda_archs_loose_intersection(SCALED_MM_ARCHS "9.0a;10.0a" "${CUDA_ARCHS}")
   if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.3 AND SCALED_MM_ARCHS)
-    set(SRCS "csrc/quantization/cutlass_w8a8/moe/grouped_mm_c3x.cu"
-             "csrc/quantization/cutlass_w8a8/moe/moe_data.cu")
+    set(SRCS "csrc/quantization/w8a8/cutlass/moe/grouped_mm_c3x.cu"
+             "csrc/quantization/w8a8/cutlass/moe/moe_data.cu")
     set_gencode_flags_for_srcs(
       SRCS "${SRCS}"
       CUDA_ARCHS "${SCALED_MM_ARCHS}")

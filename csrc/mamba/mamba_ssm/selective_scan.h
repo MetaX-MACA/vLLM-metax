@@ -6,7 +6,11 @@
 
 #pragma once
 
-#include <cuda_bf16.h>
+#ifndef USE_ROCM
+    #include <cuda_bf16.h>
+#else
+    #include <hip/hip_bf16.h>
+#endif
 #include <cuda_fp16.h>
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -20,6 +24,8 @@ struct SSMParamsBase {
     int64_t pad_slot_id;
 
     bool delta_softplus;
+    bool cache_enabled;
+    int block_size;
 
     index_t A_d_stride;
     index_t A_dstate_stride;
@@ -42,8 +48,9 @@ struct SSMParamsBase {
     index_t out_z_batch_stride;
     index_t out_z_d_stride;
     index_t ssm_states_batch_stride;
-    index_t ssm_states_dim_stride;  
+    index_t ssm_states_dim_stride;
     index_t ssm_states_dstate_stride;
+    index_t cache_indices_stride;
 
     // Common data pointers.
     void *__restrict__ A_ptr;
@@ -62,18 +69,37 @@ struct SSMParamsBase {
     void *__restrict__ cache_indices_ptr;
     void *__restrict__ has_initial_state_ptr;
 
+    void *__restrict__ block_idx_first_scheduled_token_ptr;  // (batch,) - first block to write
+    void *__restrict__ block_idx_last_scheduled_token_ptr;   // (batch,) - last block to write
+    void *__restrict__ initial_state_idx_ptr;  // (batch,) - index of the initial state to use
 };
 
 
-constexpr size_t custom_max(std::initializer_list<size_t> ilist) 
-{
-    return std::max(ilist);
-}
 
-template<typename T>
-constexpr T constexpr_min(T a, T b) {
-    return std::min(a, b);
-}
+
+#ifndef USE_ROCM
+
+    constexpr size_t custom_max(std::initializer_list<size_t> ilist) 
+    {
+        return std::max(ilist);
+    }
+
+    template<typename T>
+    constexpr T constexpr_min(T a, T b) {
+        return std::min(a, b);
+    }
+
+#else
+    constexpr size_t custom_max(std::initializer_list<size_t> ilist) 
+    {
+        return *std::max_element(ilist.begin(), ilist.end());
+    }
+
+    template<typename T>
+    constexpr T constexpr_min(T a, T b) {
+        return a < b ? a : b;
+    }
+#endif
 
 
 #define MAX_DSTATE 256
@@ -195,6 +221,10 @@ inline __device__ void load_input(typename Ktraits::input_t *u,
         typename Ktraits::BlockLoadVecT(smem_load_vec).Load(
             reinterpret_cast<vec_t*>(u),
             reinterpret_cast<vec_t(&)[Ktraits::kNLoads]>(u_vals)
+            #ifdef USE_ROCM
+                , Ktraits::kNThreads * Ktraits::kNLoads
+            #endif
+            
        );
     } else {
         typename Ktraits::BlockLoadT(smem_load).Load(u, u_vals, seqlen, 0.f);

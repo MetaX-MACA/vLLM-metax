@@ -26,7 +26,7 @@
 #include "attention_utils.cuh"
 #include "../cuda_compat.h"
 
-#include "../quantization/fp8/metax/quant_utils.cuh"
+#include "../quantization/w8a8/fp8/metax/quant_utils.cuh"
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
