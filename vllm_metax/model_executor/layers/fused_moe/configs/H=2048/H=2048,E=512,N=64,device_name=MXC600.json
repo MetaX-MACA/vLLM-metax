@@ -2,13 +2,13 @@
     "1": {
         "stage1": {
             "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 32,
-            "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 1,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
             "num_warps": 4,
-            "num_stages": 3,
-            "pipeline": "basic",
-            "scenario": "",
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": "unroll",
             "ACCF32": false,
             "SPLIT_K": 2
         },
@@ -19,8 +19,8 @@
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 2,
-            "pipeline": "cpasync",
-            "scenario": "unroll",
+            "pipeline": "basic",
+            "scenario": "",
             "ACCF32": false,
             "SPLIT_K": 1
         }
@@ -32,7 +32,7 @@
             "BLOCK_SIZE_K": 128,
             "GROUP_SIZE_M": 32,
             "num_warps": 4,
-            "num_stages": 3,
+            "num_stages": 2,
             "pipeline": "cpasync",
             "scenario": "unroll",
             "ACCF32": false,
@@ -42,11 +42,11 @@
             "BLOCK_SIZE_M": 16,
             "BLOCK_SIZE_N": 256,
             "BLOCK_SIZE_K": 32,
-            "GROUP_SIZE_M": 1,
+            "GROUP_SIZE_M": 64,
             "num_warps": 4,
-            "num_stages": 2,
-            "pipeline": "cpasync",
-            "scenario": "unroll",
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "",
             "ACCF32": false,
             "SPLIT_K": 1
         }
@@ -56,11 +56,11 @@
             "BLOCK_SIZE_M": 16,
             "BLOCK_SIZE_N": 64,
             "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 64,
+            "GROUP_SIZE_M": 1,
             "num_warps": 4,
-            "num_stages": 3,
+            "num_stages": 2,
             "pipeline": "cpasync",
-            "scenario": "",
+            "scenario": "unroll",
             "ACCF32": false,
             "SPLIT_K": 1
         },
@@ -70,7 +70,33 @@
             "BLOCK_SIZE_K": 32,
             "GROUP_SIZE_M": 64,
             "num_warps": 4,
-            "num_stages": 3,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        }
+    },
+    "6": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 1,
             "pipeline": "cpasync",
             "scenario": "",
             "ACCF32": false,
@@ -82,13 +108,13 @@
             "BLOCK_SIZE_M": 16,
             "BLOCK_SIZE_N": 64,
             "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 1,
-            "num_warps": 8,
-            "num_stages": 3,
-            "pipeline": "basic",
-            "scenario": "",
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": "unroll",
             "ACCF32": false,
-            "SPLIT_K": 2
+            "SPLIT_K": 1
         },
         "stage2": {
             "BLOCK_SIZE_M": 16,
@@ -97,7 +123,33 @@
             "GROUP_SIZE_M": 64,
             "num_warps": 4,
             "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        }
+    },
+    "12": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 4,
             "pipeline": "cpasync",
+            "scenario": "unroll",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
             "scenario": "",
             "ACCF32": false,
             "SPLIT_K": 1
@@ -107,7 +159,85 @@
         "stage1": {
             "BLOCK_SIZE_M": 16,
             "BLOCK_SIZE_N": 64,
-            "BLOCK_SIZE_K": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        }
+    },
+    "20": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        }
+    },
+    "24": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        }
+    },
+    "28": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
             "GROUP_SIZE_M": 16,
             "num_warps": 4,
             "num_stages": 3,
@@ -120,35 +250,9 @@
             "BLOCK_SIZE_M": 16,
             "BLOCK_SIZE_N": 256,
             "BLOCK_SIZE_K": 32,
-            "GROUP_SIZE_M": 64,
-            "num_warps": 4,
-            "num_stages": 1,
-            "pipeline": "cpasync",
-            "scenario": "",
-            "ACCF32": false,
-            "SPLIT_K": 1
-        }
-    },
-    "24": {
-        "stage1": {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
-            "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 64,
+            "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 3,
-            "pipeline": "cpasync",
-            "scenario": "",
-            "ACCF32": false,
-            "SPLIT_K": 1
-        },
-        "stage2": {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 256,
-            "BLOCK_SIZE_K": 32,
-            "GROUP_SIZE_M": 64,
-            "num_warps": 4,
-            "num_stages": 2,
             "pipeline": "cpasync",
             "scenario": "",
             "ACCF32": false,
@@ -160,9 +264,35 @@
             "BLOCK_SIZE_M": 16,
             "BLOCK_SIZE_N": 64,
             "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": "unroll",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        }
+    },
+    "40": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
             "GROUP_SIZE_M": 1,
-            "num_warps": 8,
-            "num_stages": 3,
+            "num_warps": 4,
+            "num_stages": 2,
             "pipeline": "basic",
             "scenario": "",
             "ACCF32": false,
@@ -172,72 +302,20 @@
             "BLOCK_SIZE_M": 16,
             "BLOCK_SIZE_N": 256,
             "BLOCK_SIZE_K": 32,
-            "GROUP_SIZE_M": 64,
-            "num_warps": 4,
-            "num_stages": 1,
-            "pipeline": "cpasync",
-            "scenario": "unroll",
-            "ACCF32": false,
-            "SPLIT_K": 1
-        }
-    },
-    "64": {
-        "stage1": {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 32,
-            "BLOCK_SIZE_K": 64,
             "GROUP_SIZE_M": 16,
             "num_warps": 4,
-            "num_stages": 3,
+            "num_stages": 2,
             "pipeline": "basic",
             "scenario": "",
             "ACCF32": false,
             "SPLIT_K": 1
-        },
-        "stage2": {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 128,
-            "BLOCK_SIZE_K": 32,
-            "GROUP_SIZE_M": 64,
-            "num_warps": 4,
-            "num_stages": 1,
-            "pipeline": "cpasync",
-            "scenario": "unroll",
-            "ACCF32": false,
-            "SPLIT_K": 1
         }
     },
-    "128": {
+    "48": {
         "stage1": {
             "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 32,
-            "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 1,
-            "num_warps": 4,
-            "num_stages": 3,
-            "pipeline": "basic",
-            "scenario": "",
-            "ACCF32": false,
-            "SPLIT_K": 1
-        },
-        "stage2": {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 128,
-            "BLOCK_SIZE_K": 32,
-            "GROUP_SIZE_M": 1,
-            "num_warps": 4,
-            "num_stages": 1,
-            "pipeline": "cpasync",
-            "scenario": "unroll",
-            "ACCF32": false,
-            "SPLIT_K": 1
-        }
-    },
-    "256": {
-        "stage1": {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 32,
-            "BLOCK_SIZE_K": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 3,
@@ -253,8 +331,138 @@
             "GROUP_SIZE_M": 32,
             "num_warps": 4,
             "num_stages": 2,
-            "pipeline": "cpasync",
-            "scenario": "unroll",
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        }
+    },
+    "56": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        }
+    },
+    "64": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        }
+    },
+    "96": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        }
+    },
+    "128": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        }
+    },
+    "256": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "",
             "ACCF32": false,
             "SPLIT_K": 1
         }
@@ -262,8 +470,8 @@
     "512": {
         "stage1": {
             "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 32,
-            "BLOCK_SIZE_K": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 3,
@@ -274,13 +482,13 @@
         },
         "stage2": {
             "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 256,
-            "BLOCK_SIZE_K": 32,
-            "GROUP_SIZE_M": 32,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
             "num_warps": 4,
-            "num_stages": 3,
-            "pipeline": "cpasync",
-            "scenario": "unroll",
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "",
             "ACCF32": false,
             "SPLIT_K": 1
         }
@@ -288,11 +496,11 @@
     "1024": {
         "stage1": {
             "BLOCK_SIZE_M": 32,
-            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_N": 128,
             "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 1,
-            "num_warps": 8,
-            "num_stages": 3,
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 2,
             "pipeline": "basic",
             "scenario": "",
             "ACCF32": false,
@@ -302,11 +510,37 @@
             "BLOCK_SIZE_M": 32,
             "BLOCK_SIZE_N": 256,
             "BLOCK_SIZE_K": 32,
-            "GROUP_SIZE_M": 16,
+            "GROUP_SIZE_M": 1,
             "num_warps": 4,
-            "num_stages": 1,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "storeCoalesce",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        }
+    },
+    "1536": {
+        "stage1": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 2,
             "pipeline": "basic",
             "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "storeCoalesce",
             "ACCF32": false,
             "SPLIT_K": 1
         }
@@ -316,9 +550,87 @@
             "BLOCK_SIZE_M": 64,
             "BLOCK_SIZE_N": 128,
             "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "cpasync",
+            "scenario": "unroll",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
             "GROUP_SIZE_M": 1,
-            "num_warps": 8,
-            "num_stages": 3,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        }
+    },
+    "3072": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        }
+    },
+    "4096": {
+        "stage1": {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": "",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "storeCoalesce",
+            "ACCF32": false,
+            "SPLIT_K": 1
+        }
+    },
+    "8192": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 4,
             "pipeline": "basic",
             "scenario": "",
             "ACCF32": false,
