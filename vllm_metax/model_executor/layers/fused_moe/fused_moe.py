@@ -1732,7 +1732,6 @@ def fused_experts(
     apply_router_weight_on_input: bool = False,
     global_num_experts: int = -1,
     expert_map: torch.Tensor | None = None,
-    use_int4_w4a8: bool = False,
     quant_config: FusedMoEQuantConfig | None = None,
 ) -> torch.Tensor:
     if quant_config is None:
@@ -1749,7 +1748,7 @@ def fused_experts(
         use_fp8_w8a8=quant_config.use_fp8_w8a8,
         use_int8_w8a8=quant_config.use_int8_w8a8,
         use_int8_w8a16=quant_config.use_int8_w8a16,
-        use_int4_w4a8=use_int4_w4a8,
+        use_int4_w4a8=quant_config.use_int4_w4a8,
         use_int4_w4a16=quant_config.use_int4_w4a16,
         ocp_mx_scheme=quant_config.ocp_mx_scheme,
         per_channel_quant=quant_config.per_act_token_quant,
@@ -1875,6 +1874,7 @@ def fused_experts_impl(
     config_dtype = get_config_dtype_str(
         use_fp8_w8a8=use_fp8_w8a8,
         # ┌------------------------  Metax Modification -------------------------┐
+        use_int4_w4a8=use_int4_w4a8,
         use_int8_w8a8=use_int8_w8a8,
         # └------------------------- Metax Modification -------------------------┘
         use_int8_w8a16=use_int8_w8a16,
@@ -2340,6 +2340,7 @@ class TritonExperts(mk.FusedMoEPermuteExpertsUnpermute):
         config_dtype = get_config_dtype_str(
             dtype=hidden_states.dtype,
             use_int4_w4a16=self.quant_config.use_int4_w4a16,
+            use_int4_w4a8=self.quant_config.use_int4_w4a8,
             use_int8_w8a8=self.quant_config.use_int8_w8a8,
             use_int8_w8a16=self.quant_config.use_int8_w8a16,
             use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
@@ -2560,6 +2561,7 @@ class TritonWNA16Experts(TritonExperts):
         config_dtype = get_config_dtype_str(
             dtype=hidden_states.dtype,
             use_int4_w4a16=self.quant_config.use_int4_w4a16,
+            use_int4_w4a8=self.quant_config.use_int4_w4a8,
             use_int8_w8a8=self.quant_config.use_int8_w8a8,
             use_int8_w8a16=self.quant_config.use_int8_w8a16,
             use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
@@ -2711,6 +2713,7 @@ def get_config_dtype_str(
     dtype: torch.dtype,
     use_int4_w4a16: bool | None = False,
     # ┌------------------------  Metax Modification -------------------------┐
+    use_int4_w4a8: bool | None = False,
     use_int8_w8a8: bool | None = False,
     # └------------------------- Metax Modification -------------------------┘
     use_int8_w8a16: bool | None = False,
@@ -2720,6 +2723,8 @@ def get_config_dtype_str(
     if use_fp8_w8a8:
         return "fp8_w8a8"
     # ┌------------------------  Metax Modification -------------------------┐
+    elif use_int4_w4a8:
+        return "int4_w4a8"
     elif use_int8_w8a8:
         return "int8_w8a8"
     # └------------------------- Metax Modification -------------------------┘

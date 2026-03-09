@@ -53,7 +53,7 @@ class MacaCompressedTensorsConfig(vllm_ct.CompressedTensorsConfig):
                 return quant_method
 
         if isinstance(layer, Attention):
-            return CompressedTensorsKVCacheMethod(self)
+            return vllm_ct.CompressedTensorsKVCacheMethod(self)
         if isinstance(layer, FusedMoE):
             return MacaCompressedTensorsMoEMethod.get_moe_method(
                 self, layer, layer_name=prefix

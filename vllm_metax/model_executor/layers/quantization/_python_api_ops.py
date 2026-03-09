@@ -204,6 +204,29 @@ direct_register_custom_op(
 
 
 # w4a8 fused moe
+def mctlassEx_fused_moe_w4a8_get_kernel_m(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor, 
+                                          num_experts: int,
+                                          batch_size: int,
+                                          N: int,
+                                          K: int,
+                                          num_valid_tokens: int,
+                                          topk: int,
+                                          group_size: int) -> int:
+    assert mctlass_op is not None, "mctlassOp is not imported correctly"
+    return mctlass_op.mctlass_fuse_moe_get_kernel_m_basic(
+        a, 
+        b, 
+        c, 
+        num_experts, 
+        batch_size, 
+        N, 
+        K, 
+        num_valid_tokens, 
+        topk, 
+        group_size
+    )
+
+
 def mctlassEx_fused_moe_w4a8_gemm(
     a: torch.Tensor,
     b: torch.Tensor,
@@ -283,6 +306,47 @@ direct_register_custom_op(
     ),
 )
 
+
+def cutlass_moe_w4a8_gemm(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    c: torch.Tensor,
+    a_scales: torch.Tensor,
+    b_scales: torch.Tensor,
+    topk_weights: torch.Tensor,
+    token_ids: torch.Tensor,
+    expert_ids: torch.Tensor,
+    num_tokens_post_padded: torch.Tensor,
+    num_experts: int,
+    batch_size: int,
+    N: int,
+    K: int,
+    num_valid_tokens: int,
+    EM: int,
+    topk: int,
+    mul_routed_weight: bool,
+    group_size: int,
+) -> torch.Tensor:
+    return torch.ops.vllm.mctlassEx_fused_moe_w4a8_gemm(
+        a,
+        b,
+        c,
+        a_scales,
+        b_scales,
+        topk_weights,
+        token_ids,
+        expert_ids,
+        num_tokens_post_padded,
+        num_experts,
+        batch_size,
+        N,
+        K,
+        num_valid_tokens,
+        EM,
+        topk,
+        mul_routed_weight,
+        group_size
+    )
 
 # -------------------------------------------------
 # Note:

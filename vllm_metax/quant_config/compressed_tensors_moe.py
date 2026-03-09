@@ -50,6 +50,11 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
                 "All MoE projections need to have same "
                 "quantization scheme but found multiple"
             )
+
+        # for drafter model which is non-quantized
+        if scheme_dict is None:
+            return None
+
         weight_quant = scheme_dict.get("weights")
         input_quant = scheme_dict.get("input_activations")
 
@@ -93,7 +98,7 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
             #       is selected by `quant_config._is_dynamic_token_w4a8_int`. So we
             #       just need to re-implement and map with Int4MoEMethod here.
             # --------------------------------------------------------------------
-            return CompressedTensorsW4A8Int8MoEMethod(
+            return CompressedTensorsW4A8Int4MoEMethod(
                 weight_quant, input_quant, layer.moe_config
             )
 
@@ -509,6 +514,8 @@ class CompressedTensorsW4A8Int4MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
         )
         layer.register_parameter("w2_weight_scale", w2_s)
 
+        self.moe_quant_config = self.get_fused_moe_quant_config(layer)
+
         # dims for 4 bit fused matmuls
         layer.w13_in_features = H
         layer.w13_out_features = 2 * IN
@@ -581,7 +588,6 @@ class CompressedTensorsW4A8Int4MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
             apply_router_weight_on_input=layer.apply_router_weight_on_input,
             global_num_experts=layer.global_num_experts,
             expert_map=layer.expert_map,
-            use_int4_w4a8=True,
             quant_config=self.moe_quant_config,
         )
 
