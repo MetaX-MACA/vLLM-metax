@@ -113,6 +113,7 @@ class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm.CompressedTensorsW8A8Int8MoEMe
         x: torch.Tensor,
         topk_weights: torch.Tensor,
         topk_ids: torch.Tensor,
+        shared_experts_input: torch.Tensor | None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         # here we use Metax's `fused_experts`
         from vllm.model_executor.layers.fused_moe.fused_moe import (
@@ -147,9 +148,9 @@ class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm.CompressedTensorsW8A8Int8MoEMe
 class CompressedTensorsWNA16MoEMethod(vllm_ctm.CompressedTensorsWNA16MoEMethod):
     def select_gemm_impl(
         self,
-        prepare_finalize: mk.FusedMoEPrepareAndFinalize,
+        prepare_finalize: mk.FusedMoEPrepareAndFinalizeModular,
         layer: torch.nn.Module,
-    ) -> mk.FusedMoEPermuteExpertsUnpermute:
+    ) -> mk.FusedMoEExpertsModular:
         if self.moe.is_lora_enabled:
             assert self.moe_quant_config is not None
             from vllm.triton_utils import HAS_TRITON
@@ -163,17 +164,17 @@ class CompressedTensorsWNA16MoEMethod(vllm_ctm.CompressedTensorsWNA16MoEMethod):
                     TritonWNA16Experts as vllm_TritonWNA16Experts,
                 )
 
+                TritonWNA16Experts = (
+                    mx_TritonWNA16Experts
+                    if not envs.USE_VLLM_TRITON_EXPERT
+                    else vllm_TritonWNA16Experts
+                )
+
                 layer.w13_weight = layer.w13_weight_packed
                 layer.w2_weight = layer.w2_weight_packed
 
-                return (
-                    mx_TritonWNA16Experts(
-                        moe_config=self.moe, quant_config=self.moe_quant_config
-                    )
-                    if not envs.USE_VLLM_TRITON_EXPERT
-                    else vllm_TritonWNA16Experts(
-                        moe_config=self.moe, quant_config=self.moe_quant_config
-                    )
+                return TritonWNA16Experts(
+                    moe_config=self.moe, quant_config=self.moe_quant_config
                 )
             else:
                 raise NotImplementedError(
@@ -189,6 +190,7 @@ class CompressedTensorsWNA16MoEMethod(vllm_ctm.CompressedTensorsWNA16MoEMethod):
         x: torch.Tensor,
         topk_weights: torch.Tensor,
         topk_ids: torch.Tensor,
+        shared_experts_input: torch.Tensor | None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         # here we use Metax's `fused_experts`
         from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
@@ -396,6 +398,7 @@ class CompressedTensorsW4A8Int8MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
         x: torch.Tensor,
         topk_weights: torch.Tensor,
         topk_ids: torch.Tensor,
+        shared_experts_input: torch.Tensor | None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         # here we use Metax's `fused_experts`
         from vllm_metax.model_executor.layers.fused_moe.fused_moe import (

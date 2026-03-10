@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
-from typing import Optional
-
 import torch
 from vllm.model_executor.layers.fused_moe.layer import FusedMoE
+from vllm.model_executor.layers.fused_moe.activation import MoEActivation
 from vllm.model_executor.layers.linear import LinearBase, UnquantizedLinearMethod
 from vllm.model_executor.layers.quantization.base_config import QuantizeMethodBase
 from vllm.model_executor.layers.quantization.moe_wna16 import (
@@ -32,7 +31,7 @@ class MacaMoeWNA16Config(MoeWNA16Config):
 
     def get_quant_method(
         self, layer: torch.nn.Module, prefix: str
-    ) -> Optional["QuantizeMethodBase"]:
+    ) -> "QuantizeMethodBase" | None:
         if is_layer_skipped_quant(prefix, self.modules_to_not_convert):
             if isinstance(layer, FusedMoE):
                 return UnquantizedFusedMoEMethod(layer.moe_config)
@@ -67,6 +66,7 @@ class MoeWNA16Method(vllm_MoeWNA16Method):
         x: torch.Tensor,
         topk_weights: torch.Tensor,
         topk_ids: torch.Tensor,
+        shared_experts_input: torch.Tensor | None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
             fused_experts as mx_fused_experts,
@@ -75,7 +75,9 @@ class MoeWNA16Method(vllm_MoeWNA16Method):
             fused_experts as vllm_fused_experts,
         )
 
-        assert layer.activation == "silu", "Only SiLU activation is supported."
+        assert layer.activation == MoEActivation.SILU, (
+            f"Only SiLU activation is supported, not {layer.activation}."
+        )
 
         fused_experts = (
             mx_fused_experts
@@ -88,7 +90,7 @@ class MoeWNA16Method(vllm_MoeWNA16Method):
             layer.w2_qweight,
             topk_weights=topk_weights,
             topk_ids=topk_ids,
-            inplace=True,
+            inplace=not self.moe.disable_inplace,
             apply_router_weight_on_input=layer.apply_router_weight_on_input,
             global_num_experts=layer.global_num_experts,
             expert_map=layer.expert_map,
