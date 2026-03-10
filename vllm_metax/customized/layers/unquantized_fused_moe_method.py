@@ -11,14 +11,14 @@ import vllm_metax.envs as envs
 import vllm.model_executor.layers.fused_moe.modular_kernel as mk
 from vllm.model_executor.layers.fused_moe.modular_kernel import (
     FusedMoEActivationFormat,
-    FusedMoEPermuteExpertsUnpermute,
-    FusedMoEPrepareAndFinalize,
+    FusedMoEExpertsModular,
+    FusedMoEPrepareAndFinalizeModular,
+)
+from vllm.model_executor.layers.fused_moe.prepare_finalize import (
+    MoEPrepareAndFinalizeNoDPEPModular,
 )
 from vllm.model_executor.layers.fused_moe.config import (
     FusedMoEConfig,
-)
-from vllm.model_executor.layers.fused_moe.prepare_finalize import (
-    MoEPrepareAndFinalizeNoEP,
 )
 from vllm.model_executor.layers.fused_moe.fused_batched_moe import BatchedTritonExperts
 
@@ -60,9 +60,9 @@ class UnquantizedFusedMoEMethod(vllm_UnquantizedFusedMoEMethod):
 
     def select_gemm_impl(
         self,
-        prepare_finalize: FusedMoEPrepareAndFinalize,
+        prepare_finalize: FusedMoEPrepareAndFinalizeModular,
         layer: torch.nn.Module,
-    ) -> FusedMoEPermuteExpertsUnpermute:
+    ) -> FusedMoEExpertsModular:
         assert self.moe_quant_config is not None
         if (
             prepare_finalize.activation_format
@@ -86,12 +86,13 @@ class UnquantizedFusedMoEMethod(vllm_UnquantizedFusedMoEMethod):
         super().process_weights_after_loading(layer)
         # Here in maca we choose `UnquantizedMoeBackend.TRITON` for kernel selection
         self.use_inplace = True
-        self.kernel = mk.FusedMoEModularKernel(
-            MoEPrepareAndFinalizeNoEP(),
+        self.kernel = mk.FusedMoEKernel(
+            MoEPrepareAndFinalizeNoDPEPModular(),
             TritonExperts(
                 moe_config=self.moe,
                 quant_config=self.moe_quant_config,
             ),
+            inplace=not self.moe.disable_inplace,
         )
 
     def forward_oot(
@@ -100,10 +101,11 @@ class UnquantizedFusedMoEMethod(vllm_UnquantizedFusedMoEMethod):
         x: torch.Tensor,
         topk_weights: torch.Tensor,
         topk_ids: torch.Tensor,
+        shared_experts_input: torch.Tensor | None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         assert self.kernel is not None
 
-        return self.kernel(
+        return self.kernel.apply(
             hidden_states=x,
             w1=layer.w13_weight,
             w2=layer.w2_weight,
@@ -113,6 +115,7 @@ class UnquantizedFusedMoEMethod(vllm_UnquantizedFusedMoEMethod):
             apply_router_weight_on_input=layer.apply_router_weight_on_input,
             global_num_experts=layer.global_num_experts,
             expert_map=layer.expert_map,
+            shared_experts_input=shared_experts_input,
         )
 
     if current_platform.is_out_of_tree():

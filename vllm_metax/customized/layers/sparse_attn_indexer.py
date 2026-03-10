@@ -8,7 +8,11 @@ from vllm.forward_context import get_forward_context
 from vllm.logger import init_logger
 from vllm.model_executor.custom_op import CustomOp
 from vllm.platforms import current_platform
-from vllm_metax.utils.deep_gemm import bf16_mqa_logits, bf16_paged_mqa_logits
+from vllm_metax.utils.deep_gemm import (
+    is_deep_gemm_supported,
+    bf16_mqa_logits,
+    bf16_paged_mqa_logits,
+)
 from vllm.utils.torch_utils import direct_register_custom_op
 from vllm_metax.v1.attention.backends.mla.indexer import (
     DeepseekV32IndexerMetadata,
@@ -75,6 +79,12 @@ def sparse_attn_indexer(
     has_decode = attn_metadata.num_decodes > 0
     has_prefill = attn_metadata.num_prefills > 0
     num_decode_tokens = attn_metadata.num_decode_tokens
+
+    # During speculative decoding, k may be padded to the CUDA graph batch
+    # size while slot_mapping only covers actual tokens. Truncate k to avoid
+    # out-of-bounds reads in the kernel.
+    num_tokens = slot_mapping.shape[0]
+    k_bf16 = k_bf16[:num_tokens]
 
     mx_ops.indexer_k_quant_and_cache(
         k_bf16,
@@ -176,18 +186,37 @@ def sparse_attn_indexer(
         )
 
         num_rows = logits.shape[0]
-
         topk_indices = topk_indices_buffer[:num_padded_tokens, :topk_tokens]
-        torch.ops._C.top_k_per_row_decode(
-            logits,
-            next_n,
-            decode_metadata.seq_lens,
-            topk_indices,
-            num_rows,
-            logits.stride(0),
-            logits.stride(1),
-            topk_tokens,
-        )
+
+        if decode_metadata.use_large_context_topk:
+            if next_n == 1:
+                lengths = decode_metadata.seq_lens
+            else:
+                # (bs,) -> (bs, 1) + (next_n,) -> (bs, next_n) -> (bs * next_n,)
+                lengths = (
+                    decode_metadata.seq_lens.unsqueeze(1)
+                    - next_n
+                    + 1
+                    + decode_metadata.offsets
+                ).flatten()
+
+            torch.ops._C.large_context_topk(
+                logits,
+                topk_indices,
+                lengths,
+                None,
+            )
+        else:
+            torch.ops._C.top_k_per_row_decode(
+                logits,
+                next_n,
+                decode_metadata.seq_lens,
+                topk_indices,
+                num_rows,
+                logits.stride(0),
+                logits.stride(1),
+                topk_tokens,
+            )
 
         if decode_metadata.requires_padding:
             # if padded, we need to unpack
@@ -230,7 +259,7 @@ direct_register_custom_op(
 )
 
 
-@CustomOp.register_oot(name="SparseAttnIndexer")
+@CustomOp.register_oot(name="sparse_attn_indexer")
 class SparseAttnIndexer(CustomOp):
     """Sparse Attention Indexer Custom Op Layer. This layer is extracted as a
     separate custom op since it involves heavy custom kernels like `mqa_logits`,
@@ -263,6 +292,13 @@ class SparseAttnIndexer(CustomOp):
         self.max_model_len = max_model_len
         self.max_total_seq_len = max_total_seq_len
         self.topk_indices_buffer = topk_indices_buffer
+        if current_platform.is_cuda() and not is_deep_gemm_supported():
+            logger.warning_once(
+                "DeepGEMM is not supported or available. SparseAttnIndexer will use a "
+                "less efficient PyTorch implementation. "
+                "Please make sure you have the required hardware and software setup "
+                "for DeepGEMM to achieve optimal performance."
+            )
 
     def forward_oot(
         self,
