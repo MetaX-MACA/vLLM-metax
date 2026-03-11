@@ -49,6 +49,7 @@ torch.backends.cuda.enable_cudnn_sdp(False)
 def _get_backend_priorities(
     use_mla: bool,
     device_capability: DeviceCapability,
+    num_heads: int | None = None,
 ) -> list[AttentionBackendEnum]:
     """Get backend priorities with lazy import to avoid circular dependency."""
     from vllm.v1.attention.backends.registry import AttentionBackendEnum
@@ -365,6 +366,7 @@ class MacaPlatformBase(Platform):
         cls,
         device_capability: DeviceCapability,
         attn_selector_config: "AttentionSelectorConfig",
+        num_heads: int | None = None,
     ) -> tuple[
         list[tuple["AttentionBackendEnum", int]],
         dict["AttentionBackendEnum", list[str]],
@@ -373,7 +375,7 @@ class MacaPlatformBase(Platform):
         invalid_reasons = {}
 
         backend_priorities = _get_backend_priorities(
-            attn_selector_config.use_mla, device_capability
+            attn_selector_config.use_mla, device_capability, num_heads=num_heads
         )
         for priority, backend in enumerate(backend_priorities):
             try:
@@ -396,6 +398,7 @@ class MacaPlatformBase(Platform):
         cls,
         selected_backend: "AttentionBackendEnum",
         attn_selector_config: "AttentionSelectorConfig",
+        num_heads: int | None = None,
     ) -> str:
         register_attention_backends()
         device_capability = cls.get_device_capability()
@@ -426,6 +429,7 @@ class MacaPlatformBase(Platform):
         valid_backends_priorities, invalid_reasons = cls.get_valid_backends(
             device_capability=device_capability,
             attn_selector_config=attn_selector_config,
+            num_heads=num_heads,
         )
         reasons_str = (
             "{"
