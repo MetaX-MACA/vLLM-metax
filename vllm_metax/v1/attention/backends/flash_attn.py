@@ -46,7 +46,7 @@ from vllm.model_executor.layers.batch_invariant import (
     vllm_is_batch_invariant,
 )
 from vllm.platforms.interface import DeviceCapability
-from vllm.utils.math_utils import cdiv
+from vllm.utils.math_utils import cdiv, round_up
 from vllm.v1.attention.backend import (
     AttentionCGSupport,
     AttentionMetadataBuilder,
@@ -112,6 +112,11 @@ class MacaFlashAttentionBackend(AttentionBackend):
             AttentionType.ENCODER_ONLY,
             AttentionType.ENCODER_DECODER,
         )
+
+    @classmethod
+    def supports_per_head_quant_scales(cls) -> bool:
+        fa_version = get_flash_attn_version()
+        return fa_version is not None and fa_version >= 3
 
     @staticmethod
     def get_impl_cls() -> type["FlashAttentionImpl"]:
@@ -298,18 +303,6 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         vllm_config: "VllmConfig",
         kv_cache_spec: "AttentionSpec",
     ) -> AttentionCGSupport:
-        # FA2 does not support CUDA graphs with encoder-decoder models due to
-        # accuracy issues reported in https://github.com/vllm-project/vllm/issues/33091
-        if (
-            vllm_config.model_config.is_encoder_decoder
-            and get_flash_attn_version() == 2
-        ):
-            logger.warning_once(
-                "FlashAttention2 does not support CUDA graphs with "
-                "encoder-decoder models due to accuracy issues reported in #33091. "
-                "Disabling CUDA graph."
-            )
-            return AttentionCGSupport.NEVER
         return cls._cudagraph_support
 
     def __init__(
@@ -376,8 +369,17 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         self._cu_seqlens_k_buffer: torch.Tensor | None = None
 
         if self.use_full_cuda_graph and self.aot_schedule:
+            # FA3 scheduler_metadata size: 1 + round_up(batch_size, 4) * 4
+            # The +1 is for the tile_count_semaphore (synchronization).
+            # The 4 slots per batch element (num_prepare_batch_vectors) are:
+            #   prepare_varlen + dynamic_split + sort_batches + head_swizzle
+            # See: https://github.com/vllm-project/flash-attention/blob/5824e6e/hopper/flash_api.cpp#L664-L671  # noqa: E501
+            max_batch_size = max(
+                vllm_config.scheduler_config.max_num_seqs,
+                self.max_cudagraph_size or 0,
+            )
             self.scheduler_metadata = torch.zeros(
-                vllm_config.scheduler_config.max_num_seqs + 1,
+                1 + round_up(max_batch_size, 4) * 4,
                 dtype=torch.int32,
                 device=self.device,
             )
@@ -388,6 +390,7 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
                 self.attention_config.flash_attn_max_num_splits_for_cuda_graph
             )
 
+        # Note: This is used for dcp=1 and without prefill-decode split.
         if self.use_full_cuda_graph:
             # Note: num_seqs is the upper bound for batch size during capture.
             self._cu_seqlens_k_buffer = torch.zeros(
@@ -618,20 +621,21 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
             # Note: Precompute cu_seqlens_k (prefix sums over KV lengths) on GPU.
             # This replaces any forward-time construction that would require
             # CPU sync (e.g. via .tolist()), which breaks CUDA graph capture.
-            if self.use_full_cuda_graph and self._cu_seqlens_k_buffer is not None:
-                n = num_reqs + 1
-                buf = self._cu_seqlens_k_buffer
-                # Leading 0, then inclusive cumsum into buf[1:n].
-                buf[0].zero_()
-                seq_lens_i32 = seq_lens[:num_reqs].to(dtype=torch.int32)
-                torch.cumsum(seq_lens_i32, dim=0, dtype=torch.int32, out=buf[1:n])
-                cu_seqlens_k = buf[:n]
-            else:
-                cu_seqlens_k = F.pad(
-                    seq_lens[:num_reqs],
-                    (1, 0),
-                    value=0,
-                ).cumsum(dim=0, dtype=torch.int32)
+            if self.use_full_cuda_graph:
+                if self._cu_seqlens_k_buffer is not None:
+                    n = num_reqs + 1
+                    buf = self._cu_seqlens_k_buffer
+                    # Leading 0, then inclusive cumsum into buf[1:n].
+                    buf[0].zero_()
+                    seq_lens_i32 = seq_lens[:num_reqs].to(dtype=torch.int32)
+                    torch.cumsum(seq_lens_i32, dim=0, dtype=torch.int32, out=buf[1:n])
+                    cu_seqlens_k = buf[:n]
+                else:
+                    cu_seqlens_k = F.pad(
+                        seq_lens[:num_reqs],
+                        (1, 0),
+                        value=0,
+                    ).cumsum(dim=0, dtype=torch.int32)
 
         # For FA3 + full cudagraph
         if self.use_full_cuda_graph and scheduler_metadata is not None:
@@ -689,6 +693,12 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
     ) -> FlashAttentionMetadata:
         new_metadata = copy.copy(metadata)
         new_metadata.block_table = blk_table
+        new_metadata.prefill_block_table = (
+            blk_table[metadata.num_decodes :] if metadata.num_prefills > 0 else None
+        )
+        new_metadata.decode_block_table = (
+            blk_table[: metadata.num_decodes] if metadata.num_decodes > 0 else None
+        )
         new_metadata.slot_mapping = slot_mapping
         return new_metadata
 
@@ -736,7 +746,15 @@ class FlashAttentionImpl(AttentionImpl):
         self.num_queries_per_kv = self.num_heads // self.num_kv_heads
 
         self.attn_type = attn_type
-        self.vllm_flash_attn_version = get_flash_attn_version()
+        self.vllm_flash_attn_version = get_flash_attn_version(
+            requires_alibi=alibi_slopes is not None,
+            head_size=head_size,
+        )
+        logger.info_once(
+            "Using FlashAttention version %s",
+            self.vllm_flash_attn_version,
+            scope="local",
+        )
         # Cache the batch invariant result for use in forward passes
         self.batch_invariant_enabled = vllm_is_batch_invariant()
 
@@ -756,11 +774,6 @@ class FlashAttentionImpl(AttentionImpl):
             )
 
         self.supports_quant_query_input = False
-        self.supports_per_head_quant_scales = (
-            self.vllm_flash_attn_version >= 3
-            if self.vllm_flash_attn_version is not None
-            else False
-        )
 
     def forward(
         self,
@@ -922,14 +935,15 @@ class FlashAttentionImpl(AttentionImpl):
                     return output
                 # └------------------------- Metax Modification -------------------------┘
                 else:
-                    cu_seqlens_k = attn_metadata.cu_seqlens_k
-                    if cu_seqlens_k is None:
-                        # Fallback for legacy metadata paths: keep it GPU-only.
-                        cu_seqlens_k = F.pad(
-                            attn_metadata.seq_lens,
-                            (1, 0),
-                            value=0,
-                        ).cumsum(dim=0, dtype=torch.int32)
+                    # cu_seqlens_k = attn_metadata.cu_seqlens_k
+                    # if cu_seqlens_k is None:
+                    # Fallback for legacy metadata paths: keep it GPU-only.
+                    # TODO(hank): Currently we manually process it on forward. Move it to attention_metadata
+                    cu_seqlens_k = F.pad(
+                        attn_metadata.seq_lens,
+                        (1, 0),
+                        value=0,
+                    ).cumsum(dim=0, dtype=torch.int32)
 
                     output[:num_actual_tokens] = flash_attn_varlen_func(
                         q=query[:num_actual_tokens],

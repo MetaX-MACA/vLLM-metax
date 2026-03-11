@@ -21,6 +21,7 @@ from vllm.model_executor.layers.batch_invariant import (
     vllm_is_batch_invariant,
 )
 from vllm.platforms.interface import DeviceCapability
+from vllm.utils.platform_utils import num_compute_units
 from vllm.v1.attention.backend import (
     AttentionCGSupport,
     AttentionLayer,
@@ -31,6 +32,11 @@ from vllm.v1.attention.backends.utils import (
     reshape_attn_output_for_spec_decode,
     reshape_query_for_spec_decode,
 )
+
+# ----------------------------
+# Note: flashmla on maca does not support fp8 related features yet,
+# so we can import these for type checking but not use them in the
+# code until they are supported. As well as the new `FlashMLASchedMeta`
 from vllm_metax.v1.attention.ops.flashmla import (
     flash_mla_with_kvcache,
     get_mla_metadata,
@@ -129,8 +135,7 @@ class FlashMLAMetadataBuilder(MLACommonMetadataBuilder[FlashMLAMetadata]):
         self.cg_buf_num_splits = None
         self.is_fp8_kvcache = vllm_config.cache_config.cache_dtype.startswith("fp8")
 
-        device_properties = torch.cuda.get_device_properties(self.device)
-        num_sms = device_properties.multi_processor_count
+        num_sms = num_compute_units(self.device.index)
 
         if self.compilation_config.cudagraph_mode.has_full_cudagraphs():
             self.cg_buf_tile_scheduler_metadata = torch.zeros(
@@ -276,7 +281,7 @@ class FlashMLAImpl(MLACommonImpl[FlashMLAMetadata]):
 
         tile_scheduler_metadata = attn_metadata.decode.tile_scheduler_metadata
         num_splits = attn_metadata.decode.num_splits
-        if vllm_is_batch_invariant():
+        if vllm_is_batch_invariant() and not self.kv_cache_dtype.startswith("fp8"):
             device = q.device
             dtype = torch.int32
 

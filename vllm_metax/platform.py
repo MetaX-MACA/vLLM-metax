@@ -602,12 +602,16 @@ class MacaPlatformBase(Platform):
         return True
 
     @classmethod
+    def num_compute_units(cls, device_id=0):
+        return torch.cuda.get_device_properties(device_id).multi_processor_count
+
+    @classmethod
     def pre_register_and_update(
         cls, parser: FlexibleArgumentParser | None = None
     ) -> None:
         """Pre-register and update Maca platform."""
         register_attention_backends()
-        # TODO(m01016): update cudagraph max capture size  here
+        # TODO(m01016): update cudagraph max capture size here
 
 
 # NVML utils
