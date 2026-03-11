@@ -31,7 +31,7 @@ class MacaMoeWNA16Config(MoeWNA16Config):
 
     def get_quant_method(
         self, layer: torch.nn.Module, prefix: str
-    ) -> "QuantizeMethodBase" | None:
+    ) -> "QuantizeMethodBase | None":
         if is_layer_skipped_quant(prefix, self.modules_to_not_convert):
             if isinstance(layer, FusedMoE):
                 return UnquantizedFusedMoEMethod(layer.moe_config)

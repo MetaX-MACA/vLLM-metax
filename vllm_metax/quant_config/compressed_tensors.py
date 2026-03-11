@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import Optional
-
 import torch
 
 from vllm.model_executor.layers.quantization.base_config import (  # noqa: E501
@@ -22,7 +20,7 @@ class MacaCompressedTensorsConfig(vllm_ct.CompressedTensorsConfig):
         self,
         layer: torch.nn.Module,
         prefix: str,
-    ) -> Optional["QuantizeMethodBase"]:
+    ) -> "QuantizeMethodBase | None":
         origin_quant_method = super().get_quant_method(layer, prefix)
 
         # Replace with Metax's MoE quantization methods
