@@ -8,10 +8,10 @@ import importlib
 from typing import Any
 import torch
 
-from vllm.model_executor.layers.quantization.kernels.scaled_mm.cutlass import (
+from vllm.model_executor.kernels.linear.scaled_mm.cutlass import (
     CutlassInt8ScaledMMLinearKernel,
 )
-from vllm.model_executor.layers.quantization.kernels.scaled_mm.ScaledMMLinearKernel import (  # noqa: E501
+from vllm.model_executor.kernels.linear.scaled_mm import (  # noqa: E501
     ScaledMMLinearKernel,
     ScaledMMLinearLayerConfig,
 )
@@ -80,8 +80,6 @@ _POSSIBLE_INT8_KERNELS: dict[PlatformEnum, list[type[ScaledMMLinearKernel]]] = {
 }
 # \------------------------- Metax Modification ----------------------------/
 
-import vllm.model_executor.layers.quantization.kernels.scaled_mm
+import vllm.model_executor.kernels.linear
 
-vllm.model_executor.layers.quantization.kernels.scaled_mm._POSSIBLE_INT8_KERNELS = (
-    _POSSIBLE_INT8_KERNELS
-)
+vllm.model_executor.kernels.linear._POSSIBLE_INT8_KERNELS = _POSSIBLE_INT8_KERNELS

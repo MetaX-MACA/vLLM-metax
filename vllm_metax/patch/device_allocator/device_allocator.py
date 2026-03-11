@@ -8,6 +8,8 @@
 
 import vllm
 from vllm.logger import init_logger
+from vllm.utils.mem_utils import format_gib
+from vllm.tracing import instrument
 
 logger = init_logger(__name__)
 
@@ -41,9 +43,9 @@ def sleep(self, level: int = 1) -> None:
     used_bytes = total - free_bytes_after_sleep
     assert freed_bytes >= 0, "Memory usage increased after sleeping."
     logger.info(
-        "Sleep mode freed %.2f GiB memory, %.2f GiB memory is still in use.",
-        freed_bytes / GiB_bytes,
-        used_bytes / GiB_bytes,
+        "Sleep mode freed %s GiB memory, %s GiB memory is still in use.",
+        format_gib(freed_bytes),
+        format_gib(used_bytes),
     )
 
 
@@ -86,6 +88,7 @@ def _maybe_get_memory_pool_context(self, tag: str) -> AbstractContextManager:
         return nullcontext()
 
 
+@instrument(span_name="Allocate KV cache")
 def initialize_from_config(self, kv_cache_config: KVCacheConfig) -> None:
     """Allocate GPU KV cache with the specified kv_cache_config."""
 

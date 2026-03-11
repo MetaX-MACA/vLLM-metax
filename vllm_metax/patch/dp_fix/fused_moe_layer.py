@@ -6,12 +6,11 @@ import torch
 import vllm.envs as envs
 from vllm_metax import envs as mx_envs
 
-from vllm.model_executor.layers.fused_moe.fused_moe_modular_method import (
-    FusedMoEModularMethod,
-)
 from vllm.distributed import tensor_model_parallel_all_reduce
 
-from vllm.model_executor.layers.fused_moe.layer import FusedMoE
+from vllm.model_executor.layers.fused_moe.runner.default_moe_runner import (
+    DefaultMoERunner,
+)
 
 
 @property
@@ -29,8 +28,8 @@ def use_combine_allreduce(self):
 def must_reduce_shared_expert_outputs(self) -> bool:
     assert self.quant_method is not None
     return (
-        isinstance(self.quant_method, FusedMoEModularMethod)
-        and self.quant_method.fused_experts.output_is_reduced()
+        self.quant_method.moe_kernel is not None
+        and self.quant_method.moe_kernel.output_is_reduced()
         or self.use_combine_allreduce
     )
 
@@ -45,6 +44,8 @@ def maybe_all_reduce_tensor_model_parallel(self, final_hidden_states: torch.Tens
         return tensor_model_parallel_all_reduce(final_hidden_states)
 
 
-FusedMoE.use_combine_allreduce = use_combine_allreduce
-FusedMoE.must_reduce_shared_expert_outputs = must_reduce_shared_expert_outputs
-FusedMoE.maybe_all_reduce_tensor_model_parallel = maybe_all_reduce_tensor_model_parallel
+DefaultMoERunner.use_combine_allreduce = use_combine_allreduce
+DefaultMoERunner.must_reduce_shared_expert_outputs = must_reduce_shared_expert_outputs
+DefaultMoERunner.maybe_all_reduce_tensor_model_parallel = (
+    maybe_all_reduce_tensor_model_parallel
+)

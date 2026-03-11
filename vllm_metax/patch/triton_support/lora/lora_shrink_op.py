@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
 
-
 # ------------------------------------------------
 # Note: replace `do_shrink_kernel` in vllm.lora.ops.triton_ops.lora_shrink
 # ------------------------------------------------

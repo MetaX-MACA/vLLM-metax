@@ -147,6 +147,6 @@ from vllm.v1.spec_decode import eagle
 
 eagle.eagle_prepare_next_token_padded_kernel = eagle_prepare_next_token_padded_kernel
 
-# EagleProposer.prepare_next_token_ids_padded = (
-#     MacaEagleProposer.prepare_next_token_ids_padded
-# )
+EagleProposer.prepare_next_token_ids_padded = (
+    MacaEagleProposer.prepare_next_token_ids_padded
+)
