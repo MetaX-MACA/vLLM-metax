@@ -31,11 +31,11 @@ import torch
 from einops import rearrange
 from torch import nn
 from transformers.activations import ACT2FN
-from transformers.models.qwen3_5.configuration_qwen3_5 import (
+from vllm_metax.patch.transformers_utils.configs.qwen3_5 import (
     Qwen3_5Config,
     Qwen3_5TextConfig,
 )
-from transformers.models.qwen3_5_moe.configuration_qwen3_5_moe import (
+from vllm_metax.patch.transformers_utils.configs.qwen3_5_moe import (
     Qwen3_5MoeConfig,
     Qwen3_5MoeTextConfig,
 )

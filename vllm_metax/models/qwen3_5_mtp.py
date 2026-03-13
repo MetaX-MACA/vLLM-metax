@@ -7,8 +7,8 @@ from collections.abc import Callable, Iterable
 
 import torch
 from torch import nn
-from transformers.models.qwen3_5.configuration_qwen3_5 import Qwen3_5TextConfig
-from transformers.models.qwen3_5_moe.configuration_qwen3_5_moe import (
+from vllm_metax.patch.transformers_utils.configs.qwen3_5 import Qwen3_5TextConfig
+from vllm_metax.patch.transformers_utils.configs.qwen3_5_moe import (
     Qwen3_5MoeTextConfig,
 )
 
