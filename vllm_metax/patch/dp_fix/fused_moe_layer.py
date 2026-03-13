@@ -16,7 +16,7 @@ from vllm.model_executor.layers.fused_moe.runner.default_moe_runner import (
 @property
 def use_combine_allreduce(self):
     return (
-        self.moe_parallel_config.dp_size > 1
+        self.moe_config.moe_parallel_config.dp_size > 1
         and mx_envs.MACA_DP_OPT
         and (
             envs.VLLM_ALL2ALL_BACKEND == "naive"
