@@ -22,7 +22,15 @@ class MacaCompressedTensorsConfig(vllm_ct.CompressedTensorsConfig):
         layer: torch.nn.Module,
         prefix: str,
     ) -> "QuantizeMethodBase | None":
-        origin_quant_method = super().get_quant_method(layer, prefix)
+        try:
+            origin_quant_method = super().get_quant_method(layer, prefix)
+        except ValueError:
+            # Note: w4a8 may trigger ValueError in the CompressedTensorsMoEMethod,
+            # but we'd handle it in our custom method below.
+            # So we catch the exception and ensure it's a FusedMoE layer.
+            assert isinstance(layer, FusedMoE)
+        except Exception:
+            raise
 
         # Replace with Metax's MoE quantization methods
         if isinstance(layer, FusedMoE):

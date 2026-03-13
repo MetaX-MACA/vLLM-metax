@@ -60,6 +60,7 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
         #  - `weights_quant`
         #  - `input_quant`
         # -------------------------------------------
+        origin_moe_method = None
         try:
             origin_moe_method = vllm_ctm.CompressedTensorsMoEMethod.get_moe_method(
                 quant_config, layer, layer_name
@@ -385,13 +386,26 @@ class CompressedTensorsW4A8Int8MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
     def get_fused_moe_quant_config(
         self, layer: torch.nn.Module
     ) -> FusedMoEQuantConfig | None:
-        return int4_w4a8_moe_quant_config(
+        final_block_shape = None if self.group_size == -1 else [0, self.group_size]
+
+        config = int4_w4a8_moe_quant_config(
             w1_scale=layer.w13_weight_scale,
             w2_scale=layer.w2_weight_scale,
             w1_zp=None,
             w2_zp=None,
-            block_shape=None,
+            block_shape=final_block_shape,
         )
+
+        if self.group_size == -1:
+            # define tmp class
+            class PerTokenForcedConfig(config.__class__):
+                @property
+                def per_act_token_quant(self) -> bool:
+                    return True
+
+            config.__class__ = PerTokenForcedConfig
+
+        return config
 
     def apply(
         self,
