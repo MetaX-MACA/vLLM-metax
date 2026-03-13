@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import sys
@@ -17,11 +18,11 @@ class SPDXStatus(Enum):
 
 FULL_SPDX_HEADER = (
     "# SPDX-License-Identifier: Apache-2.0\n"
-    "# SPDX-FileCopyrightText: Copyright contributors to the vLLM project"
+    "# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved."
 )
 
 LICENSE_LINE = "# SPDX-License-Identifier: Apache-2.0"
-COPYRIGHT_LINE = "# SPDX-FileCopyrightText: Copyright contributors to the vLLM project"  # noqa: E501
+COPYRIGHT_LINE = "# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved."  # noqa: E501
 
 
 def check_spdx_header_status(file_path):
@@ -49,18 +50,17 @@ def check_spdx_header_status(file_path):
                 has_copyright = True
 
         # Determine status based on what we found
-        # if has_license and has_copyright:
-        #     return SPDXStatus.COMPLETE
-        # elif has_license and not has_copyright:
-        #     # Only has license line
-        #     return SPDXStatus.MISSING_COPYRIGHT
-        #     # Only has copyright line
-        # elif not has_license and has_copyright:
-        #     return SPDXStatus.MISSING_LICENSE
-        # else:
-        #     # Completely missing both lines
-        #     return SPDXStatus.MISSING_BOTH
-        return SPDXStatus.COMPLETE if has_license else SPDXStatus.MISSING_LICENSE
+        if has_license and has_copyright:
+            return SPDXStatus.COMPLETE
+        elif has_license and not has_copyright:
+            # Only has license line
+            return SPDXStatus.MISSING_COPYRIGHT
+            # Only has copyright line
+        elif not has_license and has_copyright:
+            return SPDXStatus.MISSING_LICENSE
+        else:
+            # Completely missing both lines
+            return SPDXStatus.MISSING_BOTH
 
 
 def add_header(file_path, status):
@@ -99,15 +99,12 @@ def add_header(file_path, status):
         elif status == SPDXStatus.MISSING_LICENSE:
             # Only has copyright line, need to add license line
             # Find the copyright line and add license line before it
-            # Add header directly
-            file.write(LICENSE_LINE + "\n")
+            for i, line in enumerate(lines):
+                if line.strip() == COPYRIGHT_LINE:
+                    # Insert license line before copyright line
+                    lines.insert(i, f"{LICENSE_LINE}\n")
+                    break
             file.writelines(lines)
-            # for i, line in enumerate(lines):
-            #     if line.strip() == COPYRIGHT_LINE:
-            #         # Insert license line before copyright line
-            #         lines.insert(i, f"{LICENSE_LINE}\n")
-            #         break
-            # file.writelines(lines)
 
 
 def main():
