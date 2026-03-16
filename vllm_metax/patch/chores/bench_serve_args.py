@@ -36,7 +36,9 @@ from vllm.benchmarks.lib.endpoint_request_func import (
 )
 
 
-def maca_add_cli_args(parser: argparse.ArgumentParser):
+# -----------------------
+# Diff from vllm.benchmarks.serve.add_cli_args
+def add_cli_args(parser: argparse.ArgumentParser):
     add_dataset_parser(parser)
     parser.add_argument(
         "--label",
@@ -130,6 +132,7 @@ def maca_add_cli_args(parser: argparse.ArgumentParser):
         - "slow" will always use the slow tokenizer.\n
         - "mistral" will always use the tokenizer from `mistral_common`.\n
         - "deepseek_v32" will always use the tokenizer from `deepseek_v32`.\n
+        - "qwen_vl" will always use the tokenizer from `qwen_vl`.\n
         - Other custom values can be supported via plugins.""",
     )
     parser.add_argument("--use-beam-search", action="store_true")
@@ -165,11 +168,6 @@ def maca_add_cli_args(parser: argparse.ArgumentParser):
         "A lower burstiness value (0 < burstiness < 1) results in more "
         "bursty requests. A higher burstiness value (burstiness > 1) "
         "results in a more uniform arrival of requests.",
-    )
-    parser.add_argument(
-        "--trust-remote-code",
-        action="store_true",
-        help="Trust remote code from huggingface",
     )
     parser.add_argument(
         "--disable-tqdm",
@@ -382,8 +380,46 @@ def maca_add_cli_args(parser: argparse.ArgumentParser):
         type=json.loads,
         default=None,
     )
+    parser.add_argument(
+        "--skip-tokenizer-init",
+        action="store_true",
+        default=False,
+        help="Skip initialization of tokenizer and detokenizer",
+    )
+
+    parser.add_argument(
+        "--insecure",
+        action="store_true",
+        default=False,
+        help="Disable SSL certificate verification. Use this option when "
+        "connecting to servers with self-signed certificates.",
+    )
+
+    parser.add_argument(
+        "--plot-timeline",
+        action="store_true",
+        help="Generate an HTML timeline plot showing request execution. "
+        "The plot will be saved alongside the results JSON file.",
+    )
+    parser.add_argument(
+        "--timeline-itl-thresholds",
+        type=float,
+        nargs=2,
+        default=[25.0, 50.0],
+        metavar=("THRESHOLD1", "THRESHOLD2"),
+        help="ITL thresholds in milliseconds for timeline plot coloring. "
+        "Specify two values to categorize inter-token latencies into three groups: "
+        "below first threshold (green), between thresholds (orange), "
+        "and above second threshold (red). Default: 25 50 (milliseconds).",
+    )
+    parser.add_argument(
+        "--plot-dataset-stats",
+        action="store_true",
+        help="Generate a matplotlib figure with dataset statistics showing "
+        "prompt tokens, output tokens, and combined token distributions.",
+    )
 
 
 import vllm.entrypoints.cli.benchmark.serve as cli_serve
 
-cli_serve.add_cli_args = maca_add_cli_args
+cli_serve.add_cli_args = add_cli_args
