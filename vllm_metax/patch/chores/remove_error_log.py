@@ -4,6 +4,8 @@
 # ------------------------------------------------------------------------
 # Note: This file contains non-functional code changes (chores) for vLLM
 #       to support the Metax platform.
+#
+# Remove the wrong error log for Maca when checking the flash attention version.
 # ------------------------------------------------------------------------
 
 import vllm
