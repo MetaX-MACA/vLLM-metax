@@ -8,13 +8,13 @@ from vllm_metax.v1.attention.ops.vit_attn_wrappers import (
     vit_flash_attn_wrapper as mx_vit_fa_wrapper,
 )
 from vllm_metax.v1.attention.backends.fa_utils import get_flash_attn_version
+from vllm.model_executor.models.vision import get_vit_attn_backend
+from vllm.model_executor.layers.attention.mm_encoder_attention import logger
 from vllm.v1.attention.backends.registry import AttentionBackendEnum
 
 
 @MMEncoderAttention.register_oot
 class MacaMMEncoderAttention(MMEncoderAttention):
-    """Multi-headed attention with MACA optimizations."""
-
     def __init__(
         self,
         num_heads: int,
@@ -23,19 +23,52 @@ class MacaMMEncoderAttention(MMEncoderAttention):
         num_kv_heads: int | None = None,
         prefix: str = "",
     ) -> None:
-        super().__init__(
-            num_heads,
-            head_size,
-            scale,
-            num_kv_heads,
-            prefix,
+        """
+        Args:
+            num_heads: number of attention heads per partition.
+            head_size: hidden_size per attention head.
+            scale: scale factor.
+            num_kv_heads: number of kv heads.
+            prefix: This has no effect, it is only here to make it easier to
+                    swap between Attention and MultiHeadAttention
+        """
+        super(MMEncoderAttention, self).__init__()
+
+        self.num_heads = num_heads
+        self.head_size = head_size
+        self.scale = 1.0 / (head_size**0.5) if scale is None else scale
+        self.num_kv_heads = num_heads if num_kv_heads is None else num_kv_heads
+        self.layer_name = prefix
+        assert self.num_heads % self.num_kv_heads == 0, (
+            f"num_heads ({self.num_heads}) is not "
+            f"divisible by num_kv_heads ({self.num_kv_heads})"
+        )
+        self.num_queries_per_kv = self.num_heads // self.num_kv_heads
+
+        # During model initialization, the default dtype is set as the model
+        # weight and activation dtype.
+        dtype = torch.get_default_dtype()
+
+        # Get device-specific vision attention backend.
+        self.attn_backend = get_vit_attn_backend(
+            head_size=head_size,
+            dtype=dtype,
         )
 
-        # /------------------ Metax Modification -------------------\
+        self.is_flash_attn_backend = self.attn_backend in {
+            AttentionBackendEnum.FLASH_ATTN,
+        }
+
+        # ----------------------------------------------------
+        # Note: Use maca's get_flash_attn_version to determine
+        #       the FA version for MACA, which will return 2.
         self._fa_version = (
-            get_flash_attn_version() if self.is_flash_attn_backend else None
+            get_flash_attn_version(head_size=head_size)
+            if self.is_flash_attn_backend
+            else None
         )
-        # \---------------------------------------------------------/
+
+        logger.info_once(f"Using {self.attn_backend} for MacaMMEncoderAttention.")
 
     def _forward_fa(
         self,
@@ -57,16 +90,14 @@ class MacaMMEncoderAttention(MMEncoderAttention):
         kv_len = key.size(1)
         is_reshaped = query.dim() != 4
 
-        query, key, value = self.maybe_reshape_qkv_to_4d(
-            query, key, value, bsz, q_len, kv_len
-        )
+        query, key, value = self.view_qkv_to_4d(query, key, value, bsz, q_len, kv_len)
 
         output = mx_vit_fa_wrapper(
             q=query,
             k=key,
             v=value,
             batch_size=bsz,
-            is_rocm_aiter=(self.attn_backend == AttentionBackendEnum.ROCM_AITER_FA),
+            is_rocm_aiter=False,
             fa_version=self._fa_version,
             scale=self.scale,
             cu_seqlens=cu_seqlens,
