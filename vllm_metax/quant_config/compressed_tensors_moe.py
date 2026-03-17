@@ -446,6 +446,7 @@ class CompressedTensorsW4A8Int8MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
             quant_config=self.moe_quant_config,
         )
 
+
 class CompressedTensorsW4A8Int4MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
     """
     On maca W4A8 is hardware supported. But on maca the weights is
@@ -524,13 +525,15 @@ class CompressedTensorsW4A8Int4MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
 
         # Register packed int4 weights the loader will fill.
         w13 = torch.nn.Parameter(
-            torch.empty(E, 2 * IN, H // self.packed_factor, dtype=torch.int32), requires_grad=False
+            torch.empty(E, 2 * IN, H // self.packed_factor, dtype=torch.int32),
+            requires_grad=False,
         )
         set_weight_attrs(w13, extra_weight_attrs)
         layer.register_parameter("w13_weight_packed", w13)
 
         w2 = torch.nn.Parameter(
-            torch.empty(E, H, IN // self.packed_factor, dtype=torch.int32), requires_grad=False
+            torch.empty(E, H, IN // self.packed_factor, dtype=torch.int32),
+            requires_grad=False,
         )
         set_weight_attrs(w2, extra_weight_attrs)
         layer.register_parameter("w2_weight_packed", w2)
@@ -571,22 +574,16 @@ class CompressedTensorsW4A8Int4MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
         # Reconfigure scales to match mctlass required format
         layer.w13_weight_scale = torch.nn.Parameter(
-            layer.w13_weight_scale.transpose(1, 2).contiguous(),
-            requires_grad=False
+            layer.w13_weight_scale.transpose(1, 2).contiguous(), requires_grad=False
         )
         layer.w2_weight_scale = torch.nn.Parameter(
-            layer.w2_weight_scale.transpose(1, 2).contiguous(),
-            requires_grad=False
+            layer.w2_weight_scale.transpose(1, 2).contiguous(), requires_grad=False
         )
 
     def get_fused_moe_quant_config(
         self, layer: torch.nn.Module
     ) -> FusedMoEQuantConfig | None:
-
-        if self.group_size == -1:
-            final_block_shape = None
-        else:
-            final_block_shape = [0, self.group_size]
+        final_block_shape = None if self.group_size == -1 else [0, self.group_size]
 
         config = int4_w4a8_moe_quant_config(
             w1_scale=layer.w13_weight_scale,
@@ -647,6 +644,7 @@ for CPU dyn-4bit MoE."""
             expert_map=layer.expert_map,
             quant_config=self.moe_quant_config,
         )
+
 
 def int4_w4a8_moe_quant_config(
     w1_scale: torch.Tensor,

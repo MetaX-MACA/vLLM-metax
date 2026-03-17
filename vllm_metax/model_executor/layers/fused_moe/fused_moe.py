@@ -913,7 +913,7 @@ def invoke_fused_moe_triton_kernel(
                 num_tokens_post_padded=num_tokens_post_padded,
                 EM=EM,
                 topk=top_k,
-                mul_routed_weight=mul_routed_weight
+                mul_routed_weight=mul_routed_weight,
             )
         else:
             mctlass_ops.cutlass_moe_w4a8_gemm(
@@ -929,12 +929,12 @@ def invoke_fused_moe_triton_kernel(
                 B.size(0),
                 A.size(0),
                 B.size(1),
-                B.size(2)*8,
+                B.size(2) * 8,
                 num_tokens,
                 EM,
                 top_k,
                 mul_routed_weight,
-                group_size=block_shape[1]
+                group_size=block_shape[1],
             )
     else:
         config = config.copy()
@@ -1822,9 +1822,7 @@ def _get_config_quant_dtype(
     if use_fp8_w8a8:
         return torch.float8_e4m3fn
     # 这里我参照了上个版本的代码，但是我有点怀疑为什么这里return的是int8而不是int4
-    elif use_int4_w4a8:
-        return torch.int8
-    elif use_int8_w8a8:
+    elif use_int4_w4a8 or use_int8_w8a8:
         return torch.int8
     elif ocp_mx_scheme == "w_mxfp4_a_mxfp4":
         return "mxfp4"
@@ -2060,7 +2058,8 @@ def fused_experts_impl(
             # -----------------------------------------------------------------
             # Metax Modification: for int8_w8a8
             and not (
-                (use_int8_w8a8 or use_int4_w4a8) and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+                (use_int8_w8a8 or use_int4_w4a8)
+                and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
             )
         )
 
@@ -2085,7 +2084,7 @@ def fused_experts_impl(
                         c=intermediate_cache1,
                         K=K,
                         num_valid_tokens=curr_hidden_states.size(0) * top_k_num,
-                        topk=top_k_num
+                        topk=top_k_num,
                     )
                 else:
                     # is Per-Block
@@ -2099,9 +2098,11 @@ def fused_experts_impl(
                         K=K,
                         num_valid_tokens=num_tokens,
                         topk=top_k_num,
-                        group_size=block_shape[1]
+                        group_size=block_shape[1],
                     )
-                assert kernel_m > 0, ("cutlass_fused_moe_w4a8 BLOCK_SIZE_M must greater than zero.")
+                assert kernel_m > 0, (
+                    "cutlass_fused_moe_w4a8 BLOCK_SIZE_M must greater than zero."
+                )
                 # override kernel_m to config["BLOCK_SIZE_M"]
                 stage1_config["BLOCK_SIZE_M"] = kernel_m
                 stage2_config["BLOCK_SIZE_M"] = kernel_m
