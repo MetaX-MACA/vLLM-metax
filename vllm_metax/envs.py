@@ -54,7 +54,7 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # ================== Runtime Env Vars ==================
     # if set, enable mctlass python api, only support scaled_mm and moe_w8a8 int8
     "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": lambda: bool(
-        int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_PYTHON_API", "0"))
+        int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_PYTHON_API", "1"))
     ),
     # if set, enable bf16 cutlass moe on stage2
     # or w8a8 cutlass moe on both stage1 and stage2
