@@ -316,9 +316,18 @@ class MacaPlatformBase(Platform):
 
         # -------------------------------------------------------
         # Ensure that the value of `attn_block_size` is a power of 2.
-        if model_config is not None and model_config.is_hybrid:
-            cache_config.mamba_block_size = 1 << math.ceil(
-                math.log2(cache_config.mamba_block_size)
+        if (
+            model_config is not None
+            and model_config.is_hybrid
+            and not math.log2(cache_config.block_size).is_integer()
+        ):
+            # reinitialize block size to the next power of 2
+            from vllm_metax.patch.configs.hybrid_attn_mamba_config import (
+                HybridAttentionMambaModelConfigWithAlignedBlockSize,
+            )
+
+            HybridAttentionMambaModelConfigWithAlignedBlockSize.verify_and_update_config(
+                vllm_config
             )
 
         # -------------------------------------------------------
