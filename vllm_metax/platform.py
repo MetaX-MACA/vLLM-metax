@@ -5,6 +5,7 @@ pynvml. However, it should not initialize cuda context.
 """
 
 import importlib
+import math
 import os
 from collections.abc import Callable
 from datetime import timedelta
@@ -312,6 +313,13 @@ class MacaPlatformBase(Platform):
                 "with multimodal-bidirectional attention."
             )
             scheduler_config.disable_chunked_mm_input = True
+
+        # -------------------------------------------------------
+        # Ensure that the value of `attn_block_size` is a power of 2.
+        if model_config is not None and model_config.is_hybrid:
+            cache_config.mamba_block_size = 1 << math.ceil(
+                math.log2(cache_config.mamba_block_size)
+            )
 
         # -------------------------------------------------------
         # Append sparse attention op for Maca platform
