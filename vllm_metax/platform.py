@@ -322,7 +322,7 @@ class MacaPlatformBase(Platform):
             and not math.log2(cache_config.block_size).is_integer()
         ):
             # reinitialize block size to the next power of 2
-            from vllm_metax.patch.configs.hybrid_attn_mamba_config import (
+            from vllm_metax.configs.hybrid_attn_mamba_config import (
                 HybridAttentionMambaModelConfigWithAlignedBlockSize,
             )
 

@@ -21,6 +21,18 @@ from vllm.model_executor.models.config import (
     logger,
 )
 
+# -------------------------------------------------------------------
+# Note: this config is intended to align block_size with power of 2
+#       to make flash attention split forward with flash_attn_with_kvcache
+#       correct.
+#
+# This config is invoked by platform.py::check_and_update_config
+# Please refer to the function for more details.
+#
+# Diff with:
+#   vllm/model_executor/models/config.py::MambaModelConfigWithAlignedBlockSize
+# -------------------------------------------------------------------
+
 
 class HybridAttentionMambaModelConfigWithAlignedBlockSize(VerifyAndUpdateConfig):
     @classmethod
