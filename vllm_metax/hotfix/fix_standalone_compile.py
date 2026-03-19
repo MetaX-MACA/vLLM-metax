@@ -222,3 +222,11 @@ def __setattr__(self, name, value):
 from torch.backends.cuda import matmul
 
 matmul.__class__.__setattr__ = __setattr__
+
+
+# --------------------------------------------------------------------------------
+# Hotfix for enabling torch2.8+metax to work with accelerator API in torch 2.9+ !!!
+torch.accelerator.empty_cache = torch.cuda.empty_cache
+torch.accelerator.memory_stats = torch.cuda.memory_stats
+torch.accelerator.memory_reserved = torch.cuda.memory_reserved
+torch.accelerator.reset_peak_memory_stats = torch.cuda.reset_peak_memory_stats
