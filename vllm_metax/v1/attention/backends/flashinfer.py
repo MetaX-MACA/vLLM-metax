@@ -4,6 +4,7 @@
 """Attention layer with FlashInfer."""
 
 from dataclasses import dataclass
+from functools import partial
 from typing import Any, ClassVar
 
 import numpy as np
@@ -25,7 +26,11 @@ from flashinfer.decode import _get_range_buf
 from typing_extensions import override
 
 from vllm import envs
-from vllm.config import CUDAGraphMode, VllmConfig, get_current_vllm_config
+from vllm.config import (
+    CUDAGraphMode,
+    VllmConfig,
+    get_current_vllm_config_or_none,
+)
 from vllm.config.cache import CacheDType
 from vllm.distributed.parallel_state import get_dcp_group
 from vllm.logger import init_logger
@@ -65,6 +70,7 @@ from vllm.v1.attention.backends.utils import (
     split_decodes_and_prefills,
 )
 from vllm.v1.attention.ops.common import cp_lse_ag_out_rs
+from vllm.v1.attention.ops.dcp_alltoall import dcp_a2a_lse_reduce
 
 # --------------------------------------------------------------
 # Note: use Maca's merge_attn_states to get cuda kernel invoked
@@ -181,7 +187,12 @@ class BatchDCPPrefillWrapper:
     def __init__(
         self,
         workspace_buffer: torch.Tensor | None = None,
+        dcp_a2a: bool = False,
     ):
+        if dcp_a2a:
+            self._dcp_combine = partial(dcp_a2a_lse_reduce, is_lse_base_on_e=False)
+        else:
+            self._dcp_combine = partial(cp_lse_ag_out_rs, is_lse_base_on_e=False)
         self._context = BatchPrefillWithPagedKVCacheWrapper(
             workspace_buffer, get_kv_cache_layout()
         )
@@ -260,12 +271,11 @@ class BatchDCPPrefillWrapper:
             v_scale=layer._v_scale_float,
             return_lse=True,
         )
-        output_context, lse_context = cp_lse_ag_out_rs(
+        output_context, lse_context = self._dcp_combine(
             output_context_tmp,
             lse_context_tmp,
             get_dcp_group(),
             return_lse=True,
-            is_lse_base_on_e=False,
         )
         lse_context = lse_context.transpose(0, 1).contiguous()
 
@@ -563,6 +573,9 @@ class FlashInferMetadataBuilder(AttentionMetadataBuilder[FlashInferMetadata]):
             self.dcp_rank = 0
             self.dcp_kv_cache_interleave_size = 1
         self.use_dcp = self.dcp_world_size > 1
+        self.dcp_a2a = (
+            self.use_dcp and vllm_config.parallel_config.dcp_comm_backend == "a2a"
+        )
 
         self.num_qo_heads = self.model_config.get_num_attention_heads(
             self.vllm_config.parallel_config
@@ -586,6 +599,7 @@ class FlashInferMetadataBuilder(AttentionMetadataBuilder[FlashInferMetadata]):
         # try to use fp8 q if kv cache is fp8, and will fall back to model dtype
         # if TRTLLM attention kernel is not used when building attn metadata
         can_use_trtllm = can_use_trtllm_attention(self.num_qo_heads, self.num_kv_heads)
+
         if (
             can_use_trtllm
             and not vllm_config.attention_config.disable_flashinfer_q_quantization
@@ -629,15 +643,6 @@ class FlashInferMetadataBuilder(AttentionMetadataBuilder[FlashInferMetadata]):
         )  # Extra buffer for mutable paged_kv_indptr.cpu in cuda graph mode
         self.paged_kv_indices = self._make_buffer(max_num_pages)
         self.paged_kv_last_page_len = self._make_buffer(max_num_reqs)
-
-        if self.head_dim == 256:
-            # https://github.com/flashinfer-ai/flashinfer/issues/1993 reports that
-            # head size 256 and block size 16 is not supported on blackwell.
-            assert kv_cache_spec.block_size != 16, (
-                "There is a bug in FlashInfer "
-                "block_size 16 head size 256 support. Please avoid this combination by "
-                "passing --block-size 32 or --block-size 64."
-            )
 
     def _make_buffer(
         self, *size: int | torch.SymInt, dtype: torch.dtype = torch.int32
@@ -712,6 +717,7 @@ class FlashInferMetadataBuilder(AttentionMetadataBuilder[FlashInferMetadata]):
             if self.use_dcp:
                 self._prefill_wrapper = BatchDCPPrefillWrapper(
                     workspace_buffer=self._get_workspace_buffer(),
+                    dcp_a2a=self.dcp_a2a,
                 )
             else:
                 self._prefill_wrapper = BatchPrefillWithPagedKVCacheWrapper(
@@ -972,6 +978,7 @@ class FlashInferMetadataBuilder(AttentionMetadataBuilder[FlashInferMetadata]):
 
         # Early-out for cascade attention
         if use_cascade:
+            assert num_blocks_np is not None
             # Grab the blocks of the shared prefix from the first request.
             num_common_kv_blocks = common_prefix_len // page_size
 
@@ -1115,7 +1122,8 @@ class FlashInferMetadataBuilder(AttentionMetadataBuilder[FlashInferMetadata]):
         if num_decodes > 0:
             if decode_use_trtllm:
                 assert num_decode_tokens % num_decodes == 0, (
-                    "TRTLLM decode requires uniform query lengths per request."
+                    "TRTLLM decode requires uniform query lengths per request. "
+                    f"Got {num_decode_tokens=} and {num_decodes=}."
                 )
                 attn_metadata.decode = TRTLLMDecode(
                     block_tables=block_table_tensor[:num_decodes],
@@ -1123,6 +1131,7 @@ class FlashInferMetadataBuilder(AttentionMetadataBuilder[FlashInferMetadata]):
                     max_seq_len=max_seq_len,
                 )
             else:
+                assert seq_lens_cpu is not None
                 pure_decode = num_prefills == 0
                 use_cudagraph = (
                     self.enable_cuda_graph
@@ -1229,14 +1238,25 @@ class FlashInferImpl(AttentionImpl):
         #     self.sinks = sinks
 
         self.support_trtllm_attn = can_use_trtllm_attention(num_heads, num_kv_heads)
-        vllm_config = get_current_vllm_config()
+        vllm_config = get_current_vllm_config_or_none()
         self.supports_quant_query_input = (
             self.support_trtllm_attn
+            and vllm_config is not None
             and not vllm_config.attention_config.disable_flashinfer_q_quantization
         )
         self.bmm1_scale: float | None = None
         self.bmm2_scale: float | None = None
         self.o_sf_scale: float | None = None
+
+        dcp_a2a = (
+            vllm_config is not None
+            and vllm_config.parallel_config.decode_context_parallel_size > 1
+            and vllm_config.parallel_config.dcp_comm_backend == "a2a"
+        )
+        if dcp_a2a:
+            self.dcp_combine = partial(dcp_a2a_lse_reduce, is_lse_base_on_e=False)
+        else:
+            self.dcp_combine = partial(cp_lse_ag_out_rs, is_lse_base_on_e=False)
 
     def fused_output_quant_supported(self, quant_key: QuantKey):
         return (
@@ -1460,11 +1480,10 @@ class FlashInferImpl(AttentionImpl):
                         lse=lse,
                         return_lse=True,
                     )
-                    output[:num_decode_tokens] = cp_lse_ag_out_rs(
+                    output[:num_decode_tokens] = self.dcp_combine(
                         output_tmp,
                         lse,
                         get_dcp_group(),
-                        is_lse_base_on_e=False,
                     )
                 else:
                     decode_wrapper.run(

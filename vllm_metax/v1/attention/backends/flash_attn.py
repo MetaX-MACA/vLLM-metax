@@ -25,6 +25,7 @@ from vllm_metax.v1.attention.backends.fa_utils import (
     is_flash_attn_varlen_func_available,
 )
 from vllm.v1.attention.ops.common import cp_lse_ag_out_rs
+from vllm.v1.attention.ops.dcp_alltoall import dcp_a2a_lse_reduce
 
 # --------------------------------------------------------------
 # Note: use Maca's merge_attn_states to get cuda kernel invoked
@@ -39,7 +40,12 @@ if is_flash_attn_varlen_func_available():
         reshape_and_cache_flash,
         flash_attn_with_kvcache,  # used for prefill decode split
     )
-from vllm.config import VllmConfig, get_current_vllm_config, get_layers_from_vllm_config
+from vllm.config import (
+    VllmConfig,
+    get_current_vllm_config,
+    get_current_vllm_config_or_none,
+    get_layers_from_vllm_config,
+)
 from vllm.config.cache import CacheDType
 from vllm.distributed.parallel_state import get_dcp_group
 from vllm.logger import init_logger
@@ -180,7 +186,7 @@ class MacaFlashAttentionBackend(AttentionBackend):
             return True
         if kv_cache_dtype.startswith("fp8"):
             return flash_attn_supports_fp8()
-        return kv_cache_dtype in ["auto", "bfloat16"]
+        return kv_cache_dtype in ["auto", "float16", "bfloat16"]
 
     @classmethod
     def supports_sink(cls) -> bool:
@@ -776,6 +782,14 @@ class FlashAttentionImpl(AttentionImpl):
 
         self.supports_quant_query_input = False
 
+        vllm_config = get_current_vllm_config_or_none()
+        dcp_a2a = (
+            vllm_config is not None
+            and vllm_config.parallel_config.decode_context_parallel_size > 1
+            and vllm_config.parallel_config.dcp_comm_backend == "a2a"
+        )
+        self.dcp_combine = dcp_a2a_lse_reduce if dcp_a2a else cp_lse_ag_out_rs
+
     def forward(
         self,
         layer: torch.nn.Module,
@@ -1077,7 +1091,7 @@ class FlashAttentionImpl(AttentionImpl):
         )
         # \------------------------- Metax Modification -------------------------/
         # FA returns LSE in shape [ H, B ] but cp_lse_ag_out_rs wants [ B, H ]
-        context_attn_out_cor, context_lse_cor = cp_lse_ag_out_rs(
+        context_attn_out_cor, context_lse_cor = self.dcp_combine(
             context_attn_out,
             context_lse.transpose(0, 1),
             get_dcp_group(),
@@ -1097,7 +1111,7 @@ class FlashAttentionImpl(AttentionImpl):
             softmax_scale=self.scale,
             causal=attn_metadata.causal,
             alibi_slopes=self.alibi_slopes,
-            window_size=self.sliding_window,
+            window_size=sliding_window_size,
             softcap=self.logits_soft_cap,
             return_attn_probs=True,
             s_aux=self.sinks,
@@ -1174,7 +1188,7 @@ class FlashAttentionImpl(AttentionImpl):
             softmax_scale=self.scale,
             causal=False,  # Encoder attention is bidirectional
             alibi_slopes=self.alibi_slopes,
-            window_size=self.sliding_window,
+            window_size=sliding_window_size,
             softcap=self.logits_soft_cap,
             s_aux=self.sinks,
             # fa_version=self.vllm_flash_attn_version,
@@ -1324,7 +1338,7 @@ def cascade_attention(
         max_seqlen_k=common_prefix_len,
         softmax_scale=softmax_scale,
         causal=False,
-        window_size=sliding_window,
+        window_size=list(sliding_window),
         block_table=block_table[:1],
         softcap=logits_soft_cap,
         s_aux=s_aux,
@@ -1351,7 +1365,7 @@ def cascade_attention(
         max_seqlen_k=max_kv_len - common_prefix_len,
         softmax_scale=softmax_scale,
         causal=True,
-        window_size=sliding_window,
+        window_size=list(sliding_window),
         block_table=block_table[:, num_common_kv_blocks:],
         softcap=logits_soft_cap,
         return_attn_probs=True,
