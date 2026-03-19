@@ -265,6 +265,7 @@ class MacaTritonAttentionBackend(AttentionBackend):
     ]
     supported_kv_cache_dtypes: ClassVar[list[CacheDType]] = [
         "auto",
+        "float16",
         "bfloat16",
         "fp8",
         "fp8_e4m3",
@@ -274,6 +275,12 @@ class MacaTritonAttentionBackend(AttentionBackend):
     @staticmethod
     def get_supported_kernel_block_sizes() -> list[int | MultipleOf]:
         return [MultipleOf(16)]
+
+    @classmethod
+    def supports_block_size(cls, block_size: int | None) -> bool:
+        if block_size is None:
+            return True
+        return block_size % 16 == 0
 
     forward_includes_kv_cache_update: bool = False
 
