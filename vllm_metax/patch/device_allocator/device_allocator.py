@@ -76,22 +76,26 @@ def wake_up(self, tags: list[str] | None = None) -> None:
 
 
 def _maybe_get_memory_pool_context(self, tag: str) -> AbstractContextManager:
-    if self.vllm_config.model_config.enable_sleep_mode:
-        from vllm_metax.device_allocator.cumem import CuMemAllocator
-
-        allocator = CuMemAllocator.get_instance()
-        if tag == "weights":
-            assert allocator.get_current_usage() == 0, (
-                "Sleep mode can only be used for one instance per process."
-            )
-        return allocator.use_memory_pool(tag=tag)
-    else:
+    if not self.vllm_config.model_config.enable_sleep_mode:
         return nullcontext()
+
+    from vllm_metax.device_allocator.cumem import CuMemAllocator
+
+    allocator = CuMemAllocator.get_instance()
+    if tag == "weights":
+        assert allocator.get_current_usage() == 0, (
+            "Sleep mode can only be used for one instance per process."
+        )
+    return allocator.use_memory_pool(tag=tag)
 
 
 @instrument(span_name="Allocate KV cache")
 def initialize_from_config(self, kv_cache_config: KVCacheConfig) -> None:
     """Allocate GPU KV cache with the specified kv_cache_config."""
+
+    # Update local config with adjusted num blocks after profiling,
+    # so that it's available to the warmup stage.
+    self.cache_config.num_gpu_blocks = kv_cache_config.num_blocks
 
     # Init kv cache connector here, because it requires
     # `kv_cache_config`.
@@ -108,6 +112,17 @@ def initialize_from_config(self, kv_cache_config: KVCacheConfig) -> None:
             self.model_runner.initialize_kv_cache(kv_cache_config)
     else:
         self.model_runner.initialize_kv_cache(kv_cache_config)
+
+    if self.model_config.enable_return_routed_experts:
+        self.model_runner.init_routed_experts_capturer()
+
+    # Build KV-zero metadata outside the CuMem pool so the bookkeeping
+    # GPU tensors (seg_addrs, block-id buffers) use the standard PyTorch
+    # allocator and are not discarded during sleep/wake cycles.
+    if kv_cache_config.needs_kv_cache_zeroing and hasattr(
+        self.model_runner, "_init_kv_zero_meta"
+    ):
+        self.model_runner._init_kv_zero_meta()
 
 
 Worker.sleep = sleep

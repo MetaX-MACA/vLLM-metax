@@ -141,9 +141,9 @@ class MacaDPCoordinatorProc(DPCoordinatorProc):
                         # Subscription message, on the other hand, is sent
                         # by each engine during initialization
                         publish_back.send(b"READY")
-                    else:
+                    elif buffer != b"\x00":
                         logger.error(
-                            "DP Coordinator receives unexpected message from engines"
+                            "DP Coordinator received unexpected message from engines"
                         )
 
                 if publish_front in events:

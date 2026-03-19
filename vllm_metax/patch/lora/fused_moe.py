@@ -18,9 +18,8 @@ from vllm.model_executor.layers.fused_moe.fused_marlin_moe import (
 
 # ----------------------------------------------------------
 # Note: import the TritonExperts from plugin other than vllm
-from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
-    TritonExperts,
-)
+from vllm_metax.utils.fused_moe import get_triton_experts_cls
+
 from vllm.model_executor.layers.fused_moe.fused_moe_modular_method import (
     FusedMoEModularMethod,
 )
@@ -33,6 +32,8 @@ from vllm.model_executor.layers.fused_moe.modular_kernel import (
 from vllm.model_executor.layers.fused_moe.prepare_finalize import (
     MoEPrepareAndFinalizeNoDPEPModular,
 )
+
+TritonExperts = get_triton_experts_cls()
 
 
 def _inject_lora_into_fused_moe(self):
@@ -100,9 +101,8 @@ def _inject_lora_into_fused_moe(self):
                 use_int8_w8a16=False,
                 use_int4_w4a16=False,
             )
-            CHUNK_SIZE = envs.VLLM_FUSED_MOE_CHUNK_SIZE
             num_tokens = hidden_states.size(0)
-            M = min(num_tokens, CHUNK_SIZE)
+            M = num_tokens
             max_lora_rank = self.w13_lora_a_stacked[0].shape[-2]
             shrink_config, expand_config = self._get_lora_moe_configs(
                 op_prefix="w13",
@@ -187,9 +187,8 @@ def _inject_lora_into_fused_moe(self):
                 use_int8_w8a16=False,
                 use_int4_w4a16=False,
             )
-            CHUNK_SIZE = envs.VLLM_FUSED_MOE_CHUNK_SIZE
             num_tokens = hidden_states.size(0)
-            M = min(num_tokens, CHUNK_SIZE)
+            M = num_tokens
             max_lora_rank = self.w2_lora_a_stacked[0].shape[-2]
             shrink_config, expand_config = self._get_lora_moe_configs(
                 op_prefix="w2",
