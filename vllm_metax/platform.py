@@ -788,6 +788,10 @@ mx_envs.override_vllm_env(
     "VLLM_ENGINE_READY_TIMEOUT_S", 3600, "set timeout to 3600s for model loading"
 )
 
+mx_envs.override_vllm_env(
+    "VLLM_DISABLE_SHARED_EXPERTS_STREAM", True, "no used on maca"
+)
+
 # --------------------------------------------------
 # Note: vllm_metax currently does not support third-party
 #       Triton kernels; Triton upgrade required.
