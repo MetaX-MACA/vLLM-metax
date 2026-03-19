@@ -227,77 +227,10 @@ class MacaPlatformBase(Platform):
         parallel_config = vllm_config.parallel_config
         compilation_config = vllm_config.compilation_config
         model_config = vllm_config.model_config
+        cache_config = vllm_config.cache_config
 
         if parallel_config.worker_cls == "auto":
             parallel_config.worker_cls = "vllm.v1.worker.gpu_worker.Worker"
-
-        cache_config = vllm_config.cache_config
-        if cache_config and cache_config.block_size is None:
-            cache_config.block_size = 16
-
-        # TODO(lucas): handle this more gracefully
-        # Note: model_config may be None during testing
-        # Note: block_size is initialized in
-        # HybridAttentionMambaModelConfig.verify_and_update_config
-        # for models with both attention and mamba,
-        # and doesn't need to be reinitialized here
-        if (
-            model_config is not None
-            and model_config.use_mla
-            and cache_config.block_size is not None
-        ):
-            use_sparse = hasattr(vllm_config.model_config.hf_config, "index_topk")
-            # If `--attention-config.backend` is not set and we are using MLA,
-            # then we default to FlashMLA backend for non-blackwell GPUs,
-            # else we default to CutlassMLA. For each case, we force the
-            # required block_size.
-            use_flashmla = False
-            use_cutlass_mla = False
-            use_flashinfer_mla = False
-
-            if backend := vllm_config.attention_config.backend is None:
-                use_flashmla = True
-            else:
-                # Forced case
-                backend = vllm_config.attention_config.backend
-                use_flashmla = backend == AttentionBackendEnum.FLASHMLA
-
-                # TODO(hank) Not implemented yet
-                use_cutlass_mla = backend == AttentionBackendEnum.CUTLASS_MLA
-                use_flashinfer_mla = backend == AttentionBackendEnum.FLASHINFER_MLA
-
-            from vllm_metax.v1.attention.ops.flashmla import is_flashmla_dense_supported
-
-            if (
-                use_flashmla
-                and is_flashmla_dense_supported()[0]
-                and cache_config.block_size % 64 != 0
-            ):
-                cache_config.block_size = 64
-                logger.info("Forcing kv cache block size to 64 for FlashMLA backend.")
-
-            if use_cutlass_mla and cache_config.block_size % 128 != 0:
-                cache_config.block_size = 128
-                logger.info(
-                    "Forcing kv cache block size to 128 for CUTLASS_MLA backend."
-                )
-
-            if (
-                use_flashinfer_mla
-                and cache_config.block_size != 32
-                and cache_config.block_size % 64 != 0
-            ):
-                cache_config.block_size = 64
-                logger.info(
-                    "Forcing kv cache block size to 64 for FlashInferMLA backend."
-                )
-
-            # TODO(Chen): remove this hacky code
-            if use_sparse and cache_config.block_size != 64:
-                cache_config.block_size = 64
-                logger.info(
-                    "Forcing kv cache block size to 64 for FlashMLASparse backend."
-                )
 
         scheduler_config = vllm_config.scheduler_config
 
@@ -387,10 +320,10 @@ class MacaPlatformBase(Platform):
         num_heads: int | None = None,
     ) -> tuple[
         list[tuple["AttentionBackendEnum", int]],
-        dict["AttentionBackendEnum", list[str]],
+        dict["AttentionBackendEnum", tuple[int, list[str]]],
     ]:
         valid_backends_priorities = []
-        invalid_reasons = {}
+        invalid_reasons: dict[AttentionBackendEnum, tuple[int, list[str]]] = {}
 
         backend_priorities = _get_backend_priorities(
             attn_selector_config.use_mla, device_capability, num_heads=num_heads
@@ -405,7 +338,7 @@ class MacaPlatformBase(Platform):
             except ImportError:
                 invalid_reasons_i = ["ImportError"]
             if invalid_reasons_i:
-                invalid_reasons[backend] = invalid_reasons_i
+                invalid_reasons[backend] = (priority, invalid_reasons_i)
             else:
                 valid_backends_priorities.append((backend, priority))
 
@@ -414,7 +347,7 @@ class MacaPlatformBase(Platform):
     @classmethod
     def get_attn_backend_cls(
         cls,
-        selected_backend: "AttentionBackendEnum",
+        selected_backend: "AttentionBackendEnum | None",
         attn_selector_config: "AttentionSelectorConfig",
         num_heads: int | None = None,
     ) -> str:
@@ -422,7 +355,6 @@ class MacaPlatformBase(Platform):
         device_capability = cls.get_device_capability()
         assert device_capability is not None
 
-        attn_selector_config = attn_selector_config._replace(block_size=None)
         # First try checking just the selected backend, if there is one.
         if selected_backend is not None:
             try:
@@ -444,7 +376,7 @@ class MacaPlatformBase(Platform):
 
         # No selected backend or the selected backend is invalid,
         # so we try finding a valid backend.
-        valid_backends_priorities, invalid_reasons = cls.get_valid_backends(
+        valid_backends_priorities, all_invalid_reasons = cls.get_valid_backends(
             device_capability=device_capability,
             attn_selector_config=attn_selector_config,
             num_heads=num_heads,
@@ -453,16 +385,15 @@ class MacaPlatformBase(Platform):
             "{"
             + ", ".join(
                 f"{backend.name}: [{', '.join(reasons)}]"
-                for backend, reasons in invalid_reasons.items()
+                for backend, (_, reasons) in all_invalid_reasons.items()
             )
             + "}"
         )
         config_str = attn_selector_config.__repr__()
-        if invalid_reasons:
-            logger.info_once(
-                f"Some attention backends are not valid for {cls.device_name} with "
-                f"{config_str}. Reasons: {reasons_str}."
-            )
+        logger.info_once(
+            f"Some attention backends are not valid for {cls.device_name} with "
+            f"{config_str}. Reasons: {reasons_str}."
+        )
         if len(valid_backends_priorities) == 0:
             raise ValueError(
                 f"No valid attention backend found for {cls.device_name} "
@@ -480,6 +411,28 @@ class MacaPlatformBase(Platform):
         )
         selected_index = sorted_indices[0]
         selected_backend = valid_backends_priorities[selected_index][0]
+        selected_priority = valid_backends_priorities[selected_index][1]
+
+        # If the user specified --block-size (but not --attention-backend),
+        # check whether that constraint precluded any higher-priority backends.
+        if attn_selector_config.block_size is not None:
+            excluded = [
+                backend
+                for backend, (priority, reasons) in all_invalid_reasons.items()
+                if priority < selected_priority
+                and reasons == ["block_size not supported"]
+            ]
+            if excluded:
+                names = ", ".join(b.name for b in excluded)
+                logger.warning(
+                    "--block-size %d precluded higher-priority backend(s) "
+                    "%s. Using %s instead, which may result in reduced "
+                    "performance. Consider removing --block-size to "
+                    "auto-select the optimal block size.",
+                    attn_selector_config.block_size,
+                    names,
+                    selected_backend.name,
+                )
         logger.info_once(
             "Using %s attention backend out of potential backends: %s",
             selected_backend.name,
@@ -514,7 +467,7 @@ class MacaPlatformBase(Platform):
             return backend
 
         # TODO(Hank) Need to check which is better between
-        # TORCH_SDPA or FLASH_ATTN on Maca platform
+        # TORCH_SDPA and FLASH_ATTN on Maca platform
         backend_class = AttentionBackendEnum.FLASH_ATTN.get_class()
         if backend_class.supports_head_size(head_size) and backend_class.supports_dtype(
             dtype
@@ -624,8 +577,12 @@ class MacaPlatformBase(Platform):
         return True
 
     @classmethod
-    def num_compute_units(cls, device_id=0):
+    def num_compute_units(cls, device_id=0) -> int:
         return torch.cuda.get_device_properties(device_id).multi_processor_count
+
+    @classmethod
+    def use_custom_op_collectives(cls) -> bool:
+        return True
 
     @classmethod
     def pre_register_and_update(
