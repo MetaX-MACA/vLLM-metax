@@ -9,6 +9,7 @@ from vllm.model_executor.layers.activation import (
     QuickGELU,
     SiluAndMul,
     SwigluOAIAndMul,
+    SwigluStepAndMul,
 )
 
 
@@ -38,6 +39,12 @@ class MacaGeluAndMul(GeluAndMul):
 
 @SwigluOAIAndMul.register_oot
 class MacaSwigluOAIAndMul(SwigluOAIAndMul):
+    def forward_oot(self, *args, **kwargs):
+        return self.forward_cuda(*args, **kwargs)
+
+
+@SwigluStepAndMul.register_oot
+class MacaSwigluStepAndMul(SwigluStepAndMul):
     def forward_oot(self, *args, **kwargs):
         return self.forward_cuda(*args, **kwargs)
 
