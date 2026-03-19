@@ -2,12 +2,10 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 from vllm.model_executor.layers.fused_moe.layer import (
     UnquantizedFusedMoEMethod as vllm_UnquantizedFusedMoEMethod,
+    logger,
 )
 
 import torch
-
-from vllm.platforms import current_platform, logger
-import vllm_metax.envs as envs
 
 import vllm.model_executor.layers.fused_moe.modular_kernel as mk
 from vllm.model_executor.layers.fused_moe.modular_kernel import (
@@ -27,22 +25,7 @@ from vllm.model_executor.layers.fused_moe.oracle.unquantized import (
     UnquantizedMoeBackend,
 )
 
-from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
-    TritonExperts as mx_TritonExperts,
-)
-
-from vllm.model_executor.layers.fused_moe.fused_moe import (
-    TritonExperts as vllm_TritonExperts,
-)
-
-
-def get_triton_experts_cls():
-    if envs.USE_VLLM_TRITON_EXPERT:
-        logger.info(
-            "Using vLLM's fused MoE implementation for debugging and comparison."
-        )
-        return vllm_TritonExperts
-    return mx_TritonExperts
+from vllm_metax.utils.fused_moe import get_triton_experts_cls
 
 
 TritonExperts = get_triton_experts_cls()
@@ -118,6 +101,3 @@ class UnquantizedFusedMoEMethod(vllm_UnquantizedFusedMoEMethod):
             expert_map=layer.expert_map,
             shared_experts_input=shared_experts_input,
         )
-
-    if current_platform.is_out_of_tree():
-        forward_native = forward_oot

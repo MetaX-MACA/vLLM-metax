@@ -28,7 +28,8 @@ class MacaCompressedTensorsConfig(vllm_ct.CompressedTensorsConfig):
             # Note: w4a8 may trigger ValueError in the CompressedTensorsMoEMethod,
             # but we'd handle it in our custom method below.
             # So we catch the exception and ensure it's a FusedMoE layer.
-            assert isinstance(layer, FusedMoE)
+            if not isinstance(layer, FusedMoE):
+                raise
         except Exception:
             raise
 
