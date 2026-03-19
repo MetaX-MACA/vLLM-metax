@@ -2280,7 +2280,7 @@ class TritonExperts(mk.FusedMoEExpertsModular):
             is_rocm_on_gfx9 = False
 
         device_supports_fp8 = is_rocm_on_gfx9 or (
-            p.is_cuda() and p.has_device_capability((8, 9))
+            p.is_cuda_alike() and p.has_device_capability((8, 9))
         )
 
         if not device_supports_fp8:

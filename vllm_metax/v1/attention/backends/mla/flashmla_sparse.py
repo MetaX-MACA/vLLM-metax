@@ -37,7 +37,7 @@ from vllm.v1.attention.backends.utils import (
     split_prefill_chunks,
 )
 from vllm_metax.v1.attention.ops.flashmla import (
-    flash_mla_sparse_fwd,
+    flash_mla_sparse_prefill,
     flash_mla_with_kvcache,
     get_mla_metadata,
 )
@@ -217,7 +217,7 @@ def get_prefill_workspace_size(max_model_len: int):
 
 class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetadata]):
     # Matax Note: not support AttentionCGSupport.UNIFORM_BATCH for now
-    _cudagraph_support: ClassVar[AttentionCGSupport] = AttentionCGSupport.NEVER
+    _cudagraph_support: ClassVar[AttentionCGSupport] = AttentionCGSupport.UNIFORM_BATCH
 
     def __init__(
         self,
@@ -818,12 +818,11 @@ class FlashMLASparseImpl(SparseMLAAttentionImpl[FlashMLASparseMetadata]):
             q = q_padded
 
         topk_indices = topk_indices.view(num_tokens, 1, -1)
-        output = flash_mla_sparse_fwd(
+        output = flash_mla_sparse_prefill(
             q,
             kv_c_and_k_pe_cache,
             topk_indices,
             self.softmax_scale,
-            is_all_indices_valid=not (topk_indices == -1).any(),
         )[0]
         output = output[:, : self.num_heads, :]
         return output

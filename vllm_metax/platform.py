@@ -142,6 +142,7 @@ class MacaPlatformBase(Platform):
         "compressed_tensors",  # This is `_` version of `-`
         "moe_wna16",
         "gguf",
+        "fp8",
     ]
 
     @classmethod
@@ -537,7 +538,7 @@ class MacaPlatformBase(Platform):
 
     @classmethod
     def supports_fp8(cls) -> bool:
-        return False
+        return True
 
     @classmethod
     def use_custom_allreduce(cls) -> bool:
