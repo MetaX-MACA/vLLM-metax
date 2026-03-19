@@ -11,11 +11,24 @@ from vllm.platforms import current_platform
 logger = init_logger(__name__)
 
 
+# /------------------------  Metax Modification -------------------------\
+if current_platform.is_out_of_tree():
+    try:
+        import flash_mla  # noqa: F401
+
+        _flashmla_AVAILABLE = True
+    except ImportError:
+        _flashmla_AVAILABLE = False
+else:
+    _flashmla_AVAILABLE = False
+# \------------------------  Metax Modification -------------------------/
+
+
 def _is_flashmla_available() -> tuple[bool, str | None]:
     """
     Return: is_supported_flag, unsupported_reason (optional).
     """
-    return True, None
+    return _flashmla_AVAILABLE, None
 
 
 def is_flashmla_dense_supported() -> tuple[bool, str | None]:
@@ -128,3 +141,44 @@ def torch_flash_mla_sparse_prefill(
     result = attn_score @ kvs[:, :, :512]
 
     return (result.to(torch.bfloat16), max_logits, lse)
+
+
+
+def flash_mla_sparse_prefill(
+    q: torch.Tensor,
+    kv: torch.Tensor,
+    indices: torch.Tensor,
+    sm_scale: float,
+    d_v: int = 512,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Sparse attention prefill kernel
+
+    Args:
+    - q: [s_q, h_q, d_qk], bfloat16
+    - kv: [s_kv, h_kv, d_qk], bfloat16
+    - indices: [s_q, h_kv, topk], int32.
+        Invalid indices should be set to -1 or numbers >= s_kv
+    - sm_scale: float
+    - d_v: The dimension of value vectors. Can only be 512
+
+    Returns:
+    - (output, max_logits, lse)
+        About the definition of output,
+        max_logits and lse, please refer to README.md
+    - output: [s_q, h_q, d_v], bfloat16
+    - max_logits:  [s_q, h_q], float
+    - lse: [s_q, h_q], float, 2-based log-sum-exp
+    """
+    # TODO: MetaX flash_mla support
+    # /------------------------  Metax Modification -------------------------\
+    s_kv = kv.shape[0]
+    indices_valid = torch.logical_and(indices != -1, indices < s_kv)
+    # [s_q, h_kv, topk] -> [s_q, h_kv] -> [s_q, 1]
+    indices_all_valid_per_q = indices_valid.all(dim=2).all(dim=1, keepdim=True)
+
+    results = flash_mla.flash_mla_interface.flash_mla_sparse_fwd(
+        q, kv, indices, sm_scale, d_v, indices_all_valid_per_q
+    )
+    # \------------------------- Metax Modification -------------------------/
+    return results

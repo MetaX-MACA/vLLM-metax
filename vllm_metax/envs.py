@@ -83,6 +83,9 @@ environment_variables: dict[str, Callable[[], Any]] = {
     "USE_VLLM_TRITON_EXPERT": lambda: bool(
         int(os.getenv("USE_VLLM_TRITON_EXPERT", "0"))
     ),
+
+    # if set, use fp8 deep gemm kernel for DSA
+    "MACA_VLLM_USE_FP8_SPARSE_ATTN_INDEXER": lambda: bool(int(os.environ.get("MACA_VLLM_USE_FP8_SPARSE_ATTN_INDEXER", "0"))),
 }
 
 

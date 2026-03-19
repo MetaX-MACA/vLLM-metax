@@ -68,7 +68,7 @@ from vllm.model_executor.layers.quantization.utils.fp8_utils import (
     per_token_group_quant_fp8,
 )
 from vllm.model_executor.layers.rotary_embedding import get_rope
-from vllm.model_executor.layers.sparse_attn_indexer import SparseAttnIndexer
+from vllm_metax.customized.layers.sparse_attn_indexer import SparseAttnIndexer
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     ParallelLMHead,
     VocabParallelEmbedding,
@@ -101,6 +101,8 @@ from vllm.model_executor.models.utils import (
     make_layers,
     maybe_prefix,
 )
+
+import vllm_metax.envs as mx_envs
 
 logger = init_logger(__name__)
 
@@ -665,15 +667,20 @@ class Indexer(nn.Module):
         #       where we store value in fp8 and scale in fp32
         #       per self.quant_block_size element
 
-        # ----------------------------------------------------------
-        # Metax Note: DeepseekV32IndexerCache uses bfloat16 for keys
-        # So we adjust head_dim accordingly
-        self.k_cache = DeepseekV32IndexerCache(
-            head_dim=self.head_dim, # + self.head_dim // self.quant_block_size * 4
-            dtype=torch.bfloat16,
-            prefix=f"{prefix}.k_cache",
-            cache_config=cache_config,
-        )
+        if mx_envs.MACA_VLLM_USE_FP8_SPARSE_ATTN_INDEXER:
+            self.k_cache = DeepseekV32IndexerCache(
+                head_dim=self.head_dim + self.head_dim // self.quant_block_size * 4,
+                dtype=torch.uint8,
+                prefix=f"{prefix}.k_cache",
+                cache_config=cache_config,
+            )
+        else:
+            self.k_cache = DeepseekV32IndexerCache(
+                head_dim=self.head_dim, # + self.head_dim // self.quant_block_size * 4
+                dtype=torch.bfloat16,
+                prefix=f"{prefix}.k_cache",
+                cache_config=cache_config,
+            )
         self.max_model_len = vllm_config.model_config.max_model_len
         self.prefix = prefix
         from vllm.v1.attention.backends.mla.indexer import get_max_prefill_buffer_size
@@ -717,29 +724,27 @@ class Indexer(nn.Module):
         # `k_pe` is [num_tokens, 1, rope_dim] (MQA).
         k = torch.cat([k_pe.squeeze(-2), k_nope], dim=-1)
 
-        # we only quant q here since k quant is fused with cache insertion
-        q = q.view(-1, self.head_dim)
+        q_scale = 1
+        if mx_envs.MACA_VLLM_USE_FP8_SPARSE_ATTN_INDEXER:
+            # we only quant q here since k quant is fused with cache insertion
+            q = q.view(-1, self.head_dim)
+            q_fp8, q_scale = per_token_group_quant_fp8(
+                q,
+                self.quant_block_size,
+                column_major_scales=False,
+                use_ue8m0=self.scale_fmt is not None,
+            )
+            # q_fp8 = q_fp8.view(-1, self.n_head, self.head_dim)
+            q = q_fp8
+            q_scale = q_scale.view(-1, self.n_head, 1)
 
-        # ----------------------------------------------------------------
-        # Metax Note: here we use bfloat16 for q, skip the processing below
-        # for fp8 quantization
-        # ----------------------------------------------------------------
-        # q_fp8, q_scale = per_token_group_quant_fp8_fake(
-        #     q,
-        #     self.quant_block_size,
-        #     column_major_scales=False,
-        #     use_ue8m0=self.scale_fmt is not None)
-        # q_fp8 = q_fp8.view(-1, self.n_head, self.head_dim)
-        # q_scale = q_scale.view(-1, self.n_head, 1)
-
+        q = q.view(-1, self.n_head, self.head_dim)
         weights, _ = self.weights_proj(hidden_states)
         weights = (
-            weights.unsqueeze(-1) * self.softmax_scale * self.n_head**-0.5
+            weights.unsqueeze(-1) * q_scale * self.softmax_scale * self.n_head**-0.5
         )
         weights = weights.squeeze(-1)
 
-        assert q.dtype == torch.bfloat16
-        assert k.dtype == torch.bfloat16
         return self.indexer_op(hidden_states, q, k, weights)
 
 
