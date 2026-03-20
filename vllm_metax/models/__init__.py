@@ -30,3 +30,7 @@ def register_model():
     ModelRegistry.register_model(
         "GlmMoeDsaForCausalLM", "vllm_metax.models.deepseek_v2:GlmMoeDsaForCausalLM"
     )
+
+    ModelRegistry.register_model(
+        "Step3p5MTP", "vllm_metax.models.step3p5_mtp:Step3p5MTP"
+    )
