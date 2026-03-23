@@ -2,7 +2,7 @@
 
 Currently the recommanded way to start ***vLLM-MetaX*** is via *docker*.
 
-You could get the docker image at [MetaX develop community](https://developer.metax-tech.com/softnova/docker).
+You could get the docker image at [MetaX develop community](https://developer.metax-tech.com/softnova/docker?chip_name=%E6%9B%A6%E4%BA%91C500%E7%B3%BB%E5%88%97&package_kind=AI&dimension=docker&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85&ai_frame=vllm-metax&arch=amd64&system=ubuntu).
 
 !!! note
     After v0.11.2, vllm-metax moved its `_C` and `_moe_C` kernel into a separate package named `mcoplib`. 
@@ -15,6 +15,8 @@ You could get the docker image at [MetaX develop community](https://developer.me
 
     **Please always use mcoplib for production usage.**
 
+## Releases
+
 *Belows is version mapping to released plugin and mcoplib with maca*:
 
 | plugin version | maca version | mcoplib version | docker distribution tag |
@@ -25,7 +27,8 @@ You could get the docker image at [MetaX develop community](https://developer.me
 |v0.11.0         |maca3.3.0.15   | 0.1.1 | vllm-metax:0.11.0-maca.ai3.3.0.11-torch2.6-py312-ubuntu22.04-amd64 |
 |v0.11.2         |maca3.3.0.15   | 0.2.0 | vllm-metax:0.11.2-maca.ai3.3.0.103-torch2.8-py312-ubuntu22.04-amd64 |
 |v0.12.0         |maca3.3.0.15   | 0.3.0 | vllm-metax:0.12.0-maca.ai3.3.0.204-torch2.8-py312-ubuntu22.04-amd64 |
-|master          |maca3.3.0.15   | >=0.3.0 | not released |
+|v0.13.0         |maca3.3.0.15   | 0.3.1 | vllm-metax:0.13.0-maca.ai3.3.0.303-torch2.8-py312-ubuntu22.04-amd64 |
+|v0.14.0         |maca3.5.3.x   | 0.4.1 | vllm-metax:0.14.0-maca.ai3.5.3.102-torch2.8-py312-ubuntu22.04-amd64 |
 
 !!! warning "Usage Warning"
     **vLLM-MetaX is out of box via these docker images.**
