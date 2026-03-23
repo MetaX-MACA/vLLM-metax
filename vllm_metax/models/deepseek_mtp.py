@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 import typing
 from collections.abc import Callable, Iterable
@@ -445,3 +446,4 @@ class DeepSeekMTP(nn.Module, DeepseekV2MixtureOfExperts):
             # treat shared weights as top level weights
             name = name.replace(f"model.layers.{spec_layer}.", "model.")
         return name
+
