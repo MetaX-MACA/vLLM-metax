@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 from dataclasses import dataclass
@@ -118,7 +119,12 @@ class FlashMLAMetadataBuilder(MLACommonMetadataBuilder[FlashMLAMetadata]):
         device: torch.device,
     ):
         super().__init__(
-            kv_cache_spec, layer_names, vllm_config, device, FlashMLAMetadata
+            kv_cache_spec,
+            layer_names,
+            vllm_config,
+            device,
+            FlashMLAMetadata,
+            supports_dcp_with_varlen=False,
         )
 
         self.num_q_heads = vllm_config.model_config.get_num_attention_heads(
@@ -304,6 +310,7 @@ class FlashMLAImpl(MLACommonImpl[FlashMLAMetadata]):
             # zeros of length B+1
             num_splits = torch.zeros((B + 1,), dtype=dtype, device=device)
 
+        # /------------------------  Metax Modification -------------------------\
         o, lse = flash_mla_with_kvcache(
             q=q,
             k_cache=kv_c_and_k_pe_cache.unsqueeze(-2),  # Add head dim of 1
@@ -316,8 +323,19 @@ class FlashMLAImpl(MLACommonImpl[FlashMLAMetadata]):
             causal=True,
             descale_q=layer._q_scale.reshape(1),
             descale_k=layer._k_scale.reshape(1),
+            cp_world_size=self.dcp_world_size,
+            cp_rank=self.dcp_rank,
+            cp_tot_seqused_k=attn_metadata.decode.dcp_tot_seq_lens,
         )
+        # \------------------------- Metax Modification -------------------------/
 
         o = reshape_attn_output_for_spec_decode(o)
+
+        # /------------------------  Metax Modification -------------------------\
+        if lse.dim() == 3:
+            total_tokens = lse.shape[0] * lse.shape[-1]
+            H = lse.shape[1]
+            lse = lse.transpose(1, 2).view(total_tokens, H)
+        # \------------------------- Metax Modification -------------------------/
 
         return o, lse

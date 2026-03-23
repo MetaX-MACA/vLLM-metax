@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 from typing import Optional
 
 import torch
@@ -11,6 +12,8 @@ from vllm.utils.math_utils import cdiv
 
 from vllm import _custom_ops as ops
 from vllm.model_executor.layers.fused_moe import utils
+from dataclasses import dataclass
+from vllm.model_executor.layers.fused_moe.config import FusedMoEQuantConfig
 
 logger = init_logger(__name__)
 
@@ -47,4 +50,12 @@ def _int8_quantize(
     return A, A_scale
 
 
+@dataclass
+class MacaFusedMoEQuantConfig(FusedMoEQuantConfig):
+    @property
+    def use_int4_w4a8(self):
+        return self._a1.dtype == "int8" and self._w1.dtype == "int4"
+
+
 utils._int8_quantize = _int8_quantize
+FusedMoEQuantConfig.use_int4_w4a8 = MacaFusedMoEQuantConfig.use_int4_w4a8

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 import torch
 
 from vllm.distributed import get_dp_group, get_ep_group, get_tp_group
@@ -50,10 +51,15 @@ class CoArAll2AllManager(All2AllManagerBase):
         hidden_states: torch.Tensor,
         router_logits: torch.Tensor,
         is_sequence_parallel: bool = False,
+        extra_tensors: list[torch.Tensor] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Gather hidden_states and router_logits from all dp ranks.
         """
+        if extra_tensors is not None:
+            raise NotImplementedError(
+                "extra_tensors is not supported for NaiveAll2AllManager"
+            )
         dp_metadata = get_forward_context().dp_metadata
         assert dp_metadata is not None
         sp_size = self.tp_group.world_size if is_sequence_parallel else 1

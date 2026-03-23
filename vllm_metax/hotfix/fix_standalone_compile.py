@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 
 # -----------------------------------------------------
 # Note: This is a hotfix for torch2.8+metax to make the
@@ -185,18 +186,6 @@ torch._functorch._aot_autograd.autograd_cache.autograd_cache_key = autograd_cach
 # (`torch.backends.cuda.matmul.allow_tf32 = True is going to be deprecated)
 #
 # https://docs.pytorch.org/docs/stable/notes/cuda.html
-def __getattr__(self, name):
-    if name == "allow_tf32":
-        return torch._C._get_cublas_allow_tf32()
-    elif name == "allow_fp16_reduced_precision_reduction":
-        return torch._C._get_cublas_allow_fp16_reduced_precision_reduction()
-    elif name == "allow_bf16_reduced_precision_reduction":
-        return torch._C._get_cublas_allow_bf16_reduced_precision_reduction()
-    elif name == "allow_fp16_accumulation":
-        return torch._C._get_cublas_allow_fp16_accumulation()
-    elif name == "fp32_precision":
-        return "tf32" if torch._C._get_cublas_allow_tf32() else "ieee"
-    raise AttributeError("Unknown attribute " + name)
 
 
 def __setattr__(self, name, value):

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 """Code inside this file can safely assume cuda platform, e.g. importing
 pynvml. However, it should not initialize cuda context.
 """
@@ -204,6 +205,7 @@ class MacaPlatformBase(Platform):
         try:
             if mx_envs.USE_PRECOMPILED_KERNEL:
                 import mcoplib._moe_C  # noqa: F401
+                import mcoplib.sgl_kernel
             else:
                 import vllm_metax._moe_C  # noqa: F401
         except ImportError as e:

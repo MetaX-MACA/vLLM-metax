@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 # Adapted from
@@ -617,13 +618,13 @@ def sparse_attn_indexer(
 ) -> torch.Tensor:
     # careful! this will be None in dummy run
     attn_metadata = get_forward_context().attn_metadata
+
     # assert isinstance(attn_metadata, dict)
     if not isinstance(attn_metadata, dict):
         # Reserve workspace for indexer during profiling run
         # TODO(hank): !!!check logic here!!!
         current_workspace_manager().get_simultaneous(
             ((total_seq_lens, head_dim), torch.bfloat16),
-            ((total_seq_lens, 4), torch.uint8),
         )
 
         return sparse_attn_indexer_fake(
@@ -663,17 +664,12 @@ def sparse_attn_indexer(
         # Get the full shared workspace buffers once (will allocate on first use)
         workspace_manager = current_workspace_manager()
         #TODO(hank): !!!check logic here!!!
-        k_fp16_full, k_scale_full = workspace_manager.get_simultaneous(
+        k_bf16_full = workspace_manager.get_simultaneous(
             ((total_seq_lens, head_dim), torch.bfloat16),
-            ((total_seq_lens, 4), torch.uint8),
-        )
+        )[0]
 
         for chunk in prefill_metadata.chunks:
-            _k_bf16 = torch.empty(
-                [chunk.total_seq_lens, head_dim],
-                device=k_bf16.device,
-                dtype=torch.bfloat16,
-            )
+            _k_bf16 = k_bf16_full[: chunk.total_seq_lens]
             k_scale = None
             mx_ops.cp_gather_indexer_k_quant_cache(
                 kv_cache,
@@ -690,7 +686,7 @@ def sparse_attn_indexer(
                 chunk.cu_seqlen_ke,
             )
             num_rows = logits.shape[0]
-            assert topk_tokens == 2048, "top_k_per_row assumes size 2048"
+            # assert topk_tokens == 2048, "top_k_per_row assumes size 2048"
             topk_indices = topk_indices_buffer[
                 chunk.token_start : chunk.token_end, :topk_tokens
             ]
@@ -735,8 +731,8 @@ def sparse_attn_indexer(
             max_model_len,
         )
         num_rows = logits.shape[0]
-        assert topk_tokens == 2048, "top_k_per_row assumes size 2048"
-        topk_indices = topk_indices_buffer[:num_decode_tokens, :topk_tokens]
+        # assert topk_tokens == 2048, "top_k_per_row assumes size 2048"
+        topk_indices = topk_indices_buffer[:num_padded_tokens, :topk_tokens]
 
         mx_ops.top_k_per_row_decode(
             logits,
@@ -752,9 +748,9 @@ def sparse_attn_indexer(
                 topk_indices.reshape(batch_size, -1, topk_indices.shape[-1]),
                 decode_lens,
             )
-        topk_indices_buffer[:num_decode_tokens, : topk_indices.shape[-1]] = (
-            topk_indices.to(dtype=torch.int32)
-        )
+            topk_indices_buffer[:num_decode_tokens, : topk_indices.shape[-1]] = (
+                topk_indices
+            )
 
     return topk_indices_buffer
 
@@ -777,11 +773,11 @@ def sparse_attn_indexer_fake(
     # profile run
     # NOTE(Chen): create the max possible flattened_kv. So that
     # profile_run can get correct memory usage.
-    _flattened_kv = torch.empty(
-        [total_seq_lens, head_dim], device=k.device, dtype=torch.bfloat16
-    )
-    _k = _flattened_kv[..., :head_dim].view(torch.bfloat16).contiguous()
-    _k_scale = _flattened_kv[..., head_dim:].view(torch.float32).contiguous()
+    #_flattened_kv = torch.empty(
+    #    [total_seq_lens, head_dim], device=k.device, dtype=torch.bfloat16
+    #)
+    #_k = _flattened_kv[..., :head_dim].view(torch.bfloat16).contiguous()
+    #_k_scale = _flattened_kv[..., head_dim:].view(torch.float32).contiguous()
     return topk_indices_buffer
 
 
@@ -876,8 +872,17 @@ class Indexer(nn.Module):
         )
 
         q_pe, k_pe = rotary_emb(positions, q_pe, k_pe.unsqueeze(1))
+        # q = torch.cat([q_pe.squeeze(0), q_nope], dim=-1)
+        # k = torch.cat([k_pe.squeeze((0, 2)), k_nope], dim=-1)# Note: RoPE (NeoX) can introduce extra leading dimensions during compilation
+        # so we need to reshape back to token-flattened shapes
+        q_pe = q_pe.reshape(-1, self.n_head, self.rope_dim)
+        k_pe = k_pe.reshape(-1, 1, self.rope_dim)
+
+        # `rotary_emb` is shape-preserving; `q_pe` is already
+        # [num_tokens, n_head, rope_dim].
         q = torch.cat([q_pe, q_nope], dim=-1)
-        k = torch.cat([k_pe.squeeze(1), k_nope], dim=-1)
+        # `k_pe` is [num_tokens, 1, rope_dim] (MQA).
+        k = torch.cat([k_pe.squeeze(-2), k_nope], dim=-1)
 
         # we only quant q here since k quant is fused with cache insertion
         # q = q.view(-1, self.head_dim)
@@ -1041,7 +1046,7 @@ class DeepseekV2MLAAttention(nn.Module):
                 qk_rope_head_dim,
                 max_position=max_position_embeddings,
                 rope_parameters=config.rope_parameters,
-                is_neox_style=True,
+                is_neox_style=not getattr(config, "indexer_rope_interleave", True),
             )
             self.indexer = Indexer(
                 vllm_config,
@@ -1315,10 +1320,10 @@ class DeepseekV2Model(nn.Module):
         # -----------------------------------------------------
         # Note: it need to be a explicit variable to make torch
         #       compile happy, do not make it like:
-        # 
+        #
         #           llama_4_scaling_config = getattr(config, "llama_4_scaling", None)
-        # 
-        #       torch compile might omit the default value of 
+        #
+        #       torch compile might omit the default value of
         #       `None` at eval-time.
         llama_4_scaling_config = self._llama_4_scaling_config
         llama_4_scaling: torch.Tensor | None
@@ -1716,6 +1721,8 @@ class DeepseekForCausalLM(DeepseekV2ForCausalLM):
 class DeepseekV3ForCausalLM(DeepseekV2ForCausalLM):
     pass
 
+class GlmMoeDsaForCausalLM(DeepseekV2ForCausalLM):
+    pass
 
 # Compatibility with
 # https://huggingface.co/deepseek-ai/DeepSeek-V3-Base/blob/main/configuration_deepseek.py

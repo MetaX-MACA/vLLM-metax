@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """Fused MoE Triton kernels."""
 
@@ -53,6 +54,8 @@ from vllm.utils.deep_gemm import is_deep_gemm_e8m0_used
 from vllm.utils.torch_utils import direct_register_custom_op, is_torch_equal_or_newer
 
 from vllm.model_executor.layers.fused_moe.fused_moe import logger
+
+from vllm_metax import _custom_ops as mx_ops
 
 _mctlass_modname = (
     "vllm_metax.model_executor.layers.quantization._python_api_ops"
@@ -830,6 +833,7 @@ def invoke_fused_moe_triton_kernel(
     use_fp8_w8a8: bool,
     use_int8_w8a8: bool,
     use_int8_w8a16: bool,
+    use_int4_w4a8: bool,
     use_int4_w4a16: bool,
     per_channel_quant: bool,
     block_shape: list[int] | None = None,
@@ -847,7 +851,7 @@ def invoke_fused_moe_triton_kernel(
         assert block_shape is None or triton.cdiv(
             B.size(-1), block_shape[1]
         ) == B_scale.size(-1)
-    elif use_int8_w8a16 or use_int4_w4a16:
+    elif use_int8_w8a16 or use_int4_w4a16 or use_int4_w4a8:
         assert B_scale is not None
         assert block_shape is None or block_shape[0] == 0
     else:
@@ -890,6 +894,46 @@ def invoke_fused_moe_triton_kernel(
             top_k,
             mul_routed_weight,
         )
+    elif use_int4_w4a8:
+        # if block_shape is None，then Per-Channel
+        if block_shape is None:
+            # is Per-Channel
+            mctlass_ops.cutlass_moe_mm_w4a8_per_channel(
+                a=A,
+                b=B,
+                c=C,
+                a_scales=A_scale,
+                b_scales=B_scale,
+                b_bias=B_bias,
+                topk_weights=topk_weights,
+                token_ids=sorted_token_ids,
+                expert_ids=expert_ids,
+                num_tokens_post_padded=num_tokens_post_padded,
+                EM=EM,
+                topk=top_k,
+                mul_routed_weight=mul_routed_weight,
+            )
+        else:
+            mctlass_ops.cutlass_moe_w4a8_gemm(
+                A,
+                B.view(dtype=torch.quint4x2),
+                C,
+                A_scale,
+                B_scale,
+                topk_weights,
+                sorted_token_ids,
+                expert_ids,
+                num_tokens_post_padded,
+                B.size(0),
+                A.size(0),
+                B.size(1),
+                B.size(2) * 8,
+                num_tokens,
+                EM,
+                top_k,
+                mul_routed_weight,
+                group_size=block_shape[1],
+            )
     else:
         config = config.copy()
         if HAS_BIAS and config.get("SPLIT_K", 1) != 1:
@@ -965,6 +1009,7 @@ def dispatch_fused_moe_kernel(
     use_fp8_w8a8: bool,
     use_int8_w8a8: bool,
     use_int8_w8a16: bool,
+    use_int4_w4a8: bool,
     use_int4_w4a16: bool,
     per_channel_quant: bool,
     block_shape: list[int] | None = None,
@@ -1043,6 +1088,7 @@ def dispatch_fused_moe_kernel(
             use_fp8_w8a8,
             use_int8_w8a8,
             use_int8_w8a16,
+            use_int4_w4a8,
             use_int4_w4a16,
             per_channel_quant,
             block_shape,
@@ -1558,7 +1604,9 @@ def grouped_topk(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     if (
         envs.VLLM_USE_FUSED_MOE_GROUPED_TOPK
-        and current_platform.is_cuda()
+        # ┌------------------------  Metax Modification -------------------------┐
+        and current_platform.is_cuda_alike()
+        # └------------------------- Metax Modification -------------------------┘
         and num_expert_group <= 32
         and topk <= 32
         and e_score_correction_bias is not None
@@ -1713,23 +1761,96 @@ def fused_grouped_topk(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     assert hidden_states.size(0) == gating_output.size(0), "Number of tokens mismatch"
 
-    if scoring_func == "sigmoid":
-        # Fully fused kernel path for sigmoid
-        topk_values, topk_indices = ops.grouped_topk(
-            gating_output,  # raw logits
+    # mcoplib/mxop/moe_fused_gate_opt.cu
+    def is_sgl_fused_moe_gate_opt_support(
+        num_shared_experts, num_experts, num_expert_group, topk_group, topk
+    ):
+        SUPPORTED = {
+            (0, 160, 1, 1, 8),
+            (1, 160, 1, 1, 9),
+            (0, 256, 8, 4, 8),
+            (1, 256, 8, 4, 9),
+            (2, 256, 8, 4, 9),
+            (0, 320, 1, 1, 8),
+            (1, 320, 1, 1, 9),
+            (2, 320, 1, 1, 9),
+            (0, 384, 1, 1, 8),
+            (1, 384, 1, 1, 9),
+            (2, 384, 1, 1, 9),
+            (0, 448, 1, 1, 8),
+            (1, 448, 1, 1, 9),
+            (2, 448, 1, 1, 9),
+        }
+
+        return (
+            num_shared_experts,
+            num_experts,
             num_expert_group,
             topk_group,
             topk,
-            renormalize,
-            routed_scaling_factor,
-            e_score_correction_bias,
-            1,  # scoring_func=1 for sigmoid
+        ) in SUPPORTED
+
+    if scoring_func == "sigmoid":
+        # Fully fused kernel path for sigmoid
+        # ┌------------------------  Metax Modification -------------------------┐
+        deepseek = (topk == 8 and num_expert_group == 8 and topk_group == 4) or (
+            topk == 9 and num_expert_group == 8 and topk_group == 4
         )
+        kimi = (topk == 8 and num_expert_group == 1 and topk_group == 1) or (
+            topk == 9 and num_expert_group == 1 and topk_group == 1
+        )
+        is_support = is_sgl_fused_moe_gate_opt_support(
+            0, gating_output.shape[1], num_expert_group, topk_group, topk
+        )
+        if (
+            mx_envs.MACA_USE_SGL_FUSED_MOE_GROUPED_TOPK
+            and (gating_output.shape[1] // num_expert_group <= 384)
+            and (kimi or deepseek)
+            and is_support
+        ):
+            bias_bf16 = e_score_correction_bias.to(torch.bfloat16)
+            topk_values = torch.empty(
+                (hidden_states.shape[0], topk),
+                dtype=torch.float,
+                device=hidden_states.device,
+            )
+            topk_indices = torch.empty(
+                (hidden_states.shape[0], topk),
+                dtype=torch.int,
+                device=hidden_states.device,
+            )
+            mx_ops.sgl_fused_moe_gate_opt(
+                gating_output,
+                bias_bf16,
+                topk_values,
+                topk_indices,
+                topk,
+                renormalize,
+                num_expert_group,
+                topk_group,
+                0,  # num_shared_experts
+                routed_scaling_factor,
+            )
+        else:
+            topk_values, topk_indices = mx_ops.grouped_topk(
+                gating_output,  # raw logits
+                num_expert_group,
+                topk_group,
+                topk,
+                renormalize,
+                routed_scaling_factor,
+                e_score_correction_bias.to(gating_output.dtype),
+                1,  # scoring_func=1 for sigmoid
+            )
+        # └------------------------- Metax Modification -------------------------┘
     elif scoring_func == "softmax":
         # Apply softmax in Python, then use fused kernel
         # TODO: Add support for softmax in kernel
         scores = torch.softmax(gating_output, dim=-1)
-        topk_values, topk_indices = ops.grouped_topk(
+
+        # ┌------------------------  Metax Modification -------------------------┐
+        topk_values, topk_indices = mx_ops.grouped_topk(
+            # └------------------------- Metax Modification -------------------------┘
             scores,  # pre-computed scores
             num_expert_group,
             topk_group,
@@ -1757,6 +1878,7 @@ def inplace_fused_experts(
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
+    use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
@@ -1784,6 +1906,7 @@ def inplace_fused_experts(
         use_fp8_w8a8,
         use_int8_w8a8,
         use_int8_w8a16,
+        use_int4_w4a8,
         use_int4_w4a16,
         ocp_mx_scheme,
         per_channel_quant,
@@ -1812,6 +1935,7 @@ def inplace_fused_experts_fake(
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
+    use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
@@ -1854,6 +1978,7 @@ def outplace_fused_experts(
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
+    use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
@@ -1881,6 +2006,7 @@ def outplace_fused_experts(
         use_fp8_w8a8,
         use_int8_w8a8,
         use_int8_w8a16,
+        use_int4_w4a8,
         use_int4_w4a16,
         ocp_mx_scheme,
         per_channel_quant,
@@ -1908,6 +2034,7 @@ def outplace_fused_experts_fake(
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
+    use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
@@ -2014,6 +2141,7 @@ def fused_experts(
             use_fp8_w8a8=quant_config.use_fp8_w8a8,
             use_int8_w8a8=quant_config.use_int8_w8a8,
             use_int8_w8a16=quant_config.use_int8_w8a16,
+            use_int4_w4a8=quant_config.use_int4_w4a8,
             use_int4_w4a16=quant_config.use_int4_w4a16,
             ocp_mx_scheme=quant_config.ocp_mx_scheme,
             per_channel_quant=quant_config.per_act_token_quant,
@@ -2034,6 +2162,7 @@ def fused_experts(
 def _get_config_quant_dtype(
     use_fp8_w8a8: bool,
     use_int8_w8a8: bool,
+    use_int4_w4a8: bool,
     ocp_mx_scheme: str | None,
 ) -> None | torch.dtype | str:
     """
@@ -2045,7 +2174,7 @@ def _get_config_quant_dtype(
     """
     if use_fp8_w8a8:
         return torch.float8_e4m3fn
-    elif use_int8_w8a8:
+    elif use_int4_w4a8 or use_int8_w8a8:
         return torch.int8
     elif ocp_mx_scheme == "w_mxfp4_a_mxfp4":
         return "mxfp4"
@@ -2068,6 +2197,7 @@ def fused_experts_impl(
     use_fp8_w8a8: bool = False,
     use_int8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
+    use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
@@ -2084,7 +2214,10 @@ def fused_experts_impl(
     w2_bias: torch.Tensor | None = None,
 ) -> torch.Tensor:
     # Check constraints.
-    if use_int4_w4a16:
+    if use_int4_w4a8:
+        # 8bit activation and int4 packed weight
+        assert hidden_states.size(1) // 8 == w1.size(2), "hidden size mismatch"
+    elif use_int4_w4a16:
         assert hidden_states.size(1) // 2 == w1.size(2), "Hidden size mismatch"
     elif ocp_mx_scheme is not None:
         if ocp_mx_scheme in {
@@ -2127,6 +2260,7 @@ def fused_experts_impl(
     config_dtype = get_config_dtype_str(
         use_fp8_w8a8=use_fp8_w8a8,
         # ┌------------------------  Metax Modification -------------------------┐
+        use_int4_w4a8=use_int4_w4a8,
         use_int8_w8a8=use_int8_w8a8,
         # └------------------------- Metax Modification -------------------------┘
         use_int8_w8a16=use_int8_w8a16,
@@ -2140,6 +2274,7 @@ def fused_experts_impl(
     quant_dtype = _get_config_quant_dtype(
         use_fp8_w8a8=use_fp8_w8a8,
         use_int8_w8a8=use_int8_w8a8,
+        use_int4_w4a8=use_int4_w4a8,
         ocp_mx_scheme=ocp_mx_scheme,
     )
 
@@ -2278,6 +2413,10 @@ def fused_experts_impl(
                 and block_shape is not None
                 and block_shape[1] > 0
             )
+            and not (
+                (use_int8_w8a8 or use_int4_w4a8)
+                and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+            )
         )
 
         if not naive_block_assignment:
@@ -2292,6 +2431,40 @@ def fused_experts_impl(
                 # override kernel_m to config["BLOCK_SIZE_M"]
                 stage1_config["BLOCK_SIZE_M"] = kernel_m
                 stage2_config["BLOCK_SIZE_M"] = kernel_m
+
+            if use_int4_w4a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API:
+                if block_shape is None:
+                    # is Per-Channel
+                    kernel_m = mctlass_ops.cutlass_moe_mm_w4a8_get_kernel_m_per_channel(
+                        a=curr_hidden_states,
+                        b=w1,
+                        c=intermediate_cache1,
+                        K=K,
+                        num_valid_tokens=curr_hidden_states.size(0) * top_k_num,
+                        topk=top_k_num,
+                    )
+                else:
+                    # is Per-Block
+                    kernel_m = mctlass_ops.mctlassEx_fused_moe_w4a8_get_kernel_m(
+                        qcurr_hidden_states,
+                        w1.view(dtype=torch.quint4x2),
+                        intermediate_cache1,
+                        num_experts=w1.size(0),
+                        batch_size=qcurr_hidden_states.size(0),
+                        N=N,
+                        K=K,
+                        num_valid_tokens=num_tokens,
+                        topk=top_k_num,
+                        group_size=block_shape[1],
+                    )
+
+                assert kernel_m > 0, (
+                    "cutlass_fused_moe_w4a8 BLOCK_SIZE_M must greater than zero."
+                )
+                # override kernel_m to config["BLOCK_SIZE_M"]
+                stage1_config["BLOCK_SIZE_M"] = kernel_m
+                stage2_config["BLOCK_SIZE_M"] = kernel_m
+
             # └------------------------- Metax Modification -------------------------┘
             sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
                 curr_topk_ids,
@@ -2332,6 +2505,7 @@ def fused_experts_impl(
             use_fp8_w8a8=use_fp8_w8a8,
             use_int8_w8a8=use_int8_w8a8,
             use_int8_w8a16=use_int8_w8a16,
+            use_int4_w4a8=use_int4_w4a8,
             use_int4_w4a16=use_int4_w4a16,
             per_channel_quant=per_channel_quant,
             block_shape=block_shape,
@@ -2419,6 +2593,7 @@ def fused_experts_impl(
                 use_fp8_w8a8=use_fp8_w8a8,
                 use_int8_w8a8=use_int8_w8a8,
                 use_int8_w8a16=use_int8_w8a16,
+                use_int4_w4a8=use_int4_w4a8,
                 use_int4_w4a16=use_int4_w4a16,
                 per_channel_quant=per_channel_quant,
                 block_shape=block_shape,
@@ -2523,6 +2698,7 @@ class TritonExperts(mk.FusedMoEPermuteExpertsUnpermute):
         config_dtype = get_config_dtype_str(
             dtype=hidden_states.dtype,
             use_int4_w4a16=self.quant_config.use_int4_w4a16,
+            use_int4_w4a8=self.quant_config.use_int4_w4a8,
             use_int8_w8a8=self.quant_config.use_int8_w8a8,
             use_int8_w8a16=self.quant_config.use_int8_w8a16,
             use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
@@ -2597,6 +2773,7 @@ class TritonExperts(mk.FusedMoEPermuteExpertsUnpermute):
             use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
             use_int8_w8a8=self.quant_config.use_int8_w8a8,
             use_int8_w8a16=self.quant_config.use_int8_w8a16,
+            use_int4_w4a8=self.quant_config.use_int4_w4a8,
             use_int4_w4a16=self.quant_config.use_int4_w4a16,
             per_channel_quant=self.per_act_token_quant,
             block_shape=self.block_shape,
@@ -2644,6 +2821,7 @@ class TritonExperts(mk.FusedMoEPermuteExpertsUnpermute):
             use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
             use_int8_w8a8=self.quant_config.use_int8_w8a8,
             use_int8_w8a16=self.quant_config.use_int8_w8a16,
+            use_int4_w4a8=self.quant_config.use_int4_w4a8,
             use_int4_w4a16=self.quant_config.use_int4_w4a16,
             per_channel_quant=self.per_act_token_quant,
             block_shape=self.block_shape,
@@ -2713,6 +2891,7 @@ class TritonWNA16Experts(TritonExperts):
         config_dtype = get_config_dtype_str(
             dtype=hidden_states.dtype,
             use_int4_w4a16=self.quant_config.use_int4_w4a16,
+            use_int4_w4a8=self.quant_config.use_int4_w4a8,
             use_int8_w8a8=self.quant_config.use_int8_w8a8,
             use_int8_w8a16=self.quant_config.use_int8_w8a16,
             use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
@@ -2848,6 +3027,7 @@ def get_config_dtype_str(
     dtype: torch.dtype,
     use_int4_w4a16: bool | None = False,
     # ┌------------------------  Metax Modification -------------------------┐
+    use_int4_w4a8: bool | None = False,
     use_int8_w8a8: bool | None = False,
     # └------------------------- Metax Modification -------------------------┘
     use_int8_w8a16: bool | None = False,
@@ -2857,6 +3037,8 @@ def get_config_dtype_str(
     if use_fp8_w8a8:
         return "fp8_w8a8"
     # ┌------------------------  Metax Modification -------------------------┐
+    elif use_int4_w4a8:
+        return "int4_w4a8"
     elif use_int8_w8a8:
         return "int8_w8a8"
     # └------------------------- Metax Modification -------------------------┘

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 # adapted from: https://github.com/deepseek-ai/FlashMLA/blob/main/flash_mla/flash_mla_interface.py
 
@@ -99,6 +100,9 @@ def flash_mla_with_kvcache(
     descale_k: torch.Tensor | None = None,
     is_fp8_kvcache: bool = False,
     indices: torch.Tensor | None = None,
+    cp_world_size: int = 1,
+    cp_rank: int = 0,
+    cp_tot_seqused_k: torch.tensor = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Arguments:
@@ -158,6 +162,9 @@ def flash_mla_with_kvcache(
             num_splits,
             softmax_scale,
             causal,
+            cp_world_size=cp_world_size,
+            cp_rank=cp_rank,
+            cp_tot_seqlen_k=cp_tot_seqused_k,
         )
     # \------------------------- Metax Modification -------------------------/
     # Note(hc): need revisit when we support DCP with decode query_len > 1.
@@ -226,10 +233,13 @@ def flash_mla_sparse_prefill(
     """
     # TODO: MetaX flash_mla support
     # /------------------------  Metax Modification -------------------------\
-    min_seq_len = -1 if (indices == -1).any() else 2049
+    s_kv = kv.shape[0]
+    indices_valid = torch.logical_and(indices != -1, indices < s_kv)
+    # [s_q, h_kv, topk] -> [s_q, h_kv] -> [s_q, 1]
+    indices_all_valid_per_q = indices_valid.all(dim=2).all(dim=1, keepdim=True)
 
     results = flash_mla.flash_mla_interface.flash_mla_sparse_fwd(
-        q, kv, indices, sm_scale, d_v, min_seq_len
+        q, kv, indices, sm_scale, d_v, indices_all_valid_per_q
     )
     # \------------------------- Metax Modification -------------------------/
     return results

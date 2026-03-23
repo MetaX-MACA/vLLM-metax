@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 
 import os
 from typing import TYPE_CHECKING, Any, Callable
@@ -57,6 +58,10 @@ environment_variables: dict[str, Callable[[], Any]] = {
     ),
     # if set, enable combine allreduce all2all
     "MACA_DP_OPT": lambda: bool(int(os.environ.get("MACA_DP_OPT", "0"))),
+    # if set, enable sglang fused grouped topk ops on deepseek and kimi model
+    "MACA_USE_SGL_FUSED_MOE_GROUPED_TOPK": lambda: bool(
+        int(os.getenv("MACA_USE_SGL_FUSED_MOE_GROUPED_TOPK", "0"))
+    ),
 }
 
 
