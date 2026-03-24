@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 import numpy as np
 import torch
 import torch.nn as nn
@@ -14,7 +15,9 @@ from vllm.v1.attention.backends.tree_attn import (
 )
 from vllm.v1.sample.metadata import SamplingMetadata
 from vllm.v1.spec_decode.eagle import SpecDecodeBaseProposer
+
 PADDING_SLOT_ID = -1
+
 
 class MacaSpecDecodeBaseProposer(SpecDecodeBaseProposer):
     def propose(
@@ -31,7 +34,7 @@ class MacaSpecDecodeBaseProposer(SpecDecodeBaseProposer):
         slot_mappings: dict[str, torch.Tensor]
         | list[dict[str, torch.Tensor]]
         | None = None,
-    )-> torch.Tensor:
+    ) -> torch.Tensor:
         batch_size = common_attn_metadata.batch_size()
 
         if self.method == "eagle3":
@@ -147,9 +150,9 @@ class MacaSpecDecodeBaseProposer(SpecDecodeBaseProposer):
             return draft_token_ids.view(-1, 1)
 
         if self.uses_mrope:
-        #----------------------修改的地方-----------------------------#
+            # ----------------------修改的地方-----------------------------#
             positions = self.mrope_positions[:, last_token_indices]
-        #------------------------------------------------------------#
+        # ------------------------------------------------------------#
         else:
             positions = self.positions[last_token_indices]
         if self.method in (
@@ -347,6 +350,6 @@ class MacaSpecDecodeBaseProposer(SpecDecodeBaseProposer):
         # [batch_size, num_speculative_tokens]
         draft_token_ids = torch.stack(draft_token_ids_list, dim=1)
         return draft_token_ids
- 
-SpecDecodeBaseProposer.propose = MacaSpecDecodeBaseProposer.propose
 
+
+SpecDecodeBaseProposer.propose = MacaSpecDecodeBaseProposer.propose

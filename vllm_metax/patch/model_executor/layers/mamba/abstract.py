@@ -1,6 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
 from vllm.config import VllmConfig
 from vllm.v1.kv_cache_interface import KVCacheSpec, MambaSpec
 from vllm.model_executor.layers.mamba.abstract import MambaBase
+
 
 def maca_get_kv_cache_spec(self, vllm_config: VllmConfig) -> KVCacheSpec | None:
     if (
@@ -26,5 +28,6 @@ def maca_get_kv_cache_spec(self, vllm_config: VllmConfig) -> KVCacheSpec | None:
             else 0
         ),
     )
+
 
 MambaBase.get_kv_cache_spec = maca_get_kv_cache_spec

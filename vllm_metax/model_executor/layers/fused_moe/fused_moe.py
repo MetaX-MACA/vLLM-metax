@@ -911,28 +911,28 @@ def invoke_fused_moe_triton_kernel(
                 num_tokens_post_padded=num_tokens_post_padded,
                 EM=EM,
                 topk=top_k,
-                mul_routed_weight=mul_routed_weight
+                mul_routed_weight=mul_routed_weight,
             )
         else:
             mctlass_ops.cutlass_moe_w4a8_gemm(
-                A, 
-                B.view(dtype = torch.quint4x2), 
-                C, 
-                A_scale, 
-                B_scale, 
-                topk_weights, 
-                sorted_token_ids, 
-                expert_ids, 
-                num_tokens_post_padded, 
-                B.size(0), 
-                A.size(0), 
-                B.size(1), 
-                B.size(2)*8, 
-                num_tokens, 
-                EM, 
+                A,
+                B.view(dtype=torch.quint4x2),
+                C,
+                A_scale,
+                B_scale,
+                topk_weights,
+                sorted_token_ids,
+                expert_ids,
+                num_tokens_post_padded,
+                B.size(0),
+                A.size(0),
+                B.size(1),
+                B.size(2) * 8,
+                num_tokens,
+                EM,
                 top_k,
-                mul_routed_weight, 
-                group_size=block_shape[1]
+                mul_routed_weight,
+                group_size=block_shape[1],
             )
     else:
         config = config.copy()
@@ -1781,9 +1781,7 @@ def _get_config_quant_dtype(
     """
     if use_fp8_w8a8:
         return torch.float8_e4m3fn
-    elif use_int4_w4a8:
-        return torch.int8
-    elif use_int8_w8a8:
+    elif use_int4_w4a8 or use_int8_w8a8:
         return torch.int8
     elif ocp_mx_scheme == "w_mxfp4_a_mxfp4":
         return "mxfp4"
@@ -2020,8 +2018,10 @@ def fused_experts_impl(
                 (use_int8_w8a16 or use_int4_w4a16)
                 and block_shape is not None
                 and block_shape[1] > 0
-            ) and not (
-                (use_int8_w8a8 or use_int4_w4a8) and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+            )
+            and not (
+                (use_int8_w8a8 or use_int4_w4a8)
+                and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
             )
         )
 
@@ -2046,23 +2046,25 @@ def fused_experts_impl(
                         c=intermediate_cache1,
                         K=K,
                         num_valid_tokens=curr_hidden_states.size(0) * top_k_num,
-                        topk=top_k_num
+                        topk=top_k_num,
                     )
                 else:
                     # is Per-Block
                     kernel_m = mctlass_ops.mctlassEx_fused_moe_w4a8_get_kernel_m(
-                        qcurr_hidden_states, 
-                        w1.view(dtype = torch.quint4x2), 
-                        intermediate_cache1, 
-                        num_experts=w1.size(0), 
-                        batch_size=qcurr_hidden_states.size(0), 
-                        N=N, 
-                        K=K, 
-                        num_valid_tokens=num_tokens, 
-                        topk=top_k_num, 
-                        group_size=block_shape[1]
+                        qcurr_hidden_states,
+                        w1.view(dtype=torch.quint4x2),
+                        intermediate_cache1,
+                        num_experts=w1.size(0),
+                        batch_size=qcurr_hidden_states.size(0),
+                        N=N,
+                        K=K,
+                        num_valid_tokens=num_tokens,
+                        topk=top_k_num,
+                        group_size=block_shape[1],
                     )
-                assert kernel_m > 0, ("cutlass_fused_moe_w4a8 BLOCK_SIZE_M must greater than zero.")
+                assert kernel_m > 0, (
+                    "cutlass_fused_moe_w4a8 BLOCK_SIZE_M must greater than zero."
+                )
                 # override kernel_m to config["BLOCK_SIZE_M"]
                 stage1_config["BLOCK_SIZE_M"] = kernel_m
                 stage2_config["BLOCK_SIZE_M"] = kernel_m

@@ -54,6 +54,7 @@ from vllm.benchmarks.lib.endpoint_request_func import (
     RequestFuncOutput,
 )
 
+
 def maca_add_cli_args(parser: argparse.ArgumentParser):
     add_dataset_parser(parser)
     parser.add_argument(
@@ -403,4 +404,5 @@ def maca_add_cli_args(parser: argparse.ArgumentParser):
 
 
 import vllm.entrypoints.cli.benchmark.serve as cli_serve
+
 cli_serve.add_cli_args = maca_add_cli_args

@@ -1,4 +1,3 @@
-
 # SPDX-License-Identifier: Apache-2.0
 from typing import Optional
 import torch
@@ -8,7 +7,9 @@ from vllm.model_executor.layers.quantization.base_config import (  # noqa: E501
 from vllm.model_executor.layers.quantization.compressed_tensors import (
     compressed_tensors as vllm_ct,
 )
-from vllm_metax.quant_config.compressed_tensors_moe import CompressedTensorsMoEMethod as MacaCompressedTensorsMoEMethod
+from vllm_metax.quant_config.compressed_tensors_moe import (
+    CompressedTensorsMoEMethod as MacaCompressedTensorsMoEMethod,
+)
 from vllm.model_executor.layers.quantization import register_quantization_config
 from vllm.model_executor.layers.fused_moe import FusedMoE
 from vllm.attention.layer import Attention
@@ -21,7 +22,7 @@ from vllm.model_executor.layers.quantization.compressed_tensors.transform.linear
     CompressedTensorsLinearTransformMethod,
     get_linear_transform_schemes,
 )
-from vllm.model_executor.layers.fused_moe import FusedMoE
+
 
 @register_quantization_config("compressed-tensors")
 class MacaCompressedTensorsConfig(vllm_ct.CompressedTensorsConfig):
@@ -43,7 +44,7 @@ class MacaCompressedTensorsConfig(vllm_ct.CompressedTensorsConfig):
             if quant_scheme is not None:
                 layer.scheme = quant_scheme
                 quant_method = vllm_ct.CompressedTensorsLinearMethod(self)
-            
+
             # choose transform method
             if any((input_tfms, output_tfms)):
                 return CompressedTensorsLinearTransformMethod.from_schemes(
@@ -58,5 +59,5 @@ class MacaCompressedTensorsConfig(vllm_ct.CompressedTensorsConfig):
             return MacaCompressedTensorsMoEMethod.get_moe_method(
                 self, layer, layer_name=prefix
             )
-            
+
         return None

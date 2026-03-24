@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Qwen3.5-MoE model configuration"""
 
 from transformers.configuration_utils import PretrainedConfig, layer_type_validation

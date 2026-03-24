@@ -1,14 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
 import math
 from vllm.platforms import current_platform
 from vllm.model_executor.models.config import VerifyAndUpdateConfig
 from vllm.model_executor.models.config import MambaModelConfig
-from vllm.model_executor.models.config import HybridAttentionMambaModelConfig as HybridAttentionMambaModelConfigBase
+from vllm.model_executor.models.config import (
+    HybridAttentionMambaModelConfig as HybridAttentionMambaModelConfigBase,
+)
 from vllm.model_executor.models import ModelRegistry
 from vllm.utils.math_utils import cdiv
 from vllm.v1.kv_cache_interface import FullAttentionSpec, MambaSpec, MLAAttentionSpec
 from vllm.logger import init_logger
 
 logger = init_logger(__name__)
+
 
 class HybridAttentionMambaModelConfig(VerifyAndUpdateConfig):
     @classmethod
@@ -178,6 +182,7 @@ class HybridAttentionMambaModelConfig(VerifyAndUpdateConfig):
         attn_block_size = 1 << math.ceil(math.log2(attn_block_size))
         # └------------------------- Metax Modification -------------------------┘
 
-     
-HybridAttentionMambaModelConfigBase.verify_and_update_config = HybridAttentionMambaModelConfig.verify_and_update_config
 
+HybridAttentionMambaModelConfigBase.verify_and_update_config = (
+    HybridAttentionMambaModelConfig.verify_and_update_config
+)

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 from vllm.v1.attention.backends.fa_utils import logger
 
 import vllm.v1.attention.backends.fa_utils

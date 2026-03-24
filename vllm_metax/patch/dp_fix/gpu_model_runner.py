@@ -29,7 +29,8 @@ PerLayerAttnMetadata: TypeAlias = list[AttnMetadataDict] | AttnMetadataDict
 
 from vllm.v1.worker.gpu_model_runner import GPUModelRunner
 
-class MacaGPUModelRunner(GPUModelRunner):    
+
+class MacaGPUModelRunner(GPUModelRunner):
     @torch.inference_mode()
     def _dummy_run(
         self,
@@ -358,5 +359,6 @@ class MacaGPUModelRunner(GPUModelRunner):
             self.device, non_blocking=True
         )
         return hidden_states, hidden_states[logit_indices_device]
+
 
 GPUModelRunner._dummy_run = MacaGPUModelRunner._dummy_run

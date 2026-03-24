@@ -1,10 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
 from typing import TYPE_CHECKING, Any, Literal, get_args
 import vllm
 from vllm.config.speculative import SpeculativeConfig
+
 if TYPE_CHECKING:
     from transformers import PretrainedConfig
 else:
     PretrainedConfig = Any
+
+
 def maca_hf_config_override(hf_config: PretrainedConfig) -> PretrainedConfig:
     initial_architecture = hf_config.architectures[0]
     if hf_config.model_type in ("deepseek_v3", "deepseek_v32", "glm_moe_dsa"):
@@ -69,25 +73,19 @@ def maca_hf_config_override(hf_config: PretrainedConfig) -> PretrainedConfig:
         hf_config.model_type = "ernie_mtp"
     if hf_config.model_type == "ernie_mtp":
         n_predict = getattr(hf_config, "num_nextn_predict_layers", None)
-        hf_config.update(
-            {"n_predict": n_predict, "architectures": ["ErnieMTPModel"]}
-        )
+        hf_config.update({"n_predict": n_predict, "architectures": ["ErnieMTPModel"]})
 
     if hf_config.model_type == "qwen3_next":
         hf_config.model_type = "qwen3_next_mtp"
     if hf_config.model_type == "qwen3_next_mtp":
         n_predict = getattr(hf_config, "num_nextn_predict_layers", None)
-        hf_config.update(
-            {"n_predict": n_predict, "architectures": ["Qwen3NextMTP"]}
-        )
+        hf_config.update({"n_predict": n_predict, "architectures": ["Qwen3NextMTP"]})
 
     if hf_config.model_type == "exaone_moe":
         hf_config.model_type = "exaone_moe_mtp"
     if hf_config.model_type == "exaone_moe_mtp":
         n_predict = getattr(hf_config, "num_nextn_predict_layers", None)
-        hf_config.update(
-            {"n_predict": n_predict, "architectures": ["ExaoneMoeMTP"]}
-        )
+        hf_config.update({"n_predict": n_predict, "architectures": ["ExaoneMoeMTP"]})
 
     if hf_config.model_type in ("qwen3_5", "qwen3_5_moe"):
         is_moe = hf_config.model_type == "qwen3_5_moe"
@@ -116,7 +114,9 @@ def maca_hf_config_override(hf_config: PretrainedConfig) -> PretrainedConfig:
 
     return hf_config
 
+
 from vllm.config.speculative import MTPModelTypes, EagleModelTypes, SpeculativeMethod
+
 MACAModelTypes = Literal["qwen3_5_mtp", MTPModelTypes]
 vllm.config.speculative.MTPModelTypes = MACAModelTypes
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 from vllm.config.model import ModelConfig
 from vllm.config.parallel import ParallelConfig
@@ -8,6 +9,7 @@ from vllm.transformers_utils.model_arch_config_convertor import (
     MODEL_ARCH_CONFIG_CONVERTORS,
     ModelArchConfigConvertorBase,
 )
+
 
 def maca_get_num_layers_by_block_type(
     self,
@@ -57,9 +59,7 @@ def maca_get_num_layers_by_block_type(
         layer_types_value = getattr(self.hf_text_config, "layer_types", None)
         if layer_types_value is not None:
             if block_type == "attention":
-                return sum(
-                    t == "full_attention" for t in layer_types_value[start:end]
-                )
+                return sum(t == "full_attention" for t in layer_types_value[start:end])
             elif block_type == "linear_attention":
                 return sum(
                     t == "linear_attention" for t in layer_types_value[start:end]
@@ -78,9 +78,11 @@ def maca_get_num_layers_by_block_type(
                 f"cannot determine the num of {block_type} layers"
             )
 
+
 class Qwen3_5MTPModelArchConfigConvertor(ModelArchConfigConvertorBase):
     def get_num_hidden_layers(self) -> int:
         return getattr(self.hf_text_config, "mtp_num_hidden_layers", 0)
+
 
 ModelConfig.get_num_layers_by_block_type = maca_get_num_layers_by_block_type
 MODEL_ARCH_CONFIG_CONVERTORS["qwen3_5"] = Qwen3_5MTPModelArchConfigConvertor

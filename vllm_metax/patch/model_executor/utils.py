@@ -52,5 +52,6 @@ class MacaFusedMoEQuantConfig(FusedMoEQuantConfig):
     def use_int4_w4a8(self):
         return self._a1.dtype == "int8" and self._w1.dtype == "int4"
 
+
 utils._int8_quantize = _int8_quantize
 FusedMoEQuantConfig.use_int4_w4a8 = MacaFusedMoEQuantConfig.use_int4_w4a8
