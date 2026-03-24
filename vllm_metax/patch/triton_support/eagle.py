@@ -12,7 +12,7 @@ import torch
 from vllm.v1.attention.backends.utils import CommonAttentionMetadata
 from vllm.v1.worker.gpu_input_batch import CachedRequestState, InputBatch
 
-from vllm.v1.spec_decode.eagle import EagleProposer
+from vllm.v1.spec_decode.eagle import SpecDecodeBaseProposer
 
 
 @triton.jit
@@ -82,7 +82,7 @@ def eagle_prepare_next_token_padded_kernel(
         tl.store(valid_sampled_tokens_count_ptr + req_idx, valid_count)
 
 
-class MacaEagleProposer(EagleProposer):
+class MacaEagleProposer(SpecDecodeBaseProposer):
     def prepare_next_token_ids_padded(
         self,
         common_attn_metadata: CommonAttentionMetadata,
@@ -142,6 +142,6 @@ class MacaEagleProposer(EagleProposer):
         return next_token_ids, valid_sampled_tokens_count
 
 
-EagleProposer.prepare_next_token_ids_padded = (
+SpecDecodeBaseProposer.prepare_next_token_ids_padded = (
     MacaEagleProposer.prepare_next_token_ids_padded
 )
