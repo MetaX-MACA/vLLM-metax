@@ -17,6 +17,8 @@ vLLM MetaX Plugin
 ---
 
 *Latest News* 🔥
+- [2026/3] Released vllm-metax **v0.15.0** 🦐 — aligned with vLLM *v0.15.0*, more models and more features!
+- [2026/3] Released vllm-metax **v0.14.0** 🚀 — aligned with vLLM *v0.14.0*, same as usual.
 - [2026/2] Released vllm-metax **v0.13.0** 🧨 — aligned with vLLM *v0.13.0*, brings you the latest features and model in v0.13.0!
 - [2026/1] Released vllm-metax **v0.12.0** 😎 — aligned with vLLM *v0.12.0*, supported more models and improved performance.
 - [2026/1] Released vllm-metax **v0.11.2** 👻 — aligned with vLLM *v0.11.2*, supported more models and improved performance.
@@ -57,23 +59,22 @@ If you want to develop, debug or test the newest feature on vllm-metax, you may 
 vllm-metax has three kind of branches.
 
 - **master**: main branch，catching up with main branch of vLLM upstream.
-- **releases/vX.Y.Z**: release branch, created when a new version of vLLM is released. For example, `releases/v0.13.0` is the release branch for vLLM `v0.13.0` version. (Same tag name)
-- **vX.Y.Z-dev**: development branch, created with part of new releases of vLLM. For example, `v0.14.0-dev` is the dev branch for vLLM `v0.14.0` version.
+- **releases/vX.Y.Z**: release branch, created when a new version of vLLM is released. For example, `releases/v0.15.0` is the release branch for vLLM `v0.15.0` version. (Same tag name)
+- **vX.Y.Z-dev**: development branch, created with part of new releases of vLLM. For example, `v0.17.0-dev` is the dev branch for vLLM `v0.17.0` version.
 
 Below is maintained branches:
 
 | Branch      | Status       | Note                                 |
 |-------------|--------------|--------------------------------------|
-| master      | N/A | trying to support vllm main, no gurantee on functionality |
-| v0.15.0-dev | N/A | under testing |
-| v0.14.0-dev | N/A | under testing |
+| releases/v0.15.0 | Released | related to vllm release v0.15.0 |
+| releases/v0.14.0 | Released | related to vllm release v0.14.0 |
 | releases/v0.13.0 | Released | related to vllm release v0.13.0 |
 | releases/v0.12.0 | Released | related to vllm release v0.12.0 |
 | releases/v0.11.2 | Released | related to vllm release v0.11.2 |
 | releases/v0.10.2 | Released | related to vllm release v0.10.2 |
 
 
-Please check [here](https://vllm-metax.readthedocs.io/en/v0.13.0/getting_started/quickstart.html) for v0.13.0 details.
+Please check [here](https://vllm-metax.readthedocs.io/en/latest/getting_started/quickstart.html) for details.
 
 ## License
 
