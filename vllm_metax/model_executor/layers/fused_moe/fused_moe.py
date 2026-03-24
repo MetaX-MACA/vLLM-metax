@@ -1962,6 +1962,7 @@ def fused_experts_impl(
                 and block_shape is not None
                 and block_shape[1] > 0
             )
+            and not (use_int8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE)
         )
 
         if not naive_block_assignment:
