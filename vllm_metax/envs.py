@@ -13,9 +13,6 @@ if TYPE_CHECKING:
     CMAKE_BUILD_TYPE: str | None
     VERBOSE: bool = False
     MACA_DP_OPT: bool = False
-    MACA_VLLM_ENABLE_MCTLASS_PYTHON_API: bool = False
-    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: bool = False
-    VLLM_METAX_ENABLE_FA_SPLIT_FORWARD: bool = True
 
 environment_variables: dict[str, Callable[[], Any]] = {
     # ================== Installation Time Env Vars ==================
@@ -61,12 +58,6 @@ environment_variables: dict[str, Callable[[], Any]] = {
     ),
     # if set, enable combine allreduce all2all
     "MACA_DP_OPT": lambda: bool(int(os.environ.get("MACA_DP_OPT", "0"))),
-    # if set, enable FA split forward into
-    # prefill and decode for better latency
-    # and memory usage during decoding
-    "VLLM_METAX_ENABLE_FA_SPLIT_FORWARD": lambda: bool(
-        int(os.environ.get("VLLM_METAX_ENABLE_FA_SPLIT_FORWARD", "1"))
-    ),
 }
 
 
