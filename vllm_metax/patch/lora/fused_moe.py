@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 from vllm import envs
 from vllm.distributed.utils import divide
 from vllm.model_executor.layers.fused_moe.config import (

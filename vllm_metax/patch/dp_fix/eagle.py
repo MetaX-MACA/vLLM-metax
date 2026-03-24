@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 
 # ---------------------------------------------------------------------------
 # Note: fix triton kernel compilation errors
@@ -94,6 +95,8 @@ def load_model(self, target_model: nn.Module) -> None:
             "Qwen2_5_VLForConditionalGeneration",
             "Qwen3VLForConditionalGeneration",
             "Qwen3VLMoeForConditionalGeneration",
+            "Qwen3_5ForConditionalGeneration",
+            "Qwen3_5MoeForConditionalGeneration",
         ]:
             self.model.config.image_token_index = target_model.config.image_token_id
         elif self.get_model_name(target_model) == "PixtralForConditionalGeneration":
