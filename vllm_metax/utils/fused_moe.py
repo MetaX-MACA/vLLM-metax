@@ -2,12 +2,12 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
     TritonExperts as mx_TritonExperts,
-    fused_experts as vllm_fused_experts,
+    fused_experts as mx_fused_experts,
 )
 
 from vllm.model_executor.layers.fused_moe.fused_moe import (
     TritonExperts as vllm_TritonExperts,
-    fused_experts as mx_fused_experts,
+    fused_experts as vllm_fused_experts,
     logger,
 )
 

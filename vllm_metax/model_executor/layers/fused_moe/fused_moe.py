@@ -1902,8 +1902,10 @@ def fused_experts_impl(
     if global_num_experts == -1:
         global_num_experts = E
     top_k_num = topk_ids.size(1)
-
-    M = num_tokens
+    # We execute the fused_moe kernel in chunks to circumvent this issue:
+    # https://github.com/vllm-project/vllm/issues/5938
+    CHUNK_SIZE = mx_envs.VLLM_FUSED_MOE_CHUNK_SIZE
+    M = min(num_tokens, CHUNK_SIZE)
 
     # ---------------------------------------------------------------
     # Metax Note: here we need to add `int8_w8a8` option for later use.
@@ -2007,199 +2009,139 @@ def fused_experts_impl(
         else:
             raise NotImplementedError(f"Unsupported ocp_mx_scheme={ocp_mx_scheme}")
 
-    qhidden_states, a1q_scale = moe_kernel_quantize_input(
-        A=hidden_states,
-        A_scale=a1_scale,
-        quant_dtype=quant_dtype,
-        per_act_token_quant=per_channel_quant,
-        block_shape=block_shape,
-        ocp_mx_scheme=ocp_mx_scheme,
-    )
-
-    # SPARSITY_FACTOR is a heuristic margin ensuring num_tokens * top_k
-    # activates only a small fraction of total experts
-    SPARSITY_FACTOR = 4
-    # block quantized code path is not implemented yet.
-    naive_block_assignment = (
-        expert_map is None
-        and num_tokens * top_k_num * SPARSITY_FACTOR <= global_num_experts
-        and not (
-            (use_int8_w8a16 or use_int4_w4a16)
-            and block_shape is not None
-            and block_shape[1] > 0
+    for chunk in range((num_tokens // CHUNK_SIZE) + 1):
+        begin_chunk_idx, end_chunk_idx = (
+            chunk * CHUNK_SIZE,
+            min((chunk + 1) * CHUNK_SIZE, num_tokens),
         )
-        # -----------------------------------------------------------------
-        # Metax Modification: for int8_w8a8
-        and not (
-            (use_int8_w8a8 or use_int4_w4a8)
-            and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
-        )
-    )
+        curr_hidden_states = hidden_states[begin_chunk_idx:end_chunk_idx]
+        tokens_in_chunk, _ = curr_hidden_states.size()
 
-    if not naive_block_assignment:
-        # ┌------------------------  Metax Modification -------------------------┐
-        if use_int8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
-            kernel_m = mctlass_ops.cutlass_moe_mm_w8a8_get_kernel_m(
-                hidden_states, w1, intermediate_cache1, top_k_num
-            )
-            assert kernel_m > 0, "cutlass_moe_w8a8 BLOCK_SIZE_M must greater than zero."
-            # override kernel_m to config["BLOCK_SIZE_M"]
-            stage1_config["BLOCK_SIZE_M"] = kernel_m
-            stage2_config["BLOCK_SIZE_M"] = kernel_m
-        if use_int4_w4a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API:
-            if block_shape is None:
-                # is Per-Channel
-                kernel_m = mctlass_ops.cutlass_moe_mm_w4a8_get_kernel_m_per_channel(
-                    a=hidden_states,
-                    b=w1,
-                    c=intermediate_cache1,
-                    K=K,
-                    num_valid_tokens=hidden_states.size(0) * top_k_num,
-                    topk=top_k_num,
-                )
-            else:
-                # is Per-Block
-                kernel_m = mctlass_ops.mctlassEx_fused_moe_w4a8_get_kernel_m(
-                    qhidden_states,
-                    w1.view(dtype=torch.quint4x2),
-                    intermediate_cache1,
-                    num_experts=w1.size(0),
-                    batch_size=qhidden_states.size(0),
-                    N=N,
-                    K=K,
-                    num_valid_tokens=num_tokens,
-                    topk=top_k_num,
-                    group_size=block_shape[1],
-                )
-            assert kernel_m > 0, (
-                "cutlass_fused_moe_w4a8 BLOCK_SIZE_M must greater than zero."
-            )
-            # override kernel_m to config["BLOCK_SIZE_M"]
-            stage1_config["BLOCK_SIZE_M"] = kernel_m
-            stage2_config["BLOCK_SIZE_M"] = kernel_m
-        # └------------------------- Metax Modification -------------------------┘
-        sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
-            topk_ids,
-            stage1_config["BLOCK_SIZE_M"],
-            global_num_experts,
-            expert_map,
-            ignore_invalid_experts=True,
-        )
-    else:
-        max_num_tokens_padded = topk_ids.numel() * stage1_config["BLOCK_SIZE_M"]
-        expert_ids = topk_ids.view(-1)
-        num_tokens_post_padded = torch.empty(
-            (1), dtype=torch.int32, device=topk_ids.device
-        )
-        num_tokens_post_padded.fill_(max_num_tokens_padded)
-        sorted_token_ids = None
+        if tokens_in_chunk == 0:
+            break
 
-    # -------- stage1 --------
-    # SPLIT_K>1 uses tl.atomic_add, so output must be zero-initialized.
-    if stage1_config.get("SPLIT_K", 1) > 1:
-        intermediate_cache1.zero_()
+        if tokens_in_chunk < CHUNK_SIZE and chunk > 0:
+            # Adjust the intermediate cache size and config for the last
+            # chunk. Note that in most cases we only have one chunk
+            # so the cache size and config are already set correctly and
+            # do not need to be adjusted.
+            intermediate_cache1 = intermediate_cache1[:tokens_in_chunk]
+            intermediate_cache2 = intermediate_cache2[
+                : tokens_in_chunk * topk_ids.size(1)
+            ]
+            intermediate_cache3 = intermediate_cache3[:tokens_in_chunk]
+            config = get_config_func(tokens_in_chunk)
 
-    dispatch_fused_moe_kernel(
-        qhidden_states,
-        w1,
-        intermediate_cache1,
-        a1q_scale,
-        w1_scale,
-        w1_zp,
-        topk_weights,
-        sorted_token_ids,
-        expert_ids,
-        num_tokens_post_padded,
-        apply_router_weight_on_input,
-        top_k_num,
-        stage1_config,
-        compute_type=compute_type,
-        use_fp8_w8a8=use_fp8_w8a8,
-        use_int8_w8a8=use_int8_w8a8,
-        use_int8_w8a16=use_int8_w8a16,
-        use_int4_w4a8=use_int4_w4a8,
-        use_int4_w4a16=use_int4_w4a16,
-        per_channel_quant=per_channel_quant,
-        block_shape=block_shape,
-        B_bias=w1_bias,
-    )
-
-    apply_moe_activation(
-        activation_enum, intermediate_cache2, intermediate_cache1.view(-1, N)
-    )
-
-    use_mctlass_moe_mm_on_stage2 = (
-        mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
-        and use_int8_w8a8 is False
-        and hidden_states.dtype == torch.bfloat16
-        and stage2_config["BLOCK_SIZE_M"] == 128
-        and stage2_config["BLOCK_SIZE_N"] == 128
-        and stage2_config["BLOCK_SIZE_K"] == 64
-        and stage2_config["SPLIT_K"] == 1
-        and w2.shape[1] % 128 == 0
-        and w2.shape[2] % 8 == 0
-    )
-
-    if use_mctlass_moe_mm_on_stage2:
-        # use mctlass_moe_mm
-        mctlass_ops.cutlass_moe_bf16_mm(
-            intermediate_cache3,
-            intermediate_cache2,
-            w2,
-            topk_weights,
-            sorted_token_ids,
-            expert_ids,
-            num_tokens_post_padded,
-            topk_ids.numel(),
-            1,
-            True,
-        )
-    else:
-        qintermediate_cache2, a2q_scale = moe_kernel_quantize_input(
-            A=intermediate_cache2,
-            A_scale=a2_scale,
+        curr_topk_ids = topk_ids[begin_chunk_idx:end_chunk_idx]
+        curr_topk_weights = topk_weights[begin_chunk_idx:end_chunk_idx]
+        qcurr_hidden_states, a1q_scale = moe_kernel_quantize_input(
+            A=curr_hidden_states,
+            A_scale=a1_scale,
             quant_dtype=quant_dtype,
             per_act_token_quant=per_channel_quant,
             block_shape=block_shape,
             ocp_mx_scheme=ocp_mx_scheme,
         )
 
-        if stage2_config["BLOCK_SIZE_M"] != stage1_config["BLOCK_SIZE_M"]:
-            if not naive_block_assignment:
-                sorted_token_ids, expert_ids, num_tokens_post_padded = (
-                    moe_align_block_size(
-                        topk_ids,
-                        stage2_config["BLOCK_SIZE_M"],
-                        global_num_experts,
-                        expert_map,
-                    )
-                )
-            else:
-                max_num_tokens_padded = topk_ids.numel() * stage2_config["BLOCK_SIZE_M"]
-                expert_ids = topk_ids.view(-1)
-                num_tokens_post_padded = torch.empty(
-                    (1), dtype=torch.int32, device=topk_ids.device
-                )
-                num_tokens_post_padded.fill_(max_num_tokens_padded)
-                sorted_token_ids = None
+        # SPARSITY_FACTOR is a heuristic margin ensuring tokens_in_chunk * top_k
+        # activates only a small fraction of total experts
+        SPARSITY_FACTOR = 4
+        # block quantized code path is not implemented yet.
+        naive_block_assignment = (
+            expert_map is None
+            and tokens_in_chunk * top_k_num * SPARSITY_FACTOR <= global_num_experts
+            and not (
+                (use_int8_w8a16 or use_int4_w4a16)
+                and block_shape is not None
+                and block_shape[1] > 0
+            )
+            # -----------------------------------------------------------------
+            # Metax Modification: for int8_w8a8
+            and not (
+                (use_int8_w8a8 or use_int4_w4a8)
+                and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+            )
+        )
 
-        if expert_map is not None or stage2_config.get("SPLIT_K", 1) > 1:
-            intermediate_cache3.zero_()
+        if not naive_block_assignment:
+            # ┌------------------------  Metax Modification -------------------------┐
+            if use_int8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+                kernel_m = mctlass_ops.cutlass_moe_mm_w8a8_get_kernel_m(
+                    curr_hidden_states, w1, intermediate_cache1, top_k_num
+                )
+                assert kernel_m > 0, (
+                    "cutlass_moe_w8a8 BLOCK_SIZE_M must greater than zero."
+                )
+                # override kernel_m to config["BLOCK_SIZE_M"]
+                stage1_config["BLOCK_SIZE_M"] = kernel_m
+                stage2_config["BLOCK_SIZE_M"] = kernel_m
+            if use_int4_w4a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API:
+                if block_shape is None:
+                    # is Per-Channel
+                    kernel_m = mctlass_ops.cutlass_moe_mm_w4a8_get_kernel_m_per_channel(
+                        a=curr_hidden_states,
+                        b=w1,
+                        c=intermediate_cache1,
+                        K=K,
+                        num_valid_tokens=curr_hidden_states.size(0) * top_k_num,
+                        topk=top_k_num,
+                    )
+                else:
+                    # is Per-Block
+                    kernel_m = mctlass_ops.mctlassEx_fused_moe_w4a8_get_kernel_m(
+                        qcurr_hidden_states,
+                        w1.view(dtype=torch.quint4x2),
+                        intermediate_cache1,
+                        num_experts=w1.size(0),
+                        batch_size=qcurr_hidden_states.size(0),
+                        N=N,
+                        K=K,
+                        num_valid_tokens=num_tokens,
+                        topk=top_k_num,
+                        group_size=block_shape[1],
+                    )
+                assert kernel_m > 0, (
+                    "cutlass_fused_moe_w4a8 BLOCK_SIZE_M must greater than zero."
+                )
+                # override kernel_m to config["BLOCK_SIZE_M"]
+                stage1_config["BLOCK_SIZE_M"] = kernel_m
+                stage2_config["BLOCK_SIZE_M"] = kernel_m
+            # └------------------------- Metax Modification -------------------------┘
+            sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
+                curr_topk_ids,
+                stage1_config["BLOCK_SIZE_M"],
+                global_num_experts,
+                expert_map,
+                ignore_invalid_experts=True,
+            )
+        else:
+            max_num_tokens_padded = topk_ids.numel() * stage1_config["BLOCK_SIZE_M"]
+            expert_ids = curr_topk_ids.view(-1)
+            num_tokens_post_padded = torch.empty(
+                (1), dtype=torch.int32, device=topk_ids.device
+            )
+            num_tokens_post_padded.fill_(max_num_tokens_padded)
+            sorted_token_ids = None
+
+        # -------- stage1 --------
+        # SPLIT_K>1 uses tl.atomic_add, so output must be zero-initialized.
+        if stage1_config.get("SPLIT_K", 1) > 1:
+            intermediate_cache1.zero_()
 
         dispatch_fused_moe_kernel(
-            qintermediate_cache2,
-            w2,
-            intermediate_cache3,
-            a2q_scale,
-            w2_scale,
-            w2_zp,
-            topk_weights,
+            qcurr_hidden_states,
+            w1,
+            intermediate_cache1,
+            a1q_scale,
+            w1_scale,
+            w1_zp,
+            curr_topk_weights,
             sorted_token_ids,
             expert_ids,
             num_tokens_post_padded,
-            not apply_router_weight_on_input,
-            1,
-            stage2_config,
+            apply_router_weight_on_input,
+            top_k_num,
+            stage1_config,
             compute_type=compute_type,
             use_fp8_w8a8=use_fp8_w8a8,
             use_int8_w8a8=use_int8_w8a8,
@@ -2208,12 +2150,101 @@ def fused_experts_impl(
             use_int4_w4a16=use_int4_w4a16,
             per_channel_quant=per_channel_quant,
             block_shape=block_shape,
-            B_bias=w2_bias,
+            B_bias=w1_bias,
         )
-    ops.moe_sum(
-        intermediate_cache3.view(*intermediate_cache3.size()),
-        out_hidden_states,
-    )
+
+        apply_moe_activation(
+            activation_enum, intermediate_cache2, intermediate_cache1.view(-1, N)
+        )
+
+        use_mctlass_moe_mm_on_stage2 = (
+            mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+            and use_int8_w8a8 is False
+            and hidden_states.dtype == torch.bfloat16
+            and stage2_config["BLOCK_SIZE_M"] == 128
+            and stage2_config["BLOCK_SIZE_N"] == 128
+            and stage2_config["BLOCK_SIZE_K"] == 64
+            and stage2_config["SPLIT_K"] == 1
+            and w2.shape[1] % 128 == 0
+            and w2.shape[2] % 8 == 0
+        )
+
+        if use_mctlass_moe_mm_on_stage2:
+            # use mctlass_moe_mm
+            mctlass_ops.cutlass_moe_bf16_mm(
+                intermediate_cache3,
+                intermediate_cache2,
+                w2,
+                curr_topk_weights,
+                sorted_token_ids,
+                expert_ids,
+                num_tokens_post_padded,
+                curr_topk_ids.numel(),
+                1,
+                True,
+            )
+        else:
+            qintermediate_cache2, a2q_scale = moe_kernel_quantize_input(
+                A=intermediate_cache2,
+                A_scale=a2_scale,
+                quant_dtype=quant_dtype,
+                per_act_token_quant=per_channel_quant,
+                block_shape=block_shape,
+                ocp_mx_scheme=ocp_mx_scheme,
+            )
+
+            if stage2_config["BLOCK_SIZE_M"] != stage1_config["BLOCK_SIZE_M"]:
+                if not naive_block_assignment:
+                    sorted_token_ids, expert_ids, num_tokens_post_padded = (
+                        moe_align_block_size(
+                            curr_topk_ids,
+                            stage2_config["BLOCK_SIZE_M"],
+                            global_num_experts,
+                            expert_map,
+                        )
+                    )
+                else:
+                    max_num_tokens_padded = (
+                        topk_ids.numel() * stage2_config["BLOCK_SIZE_M"]
+                    )
+                    expert_ids = curr_topk_ids.view(-1)
+                    num_tokens_post_padded = torch.empty(
+                        (1), dtype=torch.int32, device=topk_ids.device
+                    )
+                    num_tokens_post_padded.fill_(max_num_tokens_padded)
+                    sorted_token_ids = None
+
+            if expert_map is not None or stage2_config.get("SPLIT_K", 1) > 1:
+                intermediate_cache3.zero_()
+
+            dispatch_fused_moe_kernel(
+                qintermediate_cache2,
+                w2,
+                intermediate_cache3,
+                a2q_scale,
+                w2_scale,
+                w2_zp,
+                curr_topk_weights,
+                sorted_token_ids,
+                expert_ids,
+                num_tokens_post_padded,
+                not apply_router_weight_on_input,
+                1,
+                stage2_config,
+                compute_type=compute_type,
+                use_fp8_w8a8=use_fp8_w8a8,
+                use_int8_w8a8=use_int8_w8a8,
+                use_int8_w8a16=use_int8_w8a16,
+                use_int4_w4a8=use_int4_w4a8,
+                use_int4_w4a16=use_int4_w4a16,
+                per_channel_quant=per_channel_quant,
+                block_shape=block_shape,
+                B_bias=w2_bias,
+            )
+        ops.moe_sum(
+            intermediate_cache3.view(*intermediate_cache3.size()),
+            out_hidden_states[begin_chunk_idx:end_chunk_idx],
+        )
 
     return out_hidden_states
 

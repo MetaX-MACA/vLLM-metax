@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: bool = False
     USE_VLLM_TRITON_EXPERT: bool = False
     VLLM_METAX_ENABLE_FA_SPLIT_FORWARD: bool = True
+    VLLM_FUSED_MOE_CHUNK_SIZE: int = 16 * 1024
 
 environment_variables: dict[str, Callable[[], Any]] = {
     # ================== Installation Time Env Vars ==================
@@ -68,6 +69,9 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # and memory usage during decoding
     "VLLM_METAX_ENABLE_FA_SPLIT_FORWARD": lambda: bool(
         int(os.environ.get("VLLM_METAX_ENABLE_FA_SPLIT_FORWARD", "1"))
+    ),
+    "VLLM_FUSED_MOE_CHUNK_SIZE": lambda: int(
+        os.getenv("VLLM_FUSED_MOE_CHUNK_SIZE", str(16 * 1024))
     ),
     # =================== Debug Env Vars ==================
     # if set, use vllm's fused_moe implementation instead of maca's one for debugging and comparison
