@@ -268,9 +268,9 @@ void cutlass_scaled_sparse_mm(torch::Tensor& out, torch::Tensor const& a,
 
 std::vector<torch::Tensor> cutlass_sparse_compress(torch::Tensor const& a);
 
-void scaled_fp4_quant(torch::Tensor& output, torch::Tensor const& input,
-                      torch::Tensor& output_scale,
-                      torch::Tensor const& input_scale);
+// void scaled_fp4_quant(torch::Tensor& output, torch::Tensor const& input,
+//                       torch::Tensor& output_scale,
+//                       torch::Tensor const& input_scale);
 
 void scaled_fp4_experts_quant(
     torch::Tensor& output, torch::Tensor& output_scale,

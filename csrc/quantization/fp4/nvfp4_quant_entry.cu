@@ -16,10 +16,12 @@
 
 #include <torch/all.h>
 
-void scaled_fp4_quant(torch::Tensor& output, torch::Tensor const& input,
-                      torch::Tensor& output_sf, torch::Tensor const& input_sf) {
-  TORCH_CHECK_NOT_IMPLEMENTED(false, "No compiled nvfp4 quantization kernel");
-}
+// void scaled_fp4_quant(torch::Tensor& output, torch::Tensor const& input,
+//                       torch::Tensor& output_sf, torch::Tensor const&
+//                       input_sf) {
+//   TORCH_CHECK_NOT_IMPLEMENTED(false, "No compiled nvfp4 quantization
+//   kernel");
+// }
 
 void scaled_fp4_experts_quant(
     torch::Tensor& output, torch::Tensor& output_scale,
