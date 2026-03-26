@@ -240,6 +240,9 @@ class FlashAttentionMetadata:
     decode_query_start_loc: torch.Tensor
     decode_seq_lens: torch.Tensor
     decode_block_table: torch.Tensor
+    decode_bucket_query_lens: tuple[int, ...] | None
+    decode_bucket_req_bounds: tuple[tuple[int, int], ...] | None
+    decode_bucket_token_bounds: tuple[tuple[int, int], ...] | None
 
     num_prefills: int
     num_prefill_tokens: int
@@ -282,6 +285,98 @@ def _get_sliding_window_configs(
     return sliding_window_configs
 
 
+def _build_decode_query_len_buckets(
+    query_start_loc_cpu: torch.Tensor,
+    num_decodes: int,
+    num_decode_tokens: int,
+) -> tuple[
+    tuple[int, ...] | None,
+    tuple[tuple[int, int], ...] | None,
+    tuple[tuple[int, int], ...] | None,
+]:
+    """Build contiguous decode buckets keyed by query length."""
+    if num_decodes <= 1:
+        return None, None, None
+
+    decode_query_lens = (
+        query_start_loc_cpu[1 : num_decodes + 1] - query_start_loc_cpu[:num_decodes]
+    ).tolist()
+
+    if num_decode_tokens != sum(decode_query_lens):
+        padded_query_len, remainder = divmod(num_decode_tokens, num_decodes)
+        if remainder != 0 or any(
+            query_len not in (0, padded_query_len) for query_len in decode_query_lens
+        ):
+            raise RuntimeError(
+                "FLASH_ATTN decode bucketing only supports padded decode batches "
+                "when they are padded to a uniform query length."
+            )
+        return None, None, None
+
+    first_query_len = decode_query_lens[0]
+    if all(query_len == first_query_len for query_len in decode_query_lens):
+        return None, None, None
+
+    bucket_query_lens: list[int] = []
+    bucket_req_bounds: list[tuple[int, int]] = []
+    bucket_token_bounds: list[tuple[int, int]] = []
+    run_start: int | None = None
+    run_query_len: int | None = None
+
+    for req_idx, query_len_value in enumerate(decode_query_lens):
+        query_len = int(query_len_value)
+        if query_len == 0:
+            if run_start is not None and run_query_len is not None:
+                bucket_query_lens.append(run_query_len)
+                bucket_req_bounds.append((run_start, req_idx))
+                bucket_token_bounds.append(
+                    (
+                        int(query_start_loc_cpu[run_start].item()),
+                        int(query_start_loc_cpu[req_idx].item()),
+                    )
+                )
+                run_start = None
+                run_query_len = None
+            continue
+
+        if run_start is None:
+            run_start = req_idx
+            run_query_len = query_len
+            continue
+
+        if query_len != run_query_len:
+            assert run_query_len is not None
+            bucket_query_lens.append(run_query_len)
+            bucket_req_bounds.append((run_start, req_idx))
+            bucket_token_bounds.append(
+                (
+                    int(query_start_loc_cpu[run_start].item()),
+                    int(query_start_loc_cpu[req_idx].item()),
+                )
+            )
+            run_start = req_idx
+            run_query_len = query_len
+
+    if run_start is not None and run_query_len is not None:
+        bucket_query_lens.append(run_query_len)
+        bucket_req_bounds.append((run_start, num_decodes))
+        bucket_token_bounds.append(
+            (
+                int(query_start_loc_cpu[run_start].item()),
+                int(query_start_loc_cpu[num_decodes].item()),
+            )
+        )
+
+    if not bucket_query_lens:
+        return None, None, None
+
+    return (
+        tuple(bucket_query_lens),
+        tuple(bucket_req_bounds),
+        tuple(bucket_token_bounds),
+    )
+
+
 class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetadata]):
     # /------------------------  Metax Modification -------------------------\
     _cudagraph_support = AttentionCGSupport.UNIFORM_BATCH
@@ -293,6 +388,7 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
     # If set to UNIFORM or VARLEN, this will increase `reorder_batch_threshold` when
     # speculative decoding is enabled.
     query_len_support: ClassVar[QueryLenSupport] = QueryLenSupport.UNIFORM
+    group_decodes_by_query_len: bool = True
 
     # The threshold for reordering the batch into decode and prefill requests.
     # If > 1, the batch will be reordered such that requests with
@@ -338,6 +434,18 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         self.aot_schedule = get_flash_attn_version() == 3
 
         # /------------------------  Metax Modification -------------------------\
+        speculative_config = self.vllm_config.speculative_config
+        spec_decode_enabled = (
+            speculative_config is not None
+            and speculative_config.num_speculative_tokens is not None
+            and speculative_config.num_speculative_tokens > 0
+        )
+        self.query_len_support = (
+            QueryLenSupport.VARLEN
+            if spec_decode_enabled
+            else QueryLenSupport.UNIFORM
+        )
+        self.group_decodes_by_query_len = spec_decode_enabled
         supports_spec_decode = self.query_len_support != QueryLenSupport.SINGLE_ONLY
         self._init_reorder_batch_threshold(
             self.reorder_batch_threshold, supports_spec_decode
@@ -484,10 +592,27 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
             decode_block_table_tensor = common_attn_metadata.block_table_tensor[
                 :num_decodes
             ]
+            if self.group_decodes_by_query_len:
+                (
+                    decode_bucket_query_lens,
+                    decode_bucket_req_bounds,
+                    decode_bucket_token_bounds,
+                ) = _build_decode_query_len_buckets(
+                    common_attn_metadata.query_start_loc_cpu,
+                    num_decodes,
+                    num_decode_tokens,
+                )
+            else:
+                decode_bucket_query_lens = None
+                decode_bucket_req_bounds = None
+                decode_bucket_token_bounds = None
         else:
             decode_query_start_loc = None
             decode_seq_lens = None
             decode_block_table_tensor = None
+            decode_bucket_query_lens = None
+            decode_bucket_req_bounds = None
+            decode_bucket_token_bounds = None
 
         if num_prefills > 0:
             prefill_query_start_loc = (
@@ -668,6 +793,9 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
             decode_query_start_loc=decode_query_start_loc,
             decode_seq_lens=decode_seq_lens,
             decode_block_table=decode_block_table_tensor,
+            decode_bucket_query_lens=decode_bucket_query_lens,
+            decode_bucket_req_bounds=decode_bucket_req_bounds,
+            decode_bucket_token_bounds=decode_bucket_token_bounds,
             num_prefills=num_prefills,
             num_prefill_tokens=num_prefill_tokens,
             prefill_query_start_loc=prefill_query_start_loc,
@@ -700,12 +828,6 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
     ) -> FlashAttentionMetadata:
         new_metadata = copy.copy(metadata)
         new_metadata.block_table = blk_table
-        new_metadata.prefill_block_table = (
-            blk_table[metadata.num_decodes :] if metadata.num_prefills > 0 else None
-        )
-        new_metadata.decode_block_table = (
-            blk_table[: metadata.num_decodes] if metadata.num_decodes > 0 else None
-        )
         new_metadata.slot_mapping = slot_mapping
         return new_metadata
 
@@ -789,6 +911,60 @@ class FlashAttentionImpl(AttentionImpl):
             and vllm_config.parallel_config.dcp_comm_backend == "a2a"
         )
         self.dcp_combine = dcp_a2a_lse_reduce if dcp_a2a else cp_lse_ag_out_rs
+
+    def _forward_decode_with_query_len_bucketing(
+        self,
+        query: torch.Tensor,
+        key_cache: torch.Tensor,
+        value_cache: torch.Tensor,
+        output: torch.Tensor,
+        attn_metadata: FlashAttentionMetadata,
+    ) -> None:
+        assert attn_metadata.decode_query_start_loc is not None
+        assert attn_metadata.decode_seq_lens is not None
+        assert attn_metadata.decode_block_table is not None
+        assert attn_metadata.decode_bucket_query_lens is not None
+        assert attn_metadata.decode_bucket_req_bounds is not None
+        assert attn_metadata.decode_bucket_token_bounds is not None
+
+        decode_query = query[: attn_metadata.num_decode_tokens]
+        decode_output = output[: attn_metadata.num_decode_tokens]
+
+        for bucket_query_len, bucket_req_bounds, bucket_token_bounds in zip(
+            attn_metadata.decode_bucket_query_lens,
+            attn_metadata.decode_bucket_req_bounds,
+            attn_metadata.decode_bucket_token_bounds,
+        ):
+            req_start, req_end = bucket_req_bounds
+            token_start, token_end = bucket_token_bounds
+            if req_start == req_end or token_start == token_end:
+                continue
+
+            bucket_query = decode_query[token_start:token_end].view(
+                req_end - req_start,
+                bucket_query_len,
+                decode_query.shape[1],
+                decode_query.shape[2],
+            )
+
+            bucket_output = flash_attn_with_kvcache(
+                q=bucket_query,
+                k_cache=key_cache,
+                v_cache=value_cache,
+                block_table=attn_metadata.decode_block_table[req_start:req_end],
+                cache_seqlens=attn_metadata.decode_seq_lens[req_start:req_end],
+                softmax_scale=self.scale,
+                causal=True,
+                window_size=list(self.sliding_window)
+                if self.sliding_window is not None
+                else None,
+                alibi_slopes=self.alibi_slopes,
+                softcap=self.logits_soft_cap,
+                s_aux=self.sinks,
+            )
+            decode_output[token_start:token_end] = (
+                reshape_attn_output_for_spec_decode(bucket_output)
+            )
 
     def forward(
         self,
@@ -927,26 +1103,35 @@ class FlashAttentionImpl(AttentionImpl):
                         )
                     if attn_metadata.num_decodes > 0:
                         # Use flash_attn_with_kvcache for normal decoding.
-                        decode_query = query[:num_decode_tokens]
-                        decode_query = reshape_query_for_spec_decode(
-                            decode_query, attn_metadata.num_decodes
-                        )
-                        output_unreshape = flash_attn_with_kvcache(
-                            q=decode_query,
-                            k_cache=key_cache,
-                            v_cache=value_cache,
-                            block_table=attn_metadata.decode_block_table,
-                            cache_seqlens=attn_metadata.decode_seq_lens,
-                            softmax_scale=self.scale,
-                            causal=True,
-                            window_size=sliding_window_size,
-                            alibi_slopes=self.alibi_slopes,
-                            softcap=self.logits_soft_cap,
-                            s_aux=self.sinks,
-                        )
-                        output[:num_decode_tokens] = (
-                            reshape_attn_output_for_spec_decode(output_unreshape)
-                        )
+                        if attn_metadata.decode_bucket_req_bounds is not None:
+                            self._forward_decode_with_query_len_bucketing(
+                                query,
+                                key_cache,
+                                value_cache,
+                                output,
+                                attn_metadata,
+                            )
+                        else:
+                            decode_query = query[:num_decode_tokens]
+                            decode_query = reshape_query_for_spec_decode(
+                                decode_query, attn_metadata.num_decodes
+                            )
+                            output_unreshape = flash_attn_with_kvcache(
+                                q=decode_query,
+                                k_cache=key_cache,
+                                v_cache=value_cache,
+                                block_table=attn_metadata.decode_block_table,
+                                cache_seqlens=attn_metadata.decode_seq_lens,
+                                softmax_scale=self.scale,
+                                causal=True,
+                                window_size=sliding_window_size,
+                                alibi_slopes=self.alibi_slopes,
+                                softcap=self.logits_soft_cap,
+                                s_aux=self.sinks,
+                            )
+                            output[:num_decode_tokens] = (
+                                reshape_attn_output_for_spec_decode(output_unreshape)
+                            )
                     return output
                 # └------------------------- Metax Modification -------------------------┘
                 else:
