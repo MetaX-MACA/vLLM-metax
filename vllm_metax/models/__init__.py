@@ -34,3 +34,11 @@ def register_model():
     ModelRegistry.register_model(
         "Step3p5MTP", "vllm_metax.models.step3p5_mtp:Step3p5MTP"
     )
+
+    ModelRegistry.register_model(
+        "FM9GForCausalLM", "vllm_metax.models.fm9g:FM9GForCausalLM"
+    )
+
+    ModelRegistry.register_model(
+        "FM9G7BForCausalLM", "vllm_metax.models.fm9g7b:FM9G7BForCausalLM"
+    )
