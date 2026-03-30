@@ -22,6 +22,7 @@
 # limitations under the License.
 """Inference-only FM9G model compatible with HuggingFace weights."""
 import math
+from itertools import islice
 from typing import Any, Iterable
 
 import torch
@@ -254,7 +255,7 @@ class FM9GDecoderLayer(nn.Module):
         hidden_states = residual + hidden_states * (
             self.config.scale_depth / math.sqrt(self.config.num_hidden_layers)
         )
-        return hidden_states, None
+        return hidden_states, residual
 
 
 def fm9g_model_invariants(
@@ -334,12 +335,7 @@ class FM9GModel(nn.Module):
             ),
             prefix=f"{prefix}.layers",
         )
-
-        if get_pp_group().is_last_rank:
-            self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        else:
-            self.norm = PPMissingLayer()
-
+        self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.make_empty_intermediate_tensors = make_empty_intermediate_tensors_factory(
             ["hidden_states", "residual"], self.config.hidden_size
         )
@@ -355,7 +351,7 @@ class FM9GModel(nn.Module):
         positions: torch.Tensor,
         intermediate_tensors: IntermediateTensors | None = None,
         inputs_embeds: torch.Tensor | None = None,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | IntermediateTensors | tuple[torch.Tensor, list[torch.Tensor]]:
         if get_pp_group().is_first_rank:
             if inputs_embeds is not None:
                 x = inputs_embeds
@@ -369,11 +365,13 @@ class FM9GModel(nn.Module):
             residual = intermediate_tensors["residual"]
 
         aux_hidden_states = []
-        for i in range(self.start_layer, self.end_layer):
-            layer = self.layers[i]
-            if i in self.aux_hidden_state_layers:
-                aux_hidden_states.append(x if residual is None else x + residual)
-            x, residual = layer(positions, x, residual)
+        for layer_idx, layer in enumerate(
+            islice(self.layers, self.start_layer, self.end_layer),
+            start=self.start_layer,
+        ):
+            if layer_idx in self.aux_hidden_state_layers:
+                aux_hidden_states.append(x)
+            x, residual = layer(positions, x, None)
 
         if not get_pp_group().is_last_rank:
             return IntermediateTensors({"hidden_states": x, "residual": residual})
