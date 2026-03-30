@@ -828,6 +828,12 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
     ) -> FlashAttentionMetadata:
         new_metadata = copy.copy(metadata)
         new_metadata.block_table = blk_table
+        new_metadata.prefill_block_table = (
+            blk_table[metadata.num_decodes :] if metadata.num_prefills > 0 else None
+        )
+        new_metadata.decode_block_table = (
+            blk_table[: metadata.num_decodes] if metadata.num_decodes > 0 else None
+        )
         new_metadata.slot_mapping = slot_mapping
         return new_metadata
 
