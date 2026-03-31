@@ -294,7 +294,11 @@ def _build_decode_query_len_buckets(
     tuple[tuple[int, int], ...] | None,
     tuple[tuple[int, int], ...] | None,
 ]:
-    """Build contiguous decode buckets keyed by query length."""
+    """Build contiguous decode buckets keyed by query length.
+
+    Groups consecutive requests with the same query length into buckets,
+    excluding padding requests (query_len == 0).
+    """
     if num_decodes <= 1:
         return None, None, None
 
@@ -302,8 +306,10 @@ def _build_decode_query_len_buckets(
         query_start_loc_cpu[1 : num_decodes + 1] - query_start_loc_cpu[:num_decodes]
     ).tolist()
 
+    # Validate token count consistency
     if num_decode_tokens != sum(decode_query_lens):
         padded_query_len, remainder = divmod(num_decode_tokens, num_decodes)
+        # Only uniform padding is supported
         if remainder != 0 or any(
             query_len not in (0, padded_query_len) for query_len in decode_query_lens
         ):
@@ -313,57 +319,38 @@ def _build_decode_query_len_buckets(
             )
         return None, None, None
 
+    # Early exit if all query lengths are uniform (no bucketing needed)
     first_query_len = decode_query_lens[0]
     if all(query_len == first_query_len for query_len in decode_query_lens):
         return None, None, None
 
+    # Group consecutive requests by query length
     bucket_query_lens: list[int] = []
     bucket_req_bounds: list[tuple[int, int]] = []
     bucket_token_bounds: list[tuple[int, int]] = []
-    run_start: int | None = None
-    run_query_len: int | None = None
 
-    for req_idx, query_len_value in enumerate(decode_query_lens):
-        query_len = int(query_len_value)
+    # [len=1, len=1, len=0(padding), len=2, len=2]
+    # bucket(1): bucket_query_lens=(1,), bucket_req_bounds=(0,2), token_bounds=(0,2)
+    # bucket(2): bucket_query_lens=(2,), bucket_req_bounds=(3,5), token_bounds=(2,4)
+    req_idx = 0
+    while req_idx < num_decodes:
+        query_len = decode_query_lens[req_idx]
         if query_len == 0:
-            if run_start is not None and run_query_len is not None:
-                bucket_query_lens.append(run_query_len)
-                bucket_req_bounds.append((run_start, req_idx))
-                bucket_token_bounds.append(
-                    (
-                        int(query_start_loc_cpu[run_start].item()),
-                        int(query_start_loc_cpu[req_idx].item()),
-                    )
-                )
-                run_start = None
-                run_query_len = None
+            # Skip padding requests
+            req_idx += 1
             continue
 
-        if run_start is None:
-            run_start = req_idx
-            run_query_len = query_len
-            continue
+        # Find the end of this bucket (contiguous requests with same query_len)
+        bucket_start = req_idx
+        while req_idx < num_decodes and decode_query_lens[req_idx] == query_len:
+            req_idx += 1
 
-        if query_len != run_query_len:
-            assert run_query_len is not None
-            bucket_query_lens.append(run_query_len)
-            bucket_req_bounds.append((run_start, req_idx))
-            bucket_token_bounds.append(
-                (
-                    int(query_start_loc_cpu[run_start].item()),
-                    int(query_start_loc_cpu[req_idx].item()),
-                )
-            )
-            run_start = req_idx
-            run_query_len = query_len
-
-    if run_start is not None and run_query_len is not None:
-        bucket_query_lens.append(run_query_len)
-        bucket_req_bounds.append((run_start, num_decodes))
+        bucket_query_lens.append(query_len)
+        bucket_req_bounds.append((bucket_start, req_idx))
         bucket_token_bounds.append(
             (
-                int(query_start_loc_cpu[run_start].item()),
-                int(query_start_loc_cpu[num_decodes].item()),
+                int(query_start_loc_cpu[bucket_start].item()),
+                int(query_start_loc_cpu[req_idx].item()),
             )
         )
 
@@ -395,7 +382,7 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
     # query length <= threshold are classified as decode requests.
     # Use `query_len_support` (above) to set this automatically
     # when speculative decoding is enabled.
-    reorder_batch_threshold: int = 128  # process small prefills with decode pathway
+    reorder_batch_threshold: int = 1  # process small prefills with decode pathway
     # \------------------------- Metax Modification -------------------------/
 
     supports_update_block_table: bool = True
@@ -434,29 +421,32 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         self.aot_schedule = get_flash_attn_version() == 3
 
         # /------------------------  Metax Modification -------------------------\
-        speculative_config = self.vllm_config.speculative_config
-        spec_decode_enabled = (
-            speculative_config is not None
-            and speculative_config.num_speculative_tokens is not None
-            and speculative_config.num_speculative_tokens > 0
+        # In order to support the variable-length query in speculative decoding efficiently,
+        # we need to reorder the batch such that decode requests are grouped by their query lengths.
+        # This allows FlashAttention to bucket queries of similar lengths together, which
+        # is important for performance.
+        #
+        # The `reorder_batch_threshold` is set to 128 by default to allow small prefill requests
+        # to be processed through the decode pathway, which can be more efficient for short sequences.
+        # If `group_decodes_by_query_len` is False, we will not perform this reordering and all decode
+        # requests will be treated the same regardless of their query length, which may lead to suboptimal
+        # performance for variable-length decode batches.
+        #
+        # By setting `query_len_support` to VARLEN, we indicate that this backend can handle variable-length
+        # queries, and we adjust the batch reordering logic accordingly in `_may_reorder_batch`, which is hooked
+        # in vllm_metax/patch/optimizations/speculative_decode_perf.py.
+        self.group_decodes_by_query_len = (
+            self.vllm_config.speculative_config.num_speculative_tokens > 0
+            if self.vllm_config.speculative_config is not None
+            else False
         )
-        self.query_len_support = (
+        FlashAttentionMetadataBuilder.query_len_support = (
             QueryLenSupport.VARLEN
-            if spec_decode_enabled
+            if self.group_decodes_by_query_len
             else QueryLenSupport.UNIFORM
         )
-        self.group_decodes_by_query_len = spec_decode_enabled
-        supports_spec_decode = self.query_len_support != QueryLenSupport.SINGLE_ONLY
-        self._init_reorder_batch_threshold(
-            self.reorder_batch_threshold, supports_spec_decode
-        )
 
-        # Validate consistency between query_len_support and reorder_batch_threshold
-        if self.query_len_support == QueryLenSupport.SINGLE_ONLY:
-            assert self.reorder_batch_threshold == 1, (
-                f"reorder_batch_threshold must be 1 when query_len_support is "
-                f"SINGLE_ONLY, got {self.reorder_batch_threshold}"
-            )
+        self._init_reorder_batch_threshold(self.reorder_batch_threshold, True)
         # \------------------------- Metax Modification -------------------------/
 
         try:
@@ -592,6 +582,8 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
             decode_block_table_tensor = common_attn_metadata.block_table_tensor[
                 :num_decodes
             ]
+            # If grouping decodes by query length, build buckets for the decode requests.
+            # Each bucket will contain requests with the same query length.
             if self.group_decodes_by_query_len:
                 (
                     decode_bucket_query_lens,
@@ -920,7 +912,7 @@ class FlashAttentionImpl(AttentionImpl):
 
     def _forward_decode_with_query_len_bucketing(
         self,
-        query: torch.Tensor,
+        decode_query: torch.Tensor,
         key_cache: torch.Tensor,
         value_cache: torch.Tensor,
         output: torch.Tensor,
@@ -933,7 +925,6 @@ class FlashAttentionImpl(AttentionImpl):
         assert attn_metadata.decode_bucket_req_bounds is not None
         assert attn_metadata.decode_bucket_token_bounds is not None
 
-        decode_query = query[: attn_metadata.num_decode_tokens]
         decode_output = output[: attn_metadata.num_decode_tokens]
 
         for bucket_query_len, bucket_req_bounds, bucket_token_bounds in zip(
@@ -946,6 +937,7 @@ class FlashAttentionImpl(AttentionImpl):
             if req_start == req_end or token_start == token_end:
                 continue
 
+            # Same as `reshape_query_for_spec_decode` but with bucket_query_len
             bucket_query = decode_query[token_start:token_end].view(
                 req_end - req_start,
                 bucket_query_len,
@@ -953,7 +945,7 @@ class FlashAttentionImpl(AttentionImpl):
                 decode_query.shape[2],
             )
 
-            bucket_output = flash_attn_with_kvcache(
+            bucket_output_unreshape = flash_attn_with_kvcache(
                 q=bucket_query,
                 k_cache=key_cache,
                 v_cache=value_cache,
@@ -968,8 +960,8 @@ class FlashAttentionImpl(AttentionImpl):
                 softcap=self.logits_soft_cap,
                 s_aux=self.sinks,
             )
-            decode_output[token_start:token_end] = (
-                reshape_attn_output_for_spec_decode(bucket_output)
+            decode_output[token_start:token_end] = reshape_attn_output_for_spec_decode(
+                bucket_output_unreshape
             )
 
     def forward(
@@ -1108,17 +1100,17 @@ class FlashAttentionImpl(AttentionImpl):
                             )
                         )
                     if attn_metadata.num_decodes > 0:
+                        decode_query = query[:num_decode_tokens]
                         # Use flash_attn_with_kvcache for normal decoding.
                         if attn_metadata.decode_bucket_req_bounds is not None:
                             self._forward_decode_with_query_len_bucketing(
-                                query,
+                                decode_query,
                                 key_cache,
                                 value_cache,
                                 output,
                                 attn_metadata,
                             )
                         else:
-                            decode_query = query[:num_decode_tokens]
                             decode_query = reshape_query_for_spec_decode(
                                 decode_query, attn_metadata.num_decodes
                             )
