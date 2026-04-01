@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     USE_VLLM_TRITON_EXPERT: bool = False
     VLLM_METAX_ENABLE_FA_SPLIT_FORWARD: bool = True
     VLLM_FUSED_MOE_CHUNK_SIZE: int = 16 * 1024
+    VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK: bool = False
 
 environment_variables: dict[str, Callable[[], Any]] = {
     # ================== Installation Time Env Vars ==================
@@ -72,6 +73,10 @@ environment_variables: dict[str, Callable[[], Any]] = {
     ),
     "VLLM_FUSED_MOE_CHUNK_SIZE": lambda: int(
         os.getenv("VLLM_FUSED_MOE_CHUNK_SIZE", str(16 * 1024))
+    ),
+    # if set, enable sglang fused grouped topk ops on deepseek and kimi model
+    "VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK": lambda: bool(
+        int(os.getenv("VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK", "0"))
     ),
     # =================== Debug Env Vars ==================
     # if set, use vllm's fused_moe implementation instead of maca's one for debugging and comparison
