@@ -303,6 +303,7 @@ class MacaFlashInferBackend(AttentionBackend):
     supported_dtypes: ClassVar[list[torch.dtype]] = [torch.float16, torch.bfloat16]
     supported_kv_cache_dtypes: ClassVar[list[CacheDType]] = [
         "auto",
+        "float16",
         "bfloat16",
     ]
 
@@ -1499,6 +1500,33 @@ class FlashInferImpl(AttentionImpl):
                 )
         return output_padded
 
+    def do_kv_cache_update(
+        self,
+        layer: torch.nn.Module,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        kv_cache: torch.Tensor,
+        slot_mapping: torch.Tensor,
+    ) -> None:
+        if self.kv_sharing_target_layer_name is None:
+            # Reshape the input keys and values and store them in the cache.
+            # Skip this if sharing KV cache with an earlier attention layer.
+            # NOTE(woosuk): Here, key and value are padded while slot_mapping is
+            # not padded. However, we don't need to do key[:num_actual_tokens]
+            # and value[:num_actual_tokens] because the reshape_and_cache_flash
+            # op uses the slot_mapping's shape to determine the number of
+            # actual tokens.
+            torch.ops._C_cache_ops.reshape_and_cache_flash(
+                key,
+                value,
+                kv_cache[:, 0],
+                kv_cache[:, 1],
+                slot_mapping,
+                self.kv_cache_dtype,
+                layer._k_scale,
+                layer._v_scale,
+            )
+
 
 def fast_plan_decode(
     self,  # decode wrapper
@@ -1638,7 +1666,7 @@ def fast_plan_decode(
             head_dim,
             head_dim,
             False,  # causal
-            torch.cuda.current_stream(device).cuda_stream,
+            # torch.cuda.current_stream(device).cuda_stream,
         )
     except Exception as e:
         raise RuntimeError(f"Error in tensor core plan: {e}") from e
