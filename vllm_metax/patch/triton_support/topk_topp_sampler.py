@@ -5,7 +5,9 @@
 # Note: this file is used to patch the topk_topp_sampler
 #       to use pytorch instead of triton.
 #
-# !!! Remove this file once the triton implementation is fixed.
+# !!! Remove this file once the
+#       `apply_top_k_top_p_triton`
+#     implementation is fixed.
 # -------------------------------------------------------------
 
 import torch
@@ -29,3 +31,7 @@ vllm.v1.sample.ops.topk_topp_sampler.apply_top_k_top_p = apply_top_k_top_p
 import vllm.v1.sample.rejection_sampler
 
 vllm.v1.sample.rejection_sampler.apply_top_k_top_p = apply_top_k_top_p
+
+import vllm.v1.worker.gpu.sample.states
+
+vllm.v1.worker.gpu.sample.states.apply_top_k_top_p = apply_top_k_top_p

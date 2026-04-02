@@ -11,3 +11,5 @@ from . import triton_support  # noqa: F401
 from . import chores  # noqa: F401
 from . import lora  # noqa: F401
 from . import optimizations  # noqa: F401
+
+from . import MRV2  # noqa: F401
