@@ -274,12 +274,6 @@ class MacaPlatformBase(Platform):
             )
 
         # -------------------------------------------------------
-        # Disable async_scheduling
-        scheduler_config = vllm_config.scheduler_config
-        if scheduler_config is not None:
-            scheduler_config.async_scheduling = False
-
-        # -------------------------------------------------------
         # Append sparse attention op for Maca platform
         if compilation_config is not None:
             compilation_config._attention_ops.append("vllm::mx_sparse_attn_indexer")
@@ -606,6 +600,8 @@ class MacaPlatformBase(Platform):
     ) -> None:
         """Pre-register and update Maca platform."""
         register_attention_backends()
+        if parser is not None:
+            parser.set_defaults(async_scheduling=False)
         # TODO(m01016): update cudagraph max capture size here
 
 
