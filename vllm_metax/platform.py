@@ -248,22 +248,6 @@ class MacaPlatformBase(Platform):
             scheduler_config.disable_chunked_mm_input = True
 
         # -------------------------------------------------------
-        # Ensure that the value of `attn_block_size` is a power of 2.
-        if (
-            model_config is not None
-            and model_config.is_hybrid
-            and not math.log2(cache_config.block_size).is_integer()
-        ):
-            # reinitialize block size to the next power of 2
-            from vllm_metax.configs.hybrid_attn_mamba_config import (
-                HybridAttentionMambaModelConfigWithAlignedBlockSize,
-            )
-
-            HybridAttentionMambaModelConfigWithAlignedBlockSize.verify_and_update_config(
-                vllm_config
-            )
-
-        # -------------------------------------------------------
         # Disable async_scheduling
         scheduler_config = vllm_config.scheduler_config
         if scheduler_config is not None:
