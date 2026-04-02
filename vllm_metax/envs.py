@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     CMAKE_BUILD_TYPE: str | None
     VERBOSE: bool = False
     USE_PRECOMPILED_KERNEL: bool = True
-    MACA_DP_OPT: bool = False
+    VLLM_METAX_DP_OPT: bool = True
     MACA_VLLM_ENABLE_MCTLASS_PYTHON_API: bool = True
     MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: bool = False
     USE_VLLM_TRITON_EXPERT: bool = False
@@ -64,7 +64,7 @@ environment_variables: dict[str, Callable[[], Any]] = {
         int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE", "0"))
     ),
     # if set, enable combine allreduce all2all
-    "MACA_DP_OPT": lambda: bool(int(os.environ.get("MACA_DP_OPT", "1"))),
+    "VLLM_METAX_DP_OPT": lambda: bool(int(os.environ.get("VLLM_METAX_DP_OPT", "1"))),
     # if set, enable FA split forward into
     # prefill and decode for better latency
     # and memory usage during decoding
