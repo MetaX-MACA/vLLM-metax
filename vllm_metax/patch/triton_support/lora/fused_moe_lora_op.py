@@ -4,9 +4,11 @@
 # Note: Disable following ops
 #       - tl.extra.cuda.gdc_wait()
 #       - tl.extra.cuda.gdc_launch_dependents()
+#       - tl.make_tensor_descriptor
 # -----------------------------------------
 
 from vllm.triton_utils import tl, triton
+from vllm.lora.ops.triton_ops.fused_moe_lora_op import _get_lora_id, _get_expert_id, _get_token_offs, _get_c_ptrs
 
 
 @triton.jit(
@@ -190,13 +192,16 @@ def _fused_moe_lora_kernel(
             # if USE_GDC and not IS_PRIMARY:
             #     tl.extra.cuda.gdc_wait()
             # \------------------------------------------------------------/
-
-            b_desc = tl.make_tensor_descriptor(
-                cur_b_ptr,
-                shape=[max_loras, num_experts, N, K],
-                strides=[stride_bl, stride_be, stride_bn, stride_bk],
-                block_shape=[1, 1, BLOCK_SIZE_N, BLOCK_SIZE_K],
-            )
+            
+            pass
+            # /----------------------- Metax Modification ------------------\
+            # b_desc = tl.make_tensor_descriptor(
+            #    cur_b_ptr,
+            #    shape=[max_loras, num_experts, N, K],
+            #    strides=[stride_bl, stride_be, stride_bn, stride_bk],
+            #    block_shape=[1, 1, BLOCK_SIZE_N, BLOCK_SIZE_K],
+            #)
+            # \------------------------------------------------------------/
     else:
         offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int32)
         b_ptrs = (
