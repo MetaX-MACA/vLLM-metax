@@ -2154,6 +2154,7 @@ def fused_experts_impl(
 
         use_mctlass_moe_mm_on_stage2 = (
             mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+            and use_int4_w4a8 is False
             and use_int8_w8a8 is False
             and hidden_states.dtype == torch.bfloat16
             and stage2_config["BLOCK_SIZE_M"] == 128
