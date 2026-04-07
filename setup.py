@@ -369,6 +369,7 @@ package_data = {
     "vllm_metax": [
         "py.typed",
         "model_executor/layers/fused_moe/configs/*.json",
+        "model_executor/layers/fused_moe/configs/*/*.json",
     ]
 }
 

@@ -1,0 +1,1 @@
+recursive-include vllm_metax/model_executor/layers/fused_moe/configs *.json
