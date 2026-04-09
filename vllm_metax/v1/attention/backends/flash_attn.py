@@ -88,14 +88,13 @@ class MacaFlashAttentionBackend(AttentionBackend):
     def get_supported_kernel_block_sizes() -> list[int | MultipleOf]:
         vllm_config = get_current_vllm_config()
         model_config = vllm_config.model_config
-    # /------------------------  Metax Modification -------------------------\
-        if (
-            model_config
-            and model_config.is_hybrid
-        ):
-        # Ensure that kernel block size of hybrid model are powers of two.
+
+        # /------------------------  Metax Modification -------------------------\
+        if model_config and model_config.is_hybrid:
+            # Ensure that kernel block size of hybrid model are powers of two.
             return [16, 32, 64]
-    # \------------------------- Metax Modification -------------------------/
+        # \------------------------- Metax Modification -------------------------/
+
         return [MultipleOf(16)]
 
     forward_includes_kv_cache_update: bool = False
