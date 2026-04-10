@@ -182,3 +182,60 @@ def flash_mla_sparse_prefill(
     )
     # \------------------------- Metax Modification -------------------------/
     return results
+
+def flash_mla_sparse_decode(
+    q: torch.Tensor,
+    kv_c_and_k_pe_cache: torch.Tensor,
+    block_table: torch.Tensor,
+    cache_seqlens: torch.Tensor,
+    head_dim_v: int,
+    tile_scheduler_metadata: torch.Tensor,
+    num_splits: torch.Tensor,
+    softmax_scale: float | None = None,
+    causal: bool = False,
+    indices: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Arguments:
+    - q: (batch_size, seq_len_q, num_heads_q, head_dim).
+    - k_cache: (num_blocks, page_block_size, num_heads_k, head_dim).
+    - block_table: (batch_size, max_num_blocks_per_seq), torch.int32.
+    - cache_seqlens: (batch_size), torch.int32.
+    - head_dim_v: Head dimension of v.
+    - tile_scheduler_metadata: 
+        (num_sm_parts, TileSchedulerMetaDataSize), torch.int32, 
+        returned by get_mla_metadata.
+    - num_splits: 
+        (batch_size + 1), torch.int32, returned by get_mla_metadata.
+    - softmax_scale: float. 
+        The scale of QK^T before applying softmax. 
+        Default to 1 / sqrt(head_dim).
+    - causal: bool. Whether to apply causal attention mask.
+    - indices: (batch_size, seq_len_q, topk), torch.int32. 
+        If not None, sparse attention will be enabled, 
+        and only tokens in the `indices` array will be attended to. 
+        Invalid indices should be set to -1 or numbers >= total_seq_len_kv. 
+        For details about how to set up `indices`, please refer to README.md.
+
+    Returns:
+    - out: (batch_size, seq_len_q, num_heads_q, head_dim_v).
+    - softmax_lse: (batch_size, num_heads_q, seq_len_q), torch.float32.
+    """
+    s_kv = kv_c_and_k_pe_cache.shape[0]
+    indices_valid = torch.logical_and(indices != -1, indices < s_kv)
+    # [s_q, h_kv, topk] -> [s_q, h_kv, 1]
+    indices_all_valid_per_q = indices_valid.all(dim=-1, keepdim=True)
+    return flash_mla_with_kvcache(
+            q,
+            kv_c_and_k_pe_cache,
+            block_table,
+            cache_seqlens,
+            head_dim_v,
+            tile_scheduler_metadata,
+            num_splits,
+            softmax_scale,
+            causal,
+            False,
+            indices,
+            indices_all_valid_per_q
+        )
