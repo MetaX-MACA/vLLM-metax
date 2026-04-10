@@ -52,7 +52,7 @@ def _get_backend_priorities(
     use_mla: bool,
     device_capability: DeviceCapability,
     num_heads: int | None = None,
-    kv_cache_dtype: CacheDType | None = None,
+    kv_cache_dtype: "CacheDType | None" = None,
 ) -> list[AttentionBackendEnum]:
     """Get backend priorities with lazy import to avoid circular dependency."""
     from vllm.v1.attention.backends.registry import AttentionBackendEnum
@@ -570,7 +570,7 @@ class MacaPlatformBase(Platform):
 
     @classmethod
     def support_deep_gemm(cls) -> bool:
-        return True
+        return False
 
     @classmethod
     def num_compute_units(cls, device_id=0) -> int:
