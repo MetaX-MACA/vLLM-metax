@@ -102,7 +102,10 @@ class MacaFlashAttentionBackend(AttentionBackend):
             # suffer from the NaN propagation problem described here:
             # https://github.com/Dao-AILab/flash-attention/issues/1974
             return [16, 32, 64]
-        return [MultipleOf(16)]
+
+        # retrun kernel block size need to be pow of 2
+        return [16, 32, 64, 128, 256]
+        # return [MultipleOf(16)]
 
     forward_includes_kv_cache_update: bool = False
 
