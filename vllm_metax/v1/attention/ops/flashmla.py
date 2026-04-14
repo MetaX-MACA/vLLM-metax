@@ -211,7 +211,8 @@ def flash_mla_sparse_decode(
     - out: (batch_size, seq_len_q, num_heads_q, head_dim_v).
     - softmax_lse: (batch_size, num_heads_q, seq_len_q), torch.float32.
     """
-    s_kv = kv_c_and_k_pe_cache.shape[0]
+    s_kv = kv_c_and_k_pe_cache.shape[0] * kv_c_and_k_pe_cache.shape[1]
+    assert indices is not None
     indices_valid = torch.logical_and(indices != -1, indices < s_kv)
     # [s_q, h_kv, topk] -> [s_q, h_kv, 1]
     indices_all_valid_per_q = indices_valid.all(dim=-1, keepdim=True)
