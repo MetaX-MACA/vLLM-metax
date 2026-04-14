@@ -259,6 +259,9 @@ class MacaPlatformBase(Platform):
         # Append sparse attention op for Maca platform
         if compilation_config is not None:
             compilation_config._attention_ops.append("vllm::mx_sparse_attn_indexer")
+            compilation_config._attention_ops.append(
+                "vllm::mx_sparse_attn_indexer_bf16"
+            )
 
         # -------------------------------------------------------
         # Disable cascade attention for Maca platform currently

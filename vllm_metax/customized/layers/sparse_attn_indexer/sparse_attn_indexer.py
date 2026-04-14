@@ -64,3 +64,12 @@ class MacaSparseAttnIndexer(SparseAttnIndexer):
             self.max_total_seq_len,
             self.topk_indices_buffer,
         )
+
+    def forward_native(
+        self,
+        hidden_states: torch.Tensor,
+        q_fp8: torch.Tensor,
+        k: torch.Tensor,
+        weights: torch.Tensor,
+    ):
+        return self.forward_oot(hidden_states, q_fp8, k, weights)
