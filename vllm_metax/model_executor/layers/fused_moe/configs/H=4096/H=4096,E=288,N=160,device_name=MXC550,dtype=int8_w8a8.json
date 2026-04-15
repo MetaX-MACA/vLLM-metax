@@ -4,71 +4,71 @@
             "BLOCK_SIZE_M": 16,
             "BLOCK_SIZE_N": 64,
             "BLOCK_SIZE_K": 256,
-            "GROUP_SIZE_M": 32,
+            "GROUP_SIZE_M": 16,
             "num_warps": 4,
             "num_stages": 3,
-            "SPLIT_K": 1,
             "pipeline": "cpasync",
-            "scenario": ""
+            "scenario": "",
+            "SPLIT_K": 2
         },
         "stage2": {
             "BLOCK_SIZE_M": 16,
             "BLOCK_SIZE_N": 64,
             "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 16,
+            "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 2,
-            "SPLIT_K": 1,
             "pipeline": "basic",
-            "scenario": ""
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
         }
     },
     "2": {
         "stage1": {
             "BLOCK_SIZE_M": 16,
             "BLOCK_SIZE_N": 64,
-            "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 1,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 32,
             "num_warps": 4,
-            "num_stages": 2,
-            "SPLIT_K": 1,
-            "pipeline": "basic",
-            "scenario": ""
+            "num_stages": 3,
+            "pipeline": "cpasync",
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
         },
         "stage2": {
             "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_N": 128,
             "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 64,
+            "GROUP_SIZE_M": 32,
             "num_warps": 4,
             "num_stages": 2,
-            "SPLIT_K": 1,
-            "pipeline": "basic",
-            "scenario": "unroll"
+            "pipeline": "cpasync",
+            "scenario": "unroll",
+            "SPLIT_K": 1
         }
     },
     "4": {
         "stage1": {
             "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_N": 32,
             "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 32,
+            "GROUP_SIZE_M": 1,
             "num_warps": 4,
-            "num_stages": 3,
-            "SPLIT_K": 1,
-            "pipeline": "cpasync",
-            "scenario": "storeCoalesce"
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
         },
         "stage2": {
             "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_N": 128,
             "BLOCK_SIZE_K": 64,
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 2,
-            "SPLIT_K": 1,
             "pipeline": "basic",
-            "scenario": ""
+            "scenario": "unroll",
+            "SPLIT_K": 1
         }
     },
     "6": {
@@ -79,20 +79,20 @@
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 2,
-            "SPLIT_K": 1,
             "pipeline": "basic",
-            "scenario": "storeCoalesce"
+            "scenario": "unroll",
+            "SPLIT_K": 1
         },
         "stage2": {
             "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_N": 128,
             "BLOCK_SIZE_K": 64,
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 2,
-            "SPLIT_K": 1,
             "pipeline": "basic",
-            "scenario": "storeCoalesce"
+            "scenario": "unroll",
+            "SPLIT_K": 1
         }
     },
     "8": {
@@ -103,33 +103,9 @@
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 2,
-            "SPLIT_K": 1,
-            "pipeline": "basic",
-            "scenario": "storeCoalesce"
-        },
-        "stage2": {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
-            "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 64,
-            "num_warps": 4,
-            "num_stages": 2,
-            "SPLIT_K": 1,
-            "pipeline": "basic",
-            "scenario": "unroll"
-        }
-    },
-    "12": {
-        "stage1": {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
-            "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 1,
-            "num_warps": 4,
-            "num_stages": 3,
-            "SPLIT_K": 1,
             "pipeline": "cpasync",
-            "scenario": "storeCoalesce"
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
         },
         "stage2": {
             "BLOCK_SIZE_M": 16,
@@ -137,10 +113,34 @@
             "BLOCK_SIZE_K": 64,
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
-            "num_stages": 3,
-            "SPLIT_K": 1,
+            "num_stages": 2,
             "pipeline": "basic",
-            "scenario": "unroll"
+            "scenario": "unroll",
+            "SPLIT_K": 1
+        }
+    },
+    "12": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "unroll",
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "unroll",
+            "SPLIT_K": 1
         }
     },
     "16": {
@@ -151,9 +151,9 @@
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 2,
-            "SPLIT_K": 1,
             "pipeline": "basic",
-            "scenario": "unroll"
+            "scenario": "",
+            "SPLIT_K": 1
         },
         "stage2": {
             "BLOCK_SIZE_M": 16,
@@ -161,10 +161,10 @@
             "BLOCK_SIZE_K": 64,
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
-            "num_stages": 3,
-            "SPLIT_K": 1,
+            "num_stages": 2,
             "pipeline": "basic",
-            "scenario": ""
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
         }
     },
     "20": {
@@ -175,9 +175,9 @@
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 3,
-            "SPLIT_K": 1,
             "pipeline": "cpasync",
-            "scenario": "storeCoalesce"
+            "scenario": "",
+            "SPLIT_K": 1
         },
         "stage2": {
             "BLOCK_SIZE_M": 16,
@@ -185,58 +185,10 @@
             "BLOCK_SIZE_K": 64,
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
-            "num_stages": 3,
-            "SPLIT_K": 1,
-            "pipeline": "basic",
-            "scenario": "storeCoalesce"
-        }
-    },
-    "24": {
-        "stage1": {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
-            "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 1,
-            "num_warps": 4,
-            "num_stages": 3,
-            "SPLIT_K": 1,
-            "pipeline": "cpasync",
-            "scenario": ""
-        },
-        "stage2": {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
-            "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 16,
-            "num_warps": 4,
             "num_stages": 2,
-            "SPLIT_K": 1,
             "pipeline": "basic",
-            "scenario": "storeCoalesce"
-        }
-    },
-    "28": {
-        "stage1": {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
-            "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 1,
-            "num_warps": 4,
-            "num_stages": 2,
-            "SPLIT_K": 1,
-            "pipeline": "basic",
-            "scenario": "storeCoalesce"
-        },
-        "stage2": {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
-            "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 64,
-            "num_warps": 4,
-            "num_stages": 2,
-            "SPLIT_K": 1,
-            "pipeline": "basic",
-            "scenario": ""
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
         }
     },
     "32": {
@@ -244,23 +196,23 @@
             "BLOCK_SIZE_M": 16,
             "BLOCK_SIZE_N": 64,
             "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 1,
-            "num_warps": 4,
-            "num_stages": 3,
-            "SPLIT_K": 1,
-            "pipeline": "cpasync",
-            "scenario": ""
-        },
-        "stage2": {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
-            "BLOCK_SIZE_K": 64,
             "GROUP_SIZE_M": 32,
             "num_warps": 4,
             "num_stages": 2,
-            "SPLIT_K": 1,
             "pipeline": "basic",
-            "scenario": ""
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
         }
     },
     "40": {
@@ -271,68 +223,20 @@
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 3,
-            "SPLIT_K": 1,
             "pipeline": "cpasync",
-            "scenario": "storeCoalesce"
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
         },
         "stage2": {
             "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_N": 128,
             "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 64,
-            "num_warps": 4,
-            "num_stages": 2,
-            "SPLIT_K": 1,
-            "pipeline": "basic",
-            "scenario": "unroll"
-        }
-    },
-    "48": {
-        "stage1": {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
-            "BLOCK_SIZE_K": 128,
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
-            "num_stages": 3,
-            "SPLIT_K": 1,
-            "pipeline": "cpasync",
-            "scenario": ""
-        },
-        "stage2": {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
-            "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 64,
-            "num_warps": 4,
             "num_stages": 2,
-            "SPLIT_K": 1,
             "pipeline": "basic",
-            "scenario": "unroll"
-        }
-    },
-    "56": {
-        "stage1": {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
-            "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 16,
-            "num_warps": 4,
-            "num_stages": 3,
-            "SPLIT_K": 1,
-            "pipeline": "cpasync",
-            "scenario": "storeCoalesce"
-        },
-        "stage2": {
-            "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
-            "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 64,
-            "num_warps": 4,
-            "num_stages": 2,
-            "SPLIT_K": 1,
-            "pipeline": "basic",
-            "scenario": ""
+            "scenario": "unroll",
+            "SPLIT_K": 1
         }
     },
     "64": {
@@ -343,20 +247,20 @@
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 3,
-            "SPLIT_K": 1,
             "pipeline": "cpasync",
-            "scenario": "storeCoalesce"
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
         },
         "stage2": {
             "BLOCK_SIZE_M": 16,
-            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_N": 128,
             "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 32,
+            "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 2,
-            "SPLIT_K": 1,
             "pipeline": "basic",
-            "scenario": "unroll"
+            "scenario": "",
+            "SPLIT_K": 1
         }
     },
     "96": {
@@ -364,23 +268,23 @@
             "BLOCK_SIZE_M": 16,
             "BLOCK_SIZE_N": 64,
             "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 32,
+            "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 3,
-            "SPLIT_K": 1,
             "pipeline": "cpasync",
-            "scenario": "storeCoalesce"
+            "scenario": "",
+            "SPLIT_K": 1
         },
         "stage2": {
             "BLOCK_SIZE_M": 16,
             "BLOCK_SIZE_N": 128,
             "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 32,
+            "GROUP_SIZE_M": 1,
             "num_warps": 4,
-            "num_stages": 3,
-            "SPLIT_K": 1,
+            "num_stages": 2,
             "pipeline": "basic",
-            "scenario": ""
+            "scenario": "",
+            "SPLIT_K": 1
         }
     },
     "128": {
@@ -391,9 +295,9 @@
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 3,
-            "SPLIT_K": 1,
             "pipeline": "cpasync",
-            "scenario": ""
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
         },
         "stage2": {
             "BLOCK_SIZE_M": 16,
@@ -401,133 +305,133 @@
             "BLOCK_SIZE_K": 64,
             "GROUP_SIZE_M": 16,
             "num_warps": 4,
-            "num_stages": 3,
-            "SPLIT_K": 1,
+            "num_stages": 2,
             "pipeline": "basic",
-            "scenario": ""
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
         }
     },
     "256": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "unroll",
+            "SPLIT_K": 1
+        }
+    },
+    "512": {
         "stage1": {
             "BLOCK_SIZE_M": 32,
             "BLOCK_SIZE_N": 64,
             "BLOCK_SIZE_K": 128,
             "GROUP_SIZE_M": 1,
-            "num_warps": 8,
+            "num_warps": 4,
             "num_stages": 2,
-            "SPLIT_K": 1,
-            "pipeline": "basic",
-            "scenario": ""
+            "pipeline": "cpasync",
+            "scenario": "",
+            "SPLIT_K": 1
         },
         "stage2": {
             "BLOCK_SIZE_M": 32,
             "BLOCK_SIZE_N": 128,
-            "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 1,
-            "num_warps": 4,
-            "num_stages": 3,
-            "SPLIT_K": 1,
-            "pipeline": "basic",
-            "scenario": ""
-        }
-    },
-    "512": {
-        "stage1": {
-            "BLOCK_SIZE_M": 64,
-            "BLOCK_SIZE_N": 128,
             "BLOCK_SIZE_K": 128,
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 4,
-            "SPLIT_K": 1,
             "pipeline": "cpasync",
-            "scenario": "unroll"
-        },
-        "stage2": {
-            "BLOCK_SIZE_M": 64,
-            "BLOCK_SIZE_N": 128,
-            "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 16,
-            "num_warps": 4,
-            "num_stages": 4,
-            "SPLIT_K": 1,
-            "pipeline": "cpasync",
-            "scenario": "storeCoalesce"
+            "scenario": "unroll",
+            "SPLIT_K": 1
         }
     },
     "1024": {
         "stage1": {
-            "BLOCK_SIZE_M": 128,
-            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
             "BLOCK_SIZE_K": 128,
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
-            "num_stages": 4,
-            "SPLIT_K": 1,
+            "num_stages": 2,
             "pipeline": "cpasync",
-            "scenario": "storeCoalesce"
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
         },
         "stage2": {
-            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_M": 64,
             "BLOCK_SIZE_N": 128,
-            "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 1,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 16,
             "num_warps": 4,
             "num_stages": 4,
-            "SPLIT_K": 1,
             "pipeline": "cpasync",
-            "scenario": "storeCoalesce"
-        }
-    },
-    "1536": {
-        "stage1": {
-            "BLOCK_SIZE_M": 128,
-            "BLOCK_SIZE_N": 128,
-            "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 1,
-            "num_warps": 4,
-            "num_stages": 4,
-            "SPLIT_K": 1,
-            "pipeline": "cpasync",
-            "scenario": "storeCoalesce"
-        },
-        "stage2": {
-            "BLOCK_SIZE_M": 128,
-            "BLOCK_SIZE_N": 128,
-            "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 1,
-            "num_warps": 4,
-            "num_stages": 4,
-            "SPLIT_K": 1,
-            "pipeline": "cpasync",
-            "scenario": "storeCoalesce"
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
         }
     },
     "2048": {
         "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
+        }
+    },
+    "3072": {
+        "stage1": {
             "BLOCK_SIZE_M": 128,
             "BLOCK_SIZE_N": 128,
             "BLOCK_SIZE_K": 128,
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 4,
-            "SPLIT_K": 1,
             "pipeline": "cpasync",
-            "scenario": "unroll"
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
         },
         "stage2": {
             "BLOCK_SIZE_M": 128,
             "BLOCK_SIZE_N": 128,
-            "BLOCK_SIZE_K": 128,
+            "BLOCK_SIZE_K": 32,
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
-            "num_stages": 4,
-            "SPLIT_K": 1,
-            "pipeline": "cpasync",
-            "scenario": "storeCoalesce"
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "",
+            "SPLIT_K": 1
         }
     },
-    "3072": {
+    "4096": {
         "stage1": {
             "BLOCK_SIZE_M": 128,
             "BLOCK_SIZE_N": 128,
@@ -535,44 +439,20 @@
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 4,
-            "SPLIT_K": 1,
             "pipeline": "cpasync",
-            "scenario": ""
+            "scenario": "",
+            "SPLIT_K": 1
         },
         "stage2": {
             "BLOCK_SIZE_M": 128,
             "BLOCK_SIZE_N": 128,
-            "BLOCK_SIZE_K": 128,
+            "BLOCK_SIZE_K": 32,
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
-            "num_stages": 4,
-            "SPLIT_K": 1,
-            "pipeline": "cpasync",
-            "scenario": "storeCoalesce"
-        }
-    },
-    "4096": {
-        "stage1": {
-            "BLOCK_SIZE_M": 128,
-            "BLOCK_SIZE_N": 128,
-            "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 1,
-            "num_warps": 4,
-            "num_stages": 4,
-            "SPLIT_K": 1,
-            "pipeline": "cpasync",
-            "scenario": "storeCoalesce"
-        },
-        "stage2": {
-            "BLOCK_SIZE_M": 128,
-            "BLOCK_SIZE_N": 128,
-            "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 16,
-            "num_warps": 4,
-            "num_stages": 4,
-            "SPLIT_K": 1,
-            "pipeline": "cpasync",
-            "scenario": "storeCoalesce"
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "",
+            "SPLIT_K": 1
         }
     },
     "8192": {
@@ -583,20 +463,20 @@
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
             "num_stages": 4,
-            "SPLIT_K": 1,
             "pipeline": "cpasync",
-            "scenario": ""
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
         },
         "stage2": {
             "BLOCK_SIZE_M": 128,
             "BLOCK_SIZE_N": 128,
-            "BLOCK_SIZE_K": 128,
+            "BLOCK_SIZE_K": 32,
             "GROUP_SIZE_M": 1,
             "num_warps": 4,
-            "num_stages": 1,
-            "SPLIT_K": 1,
-            "pipeline": "cpasync",
-            "scenario": "storeCoalesce"
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": "storeCoalesce",
+            "SPLIT_K": 1
         }
     }
 }
