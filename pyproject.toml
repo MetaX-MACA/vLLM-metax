@@ -6,7 +6,7 @@ requires = [
     "packaging>=24.2",
     "setuptools>=77.0.3,<81.0.0",
     "setuptools-scm>=8.0",
-    "torch==2.8.0+metax3.3.0.2",
+    "torch==2.8.0+metax3.5.3.9",
     "wheel",
     "jinja2",
 ]

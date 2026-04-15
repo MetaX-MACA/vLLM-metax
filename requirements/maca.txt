@@ -3,5 +3,3 @@
 -r common.txt
 
 numba == 0.61.2
-
-ray==2.53.0
