@@ -3,3 +3,4 @@
 from . import maca_visible_device  # noqa: F401
 from . import bench_serve_args  # noqa: F401
 from . import remove_error_log  # noqa: F401
+from . import endpoint_request_func # noqa: F401
