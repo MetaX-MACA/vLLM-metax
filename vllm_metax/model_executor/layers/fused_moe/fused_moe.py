@@ -897,7 +897,7 @@ def invoke_fused_moe_triton_kernel(
             mul_routed_weight,
         )
     elif use_int4_w4a8:
-        # if block_shape is None, then Per-Channel
+        # if block_shape is None，then Per-Channel
         if block_shape is None:
             # is Per-Channel
             mctlass_ops.cutlass_moe_mm_w4a8_per_channel(
@@ -1821,7 +1821,6 @@ def _get_config_quant_dtype(
     """
     if use_fp8_w8a8:
         return torch.float8_e4m3fn
-    # 这里我参照了上个版本的代码，但是我有点怀疑为什么这里return的是int8而不是int4
     elif use_int4_w4a8 or use_int8_w8a8:
         return torch.int8
     elif ocp_mx_scheme == "w_mxfp4_a_mxfp4":
@@ -2055,8 +2054,6 @@ def fused_experts_impl(
                 and block_shape is not None
                 and block_shape[1] > 0
             )
-            # -----------------------------------------------------------------
-            # Metax Modification: for int8_w8a8
             and not (
                 (use_int8_w8a8 or use_int4_w4a8)
                 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
@@ -2285,7 +2282,7 @@ class TritonExperts(mk.FusedMoEExpertsModular):
             is_rocm_on_gfx9 = False
 
         device_supports_fp8 = is_rocm_on_gfx9 or (
-            p.is_cuda() and p.has_device_capability((8, 9))
+            p.is_cuda_alike() and p.has_device_capability((8, 9))
         )
 
         if not device_supports_fp8:

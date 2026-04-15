@@ -2282,7 +2282,7 @@ class MLACommonImpl(MLAAttentionImpl[M], Generic[M]):
             # model dtype input and will quantize internally.
             if (
                 use_fp8_prefill
-                or self.kv_b_proj.weight.dtype != current_platform.fp8_dtype()
+                # or self.kv_b_proj.weight.dtype != current_platform.fp8_dtype()
             ):
                 kv_c_normed = kv_c_normed.to(self.kv_b_proj.weight.dtype)
 

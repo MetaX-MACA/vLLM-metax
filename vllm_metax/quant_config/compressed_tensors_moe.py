@@ -619,7 +619,7 @@ class CompressedTensorsW4A8Int4MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
             MoEActivation.SWIGLUSTEP,
         ), "Only SiLU/SwiGLUOAI/SwiGLUSTEP are supported."
         assert layer.expert_map is None, """expert_map/EP not implemented
-for CPU dyn-4bit MoE."""
+        for CPU dyn-4bit MoE."""
 
         from vllm_metax.model_executor.layers.fused_moe.fused_moe import (
             fused_experts as mx_fused_experts,

@@ -142,6 +142,7 @@ class MacaPlatformBase(Platform):
         "compressed_tensors",  # This is `_` version of `-`
         "moe_wna16",
         "gguf",
+        "fp8",
     ]
 
     @classmethod
@@ -537,7 +538,7 @@ class MacaPlatformBase(Platform):
 
     @classmethod
     def supports_fp8(cls) -> bool:
-        return False
+        return True
 
     @classmethod
     def use_custom_allreduce(cls) -> bool:
@@ -786,6 +787,8 @@ mx_envs.override_vllm_env(
 mx_envs.override_vllm_env(
     "VLLM_ENGINE_READY_TIMEOUT_S", 3600, "set timeout to 3600s for model loading"
 )
+
+mx_envs.override_vllm_env("VLLM_DISABLE_SHARED_EXPERTS_STREAM", True, "no used on maca")
 
 # --------------------------------------------------
 # Note: vllm_metax currently does not support third-party
