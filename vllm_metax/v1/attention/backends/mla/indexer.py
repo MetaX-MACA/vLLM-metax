@@ -10,7 +10,10 @@ from vllm.config import VllmConfig
 from vllm.logger import init_logger
 from vllm.platforms import current_platform
 from vllm.utils.deep_gemm import get_paged_mqa_logits_metadata
-from vllm_metax.utils.deep_gemm import has_deep_gemm
+from vllm_metax.utils.deep_gemm import (
+    has_deep_gemm,
+    get_num_blocks_paged_mqa_logits_metadata,
+)
 from vllm.utils.math_utils import cdiv
 from vllm.utils.platform_utils import num_compute_units
 from vllm.v1.attention.backend import (
@@ -314,10 +317,10 @@ class DeepseekV32IndexerMetadataBuilder(AttentionMetadataBuilder):
             device=self.device,
         )
 
-        # See: DeepGMM/csrc/apis/attention.hpp
+        num_blocks = get_num_blocks_paged_mqa_logits_metadata(self.num_sms)
         self.scheduler_metadata_buffer = torch.empty(
-            (self.num_sms + 1, 2), dtype=torch.int32, device=self.device
-        )
+            (num_blocks + 1, 2), dtype=torch.int32, device=self.device
+        )  # aligned with deepgemm
 
     def build_one_prefill_chunk(
         self,
@@ -507,7 +510,7 @@ class DeepseekV32IndexerMetadataBuilder(AttentionMetadataBuilder):
                 batch_size = num_decodes
 
             # DeepGEMM is required for the paged MQA logits on CUDA devices
-            if current_platform.is_cuda() and has_deep_gemm():
+            if has_deep_gemm():
                 self.scheduler_metadata_buffer[:] = get_paged_mqa_logits_metadata(
                     seq_lens,
                     self.kv_cache_spec.block_size,
