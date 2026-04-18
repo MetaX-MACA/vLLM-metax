@@ -16,6 +16,35 @@ def register():
     return "vllm_metax.platform.MacaPlatform"
 
 
+########### early patch ###########
+# to fix env_override error
+def register_early_patch():
+    import importlib
+    import sys
+    import types
+
+    target_name = "vllm.env_override"
+
+    mod = sys.modules.get(target_name)
+    if mod is not None and getattr(mod, "__file__", "").endswith("vllm_metax/env_override.py"):
+        return
+
+    if target_name not in sys.modules:
+        placeholder = types.ModuleType(target_name)
+        placeholder.__package__ = "vllm"
+        sys.modules[target_name] = placeholder
+
+
+    metax_env_override = importlib.import_module("vllm_metax.env_override")
+
+    sys.modules[target_name] = metax_env_override
+
+
+    vllm_pkg = sys.modules.get("vllm")
+    if vllm_pkg is not None:
+        setattr(vllm_pkg, "env_override", metax_env_override)
+
+
 ########### general plugins ###########
 def register_patch():
     import vllm_metax.hotfix.fix_compilation_backend  # noqa: F401

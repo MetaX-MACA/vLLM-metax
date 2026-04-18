@@ -11,7 +11,7 @@ from tests.v1.shutdown.utils import (SHUTDOWN_TEST_THRESHOLD_BYTES,
 from vllm import LLM, SamplingParams
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.sampling_params import RequestOutputKind
-from vllm.utils import cuda_device_count_stateless
+from vllm.platforms import current_platform
 from vllm.v1.engine.async_llm import AsyncLLM
 
 MODELS = ["meta-llama/Llama-3.2-1B"]
@@ -32,7 +32,7 @@ async def test_async_llm_delete(model: str, tensor_parallel_size: int,
       tensor_parallel_size: degree of tensor parallelism
       send_one_request: send one request to engine before deleting
     """
-    if cuda_device_count_stateless() < tensor_parallel_size:
+    if current_platform.device_count() < tensor_parallel_size:
         pytest.skip(reason="Not enough CUDA devices")
 
     engine_args = AsyncEngineArgs(model=model,
@@ -75,7 +75,7 @@ def test_llm_delete(monkeypatch, model: str, tensor_parallel_size: int,
       enable_multiprocessing: enable workers in separate process(es)
       send_one_request: send one request to engine before deleting
     """
-    if cuda_device_count_stateless() < tensor_parallel_size:
+    if current_platform.device_count() < tensor_parallel_size:
         pytest.skip(reason="Not enough CUDA devices")
 
     with monkeypatch.context() as m:

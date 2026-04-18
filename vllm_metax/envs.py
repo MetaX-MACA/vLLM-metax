@@ -100,6 +100,7 @@ def override_vllm_env(env_name: str, value: Any, reason: str | None) -> None:
                the env resolver will return None.
     """
     from vllm import envs
+    from vllm.logger import logger
 
     if not isinstance(env_name, str):
         raise TypeError("env_name must be a string")
@@ -107,13 +108,13 @@ def override_vllm_env(env_name: str, value: Any, reason: str | None) -> None:
     if env_name not in envs.environment_variables:
         raise KeyError(f"{env_name} is not a recognized vLLM environment variable")
 
-    # TODO(hank): fixme
-    # logger.info_once(
-    #     "Plugin sets %s to %s. Reason: %s",
-    #     env_name,
-    #     value,
-    #     reason,
-    # )
+    # circular reference
+    logger.info(
+        "Plugin sets %s to %s. Reason: %s",
+        env_name,
+        value,
+        reason,
+    )
 
     # Replace the resolver with a callable that returns the desired value.
     envs.environment_variables[env_name] = lambda v=value: v

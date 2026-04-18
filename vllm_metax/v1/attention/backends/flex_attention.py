@@ -26,9 +26,8 @@ import vllm.envs as envs
 from vllm.config import VllmConfig
 from vllm.config.cache import CacheDType
 from vllm.logger import init_logger
-from vllm.model_executor.layers.batch_invariant import (
-    vllm_is_batch_invariant,
-)
+import vllm.envs as envs
+
 from vllm.platforms import current_platform
 from vllm.utils.math_utils import cdiv
 from vllm.utils.torch_utils import is_torch_equal_or_newer

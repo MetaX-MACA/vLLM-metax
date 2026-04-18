@@ -14,6 +14,7 @@ from vllm_metax.model_executor.layers.attention.mla_attention import (
     MLACommonImpl,
     MLACommonMetadata,
 )
+import vllm.envs as envs
 from vllm.platforms.interface import DeviceCapability
 from vllm.v1.attention.backend import (
     AttentionLayer,
