@@ -13,7 +13,7 @@ from tests.v1.shutdown.utils import (SHUTDOWN_TEST_THRESHOLD_BYTES,
 from vllm import LLM, AsyncEngineArgs, SamplingParams
 from vllm.distributed import get_tensor_model_parallel_rank
 from vllm.model_executor.models.llama import LlamaForCausalLM
-from vllm.utils import cuda_device_count_stateless
+from vllm.platforms import current_platform
 from vllm.v1.engine.async_llm import AsyncLLM
 from vllm.v1.engine.exceptions import EngineDeadError
 
@@ -44,7 +44,7 @@ async def test_async_llm_model_error(monkeypatch, tensor_parallel_size: int,
     
     AsyncLLM always uses an MP client.
     """
-    if cuda_device_count_stateless() < tensor_parallel_size:
+    if current_platform.device_count() < tensor_parallel_size:
         pytest.skip(reason="Not enough CUDA devices")
 
     # Monkeypatch an error in the model.
@@ -105,7 +105,7 @@ def test_llm_model_error(monkeypatch, tensor_parallel_size: int,
     TODO(andy) - LLM without multiprocessing; LLM with multiprocessing
     and >1 rank
     """
-    if cuda_device_count_stateless() < tensor_parallel_size:
+    if current_platform.device_count() < tensor_parallel_size:
         pytest.skip(reason="Not enough CUDA devices")
 
     with monkeypatch.context() as m:

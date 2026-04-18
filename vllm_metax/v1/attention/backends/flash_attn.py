@@ -19,6 +19,7 @@ from vllm.v1.attention.backend import (
     MultipleOf,
     is_quantized_kv_cache,
 )
+import vllm.envs as envs
 from vllm_metax.v1.attention.backends.fa_utils import (
     flash_attn_supports_fp8,
     get_flash_attn_version,
