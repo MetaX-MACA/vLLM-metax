@@ -224,6 +224,19 @@ class MacaPlatformBase(Platform):
                 mx_envs.USE_PRECOMPILED_KERNEL,
             )
 
+        try:
+            if (
+                mx_envs.USE_PRECOMPILED_KERNEL
+                and mx_envs.VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK
+            ):
+                import mcoplib.sgl_kernel  # noqa: F401
+        except ImportError as e:
+            logger.warning(
+                "Failed to import sgl_kernel: %r with VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK=%s",
+                e,
+                mx_envs.VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK,
+            )
+
     @classmethod
     def check_and_update_config(cls, vllm_config: "VllmConfig") -> None:
         # Config Override
@@ -248,12 +261,6 @@ class MacaPlatformBase(Platform):
                 "with multimodal-bidirectional attention."
             )
             scheduler_config.disable_chunked_mm_input = True
-
-        # -------------------------------------------------------
-        # Disable async_scheduling
-        scheduler_config = vllm_config.scheduler_config
-        if scheduler_config is not None:
-            scheduler_config.async_scheduling = False
 
         # -------------------------------------------------------
         # Append sparse attention op for Maca platform
