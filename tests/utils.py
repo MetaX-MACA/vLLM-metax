@@ -40,8 +40,12 @@ from vllm.entrypoints.cli.serve import ServeSubcommand
 from vllm.model_executor.model_loader import get_model_loader
 from vllm.platforms import current_platform
 from vllm.transformers_utils.tokenizer import get_tokenizer
-from vllm.utils import (FlexibleArgumentParser, GB_bytes,
-                        cuda_device_count_stateless, get_open_port)
+from vllm.utils import (
+    FlexibleArgumentParser,
+    GB_bytes,
+    get_open_port,
+)
+from vllm.platforms import current_platform
 
 if current_platform.is_rocm():
     from amdsmi import (amdsmi_get_gpu_vram_usage,
@@ -1024,7 +1028,7 @@ def multi_gpu_marks(*, num_gpus: int):
     """Get a collection of pytest marks to apply for `@multi_gpu_test`."""
     test_selector = pytest.mark.distributed(num_gpus=num_gpus)
     test_skipif = pytest.mark.skipif(
-        cuda_device_count_stateless() < num_gpus,
+        current_platform.device_count() < num_gpus,
         reason=f"Need at least {num_gpus} GPUs to run the test.",
     )
 

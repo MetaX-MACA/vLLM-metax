@@ -23,7 +23,7 @@ from vllm.logger import logger
 
 from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
 from vllm_metax.utils import import_pymxsml
-from vllm.utils.torch_utils import cuda_device_count_stateless
+
 
 from vllm.platforms.interface import DeviceCapability, Platform, PlatformEnum
 from vllm.utils.argparse_utils import FlexibleArgumentParser
@@ -530,9 +530,6 @@ class MacaPlatformBase(Platform):
         pg._register_backend(device, backend_type, backend_class)
         return pg
 
-    @classmethod
-    def device_count(cls) -> int:
-        return cuda_device_count_stateless()
 
     @classmethod
     def check_if_supports_dtype(cls, torch_dtype: torch.dtype):
