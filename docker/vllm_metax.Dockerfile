@@ -1,7 +1,7 @@
 ARG BUILD_BASE_IMAGE=registry.access.redhat.com/ubi9/ubi:9.6
 ARG PYTHON_VERSION=3.10
-# ARG UV_INDEX_URL=https://repos.metax-tech.com/r/maca-pypi/simple
 ARG UV_EXTRA_INDEX_URL=https://repos.metax-tech.com/r/maca-pypi/simple
+ARG UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple
 ARG UV_TRUSTED_HOST=repos.metax-tech.com
 
 # may need passing a particular vllm version during build
@@ -13,8 +13,6 @@ ARG CU_BRIDGE_VERSION=${MACA_VERSION}
 FROM ${BUILD_BASE_IMAGE} AS base
 
 ARG PYTHON_VERSION
-# ARG UV_INDEX_URL
-ARG UV_TRUSTED_HOST
 
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="/opt/venv/bin:/root/.local/bin:$PATH"
@@ -31,29 +29,14 @@ RUN python3 --version && \
 ENV UV_INDEX_STRATEGY="unsafe-best-match"
 
 # Use copy mode to avoid hardlink failures with Docker cache mounts
+ARG UV_EXTRA_INDEX_URL
+ARG UV_INDEX_URL
 ENV UV_LINK_MODE=copy
-# ENV UV_INDEX_URL=${UV_INDEX_URL}
 ENV UV_EXTRA_INDEX_URL=${UV_EXTRA_INDEX_URL}
+ENV UV_INDEX_URL=${UV_INDEX_URL}
 
 WORKDIR /workspace
 
-# install build and runtime dependencies and cache them
-COPY requirements/common.txt requirements/common.txt
-COPY requirements/maca.txt requirements/maca.txt
-COPY requirements/maca_private.txt requirements/maca_private.txt
-COPY requirements/constraints.txt requirements/constraints.txt
-
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install -r requirements/maca.txt \
-    --trusted-host ${UV_TRUSTED_HOST}
-
-# install empty vllm
-ARG VLLM_VERSION
-RUN --mount=type=cache,target=/root/.cache/uv \
-    VLLM_TARGET_DEVICE=empty \
-    UV_OVERRIDE=requirements/maca_private.txt \
-    uv pip install --no-binary=vllm vllm==${VLLM_VERSION} \
-    --trusted-host ${UV_TRUSTED_HOST}
 #################### BASE BUILD IMAGE ####################
 
 #################### Install MACA SDK and Metax-Driver ####################
@@ -93,10 +76,9 @@ RUN yum makecache && \
     yum install -y maca_sdk-${MACA_VERSION}* && \
     yum clean all && rm -rf /var/cache/yum /tmp/*
 
+# https://gitee.com/metax-maca/cu-bridge/repository/archive/3.5.3.zip
 ## Install cu-bridge
-# CU_BRIDGE 3.2.1 has some bugs and can't work with MACA SDK 3.2.1 properly.
-# So here we install CU_BRIDGE 3.1.0 instead.
-ARG CU_BRIDGE_VERSION=3.1.0
+ARG CU_BRIDGE_VERSION
 RUN cd /tmp/ && \
     export MACA_PATH=/opt/maca && \
     curl -o ${CU_BRIDGE_VERSION}.zip -LsSf https://gitee.com/metax-maca/cu-bridge/repository/archive/${CU_BRIDGE_VERSION}.zip && \
@@ -111,7 +93,7 @@ RUN cd /tmp/ && \
 #################### Install MACA SDK and Metax-Driver ####################
 
 
-#################### WHEEL BUILD IMAGE ####################
+#################### Build vllm-metax wheel ####################
 FROM full_maca AS wheel_build
 
 ## Update environment variables
@@ -124,13 +106,10 @@ ENV CUDA_PATH=/root/cu-bridge/CUDA_DIR
 ENV CUCC_CMAKE_ENTRY=2
 # update PATH
 ENV PATH=/opt/mxdriver/bin:${MACA_PATH}/bin:${MACA_PATH}/mxgpu_llvm/bin:${MACA_PATH}/tools/cu-bridge/tools:${MACA_PATH}/tools/cu-bridge/bin:${PATH} 
-ENV LD_LIBRARY_PATH=/opt/mxdriver/lib:${MACA_PATH}/lib:${MACA_PATH}/mxgpu_llvm/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/ucx/lib:${LD_LIBRARY_PATH}
-# vllm compile option
-ENV VLLM_INSTALL_PUNICA_KERNELS=1
+ENV LD_LIBRARY_PATH=/opt/mxdriver/lib:${MACA_PATH}/lib:${MACA_PATH}/mxgpu_llvm/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/ucx/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
 
+# install build and runtime dependencies and cache them
 WORKDIR /workspace
-ARG UV_EXTRA_INDEX_URL
-ENV UV_EXTRA_INDEX_URL=${UV_EXTRA_INDEX_URL}
 
 # install vllm-metax build dependencies
 COPY requirements/build.txt requirements/build.txt
@@ -144,8 +123,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,src=.,target=/workspace/vllm-metax,rw \
     cd /workspace/vllm-metax && \
     uv build --wheel --out-dir=/workspace/vllm_metax_wheel_dist
-
-#################### WHEEL BUILD IMAGE ####################
+#################### Build vllm-metax wheel ####################
 
 
 #################### CLEANUP ####################
@@ -167,7 +145,7 @@ ARG MACA_VERSION
 
 ENV MACA_PATH=/opt/maca
 ENV PATH=/opt/mxdriver/bin:${MACA_PATH}/bin:${MACA_PATH}/mxgpu_llvm/bin:${MACA_PATH}/tools/cu-bridge/tools:${MACA_PATH}/tools/cu-bridge/bin:${PATH} 
-ENV LD_LIBRARY_PATH=/opt/mxdriver/lib:${MACA_PATH}/lib:${MACA_PATH}/mxgpu_llvm/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/ucx/lib:${LD_LIBRARY_PATH}
+ENV LD_LIBRARY_PATH=/opt/mxdriver/lib:${MACA_PATH}/lib:${MACA_PATH}/mxgpu_llvm/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/ucx/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
 
 RUN yum makecache && yum install -y \
     gcc \
@@ -192,6 +170,17 @@ COPY --from=wheel_build /workspace/vllm_metax_wheel_dist /tmp/wheels
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install /tmp/wheels/* 
 
+# install empty vllm
+ARG VLLM_VERSION
+COPY requirements/maca_private.txt requirements/maca_private.txt
+RUN --mount=type=cache,target=/root/.cache/uv \
+    VLLM_TARGET_DEVICE=empty \
+    UV_OVERRIDE=requirements/maca_private.txt \
+    uv pip install --no-binary=vllm vllm==${VLLM_VERSION} 
+
 # Fix(hank): don't know why vllm installation also brings in flashinfer-python, remove it here.
 RUN uv pip uninstall flashinfer-python cupy-cuda12x
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install numpy==1.26
 #################### FINAL IMAGE ####################
