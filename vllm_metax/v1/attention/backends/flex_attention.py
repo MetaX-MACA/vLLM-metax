@@ -26,7 +26,7 @@ import vllm.envs as envs
 from vllm.config import VllmConfig
 from vllm.config.cache import CacheDType
 from vllm.logger import init_logger
-import vllm.envs as envs
+
 
 from vllm.platforms import current_platform
 from vllm.utils.math_utils import cdiv
