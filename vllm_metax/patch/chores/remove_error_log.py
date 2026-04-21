@@ -8,20 +8,7 @@
 # Remove the wrong error log for Maca when checking the flash attention version.
 # ------------------------------------------------------------------------
 
-import vllm
-from vllm.v1.attention.backends.fa_utils import logger
-
-
-def get_flash_attn_version(requires_alibi: bool = False) -> int | None:
-    """
-    Omit the wrong error log for Maca
-    """
-    logger.info_once(
-        "Using Maca version of flash attention, which only supports version 2."
-    )
-    return 2
-
-
 import vllm.v1.attention.backends.fa_utils
+from vllm_metax.v1.attention.backends.fa_utils import get_flash_attn_version
 
 vllm.v1.attention.backends.fa_utils.get_flash_attn_version = get_flash_attn_version
