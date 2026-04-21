@@ -15,6 +15,7 @@ dropout_layer_norm==0.1+metax3.5.3.9torch2.8
 
 # attention
 flash_attn==2.6.3+metax3.5.3.9torch2.8
+# flash-linear-attention==0.4.0+metax3.5.3.9torch2.8
 flash_mla==1.0.1+metax3.5.3.9torch2.8
 flashinfer==0.2.6+metax3.5.3.9torch2.8
 fused_dense_lib==2.6.3+metax3.5.3.9torch2.8
@@ -28,9 +29,10 @@ xentropy_cuda_lib==0.1+metax3.5.3.9torch2.8
 
 mcpy==3.5.3.3
 
-# deep_gemm==0.0.1+maca3.3.0.10
+# deep_gemm==0.0.1
+# lmcache==0.4.1+maca3.5.3.307
+# nixl==0.5.0+maca3.5.3.307
 
-#TODO(hank): need a fix for this mcoplib version
-mcoplib==0.4.1+maca3.5.3.18.torch2.8
+mcoplib==0.4.2+maca3.5.3.20.torch2.8
 
 # uv pip install -r requirements/maca.txt -c requirements/constraints.txt  --index-strategy unsafe-best-match --extra-index-url https://repos.metax-tech.com/r/maca-pypi/simple --trusted-host repos.metax-tech.com --dry-run
