@@ -108,7 +108,6 @@ def override_vllm_env(env_name: str, value: Any, reason: str | None) -> None:
     if env_name not in envs.environment_variables:
         raise KeyError(f"{env_name} is not a recognized vLLM environment variable")
 
-
     logger.info(
         "Plugin sets %s to %s. Reason: %s",
         env_name,
