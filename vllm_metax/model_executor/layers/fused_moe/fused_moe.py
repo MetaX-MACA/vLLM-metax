@@ -55,10 +55,14 @@ from vllm.utils.torch_utils import direct_register_custom_op, is_torch_equal_or_
 
 from vllm.model_executor.layers.fused_moe.fused_moe import logger
 
-from mcoplib.triton_fused_moe import (
-    fused_moe_triton_kernel,
-    fused_moe_triton_kernel_gptq_awq,
-)
+if mx_envs.USE_PRECOMPILED_KERNEL:
+    from mcoplib.triton_fused_moe import (
+        fused_moe_triton_kernel,
+        fused_moe_triton_kernel_gptq_awq,
+    )
+else:
+    fused_moe_triton_kernel = None
+    fused_moe_triton_kernel_gptq_awq = None
 
 _mctlass_modname = (
     "vllm_metax.model_executor.layers.quantization._python_api_ops"
