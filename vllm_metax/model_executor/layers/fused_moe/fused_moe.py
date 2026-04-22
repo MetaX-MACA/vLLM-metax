@@ -2376,21 +2376,7 @@ class TritonExperts(mk.FusedMoEExpertsModular):
         weight_key: QuantKey | None,
         activation_key: QuantKey | None,
     ) -> bool:
-        p = current_platform
-        if p.is_rocm():
-            from vllm.platforms.rocm import on_gfx9
-
-            is_rocm_on_gfx9 = on_gfx9()
-        else:
-            is_rocm_on_gfx9 = False
-
-        device_supports_fp8 = (
-            is_rocm_on_gfx9
-            or (p.is_cuda_alike() and p.has_device_capability((8, 9)))
-            or p.is_xpu()
-        )
-
-        if not device_supports_fp8:
+        if not current_platform.supports_fp8():
             return (weight_key, activation_key) == (None, None)
 
         SUPPORTED_W_A = [
@@ -2421,6 +2407,10 @@ class TritonExperts(mk.FusedMoEExpertsModular):
             moe_parallel_config.use_fi_nvl_two_sided_kernels
             or moe_parallel_config.use_fi_nvl_one_sided_kernels
         )
+
+    @staticmethod
+    def _supports_batch_invariance():
+        return True
 
     def supports_expert_map(self) -> bool:
         return True
