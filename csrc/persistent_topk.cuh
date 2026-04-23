@@ -59,21 +59,22 @@ __device__ __forceinline__ auto convert_to_uint8(float x) -> uint8_t {
   return static_cast<uint8_t>(key >> 8);
 }
 
+__device__ __forceinline__ auto negative_infinity() -> float {
+  return __uint_as_float(0xFF800000u);
+}
+
 // ============================================================================
 // Vectorized load helpers
 // ============================================================================
 
-// Unconditional float4 load with cache hint (.cg = cache at global level only).
+// Unconditional float4 load using a standard CUDA vector load.
 __device__ __forceinline__ void load_float4(const float* ptr, float& v0,
                                             float& v1, float& v2, float& v3) {
-  uint32_t r0, r1, r2, r3;
-  asm volatile("ld.global.cg.v4.u32 {%0,%1,%2,%3}, [%4];\n"
-               : "=r"(r0), "=r"(r1), "=r"(r2), "=r"(r3)
-               : "l"(ptr));
-  v0 = __uint_as_float(r0);
-  v1 = __uint_as_float(r1);
-  v2 = __uint_as_float(r2);
-  v3 = __uint_as_float(r3);
+  const float4 values = *reinterpret_cast<const float4*>(ptr);
+  v0 = values.x;
+  v1 = values.y;
+  v2 = values.z;
+  v3 = values.w;
 }
 
 // Per-element predicated scalar loads with -inf default.
@@ -81,33 +82,11 @@ __device__ __forceinline__ void load_float4_predicated(const float* ptr,
                                                        int base, int seq_len,
                                                        float& v0, float& v1,
                                                        float& v2, float& v3) {
-  uint32_t r0, r1, r2, r3;
-  int p0 = (base < seq_len);
-  int p1 = (base + 1 < seq_len);
-  int p2 = (base + 2 < seq_len);
-  int p3 = (base + 3 < seq_len);
-  asm volatile(
-      "{\n"
-      "  .reg .pred pr0, pr1, pr2, pr3;\n"
-      "  setp.ne.u32 pr0, %4, 0;\n"
-      "  setp.ne.u32 pr1, %5, 0;\n"
-      "  setp.ne.u32 pr2, %6, 0;\n"
-      "  setp.ne.u32 pr3, %7, 0;\n"
-      "  mov.u32 %0, 0xFF800000;\n"
-      "  mov.u32 %1, 0xFF800000;\n"
-      "  mov.u32 %2, 0xFF800000;\n"
-      "  mov.u32 %3, 0xFF800000;\n"
-      "  @pr0 ld.global.cg.u32 %0, [%8];\n"
-      "  @pr1 ld.global.cg.u32 %1, [%8+4];\n"
-      "  @pr2 ld.global.cg.u32 %2, [%8+8];\n"
-      "  @pr3 ld.global.cg.u32 %3, [%8+12];\n"
-      "}\n"
-      : "=r"(r0), "=r"(r1), "=r"(r2), "=r"(r3)
-      : "r"(p0), "r"(p1), "r"(p2), "r"(p3), "l"(ptr));
-  v0 = __uint_as_float(r0);
-  v1 = __uint_as_float(r1);
-  v2 = __uint_as_float(r2);
-  v3 = __uint_as_float(r3);
+  const float neg_inf = negative_infinity();
+  v0 = (base < seq_len) ? ptr[0] : neg_inf;
+  v1 = (base + 1 < seq_len) ? ptr[1] : neg_inf;
+  v2 = (base + 2 < seq_len) ? ptr[2] : neg_inf;
+  v3 = (base + 3 < seq_len) ? ptr[3] : neg_inf;
 }
 
 // ============================================================================
@@ -593,37 +572,17 @@ __device__ __noinline__ void histogram_256_topk(
 // ============================================================================
 
 __device__ __forceinline__ int ld_acquire(int* ptr) {
-  int state = 0;
-#if (__CUDA_ARCH__ >= 700)
-  asm volatile("ld.global.acquire.gpu.b32 %0, [%1];\n"
-               : "=r"(state)
-               : "l"(ptr));
-#else
-  asm volatile("ld.cg.global.b32 %0, [%1];\n" : "=r"(state) : "l"(ptr));
-#endif
-  return state;
+  return atomicAdd(ptr, 0);
 }
 
 __device__ __forceinline__ void red_release(int* ptr, int val) {
-#if (__CUDA_ARCH__ >= 700)
-  asm volatile("fence.acq_rel.gpu;\n");
-  asm volatile("red.relaxed.gpu.global.add.s32 [%0], %1;\n"
-               :
-               : "l"(ptr), "r"(val));
-#else
   __threadfence();
   atomicAdd(ptr, val);
-#endif
 }
 
 __device__ __forceinline__ void st_release(int* ptr, int val) {
-#if (__CUDA_ARCH__ >= 700)
-  asm volatile("fence.acq_rel.gpu;\n");
-  asm volatile("st.release.gpu.global.b32 [%0], %1;\n" : : "l"(ptr), "r"(val));
-#else
   __threadfence();
   atomicExch(ptr, val);
-#endif
 }
 
 __device__ __forceinline__ void wait_ge(int* ptr, int target_val,
@@ -632,6 +591,7 @@ __device__ __forceinline__ void wait_ge(int* ptr, int target_val,
 #pragma unroll 1
     while (ld_acquire(ptr) < target_val) {
     }
+    __threadfence();
   }
   __syncthreads();
 }
