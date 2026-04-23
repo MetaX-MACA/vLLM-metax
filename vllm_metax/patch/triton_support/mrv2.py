@@ -4,6 +4,7 @@
 
 # ---------------------------------------------------------
 # TODO(hank): remove this once triton3.6+metax is released
+#     triton 3.0 does not support _load_ptr on compile time
 # --------------------------------------------------------
 from vllm.triton_utils import tl, triton
 

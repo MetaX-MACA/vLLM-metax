@@ -10,7 +10,10 @@ from vllm.triton_utils import tl, triton
 
 import numpy as np
 import torch
-from vllm.v1.attention.backends.utils import CommonAttentionMetadata
+from vllm.v1.spec_decode.utils import (
+    eagle_prepare_next_token_padded_kernel,
+    next_power_of_2,
+)
 from vllm.v1.worker.gpu_input_batch import CachedRequestState, InputBatch
 
 from vllm.v1.spec_decode.eagle import SpecDecodeBaseProposer
@@ -124,7 +127,7 @@ class MacaEagleProposer(SpecDecodeBaseProposer):
         grid = (batch_size,)
 
         # Find the next power of 2 for block sizes
-        BLOCK_SIZE_TOKENS = triton.next_power_of_2(num_tokens)
+        BLOCK_SIZE_TOKENS = next_power_of_2(num_tokens)
         eagle_prepare_next_token_padded_kernel[grid](
             sampled_token_ids,
             discard_request_mask,
