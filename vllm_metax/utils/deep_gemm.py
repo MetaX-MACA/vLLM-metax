@@ -117,6 +117,7 @@ def bf16_paged_mqa_logits(
     block_tables: torch.Tensor,
     schedule_metadata: torch.Tensor,
     max_model_len: int,
+    clean_logits: bool = True,
 ) -> torch.Tensor:
     """Compute BF16 MQA logits using paged KV-cache.
 

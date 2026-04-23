@@ -68,7 +68,9 @@ class MacaMMEncoderAttention(MMEncoderAttention):
             else None
         )
 
-        logger.info_once(f"Using {self.attn_backend} for MacaMMEncoderAttention.")
+        logger.info_once(
+            f"Using {self.attn_backend} for MacaMMEncoderAttention.", scope="local"
+        )
 
     def _forward_fa(
         self,
