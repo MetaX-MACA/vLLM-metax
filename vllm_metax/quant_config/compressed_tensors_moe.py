@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
+import importlib
 import torch
 from vllm.model_executor.layers.fused_moe import FusedMoE, FusedMoEMethodBase
 from vllm.model_executor.layers.quantization.compressed_tensors import (
@@ -22,6 +23,8 @@ from vllm.model_executor.layers.fused_moe.activation import MoEActivation
 from vllm_metax.customized.layers.unquantized_fused_moe_method import (
     UnquantizedFusedMoEMethod,
 )
+
+mod = importlib.import_module(f"{vllm_ctm.__name__}.compressed_tensors_moe_w8a8_int8")
 
 
 # -----------------------------------------------------------
@@ -82,7 +85,7 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
         if isinstance(
             origin_moe_method,
             (
-                vllm_ctm.CompressedTensorsWNA16MoEMethod,
+                mod.CompressedTensorsW8A8Int8MoEMethod,
                 vllm_ctm.CompressedTensorsWNA16MarlinMoEMethod,
             ),
         ):
@@ -116,7 +119,7 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
 # -----------------------------------------------------------
 # Note: We need to keep the method name **the same** as vLLM's
 # -----------------------------------------------------------
-class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm.CompressedTensorsW8A8Int8MoEMethod):
+class CompressedTensorsW8A8Int8MoEMethod(mod.CompressedTensorsW8A8Int8MoEMethod):
     def apply(
         self,
         layer: FusedMoE,
@@ -147,7 +150,7 @@ class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm.CompressedTensorsW8A8Int8MoEMe
 # -----------------------------------------------------------
 # Note: We need to keep the method name **the same** as vLLM's
 # -----------------------------------------------------------
-class CompressedTensorsWNA16MoEMethod(vllm_ctm.CompressedTensorsWNA16MoEMethod):
+class CompressedTensorsWNA16MoEMethod(mod.CompressedTensorsW8A8Int8MoEMethod):
     def select_gemm_impl(
         self,
         prepare_finalize: mk.FusedMoEPrepareAndFinalizeModular,
@@ -355,7 +358,7 @@ class CompressedTensorsW4A8Int8MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
         layer.group_size = g
 
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
-        # [expert, out_feature, groups] -> [expert, groupes, out_features]
+        # [expert, out_feature, groups] -> [expert, groups, out_features]
         layer.w13_weight_scale = torch.nn.Parameter(
             layer.w13_weight_scale.transpose(1, 2).contiguous(),
             requires_grad=False,
