@@ -21,6 +21,7 @@ from vllm_metax.model_executor.layers.attention.mla_attention import (
 )
 from vllm.platforms.interface import DeviceCapability
 from vllm.utils.platform_utils import num_compute_units
+from vllm.utils.torch_utils import is_quantized_kv_cache
 from vllm.v1.attention.backend import (
     AttentionCGSupport,
     AttentionLayer,
@@ -283,7 +284,7 @@ class FlashMLAImpl(MLACommonImpl[FlashMLAMetadata]):
 
         tile_scheduler_metadata = attn_metadata.decode.tile_scheduler_metadata
         num_splits = attn_metadata.decode.num_splits
-        if envs.VLLM_BATCH_INVARIANT and not self.kv_cache_dtype.startswith("fp8"):
+        if envs.VLLM_BATCH_INVARIANT and not is_quantized_kv_cache(self.kv_cache_dtype):
             device = q.device
             dtype = torch.int32
 

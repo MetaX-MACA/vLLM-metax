@@ -17,6 +17,7 @@ from vllm.model_executor.layers.attention.mla_attention import (
 from vllm.platforms import current_platform
 from vllm.platforms.interface import DeviceCapability
 from vllm.utils.platform_utils import num_compute_units
+from vllm.utils.torch_utils import is_quantized_kv_cache
 from vllm.v1.attention.backend import (
     AttentionBackend,
     AttentionCGSupport,
@@ -80,7 +81,6 @@ structured as:
 
 @register_backend(AttentionBackendEnum.FLASHMLA_SPARSE)
 class MacaFlashMLASparseBackend(AttentionBackend):
-    accept_output_buffer: bool = True
     supported_dtypes: ClassVar[list[torch.dtype]] = [torch.bfloat16]
     supported_kv_cache_dtypes: ClassVar[list[CacheDType]] = [
         "auto",
@@ -331,12 +331,15 @@ class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetad
         """
         num_tokens = common_attn_metadata.num_actual_tokens
 
+        # Use padded head count since that's what the kernel will see
+        padded_heads = self.fp8_decode_padded_heads
+
         # Build metadata for all tokens as a single batch
         tile_scheduler_metadata, num_splits = get_mla_metadata(
             cache_seqlens=self.topk_tokens_tensor[:1],  # Single batch
-            num_q_tokens_per_head_k=num_tokens * self.num_heads,
+            num_q_tokens_per_head_k=num_tokens * padded_heads,
             topk=self.topk_tokens,
-            num_heads_q=self.num_heads,
+            num_heads_q=padded_heads,
             num_heads_k=1,
             is_fp8_kvcache=True,
         )
@@ -482,11 +485,13 @@ class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetad
             query_start_loc_cpu = common_attn_metadata.query_start_loc_cpu
             decode_query_len = (query_start_loc_cpu[1] - query_start_loc_cpu[0]).item()
 
+            # Use padded head count since that's what the kernel will see
+            padded_heads = self.fp8_decode_padded_heads
             tile_scheduler_metadata, num_splits = get_mla_metadata(
                 cache_seqlens=self.topk_tokens_tensor[:num_decodes],
-                num_q_tokens_per_head_k=decode_query_len * self.num_heads,
+                num_q_tokens_per_head_k=decode_query_len * padded_heads,
                 topk=self.topk_tokens,
-                num_heads_q=self.num_heads,
+                num_heads_q=padded_heads,
                 num_heads_k=1,
                 is_fp8_kvcache=True,
             )
@@ -673,7 +678,7 @@ class FlashMLASparseImpl(SparseMLAAttentionImpl[FlashMLASparseMetadata]):
         vllm_config = get_current_vllm_config()
         max_tokens = vllm_config.scheduler_config.max_num_batched_tokens
         q_concat_shape = (max_tokens, num_heads, head_size)
-        if kv_cache_dtype.startswith("fp8"):
+        if is_quantized_kv_cache(kv_cache_dtype):
             assert kv_cache_dtype == "fp8_ds_mla", (
                 "FlashMLA Sparse Attention backend fp8 only supports "
                 "fp8_ds_mla kv-cache dtype"
