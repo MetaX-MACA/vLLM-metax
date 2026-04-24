@@ -12,10 +12,9 @@ import torch
 from vllm.model_executor.kernels.linear.scaled_mm.cutlass import (
     CutlassInt8ScaledMMLinearKernel,
 )
-from vllm.model_executor.kernels.linear.scaled_mm import (  # noqa: E501
-    ScaledMMLinearKernel,
-    ScaledMMLinearLayerConfig,
-)
+from vllm.model_executor.kernels.linear.scaled_mm import ScaledMMLinearKernel
+
+
 from vllm.platforms import PlatformEnum
 
 from vllm import _custom_ops as ops
@@ -34,10 +33,6 @@ class MctlassScaledMMLinearKernel(CutlassInt8ScaledMMLinearKernel):
     def is_supported(
         cls, compute_capability: int | None = None
     ) -> tuple[bool, str | None]:
-        return True, None
-
-    @classmethod
-    def can_implement(cls, c: ScaledMMLinearLayerConfig) -> tuple[bool, str | None]:
         return True, None
 
     def apply_weights(
