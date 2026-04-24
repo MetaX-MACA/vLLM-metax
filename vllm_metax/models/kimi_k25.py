@@ -25,6 +25,7 @@ from transformers.processing_utils import ProcessorMixin
 
 from vllm.config import VllmConfig
 from vllm.config.multimodal import BaseDummyOptions
+from vllm.inputs import MultiModalDataDict
 from vllm.logger import init_logger
 from vllm.model_executor.models.interfaces import (
     SupportsMultiModal,
@@ -38,7 +39,6 @@ from vllm.model_executor.models.kimi_k25_vit import (
 )
 from vllm.multimodal import MULTIMODAL_REGISTRY
 from vllm.multimodal.inputs import (
-    MultiModalDataDict,
     MultiModalFieldConfig,
     MultiModalKwargsItems,
     NestedTensors,
@@ -98,69 +98,6 @@ class KimiK25MediaPixelInputs(TensorSchema):
     grid_thws: Annotated[torch.Tensor, TensorShape("nm", 3)]
 
 
-class MoonshotKimiVAutoProcessor(ProcessorMixin):
-    attributes = ["tokenizer"]
-    tokenizer_class = "AutoTokenizer"
-
-    def __init__(
-        self, media_processor=None, tokenizer=None, media_token_id: int | None = None
-    ):
-        super().__init__(tokenizer)
-        self.media_processor = media_processor
-        self.media_token_id = media_token_id
-        assert self.media_token_id is not None
-
-    # We do not support str input for text here
-    def __call__(
-        self,
-        vision_chunks: list[VisionChunk] | None = None,
-        *,
-        text: list[int] | str,
-        **kwargs,
-    ) -> BatchFeature:
-        """
-        Args:
-            vision_chunks: List of VisionChunk items to be processed.
-                For image: VisionChunkImage with type='image', image=PIL.Image
-                For video_chunk: VisionChunkVideo with type='video_chunk', video_chunk=list[PIL.Image]
-            text: The token ids to be fed to a model (required).
-        Returns:
-            [`BatchFeature`]: A [`BatchFeature`] with the following fields:
-
-            - **input_ids** -- list of token ids to be fed to a model.
-            - **pixel_values** -- Pixel values to be fed to a model. Returned when `vision_chunks` is not `None`.
-            - **grid_thws** -- list of image 3D grid in LLM. Returned when `vision_chunks` is not `None`.
-        """
-        mm_inputs = {}
-        input_ids = self.tokenizer.encode(text) if isinstance(text, str) else text
-        if vision_chunks is not None:
-            assert isinstance(vision_chunks, list)
-            mm_inputs = self.media_processor.preprocess(vision_chunks)
-
-            num_tokens_per_chunk = [
-                self.media_processor.media_tokens_calculator(chunk)
-                for chunk in vision_chunks
-            ]
-
-            new_input_ids = []
-            for token in input_ids:
-                if token == self.media_token_id:
-                    new_input_ids.extend(
-                        [self.media_token_id] * num_tokens_per_chunk.pop(0)
-                    )
-                else:
-                    new_input_ids.append(token)
-            input_ids = new_input_ids
-
-        # XXX: _apply_hf_processor_text_mm will call tolist() on input_ids
-        return BatchFeature(
-            data={
-                "input_ids": torch.tensor([input_ids]),
-                **mm_inputs,
-            }
-        )
-
-
 class KimiK25ProcessingInfo(BaseProcessingInfo):
     """Processing information for Kimi-K2.5 model.
 
@@ -172,15 +109,12 @@ class KimiK25ProcessingInfo(BaseProcessingInfo):
         super().__init__(ctx)
         self.hf_config = self.get_hf_config()
         self.media_token_id = self.hf_config.media_placeholder_token_id
+        self.media_token = self.get_tokenizer().decode(self.media_token_id)
         media_processor = cached_get_image_processor(
             self.ctx.model_config.model, trust_remote_code=True
         )
         self.media_processor = media_processor
-        self.hf_processor = MoonshotKimiVAutoProcessor(
-            media_processor=self.media_processor,
-            tokenizer=self.get_tokenizer(),
-            media_token_id=self.media_token_id,
-        )
+        self.hf_processor = self.get_tokenizer()
         self.media_tokens_calculator = self.media_processor.media_tokens_calculator
 
     def get_hf_processor(self):
@@ -301,6 +235,51 @@ class KimiK25MultiModalProcessor(BaseMultiModalProcessor[KimiK25ProcessingInfo])
 
     def split_video_chunks(self, video):
         return self.info.media_processor.split_video_chunks(video)
+
+    def _call_hf_processor(
+        self,
+        prompt: str,
+        mm_data: Mapping[str, object],
+        mm_kwargs: Mapping[str, object],
+        tok_kwargs: Mapping[str, object],
+    ) -> BatchFeature:
+
+        vision_chunks = mm_data.get("vision_chunks")
+        tokenizer = self.info.get_tokenizer()
+        media_processor = self.info.media_processor
+        media_token_id = self.info.media_token_id
+
+        # Text encoding
+        input_ids = tokenizer.encode(prompt)
+
+        # Image preprocessing and placeholder replacement
+        mm_inputs = {}
+        if vision_chunks is not None:
+            # Support both single element and list inputs
+            if not isinstance(vision_chunks, list):
+                vision_chunks = [vision_chunks]
+
+            mm_inputs = media_processor.preprocess(vision_chunks)
+
+            num_tokens_per_chunk = [
+                media_processor.media_tokens_calculator(chunk)
+                for chunk in vision_chunks
+            ]
+
+            new_input_ids = []
+            for token in input_ids:
+                if token == media_token_id and len(num_tokens_per_chunk) > 0:
+                    new_input_ids.extend([media_token_id] * num_tokens_per_chunk.pop(0))
+                else:
+                    new_input_ids.append(token)
+            input_ids = new_input_ids
+
+        return BatchFeature(
+            data={
+                "input_ids": torch.tensor([input_ids]),
+                **mm_inputs,
+            }
+        )
 
 
 @MULTIMODAL_REGISTRY.register_processor(
