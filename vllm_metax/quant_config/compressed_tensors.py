@@ -9,7 +9,9 @@ from vllm.model_executor.layers.quantization.base_config import (  # noqa: E501
 from vllm.model_executor.layers.quantization.compressed_tensors import (
     compressed_tensors as vllm_ct,
 )
-from vllm_metax.quant_config.compressed_tensors_moe import CompressedTensorsMoEMethod
+from vllm_metax.quant_config.compressed_tensors_moe.compressed_tensors_moe import (
+    CompressedTensorsMoEMethod,
+)
 
 from vllm.model_executor.layers.quantization import register_quantization_config
 from vllm.model_executor.layers.fused_moe import FusedMoE
