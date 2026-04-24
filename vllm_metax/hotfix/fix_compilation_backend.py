@@ -34,7 +34,6 @@ from vllm.compilation.compiler_interface import (
     InductorStandaloneAdaptor,
     set_inductor_config,
     set_functorch_config,
-    _patch_constrain_to_fx_strides,
 )
 
 
@@ -103,7 +102,7 @@ def inductor_standalone_compile(
             "torch._inductor.compile_fx._recursive_pre_grad_passes",
             lambda gm, _: gm,
         )
-    with ctx, _patch_constrain_to_fx_strides():
+    with ctx:
         compiled_graph = standalone_compile(graph, example_inputs, **compile_kwargs)
 
     if use_aot:
@@ -165,6 +164,8 @@ def compile(
     compile_range: Range,
     graph_index: int = 0,
     num_graphs: int = 1,
+    is_encoder: bool = False,
+    **kwargs,
 ) -> Any:
     if graph_index == 0:
         # before compiling the first graph, record the start time
