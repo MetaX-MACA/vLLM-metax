@@ -159,6 +159,13 @@ class MacaPlatformBase(Platform):
         _ = torch.zeros(1, device=device)
 
     @classmethod
+    def manual_seed_all(cls, seed: int) -> None:
+        # TODO(xuV2): implement device-wide RNG seeding for MACA.
+        # Temporary no-op to keep vLLM 0.19.2rc0 compatibility.
+        # This may cause non-deterministic behavior on accelerator devices.
+        pass
+
+    @classmethod
     def get_device_capability(cls, device_id: int = 0) -> DeviceCapability | None:
         raise NotImplementedError
 
