@@ -58,7 +58,7 @@ def select_unquantized_moe_backend(
 @vllm_UnquantizedFusedMoEMethod.register_oot
 class UnquantizedFusedMoEMethod(vllm_UnquantizedFusedMoEMethod):
     def __init__(self, moe: FusedMoEConfig):
-        super(FusedMoEConfig, self).__init__(moe)
+        super(vllm_UnquantizedFusedMoEMethod, self).__init__(moe)
         # -------------------------------------------------
         # Here in maca we use Triton for Modular MoE kernel
         moe.moe_backend = "triton"
