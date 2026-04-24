@@ -28,13 +28,13 @@ import torch.fx as fx
 import vllm.envs as envs
 from vllm.compilation.counter import compilation_counter
 from vllm.config.utils import Range
+from vllm.env_override import _apply_constrain_to_fx_strides_patch
 from vllm.utils.torch_utils import is_torch_equal_or_newer
 
 from vllm.compilation.compiler_interface import (
     InductorStandaloneAdaptor,
     set_inductor_config,
     set_functorch_config,
-    _patch_constrain_to_fx_strides,
 )
 
 
@@ -53,6 +53,7 @@ def inductor_standalone_compile(
     compile_range: Range,
     key: str | None = None,
 ) -> tuple[Callable[..., Any] | None, Any | None]:
+    _apply_constrain_to_fx_strides_patch()
     compilation_counter.num_inductor_compiles += 1
     current_config = {}
     if compiler_config is not None:
@@ -97,13 +98,45 @@ def inductor_standalone_compile(
     # Can remove this after the following issue gets fixed
     # https://github.com/pytorch/pytorch/issues/174502
     if envs.VLLM_ENABLE_PREGRAD_PASSES:
-        ctx: Any = contextlib.nullcontext()
+        pregrad_ctx: Any = contextlib.nullcontext()
     else:
-        ctx = patch(
+        pregrad_ctx = patch(
             "torch._inductor.compile_fx._recursive_pre_grad_passes",
             lambda gm, _: gm,
         )
-    with ctx, _patch_constrain_to_fx_strides():
+    # When inputs are FakeTensors (from create_concrete_args),
+    # standalone_compile("from_example_inputs") would normally create
+    # a fresh FakeTensorMode, causing a mode mismatch assertion.
+    # Patch FakeTensorMode in standalone_compile so it reuses the
+    # mode already attached to our FakeTensors. This gives us both
+    # ignore_shape_env=True (from "from_example_inputs") and mode
+    # consistency (from reusing our mode).
+    # Can remove this after the following issue gets fixed:
+    # https://github.com/pytorch/pytorch/issues/176562
+    from torch._subclasses.fake_tensor import FakeTensor
+
+    input_fake_mode = None
+    for x in example_inputs:
+        if isinstance(x, FakeTensor):
+            input_fake_mode = x.fake_mode
+            break
+
+    if input_fake_mode is not None:
+        # Use patch.object on the actual module from sys.modules
+        # because in Python <=3.10 the string-based patch() resolves
+        # torch._inductor.standalone_compile to the wrapper function
+        # (defined in __init__.py) instead of the module.
+        import sys
+
+        fake_mode_ctx: Any = patch.object(
+            sys.modules["torch._inductor.standalone_compile"],
+            "FakeTensorMode",
+            lambda *a, **kw: input_fake_mode,
+        )
+    else:
+        fake_mode_ctx = contextlib.nullcontext()
+
+    with pregrad_ctx, fake_mode_ctx:
         compiled_graph = standalone_compile(graph, example_inputs, **compile_kwargs)
 
     if use_aot:
@@ -165,6 +198,7 @@ def compile(
     compile_range: Range,
     graph_index: int = 0,
     num_graphs: int = 1,
+    is_encoder: bool = False,
 ) -> Any:
     if graph_index == 0:
         # before compiling the first graph, record the start time
@@ -182,7 +216,10 @@ def compile(
             # after loading the last graph for this shape, record the time.
             # there can be multiple graphs due to piecewise compilation.
             elapsed = time.perf_counter() - compilation_start_time
-            compilation_config.compilation_time += elapsed
+            if is_encoder:
+                compilation_config.encoder_compilation_time += elapsed
+            else:
+                compilation_config.compilation_time += elapsed
             logger.info_once(
                 "Directly load the compiled graph(s) for compile range %s "
                 "from the cache, took %.3f s",
@@ -202,6 +239,7 @@ def compile(
         maybe_key += f"{compile_range.start}_{compile_range.end}"
         maybe_key += f"_subgraph_{graph_index}"
     with self.compile_context(compile_range):
+        cache_key = None
         compiled_graph, handle = self.compiler.compile(
             graph,
             example_inputs,
@@ -213,7 +251,10 @@ def compile(
 
     # store the artifact in the cache
     if is_compile_cache_enabled(additional_inductor_config) and handle is not None:
-        self.cache[(compile_range, graph_index, self.compiler.name)] = handle
+        self.cache[(compile_range, graph_index, self.compiler.name)] = {
+            "graph_handle": handle,
+            "cache_key": cache_key,
+        }
         compilation_counter.num_cache_entries_updated += 1
         self.is_cache_updated = True
         if graph_index == 0:
@@ -222,18 +263,22 @@ def compile(
                 "Cache the graph of compile range %s for later use",
                 str(compile_range),
             )
-        logger.debug(
+        logger.debug_once(
             "Store the %s-th graph for compile range%s from %s via handle %s",
             graph_index,
             str(compile_range),
             self.compiler.name,
             handle,
+            scope="local",
         )
 
     # after compiling the last graph, record the end time
     if graph_index == num_graphs - 1:
         elapsed = time.perf_counter() - compilation_start_time
-        compilation_config.compilation_time += elapsed
+        if is_encoder:
+            compilation_config.encoder_compilation_time += elapsed
+        else:
+            compilation_config.compilation_time += elapsed
         logger.info_once(
             "Compiling a graph for compile range %s takes %.2f s",
             str(compile_range),
