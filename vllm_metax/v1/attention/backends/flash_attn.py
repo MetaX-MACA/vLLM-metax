@@ -10,6 +10,7 @@ from typing import ClassVar
 import numpy as np
 import torch
 import torch.nn.functional as F
+from vllm.utils.torch_utils import is_quantized_kv_cache
 
 from vllm.model_executor.layers.attention import Attention
 from vllm.v1.attention.backend import (
@@ -17,7 +18,6 @@ from vllm.v1.attention.backend import (
     AttentionImpl,
     AttentionType,
     MultipleOf,
-    is_quantized_kv_cache,
 )
 from vllm_metax.v1.attention.backends.fa_utils import (
     flash_attn_supports_fp8,
@@ -106,7 +106,7 @@ class MacaFlashAttentionBackend(AttentionBackend):
             # https://github.com/Dao-AILab/flash-attention/issues/1974
             return [16, 32, 64]
 
-        # retrun kernel block size need to be pow of 2
+        # return kernel block size need to be pow of 2
         return [16, 32, 64, 128, 256]
         # return [MultipleOf(16)]
 
