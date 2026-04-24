@@ -13,3 +13,5 @@ from . import lora  # noqa: F401
 from . import optimizations  # noqa: F401
 
 from . import MRV2  # noqa: F401
+
+from . import dp_mtp
