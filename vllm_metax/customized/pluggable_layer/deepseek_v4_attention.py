@@ -107,9 +107,7 @@ class DeepseekV4MLAModules:
 
 
 # --8<-- [start:multi_head_latent_attention]
-@DeepseekV4MultiHeadLatentAttentionWrapper.register_oot(
-    "deepseek_v4_multi_head_latent_attention"
-)
+@DeepseekV4MultiHeadLatentAttentionWrapper.register_oot
 class MacaDeepseekV4MultiHeadLatentAttentionWrapper(PluggableLayer):
     """Pluggable MLA layer which allows OOT backends to add
     custom implementations of the outer MLA layer (including rope & o_proj).
