@@ -11,7 +11,11 @@ from vllm_metax.utils.deep_gemm import (
     bf16_mqa_logits,
     bf16_paged_mqa_logits,
 )
-from vllm.utils.torch_utils import direct_register_custom_op
+from vllm.utils.torch_utils import (
+    LayerNameType,
+    _resolve_layer_name,
+    direct_register_custom_op,
+)
 from vllm_metax.v1.attention.backends.mla.indexer import (
     DeepseekV32IndexerMetadata,
 )
@@ -22,12 +26,18 @@ from vllm_metax import _custom_ops as mx_ops
 
 logger = init_logger(__name__)
 
+RADIX_TOPK_WORKSPACE_SIZE = 1024 * 1024
+
+# MXFP4 layout: 2 values packed per byte, ue8m0 (1-byte) scale per block of 32.
+MXFP4_BLOCK_SIZE = 32
+
 
 def sparse_attn_indexer_bf16(
     hidden_states: torch.Tensor,
-    k_cache_prefix: str,
+    k_cache_prefix: LayerNameType,
     kv_cache: torch.Tensor,
     q_bf16: torch.Tensor,
+    q_scale: torch.Tensor | None,
     k_bf16: torch.Tensor,
     weights: torch.Tensor,
     quant_block_size: int,
@@ -37,6 +47,8 @@ def sparse_attn_indexer_bf16(
     max_model_len: int,
     total_seq_lens: int,
     topk_indices_buffer: torch.Tensor,
+    skip_k_cache_insert: bool,
+    use_fp4_cache: bool = False,
 ) -> torch.Tensor:
     # careful! this will be None in dummy run
     attn_metadata = get_forward_context().attn_metadata
@@ -44,6 +56,7 @@ def sparse_attn_indexer_bf16(
     # ----------------------------------------------
     # Metax Note: we use bf16 instead of fp8 here
     fp8_dtype = current_platform.fp8_dtype()  # noqa: F841
+    k_cache_prefix = _resolve_layer_name(k_cache_prefix)
 
     # assert isinstance(attn_metadata, dict)
     if not isinstance(attn_metadata, dict):
@@ -61,6 +74,7 @@ def sparse_attn_indexer_bf16(
             k_cache_prefix,
             kv_cache,
             q_bf16,
+            q_scale,
             k_bf16,
             weights,
             quant_block_size,
@@ -70,6 +84,8 @@ def sparse_attn_indexer_bf16(
             max_model_len,
             total_seq_lens,
             topk_indices_buffer,
+            skip_k_cache_insert,
+            use_fp4_cache,
         )
     attn_metadata = attn_metadata[k_cache_prefix]
     assert isinstance(attn_metadata, DeepseekV32IndexerMetadata)
