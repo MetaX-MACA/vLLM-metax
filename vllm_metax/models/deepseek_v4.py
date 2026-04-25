@@ -16,7 +16,8 @@ from vllm.distributed import (
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
 )
-from vllm.model_executor.layers.deepseek_v4_attention import (
+# Import Metax customized layers for bf16
+from vllm_metax.customized.pluggable_layer.deepseek_v4_attention import (
     DeepseekV4Indexer,
     DeepseekV4MLAModules,
     DeepseekV4MultiHeadLatentAttentionWrapper,
