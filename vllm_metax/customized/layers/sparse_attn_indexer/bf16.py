@@ -11,7 +11,11 @@ from vllm_metax.utils.deep_gemm import (
     bf16_mqa_logits,
     bf16_paged_mqa_logits,
 )
-from vllm.utils.torch_utils import direct_register_custom_op
+from vllm.utils.torch_utils import (
+    LayerNameType,
+    _resolve_layer_name,
+    direct_register_custom_op,
+)
 from vllm_metax.v1.attention.backends.mla.indexer import (
     DeepseekV32IndexerMetadata,
 )
@@ -25,9 +29,10 @@ logger = init_logger(__name__)
 
 def sparse_attn_indexer_bf16(
     hidden_states: torch.Tensor,
-    k_cache_prefix: str,
+    k_cache_prefix: LayerNameType,
     kv_cache: torch.Tensor,
     q_bf16: torch.Tensor,
+    q_scale: torch.Tensor | None,
     k_bf16: torch.Tensor,
     weights: torch.Tensor,
     quant_block_size: int,
@@ -38,12 +43,14 @@ def sparse_attn_indexer_bf16(
     total_seq_lens: int,
     topk_indices_buffer: torch.Tensor,
 ) -> torch.Tensor:
+    assert q_scale is None, "q_scale is not needed for bf16 indexer"
     # careful! this will be None in dummy run
     attn_metadata = get_forward_context().attn_metadata
 
     # ----------------------------------------------
     # Metax Note: we use bf16 instead of fp8 here
     fp8_dtype = current_platform.fp8_dtype()  # noqa: F841
+    k_cache_prefix = _resolve_layer_name(k_cache_prefix)
 
     # assert isinstance(attn_metadata, dict)
     if not isinstance(attn_metadata, dict):
@@ -232,9 +239,10 @@ def sparse_attn_indexer_bf16(
 
 def sparse_attn_indexer_bf16_fake(
     hidden_states: torch.Tensor,
-    k_cache_prefix: str,
+    k_cache_prefix: LayerNameType,
     kv_cache: torch.Tensor,
-    q_fp8: torch.Tensor,
+    q_quant: torch.Tensor,
+    q_scale: torch.Tensor | None,
     k: torch.Tensor,
     weights: torch.Tensor,
     quant_block_size: int,
@@ -244,6 +252,8 @@ def sparse_attn_indexer_bf16_fake(
     max_model_len: int,
     total_seq_lens: int,
     topk_indices_buffer: torch.Tensor | None,
+    skip_k_cache_insert: bool,
+    use_fp4_cache: bool = False,
 ) -> torch.Tensor:
     return topk_indices_buffer
 

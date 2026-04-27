@@ -13,7 +13,6 @@ from vllm.triton_utils import tl, triton
 from vllm.utils.deep_gemm import get_paged_mqa_logits_metadata
 from vllm_metax.utils.deep_gemm import (
     has_deep_gemm,
-    get_num_blocks_paged_mqa_logits_metadata,
 )
 from vllm.utils.math_utils import cdiv
 from vllm.utils.platform_utils import num_compute_units
