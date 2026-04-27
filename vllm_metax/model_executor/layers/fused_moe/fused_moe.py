@@ -27,6 +27,7 @@ from vllm.model_executor.layers.fused_moe.config import (
     FusedMoEParallelConfig,
     FusedMoEQuantConfig,
 )
+from vllm.model_executor.layers.fused_moe.lora_experts_mixin import LoRAExpertsMixin
 from vllm.model_executor.layers.fused_moe.moe_align_block_size import (
     moe_align_block_size,
 )
@@ -48,6 +49,8 @@ from vllm.model_executor.layers.quantization.utils.quant_utils import (
     kFp8Static128BlockSym,
     kFp8StaticChannelSym,
     kFp8StaticTensorSym,
+    kInt8DynamicTokenSym,
+    kInt8StaticChannelSym,
 )
 from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
@@ -1855,6 +1858,55 @@ def dispatch_fused_experts_func(inplace: bool) -> Callable[..., torch.Tensor]:
     return torch_vllm_outplace_fused_experts
 
 
+def _prepare_expert_assignment(
+    topk_ids: torch.Tensor,
+    config: dict[str, Any],
+    num_tokens: int,
+    top_k_num: int,
+    global_num_experts: int,
+    expert_map: torch.Tensor | None,
+    *,
+    use_int8_w8a16: bool = False,
+    use_int4_w4a16: bool = False,
+    block_shape: list[int] | None = None,
+    ignore_invalid_experts: bool = False,
+) -> tuple[torch.Tensor | None, torch.Tensor, torch.Tensor]:
+    """Prepare expert assignments for the aligned and low-latency Triton paths."""
+    # SPARSITY_FACTOR is a heuristic margin ensuring tokens_in_chunk * top_k
+    # activates only a small fraction of total experts
+    # Skips moe_align_block_size and activates the `sorted_token_ids is None`
+    # path of the fused_moe_kernel kernel
+    naive_block_assignment = (
+        expert_map is None
+        and num_tokens * top_k_num * 4 <= global_num_experts
+        and not (
+            (use_int8_w8a16 or use_int4_w4a16)
+            and block_shape is not None
+            and block_shape[1] > 0
+        )
+    )
+
+    if naive_block_assignment:
+        return (
+            None,
+            topk_ids.view(-1),
+            torch.full(
+                (1,),
+                topk_ids.numel() * config["BLOCK_SIZE_M"],
+                dtype=torch.int32,
+                device=topk_ids.device,
+            ),
+        )
+
+    return moe_align_block_size(
+        topk_ids,
+        config["BLOCK_SIZE_M"],
+        global_num_experts,
+        expert_map,
+        ignore_invalid_experts=ignore_invalid_experts,
+    )
+
+
 # TODO (bnell): replace this with modular op.  Can get rid of inplace/outplace
 # torch ops.
 def fused_experts(
@@ -2349,7 +2401,7 @@ def fused_experts_impl(
     return out_hidden_states
 
 
-class TritonExperts(mk.FusedMoEExpertsModular):
+class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
     """Triton-based fused MoE expert implementation."""
 
     def __init__(
@@ -2357,6 +2409,9 @@ class TritonExperts(mk.FusedMoEExpertsModular):
         moe_config: FusedMoEConfig,
         quant_config: FusedMoEQuantConfig,
     ):
+        # Whether quantized MOE runs natively, or through
+        # higher-precision + activation QDQ.
+        self.quantization_emulation = False
         super().__init__(moe_config, quant_config)
 
     @staticmethod
@@ -2376,18 +2431,24 @@ class TritonExperts(mk.FusedMoEExpertsModular):
         weight_key: QuantKey | None,
         activation_key: QuantKey | None,
     ) -> bool:
-        if not current_platform.supports_fp8():
-            return (weight_key, activation_key) == (None, None)
+        # INT8 requires at least 7.5 (Turing).
+        device_supports_int8 = (
+            current_platform.is_cuda()
+            and current_platform.has_device_capability((7, 5))
+        )
 
-        SUPPORTED_W_A = [
-            (None, None),
-            (kFp8Static128BlockSym, kFp8Dynamic128Sym),
-            (kFp8StaticChannelSym, kFp8DynamicTokenSym),
-            (kFp8StaticTensorSym, kFp8DynamicTokenSym),
-            (kFp8StaticTensorSym, kFp8StaticTensorSym),
-            (kFp8StaticTensorSym, kFp8DynamicTensorSym),
-        ]
-        return (weight_key, activation_key) in SUPPORTED_W_A
+        supported: list[tuple[QuantKey | None, QuantKey | None]] = [(None, None)]
+        if device_supports_int8:
+            supported.append((kInt8StaticChannelSym, kInt8DynamicTokenSym))
+        if current_platform.supports_fp8():
+            supported += [
+                (kFp8Static128BlockSym, kFp8Dynamic128Sym),
+                (kFp8StaticChannelSym, kFp8DynamicTokenSym),
+                (kFp8StaticTensorSym, kFp8DynamicTokenSym),
+                (kFp8StaticTensorSym, kFp8StaticTensorSym),
+                (kFp8StaticTensorSym, kFp8DynamicTensorSym),
+            ]
+        return (weight_key, activation_key) in supported
 
     @staticmethod
     def _supports_activation(activation: MoEActivation) -> bool:
@@ -2530,12 +2591,18 @@ class TritonExperts(mk.FusedMoEExpertsModular):
         if stage1_config.get("SPLIT_K", 1) > 1:
             intermediate_cache1.zero_()
 
-        sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
-            topk_ids,
-            stage1_config["BLOCK_SIZE_M"],
-            global_num_experts,
-            expert_map,
-            ignore_invalid_experts=True,
+        sorted_token_ids, expert_ids, num_tokens_post_padded = (
+            _prepare_expert_assignment(
+                topk_ids,
+                stage1_config,
+                num_tokens,
+                top_k_num,
+                global_num_experts,
+                expert_map,
+                use_int8_w8a16=self.quant_config.use_int8_w8a16,
+                use_int4_w4a16=self.quant_config.use_int4_w4a16,
+                block_shape=self.block_shape,
+            )
         )
 
         invoke_fused_moe_triton_kernel(
@@ -2562,6 +2629,33 @@ class TritonExperts(mk.FusedMoEExpertsModular):
             B_bias=self.w1_bias,
         )
 
+        # LoRA w13: applied to intermediate_cache1 before activation, using
+        # hidden_states as the lora_a input.  moe_lora_align_block_size is
+        # called once here and results reused for the w2 LoRA below.
+        sorted_token_ids_lora = None
+        expert_ids_lora = None
+        num_tokens_post_padded_lora = None
+        token_lora_mapping = None
+        lora_context = self._lora_context
+        if lora_context is not None:
+            (
+                sorted_token_ids_lora,
+                expert_ids_lora,
+                num_tokens_post_padded_lora,
+                token_lora_mapping,
+            ) = self.apply_w13_lora(
+                lora_context,
+                y=intermediate_cache1,
+                x=hidden_states,
+                topk_ids=topk_ids,
+                topk_weights=topk_weights,
+                expert_map=expert_map,
+                w1=w1,
+                w2=w2,
+                num_tokens=num_tokens,
+                top_k_num=top_k_num,
+            )
+
         self.activation(
             activation, intermediate_cache2, intermediate_cache1.view(-1, N)
         )
@@ -2574,15 +2668,24 @@ class TritonExperts(mk.FusedMoEExpertsModular):
             self.quant_dtype,
             self.per_act_token_quant,
             self.block_shape,
+            quantization_emulation=self.quantization_emulation,
         )
 
         if stage2_config["BLOCK_SIZE_M"] != stage1_config["BLOCK_SIZE_M"]:
-            sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
-                topk_ids,
-                stage2_config["BLOCK_SIZE_M"],
-                global_num_experts,
-                expert_map,
+            sorted_token_ids, expert_ids, num_tokens_post_padded = (
+                _prepare_expert_assignment(
+                    topk_ids,
+                    stage2_config,
+                    num_tokens,
+                    top_k_num,
+                    global_num_experts,
+                    expert_map,
+                    use_int8_w8a16=self.quant_config.use_int8_w8a16,
+                    use_int4_w4a16=self.quant_config.use_int4_w4a16,
+                    block_shape=self.block_shape,
+                )
             )
+
         if expert_map is not None or stage2_config.get("SPLIT_K", 1) > 1:
             intermediate_cache3.zero_()
 
@@ -2609,6 +2712,25 @@ class TritonExperts(mk.FusedMoEExpertsModular):
             block_shape=self.block_shape,
             B_bias=self.w2_bias,
         )
+
+        # LoRA w2: applied to intermediate_cache3 before moe_sum, using the
+        # unquantized intermediate_cache2 as the lora_a input.  Reuses the
+        # sorted_token_ids_lora computed above.
+        if lora_context is not None:
+            self.apply_w2_lora(
+                lora_context,
+                y=intermediate_cache3,
+                x=intermediate_cache2,
+                topk_weights=topk_weights,
+                sorted_token_ids_lora=sorted_token_ids_lora,
+                expert_ids_lora=expert_ids_lora,
+                num_tokens_post_padded_lora=num_tokens_post_padded_lora,
+                token_lora_mapping=token_lora_mapping,
+                num_tokens=num_tokens,
+                w1=w1,
+                w2=w2,
+                top_k_num=top_k_num,
+            )
 
         # separate function is required for MoE + LoRA
         self.moe_sum(intermediate_cache3, output)
