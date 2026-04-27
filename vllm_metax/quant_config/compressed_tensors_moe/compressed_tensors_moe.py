@@ -11,8 +11,17 @@ from vllm_metax.customized.layers.unquantized_fused_moe_method import (
     UnquantizedFusedMoEMethod,
 )
 
-from .compressed_tensors_moe_w8a8_int8 import CompressedTensorsW8A8Int8MoEMethod
-from .compressed_tensors_moe_wna16 import CompressedTensorsWNA16MoEMethod
+from .compressed_tensors_moe_w8a8_int8 import (
+    vllm_ctm_w8a8_int8,
+    CompressedTensorsW8A8Int8MoEMethod,
+)
+
+from .compressed_tensors_moe_wna16 import (
+    vllm_ctm_wna16,
+    vllm_ctm_wna16_marlin,
+    CompressedTensorsWNA16MoEMethod,
+)
+
 from .compressed_tensors_moe_w4a8_int4 import CompressedTensorsW4A8Int4MoEMethod
 
 
@@ -74,8 +83,8 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
         if isinstance(
             origin_moe_method,
             (
-                vllm_ctm.CompressedTensorsWNA16MoEMethod,
-                vllm_ctm.CompressedTensorsWNA16MarlinMoEMethod,
+                vllm_ctm_wna16,
+                vllm_ctm_wna16_marlin,
             ),
         ):
             # -----------------------------------------------------------
@@ -88,7 +97,7 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
             return CompressedTensorsWNA16MoEMethod(
                 weight_quant, input_quant, layer.moe_config
             )
-        elif isinstance(origin_moe_method, vllm_ctm.CompressedTensorsW8A8Int8MoEMethod):
+        elif isinstance(origin_moe_method, vllm_ctm_w8a8_int8):
             return CompressedTensorsW8A8Int8MoEMethod(
                 weight_quant, input_quant, layer.moe_config
             )

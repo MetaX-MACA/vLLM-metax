@@ -4,14 +4,14 @@ import torch
 from vllm.model_executor.layers.fused_moe import FusedMoE
 
 from vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors_moe.compressed_tensors_moe_w8a8_int8 import (
-    CompressedTensorsW8A8Int8MoEMethod as vllm_ctm_CompressedTensorsW8A8Int8MoEMethod,
+    CompressedTensorsW8A8Int8MoEMethod as vllm_ctm_w8a8_int8,
 )
 
 
 # -----------------------------------------------------------
 # Note: We need to keep the method name **the same** as vLLM's
 # -----------------------------------------------------------
-class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm_CompressedTensorsW8A8Int8MoEMethod):
+class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm_w8a8_int8):
     def apply(
         self,
         layer: FusedMoE,
