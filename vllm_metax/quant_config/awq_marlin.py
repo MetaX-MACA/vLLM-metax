@@ -15,6 +15,6 @@ if TYPE_CHECKING:
 class MacaAWQMarlinConfig(AWQMarlinConfig):
     @classmethod
     def override_quantization_method(
-        cls, hf_quant_cfg, user_quant
+        cls, hf_quant_cfg, user_quant, hf_config=None
     ) -> Optional["QuantizationMethods"]:
         return None
