@@ -73,7 +73,7 @@ from vllm.model_executor.layers.quantization.utils.quant_utils import (
 )
 from vllm.model_executor.layers.rotary_embedding import get_rope
 from vllm_metax.customized.layers.sparse_attn_indexer.sparse_attn_indexer import (
-    MacaSparseAttnIndexer as SparseAttnIndexer
+    SparseAttnIndexer
 )
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     ParallelLMHead,

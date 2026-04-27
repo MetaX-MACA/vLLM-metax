@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 from vllm.model_executor.layers.attention.mm_encoder_attention import (
-    MMEncoderAttention,
+    MMEncoderAttention as vllm_MMEncoderAttention,
 )
 import torch
 from vllm_metax.v1.attention.ops.vit_attn_wrappers import (
@@ -13,8 +13,8 @@ from vllm.model_executor.layers.attention.mm_encoder_attention import logger
 from vllm.v1.attention.backends.registry import AttentionBackendEnum
 
 
-@MMEncoderAttention.register_oot
-class MacaMMEncoderAttention(MMEncoderAttention):
+@vllm_MMEncoderAttention.register_oot
+class MMEncoderAttention(vllm_MMEncoderAttention):
     def __init__(
         self,
         num_heads: int,
@@ -32,7 +32,7 @@ class MacaMMEncoderAttention(MMEncoderAttention):
             prefix: This has no effect, it is only here to make it easier to
                     swap between Attention and MultiHeadAttention
         """
-        super(MMEncoderAttention, self).__init__()
+        super(vllm_MMEncoderAttention, self).__init__()
 
         self.num_heads = num_heads
         self.head_size = head_size
