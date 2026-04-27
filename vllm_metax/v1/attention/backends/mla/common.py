@@ -1122,7 +1122,7 @@ def reorg_kvcache(
 
 
 # TODO(Lucas): rename MLACommonBaseImpl -> MLACommonImpl,
-# and MLACommonImpl -> MLACommonDenseImpl or somthing like that
+# and MLACommonImpl -> MLACommonDenseImpl or something like that
 class MLACommonBaseImpl(MLAAttentionImpl[A], Generic[A]):
     """
     NOTE: Please read the comment at the top of the file before trying to
@@ -1692,7 +1692,7 @@ class MLACommonImpl(MLACommonBaseImpl[M], Generic[M]):
             )
             # workspace
             # |------- N tokens --------|--------- N*dcp_size tokens ----------|
-            # |<- use for loca_gather ->|<--------- use for allgather -------->|
+            # |<- use for local_gather ->|<--------- use for allgather -------->|
             allgather_offset = workspace.shape[0] // (dcp_world_size + 1)
             assert allgather_offset * (dcp_world_size + 1) == workspace.shape[0]
             assert toks <= allgather_offset

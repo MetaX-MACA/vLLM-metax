@@ -21,7 +21,7 @@ class MacaApplyRotaryEmb(ApplyRotaryEmb):
         Arguments of apply_rotary_emb() in vllm_flash_attn:
             x: [batch_size, seq_len, nheads, headdim]
             cos, sin: [seqlen_rotary, rotary_dim / 2]
-            interleaved: defalut as False (Neox-style).
+            interleaved: default as False (Neox-style).
             ...
         """
         interleaved = not self.is_neox_style

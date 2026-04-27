@@ -405,7 +405,7 @@ class InferWorker(Worker):
 
     def _warp_skipped(self):
         print(
-            f"[{self.model_tag}] All tests on this combination have been passed! Skiped."
+            f"[{self.model_tag}] All tests on this combination have been passed! Skipped."
         )
         return {
             "Model": self.model_tag,

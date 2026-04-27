@@ -106,7 +106,7 @@ yum makecache && yum install -y \
 
 ## 3.3 Install cu-bridge
 
-Cu-bridge is our cuda compatiable package used to compile cuda code. Before installing torch, cu-bridge need to be installed.
+Cu-bridge is our cuda compatible package used to compile cuda code. Before installing torch, cu-bridge need to be installed.
 
 Please refer to [cu-bridge/02_User_Manual](https://gitee.com/metax-maca/cu-bridge/tree/master/docs/02_User_Manual)
 
@@ -151,7 +151,7 @@ export LD_LIBRARY_PATH=/opt/mxdriver/lib:${MACA_PATH}/lib:${MACA_PATH}/mxgpu_llv
 
 1. Currently in our internal CI/CD flow, we install from local wheel packages. Here we install packages from metax pypi source.
 2. Metax maca version is added to package's local version, e.g., "+metax3.1.0.4torch2.6", and packages's version should match with the installed maca SDK version.
-3. The only way to specify maca version is giving the full version name. It would be better to use seperate channels for different maca versions, which is in our plan.
+3. The only way to specify maca version is giving the full version name. It would be better to use separate channels for different maca versions, which is in our plan.
 
 
 ```bash
@@ -190,7 +190,7 @@ uv pip install numpy==1.26.4
 You may try the following commands:
 
 ```bash
-# Search for avialable versions:
+# Search for available versions:
 pip index versions mcspconv -i https://repos.metax-tech.com/r/maca-pypi/simple --trusted-host repos.metax-tech.com
 
 # install a package

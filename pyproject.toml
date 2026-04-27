@@ -138,7 +138,8 @@ extend-exclude = ["tests/models/fixtures/*", "tests/prompts/*", "tests/tokenizer
     "benchmarks/sonnet.txt", "tests/lora/data/*", "build/*",
     "examples/pooling/token_embed/*", "tests/models/language/pooling/*",
     "vllm/third_party/*", "vllm/entrypoints/serve/instrumentator/static/*", "tests/entrypoints/openai/speech_to_text/test_transcription_validation.py",
-    "docs/governance/process.md", "tests/v1/engine/test_fast_incdec_prefix_err.py", ".git/*"]
+    "docs/governance/process.md", "tests/v1/engine/test_fast_incdec_prefix_err.py", ".git/*",
+    "vllm_metax/third_party/pymxsml.py", "tools/**", "tests/**", "examples/**", "csrc/**"]
 ignore-hidden = false
 
 [tool.typos.default]

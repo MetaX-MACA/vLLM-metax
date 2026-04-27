@@ -68,13 +68,13 @@ Build the plugin:
 
 !!! warning 
 
-    It's ***not recommanded*** to install vllm directly from PYPI with:
+    It's ***not recommended*** to install vllm directly from PYPI with:
 
     ```
     uv pip install vllm==X.Y.Z
     ```
 
-    This would install a *cuda-build* vllm which carried a lot of cuda-related dependecies and kernel files together with internal vllm_flash_attn and triton_kernels, which may wrongly cause runtime errors on some checking. (E.g. Some pre-conditions that should **only** be detected on `cuda` may also passed to `maca` backend by mistake in this kind of vllm.)
+    This would install a *cuda-build* vllm which carried a lot of cuda-related dependencies and kernel files together with internal vllm_flash_attn and triton_kernels, which may wrongly cause runtime errors on some checking. (E.g. Some pre-conditions that should **only** be detected on `cuda` may also passed to `maca` backend by mistake in this kind of vllm.)
 
 Clone vllm project:
 

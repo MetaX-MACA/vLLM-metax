@@ -1,6 +1,6 @@
 # Quickstart
 
-Currently the recommanded way to start ***vLLM-MetaX*** is via *docker*.
+Currently the recommended way to start ***vLLM-MetaX*** is via *docker*.
 
 You could get the docker image at [MetaX develop community](https://developer.metax-tech.com/softnova/docker?chip_name=%E6%9B%A6%E4%BA%91C500%E7%B3%BB%E5%88%97&package_kind=AI&dimension=docker&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85&ai_frame=vllm-metax&arch=amd64&system=ubuntu).
 
@@ -17,7 +17,7 @@ You could get the docker image at [MetaX develop community](https://developer.me
 
 ## Releases
 
-*Belows is version mapping to released plugin and mcoplib with maca*:
+*Below is version mapping to released plugin and mcoplib with maca*:
 
 | plugin version | maca version | mcoplib version | docker image url |
 |:--------------:|:------------:|:-----------------------:|:-----------------------:|
@@ -39,4 +39,4 @@ You could get the docker image at [MetaX develop community](https://developer.me
 !!! warning "Usage Warning"
     **vLLM-MetaX is out of box via docker images provided above.**
 
-    All the vllm tests are based on the related maca version. Using incorresponding version of maca for vllm may cause unexpected bugs or errors. This is not garanteed.
+    All the vllm tests are based on the related maca version. Using incorresponding version of maca for vllm may cause unexpected bugs or errors. This is not guaranteed.

@@ -5,7 +5,7 @@
 # Note: replace `do_shrink_kernel` in vllm.lora.ops.triton_ops.lora_shrink
 # ------------------------------------------------
 """
-Not sure wether this is the best way to patch the function,
+Not sure whether this is the best way to patch the function,
 but it works for now. This kernel is invoked in lora_shrink,
 maybe we need `direct_register_custom_op` for another lora_shrink:
     direct_register_custom_op(
