@@ -24,6 +24,11 @@ class MacaCompressedTensorsConfig(vllm_ct.CompressedTensorsConfig):
         layer: torch.nn.Module,
         prefix: str,
     ) -> "QuantizeMethodBase | None":
+        # Replace with Metax's MoE quantization methods
+        if isinstance(layer, FusedMoE):
+            return CompressedTensorsMoEMethod.get_moe_method(
+                self, layer, layer_name=prefix
+            )
         try:
             origin_quant_method = super().get_quant_method(layer, prefix)
         except ValueError:
@@ -34,11 +39,5 @@ class MacaCompressedTensorsConfig(vllm_ct.CompressedTensorsConfig):
                 raise
         except Exception:
             raise
-
-        # Replace with Metax's MoE quantization methods
-        if isinstance(layer, FusedMoE):
-            return CompressedTensorsMoEMethod.get_moe_method(
-                self, layer, layer_name=prefix
-            )
 
         return origin_quant_method

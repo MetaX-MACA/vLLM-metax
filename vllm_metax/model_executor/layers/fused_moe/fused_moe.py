@@ -2431,11 +2431,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
         weight_key: QuantKey | None,
         activation_key: QuantKey | None,
     ) -> bool:
-        # INT8 requires at least 7.5 (Turing).
-        device_supports_int8 = (
-            current_platform.is_cuda()
-            and current_platform.has_device_capability((7, 5))
-        )
+        device_supports_int8 = True
 
         supported: list[tuple[QuantKey | None, QuantKey | None]] = [(None, None)]
         if device_supports_int8:

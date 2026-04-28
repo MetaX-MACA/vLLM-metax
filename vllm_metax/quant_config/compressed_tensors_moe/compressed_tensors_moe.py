@@ -12,7 +12,6 @@ from vllm_metax.customized.layers.unquantized_fused_moe_method import (
 )
 
 from .compressed_tensors_moe_w8a8_int8 import (
-    vllm_ctm_w8a8_int8,
     CompressedTensorsW8A8Int8MoEMethod,
 )
 
@@ -68,6 +67,21 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
         #  - `weights_quant`
         #  - `input_quant`
         # -------------------------------------------
+        if quant_config._is_dynamic_token_w8a8(weight_quant, input_quant):
+            return CompressedTensorsW8A8Int8MoEMethod(
+                weight_quant, input_quant, layer.moe_config
+            )
+
+        if quant_config._is_dynamic_token_w4a8_int(weight_quant, input_quant):
+            # --------------------------------------------------------------------
+            # Note!: On maca W4A8 is hardware supported. The quantization scheme
+            #       is selected by `quant_config._is_dynamic_token_w4a8_int`. So we
+            #       just need to re-implement and map with Int4MoEMethod here.
+            # --------------------------------------------------------------------
+            return CompressedTensorsW4A8Int4MoEMethod(
+                weight_quant, input_quant, layer.moe_config
+            )
+
         origin_moe_method = None
         try:
             origin_moe_method = vllm_ctm.CompressedTensorsMoEMethod.get_moe_method(
@@ -95,19 +109,6 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
                 "Fallback to non-marlin CompressedTensorsWNA16MoEMethod"
             )
             return CompressedTensorsWNA16MoEMethod(
-                weight_quant, input_quant, layer.moe_config
-            )
-        elif isinstance(origin_moe_method, vllm_ctm_w8a8_int8):
-            return CompressedTensorsW8A8Int8MoEMethod(
-                weight_quant, input_quant, layer.moe_config
-            )
-        elif quant_config._is_dynamic_token_w4a8_int(weight_quant, input_quant):
-            # --------------------------------------------------------------------
-            # Note!: On maca W4A8 is hardware supported. The quantization scheme
-            #       is selected by `quant_config._is_dynamic_token_w4a8_int`. So we
-            #       just need to re-implement and map with Int4MoEMethod here.
-            # --------------------------------------------------------------------
-            return CompressedTensorsW4A8Int4MoEMethod(
                 weight_quant, input_quant, layer.moe_config
             )
 
