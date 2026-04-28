@@ -495,7 +495,7 @@ endif()
 if(USE_MACA)
   list(APPEND VLLM_MOE_EXT_SRC 
     # "csrc/moe/moe_wna16.cu"
-    # "csrc/moe/grouped_topk_kernels.cu"
+    "csrc/moe/grouped_topk_kernels.cu"
   )
 endif()
 

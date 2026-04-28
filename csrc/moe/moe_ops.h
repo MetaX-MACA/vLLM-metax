@@ -46,10 +46,10 @@ void moe_lora_align_block_size(
 //                              BLOCK_SIZE_N, int64_t BLOCK_SIZE_K, int64_t
 //                              bit);
 
-// std::tuple<torch::Tensor, torch::Tensor> grouped_topk(
-//     torch::Tensor const& scores, int64_t n_group, int64_t topk_group,
-//     int64_t topk, bool renormalize, double routed_scaling_factor,
-//     torch::Tensor const& bias, int64_t scoring_func);
+std::tuple<torch::Tensor, torch::Tensor> grouped_topk(
+    torch::Tensor const& scores, int64_t n_group, int64_t topk_group,
+    int64_t topk, bool renormalize, double routed_scaling_factor,
+    torch::Tensor const& bias, int64_t scoring_func);
 
 void fused_moe_kernel(const torch::Tensor& A, const torch::Tensor& B,
                       const torch::Tensor& C, const torch::Tensor& topk_weights,
