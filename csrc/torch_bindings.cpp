@@ -78,7 +78,9 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
       "    Tensor prefix_output,"
       "    Tensor prefix_lse,"
       "    Tensor suffix_output,"
-      "    Tensor suffix_lse) -> ()");
+      "    Tensor suffix_lse,"
+      "    int!? prefill_tokens_with_context,"
+      "    Tensor? output_scale=None) -> ()");
   ops.impl("merge_attn_states", torch::kCUDA, &merge_attn_states);
 
   // dual_chunk_flash_attn
