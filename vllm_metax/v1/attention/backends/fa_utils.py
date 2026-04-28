@@ -16,7 +16,10 @@ if current_platform.is_out_of_tree():
 
 
 def get_flash_attn_version(
-    requires_alibi: bool = False, head_size: int | None = None
+    requires_alibi: bool = False,
+    head_size: int | None = None,
+    head_size_v: int | None = None,
+    has_sinks: bool = False,
 ) -> int | None:
     logger.info_once(
         "Using Maca version of flash attention, which only supports version 2."

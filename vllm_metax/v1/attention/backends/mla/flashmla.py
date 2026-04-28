@@ -136,7 +136,9 @@ class FlashMLAMetadataBuilder(MLACommonMetadataBuilder[FlashMLAMetadata]):
 
         self.cg_buf_tile_scheduler_metadata = None
         self.cg_buf_num_splits = None
-        self.is_fp8_kvcache = vllm_config.cache_config.cache_dtype.startswith("fp8")
+        self.is_fp8_kvcache = is_quantized_kv_cache(
+            vllm_config.cache_config.cache_dtype
+        )
 
         num_sms = num_compute_units(self.device.index)
 

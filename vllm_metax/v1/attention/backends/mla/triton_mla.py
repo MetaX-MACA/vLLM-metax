@@ -62,6 +62,10 @@ class MacaTritonMLABackend(MLACommonBackend):
     def get_name() -> str:
         return "TRITON_MLA"
 
+    @classmethod
+    def supports_batch_invariance(cls) -> bool:
+        return True
+
     @staticmethod
     def get_impl_cls() -> type["TritonMLAImpl"]:
         return TritonMLAImpl

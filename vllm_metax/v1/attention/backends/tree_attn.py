@@ -34,7 +34,6 @@ from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_b
 
 @register_backend(AttentionBackendEnum.TREE_ATTN)
 class MacaTreeAttentionBackend(AttentionBackend):
-    accept_output_buffer: bool = True
     supported_dtypes: ClassVar[list[torch.dtype]] = [torch.float16, torch.bfloat16]
     supported_kv_cache_dtypes: ClassVar[list[CacheDType]] = [
         "auto",
