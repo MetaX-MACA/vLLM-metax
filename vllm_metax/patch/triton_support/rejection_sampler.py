@@ -173,17 +173,19 @@ def sample_recovered_tokens(
         if num_draft_tokens[i] > 0:
             q[i].exponential_(generator=generator)
 
-    recovered_token_ids = torch.empty_like(draft_token_ids)
+    inv_q = q.reciprocal()
 
+    recovered_token_ids = torch.empty_like(draft_token_ids)
+    BLOCK_SIZE = 8192
     sample_recovered_tokens_kernel[(batch_size, max_spec_len)](
         recovered_token_ids,
         cu_num_draft_tokens,
         draft_token_ids,
         draft_probs,
         target_probs,
-        q,
+        inv_q,
         vocab_size,
-        triton.next_power_of_2(vocab_size),
+        BLOCK_SIZE,
         NO_DRAFT_PROBS=draft_probs is None,
     )
     return recovered_token_ids

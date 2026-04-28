@@ -11,6 +11,7 @@ import vllm
 from vllm.logger import init_logger
 from vllm.utils.mem_utils import format_gib
 from vllm.tracing import instrument
+from vllm.utils.torch_utils import is_quantized_kv_cache
 
 logger = init_logger(__name__)
 
@@ -69,7 +70,7 @@ def wake_up(self, tags: list[str] | None = None) -> None:
     # especially the FP8 scaling factor.
     if (
         (tags is None or "kv_cache" in tags)
-        and self.cache_config.cache_dtype.startswith("fp8")
+        and is_quantized_kv_cache(self.cache_config.cache_dtype)
         and hasattr(self.model_runner, "init_fp8_kv_scales")
     ):
         self.model_runner.init_fp8_kv_scales()

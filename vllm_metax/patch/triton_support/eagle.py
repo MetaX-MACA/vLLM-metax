@@ -145,10 +145,12 @@ class MacaEagleProposer(SpecDecodeBaseProposer):
 
 
 # Todo(hank): if this works well, remove the original
-# EagleProposer.prepare_next_token_ids_padded to avoid confusion.
-from vllm.v1.spec_decode import eagle
+# llm_base_proposer.prepare_next_token_ids_padded to avoid confusion.
+from vllm.v1.spec_decode import llm_base_proposer
 
-eagle.eagle_prepare_next_token_padded_kernel = eagle_prepare_next_token_padded_kernel
+llm_base_proposer.eagle_prepare_next_token_padded_kernel = (
+    eagle_prepare_next_token_padded_kernel
+)
 
 SpecDecodeBaseProposer.prepare_next_token_ids_padded = (
     MacaEagleProposer.prepare_next_token_ids_padded

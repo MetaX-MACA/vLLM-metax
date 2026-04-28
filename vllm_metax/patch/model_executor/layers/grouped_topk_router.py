@@ -207,6 +207,8 @@ class MacaGroupedTopKRouter(GroupedTopKRouter):
         hidden_states: torch.Tensor,
         router_logits: torch.Tensor,
         indices_type: torch.dtype | None,
+        *,
+        input_ids: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute routing using grouped top-k."""
 
@@ -223,6 +225,7 @@ class MacaGroupedTopKRouter(GroupedTopKRouter):
                 topk_weights, topk_ids = fused_topk_bias(
                     hidden_states=hidden_states,
                     gating_output=router_logits,
+                    scoring_func=self.scoring_func,
                     e_score_correction_bias=self.e_score_correction_bias.data,
                     topk=self.top_k,
                     renormalize=self.renormalize,
