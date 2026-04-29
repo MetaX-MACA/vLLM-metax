@@ -42,6 +42,8 @@ def sparse_attn_indexer_bf16(
     max_model_len: int,
     total_seq_lens: int,
     topk_indices_buffer: torch.Tensor,
+    skip_k_cache_insert: bool,
+    use_fp4_cache: bool = False,
 ) -> torch.Tensor:
     assert q_scale is None, "q_scale is not needed for bf16 indexer"
     # careful! this will be None in dummy run
@@ -68,6 +70,7 @@ def sparse_attn_indexer_bf16(
             k_cache_prefix,
             kv_cache,
             q_bf16,
+            q_scale,
             k_bf16,
             weights,
             quant_block_size,
@@ -77,6 +80,8 @@ def sparse_attn_indexer_bf16(
             max_model_len,
             total_seq_lens,
             topk_indices_buffer,
+            skip_k_cache_insert,
+            use_fp4_cache,
         )
     attn_metadata = attn_metadata[k_cache_prefix]
     assert isinstance(attn_metadata, DeepseekV32IndexerMetadata)
