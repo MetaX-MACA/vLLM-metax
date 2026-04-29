@@ -790,6 +790,17 @@ def _try_load_fp8_indexer_wk(name, tensor, buf, params_dict, loaded_params):
     return True
 
 
+def _should_skip_bf16_indexer_wk_scale(name: str) -> bool:
+    return (
+        not mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER
+        and ".indexer.wk." in name
+        and (
+            name.endswith(".weight_scale")
+            or name.endswith(".weight_scale_inv")
+        )
+    )
+
+
 def _min_latency_fused_qkv_a_proj_impl(
     input_: torch.Tensor,
     weight: torch.Tensor,
@@ -1553,6 +1564,9 @@ class DeepseekV2ForCausalLM(
             is_fusion_moe_shared_experts_layer = (
                 rocm_aiter_moe_shared_expert_enabled and ("mlp.shared_experts" in name)
             )
+
+            if _should_skip_bf16_indexer_wk_scale(name):
+                continue
 
             if _try_load_fp8_indexer_wk(
                 name, loaded_weight, _pending_wk_fp8, params_dict, loaded_params

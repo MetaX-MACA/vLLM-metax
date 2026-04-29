@@ -33,6 +33,7 @@ from .deepseek_v2 import (
     DeepseekV2DecoderLayer,
     DeepseekV2MixtureOfExperts,
     DeepseekV2MoE,
+    _should_skip_bf16_indexer_wk_scale,
     _try_load_fp8_indexer_wk,
     get_spec_layer_idx_from_weight_name,
 )
@@ -281,6 +282,9 @@ class DeepSeekMTP(nn.Module, DeepseekV2MixtureOfExperts):
                 rocm_aiter_moe_shared_expert_enabled and ("mlp.shared_experts" in name)
             )
             name = self._rewrite_spec_layer_name(spec_layer, name)
+
+            if _should_skip_bf16_indexer_wk_scale(name):
+                continue
 
             if _try_load_fp8_indexer_wk(
                 name, loaded_weight, _pending_wk_fp8, params_dict, loaded_params
