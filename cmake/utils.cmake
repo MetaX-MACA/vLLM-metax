@@ -108,6 +108,7 @@ function (get_torch_gpu_compiler_flags OUT_GPU_FLAGS GPU_LANG USE_MACA)
       list(APPEND GPU_FLAGS 
         "-mllvm" 
         "-metaxgpu-GridDim-UseLdu")
+      list(APPEND GPU_FLAGS "-DENABLE_FP8")
     endif()
 
 

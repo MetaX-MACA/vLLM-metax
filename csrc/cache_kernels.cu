@@ -571,6 +571,40 @@ __global__ void indexer_k_quant_and_cache_kernel(
   }
 }
 
+template <typename scalar_t, typename cache_t>
+__global__ void indexer_k_cache_kernel(
+    const scalar_t* __restrict__ k,  // [num_tokens, head_dim]
+    cache_t* __restrict__ kv_cache,  // [num_blocks, block_size, cache_stride]
+    const int64_t* __restrict__ slot_mapping,  // [num_tokens]
+    const int head_dim,                        // dimension of each head
+    const int cache_block_size,                // cache block size
+    const int cache_stride  // stride for each token in kv_cache
+) {
+  constexpr int VEC_SIZE = 4;
+  const int64_t token_idx = blockIdx.x;
+  const int64_t head_dim_idx = (blockIdx.y * blockDim.y * blockDim.x +
+                                threadIdx.y * blockDim.x + threadIdx.x) *
+                               VEC_SIZE;
+  const int64_t slot_idx = slot_mapping[token_idx];
+  const int64_t block_idx = slot_idx / cache_block_size;
+  const int64_t block_offset = slot_idx % cache_block_size;
+
+  // NOTE: slot_idx can be -1 if the token is padded
+  if (slot_idx < 0 || (head_dim_idx >= head_dim)) {
+    return;
+  }
+
+  float2 k_val = (reinterpret_cast<const float2*>(
+      k))[(token_idx * head_dim + head_dim_idx) / VEC_SIZE];
+  scalar_t* k_val_ptr = reinterpret_cast<scalar_t*>(&k_val);
+
+  const int64_t dst_offset = block_idx * cache_block_size * cache_stride +
+                             block_offset * head_dim + head_dim_idx;
+  for (int i = 0; i < VEC_SIZE; i++) {
+    kv_cache[dst_offset + i] = k_val_ptr[i];
+  }
+}
+
 template <int BLOCK_Y_SIZE>
 __global__ void cp_gather_indexer_k_quant_cache_kernel(
     const char* __restrict__ kv_cache,  // [num_blocks, block_size,
@@ -640,6 +674,59 @@ __global__ void cp_gather_indexer_k_quant_cache_kernel(
     reinterpret_cast<float*>(dst_scale)[dst_inblock_offset / quant_block_size] =
         reinterpret_cast<const float*>(kv_cache)[src_scale_offset / 4];
   }
+}
+
+template <int BLOCK_Y_SIZE>
+__global__ void cp_gather_indexer_k_cache_kernel(
+    const char* __restrict__ kv_cache,    // [num_blocks, block_size,
+                                          // cache_stride]
+    char* __restrict__ dst_k,             // [num_tokens, head_dim]
+    const int* __restrict__ block_table,  // [batch_size, num_blocks]
+    const int* __restrict__ cu_seq_lens,  // [batch_size + 1]
+    const int batch_size,                 // batch size
+    const int64_t token_stride,           // stride for each token in dst_k
+    const int64_t head_dim,               // dimension of each head
+    const int64_t block_stride,           // stride for each block in kv_cache
+    const int64_t cache_token_stride,     // stride for each token in kv_cache
+    const int64_t cache_block_size,  // num_tokens for each block in kv_cache
+    const int num_blocks,            // number of blocks
+    const int num_tokens             // number of tokens
+) {
+  constexpr int VEC_SIZE = sizeof(float4) / sizeof(char);
+  const int token_idx = blockIdx.x * blockDim.y + threadIdx.y;
+  const int head_idx = (blockIdx.y * blockDim.x + threadIdx.x) * VEC_SIZE;
+  // Find batch index within a block
+  __shared__ int batch_idx[BLOCK_Y_SIZE];
+  for (int iter = 0; iter < cuda_utils::ceil_div(batch_size, int(blockDim.x));
+       iter++) {
+    int tid = iter * blockDim.x + threadIdx.x;
+    if (tid < batch_size) {
+      const int seq_start = cu_seq_lens[tid];
+      const int seq_end = cu_seq_lens[tid + 1];
+      if (token_idx >= seq_start && token_idx < seq_end) {
+        batch_idx[threadIdx.y] = tid;
+      }
+    }
+  }
+
+#ifndef USE_ROCM
+  __syncwarp();
+#endif
+
+  if (head_idx >= head_dim || token_idx >= num_tokens) {
+    return;
+  }
+  const int inbatch_seq_idx = token_idx - cu_seq_lens[batch_idx[threadIdx.y]];
+  const int block_idx = block_table[batch_idx[threadIdx.y] * num_blocks +
+                                    inbatch_seq_idx / cache_block_size];
+  const int64_t src_block_offset = block_idx * block_stride;
+  const int64_t cache_inblock_offset =
+      (inbatch_seq_idx % cache_block_size) * head_dim + head_idx;
+  const int64_t src_inblock_offset = src_block_offset + cache_inblock_offset;
+  const int64_t dst_inblock_offset = token_idx * token_stride + head_idx;
+
+  reinterpret_cast<float4*>(dst_k)[dst_inblock_offset / VEC_SIZE] =
+      reinterpret_cast<const float4*>(kv_cache)[src_inblock_offset / VEC_SIZE];
 }
 
 }  // namespace vllm
@@ -1150,7 +1237,7 @@ __global__ void cp_gather_and_upconvert_fp8_kv_cache(
 
   const uint2 fp8_lo = make_uint2(fp8_data.x, fp8_data.y);
   const uint2 fp8_hi = make_uint2(fp8_data.z, fp8_data.w);
-#if defined USE_ROCM || defined USE_MACA
+#if defined USE_ROCM
   const bf16_8_t bf16_lo =
       fp8::scaled_vec_conversion<bf16_8_t, uint2>(fp8_lo, scale);
   const bf16_8_t bf16_hi =
@@ -1378,6 +1465,53 @@ void cp_gather_and_upconvert_fp8_kv_cache(
 }
 
 // Macro to dispatch the kernel based on the data type.
+// This path is only for unquantized caches, so k and kv_cache must share the
+// same element type. Reusing the FP8 dispatch macro would instantiate invalid
+// BF16/FP16 -> uint8_t variants during compilation.
+#define DISPATCH_INDEXER_K_CACHE_DTYPE(FN)                                 \
+  if (k.dtype() == at::ScalarType::Float) {                                \
+    FN(float);                                                             \
+  } else if (k.dtype() == at::ScalarType::Half) {                          \
+    FN(uint16_t);                                                          \
+  } else if (k.dtype() == at::ScalarType::BFloat16) {                      \
+    FN(__nv_bfloat16);                                                     \
+  } else {                                                                 \
+    TORCH_CHECK(false, "Unsupported input type of kv cache: ", k.dtype()); \
+  }
+
+#define CALL_INDEXER_K_CACHE(KV_T)                                      \
+  vllm::indexer_k_cache_kernel<KV_T, KV_T><<<grid, block, 0, stream>>>( \
+      reinterpret_cast<KV_T*>(k.data_ptr()),                            \
+      reinterpret_cast<KV_T*>(kv_cache.data_ptr()),                     \
+      slot_mapping.data_ptr<int64_t>(), head_dim, cache_block_size,     \
+      cache_stride);
+
+void indexer_k_cache(
+    torch::Tensor& k,            // [num_tokens, head_dim]
+    torch::Tensor& kv_cache,     // [num_blocks, block_size, cache_stride]
+    torch::Tensor& slot_mapping  // [num_tokens]
+) {
+  int num_tokens = k.size(0);
+  int head_dim = k.size(1);
+  int cache_block_size = kv_cache.size(1);
+  int cache_stride = kv_cache.size(2);
+
+  TORCH_CHECK(k.device() == kv_cache.device(),
+              "k and kv_cache must be on the same device");
+  TORCH_CHECK(k.device() == slot_mapping.device(),
+              "k and slot_mapping must be on the same device");
+  TORCH_CHECK(k.dtype() == kv_cache.dtype(),
+              "indexer_k_cache requires k and kv_cache to have the same dtype");
+
+  constexpr int vec_size = 4;
+  dim3 grid(num_tokens, (head_dim + vec_size - 1) / vec_size);
+  dim3 block(32, vec_size);
+  const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+
+  DISPATCH_INDEXER_K_CACHE_DTYPE(CALL_INDEXER_K_CACHE);
+}
+
+// Macro to dispatch the kernel based on the data type.
 #define CALL_INDEXER_K_QUANT_AND_CACHE(KV_T, CACHE_T, KV_DTYPE)         \
   vllm::indexer_k_quant_and_cache_kernel<KV_T, CACHE_T, KV_DTYPE>       \
       <<<grid, block, 0, stream>>>(                                     \
@@ -1415,6 +1549,60 @@ void indexer_k_quant_and_cache(
   static const std::string kv_cache_dtype = "fp8_e4m3";
   DISPATCH_BY_KV_CACHE_DTYPE(k.dtype(), kv_cache_dtype,
                              CALL_INDEXER_K_QUANT_AND_CACHE);
+}
+
+// Macro to dispatch the kernel based on the data amount.
+#define CALL_CP_GATHER_INDEXER_K_CACHE(BLOCK_Y_SIZE)                        \
+  vllm::cp_gather_indexer_k_cache_kernel<BLOCK_Y_SIZE>                      \
+      <<<dim3((num_tokens + BLOCK_Y_SIZE - 1) / BLOCK_Y_SIZE,               \
+              (head_dim + 8 * vec_size - 1) / (8 * vec_size)),              \
+         dim3(8, BLOCK_Y_SIZE), 0, stream>>>(                               \
+          reinterpret_cast<char*>(kv_cache.data_ptr()),                     \
+          reinterpret_cast<char*>(dst_k.data_ptr()),                        \
+          block_table.data_ptr<int32_t>(), cu_seq_lens.data_ptr<int32_t>(), \
+          batch_size, dst_k.stride(0), dst_k.size(1), kv_cache.stride(0),   \
+          kv_cache.stride(1), kv_cache.size(1), block_table.size(1),        \
+          num_tokens);
+
+void cp_gather_indexer_k_cache(
+    const torch::Tensor& kv_cache,     // [num_blocks, block_size, cache_stride]
+    torch::Tensor& dst_k,              // [num_tokens, head_dim]
+    const torch::Tensor& block_table,  // [batch_size, num_blocks]
+    const torch::Tensor& cu_seq_lens   // [batch_size + 1]
+) {
+  int batch_size = block_table.size(0);
+  int num_tokens = dst_k.size(0);
+  int head_dim = dst_k.size(1);
+  // int quant_block_size = head_dim * 4 / dst_scale.size(1);
+
+  TORCH_CHECK(kv_cache.device() == dst_k.device(),
+              "kv_cache and dst_k must be on the same device");
+  // TORCH_CHECK(kv_cache.device() == dst_scale.device(),
+  //             "kv_cache and dst_scale must be on the same device");
+  TORCH_CHECK(kv_cache.device() == block_table.device(),
+              "kv_cache and block_table must be on the same device");
+  TORCH_CHECK(kv_cache.device() == cu_seq_lens.device(),
+              "kv_cache and cu_seq_lens must be on the same device");
+  // TORCH_CHECK(head_dim % quant_block_size == 0,
+  //             "head_dim must be divisible by quant_block_size");
+
+  constexpr int vec_size = 16;
+  const at::cuda::OptionalCUDAGuard device_guard(device_of(kv_cache));
+  const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+
+  if (num_tokens < 32) {
+    CALL_CP_GATHER_INDEXER_K_CACHE(1);
+  } else if (num_tokens < 64) {
+    CALL_CP_GATHER_INDEXER_K_CACHE(2);
+  } else if (num_tokens < 128) {
+    CALL_CP_GATHER_INDEXER_K_CACHE(4);
+  } else if (num_tokens < 256) {
+    CALL_CP_GATHER_INDEXER_K_CACHE(8);
+  } else if (num_tokens < 512) {
+    CALL_CP_GATHER_INDEXER_K_CACHE(16);
+  } else {
+    CALL_CP_GATHER_INDEXER_K_CACHE(32);
+  }
 }
 
 // Macro to dispatch the kernel based on the data amount.
