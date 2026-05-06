@@ -22,7 +22,7 @@
         source /opt/venv/bin/activate
         ```
 
-    You need to manually set Metax PyPi repo to download maca-related dependencies.
+    You need to manually set Metax PyPi repo to download *maca-related* dependencies during installation.
 
     ```
     export UV_EXTRA_INDEX_URL=https://repos.metax-tech.com/r/maca-pypi/simple
@@ -30,7 +30,7 @@
     ```
 
     ??? console "Optional: Change PyPi default mirror"
-        You could set Aliyun PyPi mirror as default to speed up package downloading:
+        You could set Aliyun PyPi mirror as default to speed up *non-metax-related* packages:
 
         ```bash
         export UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple
@@ -59,13 +59,10 @@
         ```
 # --8<-- [end:build-vllm-metax]
 
-
-
 # --8<-- [start:build-vllm]
 !!! note "To build vLLM using local uv environment"
 
     ```bash
-    uv pip install -r requirements/build.txt
     VLLM_TARGET_DEVICE=empty uv pip install . --no-build-isolation
     ```
 
@@ -75,3 +72,12 @@
         `VLLM_TARGET_DEVICE=empty`, which may take a long time.
 
 # --8<-- [end:build-vllm]
+
+# --8<-- [start:post-build]
+!!! note
+    Currently vllm-metax still only support build with `numpy<2`. While in building vllm, numpy would be overridden to `numpy>2`. So we need manually restore it to original version by:
+
+    ```bash
+    uv pip install 'numpy<2'
+    ```
+# --8<-- [end:post-build]
