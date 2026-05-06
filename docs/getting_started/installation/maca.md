@@ -21,11 +21,14 @@
 
 - OS: Linux
 - Python: 3.10 -- 3.12
+- Hardware: MetaX C-series
+- SDK: MACA-SDK
 
 
 ## Build from source
 
 ### Prepare environment
+
 ```bash
 # setup MACA path
 export MACA_PATH="/opt/maca"
@@ -45,28 +48,12 @@ export LD_LIBRARY_PATH=${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu
 === "UV"
     --8<-- "docs/getting_started/installation/uv.inc.md:prepare-env"
 
-### Build vllm
-
-Clone vllm project:
-
-```bash 
-git clone  --depth 1 --branch releases/v0.15.0 https://github.com/vllm-project/vllm 
-cd vllm
-```
-
-Build with *empty device*:
-
-=== "PIP"
-    --8<-- "docs/getting_started/installation/pip.inc.md:build-vllm"
-=== "UV"
-    --8<-- "docs/getting_started/installation/uv.inc.md:build-vllm"
-
-### Build plugin
+### Build vllm-metax plugin
 
 Clone vllm-metax project:
 
 ```bash 
-git clone --branch support-vllm-0.15.0 https://github.com/MetaX-MACA/vLLM-metax
+git clone --branch releases/v0.18.0 https://github.com/MetaX-MACA/vLLM-metax
 cd vLLM-metax
 ```
 
@@ -77,4 +64,35 @@ Build the plugin:
 === "UV"
     --8<-- "docs/getting_started/installation/uv.inc.md:build-vllm-metax"
 
-## Extra information
+### Build vllm
+
+!!! warning 
+
+    It's ***not recommended*** to install vllm directly from PYPI with:
+
+    ```
+    uv pip install vllm==X.Y.Z
+    ```
+
+    This would install a *cuda-build* vllm which carried a lot of cuda-related dependencies and kernel files together with internal vllm_flash_attn and triton_kernels, which may wrongly cause runtime errors on some checking. (E.g. Some pre-conditions that should **only** be detected on `cuda` may also passed to `maca` backend by mistake in this kind of vllm.)
+
+Clone vllm project:
+
+```bash 
+git clone  --depth 1 --branch releases/v0.18.0 https://github.com/vllm-project/vllm 
+cd vllm
+```
+
+Build with *empty device*:
+
+=== "PIP"
+    --8<-- "docs/getting_started/installation/pip.inc.md:build-vllm"
+=== "UV"
+    --8<-- "docs/getting_started/installation/uv.inc.md:build-vllm"
+
+### Post build (Significant)
+
+=== "PIP"
+    --8<-- "docs/getting_started/installation/pip.inc.md:post-build"
+=== "UV"
+    --8<-- "docs/getting_started/installation/uv.inc.md:post-build"
