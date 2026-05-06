@@ -21,73 +21,89 @@ class CoArAll2AllManager(All2AllManagerBase):
     def __init__(self, cpu_group):
         super().__init__(cpu_group)
 
-    def naive_combine_reduce(
-        self,
-        x: torch.Tensor,
-        y: torch.Tensor,
-        cu_tokens_across_sp_cpu: torch.Tensor,
-        is_sequence_parallel: bool = False,
-    ):
-        assert len(x.shape) == 2
-        assert len(y.shape) == 2
-        ep_rank = self.rank if is_sequence_parallel else self.dp_rank
-        x_size = x.size(1)
-        total_size = x_size + y.size(1)
-        buffer = torch.zeros(
-            (cu_tokens_across_sp_cpu[-1], total_size), device=x.device, dtype=x.dtype
-        )
-        start = 0 if ep_rank == 0 else cu_tokens_across_sp_cpu[ep_rank - 1]
-        end = cu_tokens_across_sp_cpu[ep_rank]
-        buffer[start:end, :x_size].copy_(x)
-        buffer[start:end, x_size:].copy_(y)
-        dist_group = get_ep_group() if is_sequence_parallel else get_dp_group()
-        buffer = dist_group.all_reduce(buffer)
-        buffer_x = buffer[:, :x_size]
-        buffer_y = buffer[:, x_size:]
-        return buffer_x.contiguous(), buffer_y.contiguous()
-
-    def dispatch(
+    def dispatch_router_logits(
         self,
         hidden_states: torch.Tensor,
         router_logits: torch.Tensor,
         is_sequence_parallel: bool = False,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+        extra_tensors: list[torch.Tensor] | None = None,
+    ) -> (
+        tuple[torch.Tensor, torch.Tensor]
+        | tuple[torch.Tensor, torch.Tensor, list[torch.Tensor]]
+    ):
         """
         Gather hidden_states and router_logits from all dp ranks.
         """
         dp_metadata = get_forward_context().dp_metadata
         assert dp_metadata is not None
-        sp_size = self.tp_group.world_size if is_sequence_parallel else 1
-        cu_tokens_across_sp_cpu = dp_metadata.cu_tokens_across_sp(sp_size)
+        sizes = dp_metadata.get_chunk_sizes_across_dp_rank()
+        assert sizes is not None
+        dist_group = get_ep_group() if is_sequence_parallel else get_dp_group()
+        assert sizes[dist_group.rank_in_group] == hidden_states.shape[0]
 
-        total_num_tokens = cu_tokens_across_sp_cpu[-1].item()
-        if total_num_tokens < 64:
-            hidden_states, router_logits = self.naive_combine_reduce(
-                hidden_states,
-                router_logits,
-                cu_tokens_across_sp_cpu,
-                is_sequence_parallel,
-            )
+        tensors_to_gather = [hidden_states, router_logits]
+        if extra_tensors is not None:
+            tensors_to_gather.extend(extra_tensors)
+
+        if len(set(sizes)) <= 1 and hidden_states.shape[0] <= 512:
+            gathered_tensors = []
+            for tensors in tensors_to_gather:
+                gathered_tensors.append(dist_group.all_gather(tensors, dim=0))
         else:
-            max_tokens_across_dp_cpu = dp_metadata.max_tokens_across_dp_cpu
-            sizes = dp_metadata.get_chunk_sizes_across_dp_rank()
-            dist_group = get_ep_group() if is_sequence_parallel else get_dp_group()
-            if (
-                not is_sequence_parallel
-                and total_num_tokens > 1024
-                and max_tokens_across_dp_cpu * self.dp_world_size == total_num_tokens
-            ):
-                hidden_states = dist_group.all_gather(hidden_states, 0)
-                router_logits = dist_group.all_gather(router_logits, 0)
-            else:
-                assert sizes[dist_group.rank_in_group] == hidden_states.shape[0]
-                hidden_states, router_logits = dist_group.all_gatherv(
-                    [hidden_states, router_logits],
-                    dim=0,
-                    sizes=sizes,
-                )
+            gathered_tensors = dist_group.all_gatherv(
+                tensors_to_gather,
+                dim=0,
+                sizes=sizes,
+            )
 
-        return hidden_states, router_logits
+        if extra_tensors is not None:
+            return (gathered_tensors[0], gathered_tensors[1], gathered_tensors[2:])
+        return gathered_tensors[0], gathered_tensors[1]
+
+    def dispatch(
+        self,
+        hidden_states: torch.Tensor,
+        topk_weights: torch.Tensor,
+        topk_ids: torch.Tensor,
+        is_sequence_parallel: bool = False,
+        extra_tensors: list[torch.Tensor] | None = None,
+    ) -> (
+        tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+        | tuple[torch.Tensor, torch.Tensor, torch.Tensor, list[torch.Tensor]]
+    ):
+        """
+        Gather hidden_states and router_logits from all dp ranks.
+        """
+        dp_metadata = get_forward_context().dp_metadata
+        assert dp_metadata is not None
+        sizes = dp_metadata.get_chunk_sizes_across_dp_rank()
+        assert sizes is not None
+        dist_group = get_ep_group() if is_sequence_parallel else get_dp_group()
+        assert sizes[dist_group.rank_in_group] == hidden_states.shape[0]
+
+        tensors_to_gather = [hidden_states, topk_weights, topk_ids]
+        if extra_tensors is not None:
+            tensors_to_gather.extend(extra_tensors)
+
+        if len(set(sizes)) <= 1 and hidden_states.shape[0] <= 512:
+            gathered_tensors = []
+            for tensors in tensors_to_gather:
+                gathered_tensors.append(dist_group.all_gather(tensors, dim=0))
+        else:
+            gathered_tensors = dist_group.all_gatherv(
+                tensors_to_gather,
+                dim=0,
+                sizes=sizes,
+            )
+
+        hidden_states = gathered_tensors[0]
+        topk_weights = gathered_tensors[1]
+        topk_ids = gathered_tensors[2]
+
+        if extra_tensors is None:
+            return hidden_states, topk_weights, topk_ids
+
+        return hidden_states, topk_weights, topk_ids, gathered_tensors[3:]
 
     def combine(
         self, hidden_states: torch.Tensor, is_sequence_parallel: bool = False
@@ -105,6 +121,7 @@ class CoArAll2AllManager(All2AllManagerBase):
         total_num_tokens = cu_tokens_across_sp_cpu[-1].item()
         if total_num_tokens < 2048:
             sizes = dp_metadata.get_chunk_sizes_across_dp_rank()
+            assert sizes is not None
             dist_group = get_ep_group() if is_sequence_parallel else get_dp_group()
             hidden_states = dist_group.reduce_scatterv(
                 hidden_states, dim=0, sizes=sizes

@@ -173,3 +173,64 @@ def top_k_per_row_decode(
         logits.stride(0),
         logits.stride(1),
     )
+
+
+def grouped_topk(
+    scores: torch.Tensor,
+    num_expert_group: int,
+    topk_group: int,
+    topk: int,
+    renormalize: bool,
+    routed_scaling_factor: float,
+    bias: torch.Tensor,
+    scoring_func: int = 0,
+):
+    """
+    Perform grouped top-k routing for mixture of experts.
+
+    Args:
+        scores: Raw inputs (logits if scoring_func=1, scores if scoring_func=0)
+        num_expert_group: Number of expert groups
+        topk_group: Number of groups to select
+        topk: Number of experts to select per token
+        renormalize: Whether to renormalize the output weights
+        routed_scaling_factor: Scaling factor for routing weights
+        bias: Bias tensor (e_score_correction_bias). Always fused in kernel.
+        scoring_func: 0=none (no activation), 1=sigmoid
+    """
+    return torch.ops._moe_C.grouped_topk(
+        scores,
+        num_expert_group,
+        topk_group,
+        topk,
+        renormalize,
+        routed_scaling_factor,
+        bias,
+        scoring_func,
+    )
+
+
+def sgl_fused_moe_gate_opt(
+    gating_outputs: torch.Tensor,
+    correction_bias: torch.Tensor,
+    out_routing_weights: torch.Tensor,
+    out_selected_experts: torch.Tensor,
+    topk: int = None,
+    renormalize: bool = None,
+    num_expert_group: int = None,
+    topk_group: int = None,
+    num_shared_experts: int | None = None,
+    scale_factor: float | None = None,
+) -> int:
+    return torch.ops.sgl_kernel.fused_moe_gate_opt.default(
+        gating_outputs,
+        correction_bias,
+        out_routing_weights,
+        out_selected_experts,
+        topk,
+        renormalize,
+        num_expert_group,
+        topk_group,
+        num_shared_experts,
+        scale_factor,
+    )

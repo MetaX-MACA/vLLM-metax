@@ -88,14 +88,24 @@ class MacaFlashAttentionBackend(AttentionBackend):
     def get_supported_kernel_block_sizes() -> list[int | MultipleOf]:
         vllm_config = get_current_vllm_config()
         model_config = vllm_config.model_config
-
-        # /------------------------  Metax Modification -------------------------\
-        if model_config and model_config.is_hybrid:
-            # Ensure that kernel block size of hybrid model are powers of two.
+        cache_config = vllm_config.cache_config
+        if (
+            model_config
+            and model_config.is_hybrid
+            and (
+                cache_config.mamba_ssm_cache_dtype == "float32"
+                or cache_config.mamba_cache_dtype == "float32"
+            )
+        ):
+            # NOTE(tdoublep): while in principle, FA supports
+            # MultipleOf(16), these are the block sizes that do not
+            # suffer from the NaN propagation problem described here:
+            # https://github.com/Dao-AILab/flash-attention/issues/1974
             return [16, 32, 64]
-        # \------------------------- Metax Modification -------------------------/
 
-        return [MultipleOf(16)]
+        # retrun kernel block size need to be pow of 2
+        return [16, 32, 64, 128, 256]
+        # return [MultipleOf(16)]
 
     forward_includes_kv_cache_update: bool = False
 

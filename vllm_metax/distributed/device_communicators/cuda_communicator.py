@@ -39,7 +39,7 @@ class MacaCommunicator(CudaCommunicator):
         # /------------------------  Metax Modification -------------------------\
         if (
             self.use_all2all
-            and mx_envs.MACA_DP_OPT
+            and mx_envs.VLLM_METAX_DP_OPT
             and (
                 self.all2all_backend == "naive"
                 or self.all2all_backend == "allgather_reducescatter"

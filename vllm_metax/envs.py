@@ -13,12 +13,13 @@ if TYPE_CHECKING:
     CMAKE_BUILD_TYPE: str | None
     VERBOSE: bool = False
     USE_PRECOMPILED_KERNEL: bool = True
-    MACA_DP_OPT: bool = False
-    MACA_VLLM_ENABLE_MCTLASS_PYTHON_API: bool = False
+    VLLM_METAX_DP_OPT: bool = True
+    MACA_VLLM_ENABLE_MCTLASS_PYTHON_API: bool = True
     MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: bool = False
     USE_VLLM_TRITON_EXPERT: bool = False
     VLLM_METAX_ENABLE_FA_SPLIT_FORWARD: bool = True
     VLLM_FUSED_MOE_CHUNK_SIZE: int = 16 * 1024
+    VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK: bool = False
 
 environment_variables: dict[str, Callable[[], Any]] = {
     # ================== Installation Time Env Vars ==================
@@ -63,7 +64,7 @@ environment_variables: dict[str, Callable[[], Any]] = {
         int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE", "0"))
     ),
     # if set, enable combine allreduce all2all
-    "MACA_DP_OPT": lambda: bool(int(os.environ.get("MACA_DP_OPT", "1"))),
+    "VLLM_METAX_DP_OPT": lambda: bool(int(os.environ.get("VLLM_METAX_DP_OPT", "1"))),
     # if set, enable FA split forward into
     # prefill and decode for better latency
     # and memory usage during decoding
@@ -73,10 +74,18 @@ environment_variables: dict[str, Callable[[], Any]] = {
     "VLLM_FUSED_MOE_CHUNK_SIZE": lambda: int(
         os.getenv("VLLM_FUSED_MOE_CHUNK_SIZE", str(16 * 1024))
     ),
+    # if set, enable sglang fused grouped topk ops on deepseek and kimi model
+    "VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK": lambda: bool(
+        int(os.getenv("VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK", "0"))
+    ),
     # =================== Debug Env Vars ==================
     # if set, use vllm's fused_moe implementation instead of maca's one for debugging and comparison
     "USE_VLLM_TRITON_EXPERT": lambda: bool(
         int(os.getenv("USE_VLLM_TRITON_EXPERT", "0"))
+    ),
+    # if set, use fp8 deep gemm kernel for DSA
+    "MACA_VLLM_USE_FP8_SPARSE_ATTN_INDEXER": lambda: bool(
+        int(os.environ.get("MACA_VLLM_USE_FP8_SPARSE_ATTN_INDEXER", "0"))
     ),
 }
 
