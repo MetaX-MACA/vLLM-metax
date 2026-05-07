@@ -751,6 +751,12 @@ mx_envs.override_vllm_env(
     "VLLM_ENGINE_READY_TIMEOUT_S", 3600, "set timeout to 3600s for model loading"
 )
 
+mx_envs.override_vllm_env(
+    "VLLM_FLOAT32_MATMUL_PRECISION",
+    "high",
+    "set float32 matmul precision to high for better performance on Maca platform",
+)
+
 # --------------------------------------------------
 # Note: vllm_metax currently does not support third-party
 #       Triton kernels; Triton upgrade required.
