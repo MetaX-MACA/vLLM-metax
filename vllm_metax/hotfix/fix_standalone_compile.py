@@ -230,3 +230,4 @@ torch.accelerator.empty_cache = torch.cuda.empty_cache
 torch.accelerator.memory_stats = torch.cuda.memory_stats
 torch.accelerator.memory_reserved = torch.cuda.memory_reserved
 torch.accelerator.reset_peak_memory_stats = torch.cuda.reset_peak_memory_stats
+torch.accelerator.max_memory_allocated = torch.cuda.max_memory_allocated
