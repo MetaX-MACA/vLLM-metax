@@ -63,6 +63,9 @@ from vllm.model_executor.models.utils import (
     make_layers,
     maybe_prefix,
 )
+from vllm_metax.model_executor.layers.mhc_torch import mhc_post, mhc_pre  # noqa: F401
+
+_DEEPSEEK_V4_EXPERT_DTYPES = ("fp4", "fp8")
 
 _DEEPSEEK_V4_EXPERT_DTYPES = ("fp4", "fp8")
 

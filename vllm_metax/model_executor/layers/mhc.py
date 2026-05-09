@@ -293,7 +293,7 @@ def mhc_pre(
 
     residual_flat = residual.view(-1, mhc_mult, hidden_size)
     num_tokens = residual_flat.shape[0]
-    fn_flat = fn
+    fn_flat = fn  # noqa: F841
 
     post_mix = torch.empty(
         num_tokens, mhc_mult, dtype=torch.float32, device=residual.device
