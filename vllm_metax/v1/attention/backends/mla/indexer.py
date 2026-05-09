@@ -13,6 +13,7 @@ from vllm.triton_utils import tl, triton
 from vllm.utils.deep_gemm import get_paged_mqa_logits_metadata
 from vllm_metax.utils.deep_gemm import (
     has_deep_gemm,
+    get_num_blocks_paged_mqa_logits_metadata,
 )
 from vllm.utils.math_utils import cdiv
 from vllm.utils.platform_utils import num_compute_units
@@ -191,7 +192,7 @@ class DeepSeekV32IndexerDecodeMetadata:
     # seq_lens: per-token effective context lengths.
     #   - flatten path / plain decode: 1D (batch_size,)
     #   - native MTP path: 2D (B, next_n) where [b,j] = L_b - next_n + j + 1
-    # Both fp8_paged_mqa_logits and the topk kernels accept both shapes.
+    # Both fp8_fp4_paged_mqa_logits and the topk kernels accept both shapes.
     seq_lens: torch.Tensor
     decode_lens: torch.Tensor
     requires_padding: bool
@@ -321,10 +322,10 @@ class DeepseekV32IndexerMetadataBuilder(AttentionMetadataBuilder):
             device=self.device,
         )
 
-        # See: DeepGMM/csrc/apis/attention.hpp
+        num_blocks = get_num_blocks_paged_mqa_logits_metadata(self.num_sms)
         self.scheduler_metadata_buffer = torch.empty(
-            (self.num_sms + 1, 2), dtype=torch.int32, device=self.device
-        )
+            (num_blocks + 1, 2), dtype=torch.int32, device=self.device
+        )  # aligned with deepgemm
 
         # KV compression. Default to 1 for no compression.
         self.compress_ratio = 1

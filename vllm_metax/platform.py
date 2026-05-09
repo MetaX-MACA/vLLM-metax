@@ -146,6 +146,7 @@ class MacaPlatformBase(Platform):
     ]
     if mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER:
         supported_quantization.append("fp8")
+        supported_quantization.append("deepseek_v4_fp8")
 
     @classmethod
     def set_device(cls, device: torch.device) -> None:
@@ -273,6 +274,10 @@ class MacaPlatformBase(Platform):
             compilation_config._attention_ops.append(
                 "vllm::mx_sparse_attn_indexer_bf16"
             )
+            compilation_config._attention_ops.append(
+                "vllm::mx_sparse_attn_indexer_int8"
+            )
+            compilation_config._attention_ops.append("vllm::mx_deepseek_v4_attention")
 
         # -------------------------------------------------------
         # Disable cascade attention for Maca platform currently

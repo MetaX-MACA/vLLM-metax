@@ -17,7 +17,7 @@ from vllm.v1.attention.backend import (
     MultipleOf,
 )
 from vllm.v1.attention.backends.utils import split_decodes_and_prefills
-from vllm.v1.attention.ops.flashmla import FlashMLASchedMeta, get_mla_metadata
+from vllm_metax.v1.attention.ops.flashmla import FlashMLASchedMeta, get_mla_metadata
 from vllm.v1.kv_cache_interface import (
     KVCacheSpec,
     MLAAttentionSpec,
@@ -73,7 +73,7 @@ class DeepseekV4SWACache(torch.nn.Module, AttentionLayerBase):
         # determines the SWA block size of 64 tokens per block.
         # TODO(yifan): make SWA block size automatically determined and configurable.
         self.block_size = 64
-        assert self.dtype == torch.uint8
+        assert self.dtype == torch.bfloat16
 
     def get_kv_cache_spec(self, vllm_config: VllmConfig) -> KVCacheSpec:
         return SlidingWindowMLASpec(
@@ -83,8 +83,8 @@ class DeepseekV4SWACache(torch.nn.Module, AttentionLayerBase):
             dtype=self.dtype,
             sliding_window=self.window_size,
             cache_dtype_str=self.cache_config.cache_dtype,
-            alignment=576,  # NOTE: FlashMLA requires 576B alignment
-            model_version="deepseek_v4",
+            # alignment=576,  # NOTE: FlashMLA requires 576B alignment
+            model_version=None,
         )
 
     def forward(self): ...
@@ -453,7 +453,7 @@ def _compute_swa_indices_and_lens_kernel(
 ):
     token_idx = tl.program_id(0)
     is_valid = tl.load(is_valid_token_ptr + token_idx)
-    if not is_valid:
+    if is_valid is None:
         tl.store(swa_lens_ptr + token_idx, 0)
         return
 

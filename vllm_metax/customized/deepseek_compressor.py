@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-
 from dataclasses import dataclass
 from typing import Any, ClassVar, cast
 
@@ -15,7 +13,6 @@ from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.linear import (
     MergedColumnParallelLinear,
 )
-from vllm.model_executor.layers.utils import cublas_gemm_bf16_bf16_fp32
 from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
 from vllm.v1.attention.backend import (
@@ -25,13 +22,9 @@ from vllm.v1.attention.backend import (
     CommonAttentionMetadata,
     MultipleOf,
 )
-from vllm.v1.attention.ops.deepseek_v4_ops.fused_compress_quant_cache import (
-    _fused_kv_compress_norm_rope_insert_indexer_attn,
-    _fused_kv_compress_norm_rope_insert_indexer_mxfp4_attn,
-    _fused_kv_compress_norm_rope_insert_sparse_attn,
-)
-from vllm.v1.attention.ops.deepseek_v4_ops.fused_indexer_q import (
-    MXFP4_BLOCK_SIZE,
+from vllm_metax.v1.attention.ops.deepseek_v4_ops.fused_compress_quant_cache import (
+    _fused_kv_compress_norm_rope_insert_sparse_attn_bf16,
+    _fused_kv_compress_norm_rope_insert_indexer_attn_int8,
 )
 from vllm.v1.kv_cache_interface import (
     KVCacheSpec,
@@ -167,7 +160,7 @@ class CompressorStateCache(torch.nn.Module, AttentionLayerBase):
             head_size=self.state_dim,
             dtype=self.dtype,
             sliding_window=self.sliding_window,
-            alignment=576,  # NOTE: FlashMLA requires 576B alignment
+            # alignment=1024,  # NOTE: FlashMLA requires 512*2B alignment
         )
 
     def forward(self): ...
@@ -176,7 +169,7 @@ class CompressorStateCache(torch.nn.Module, AttentionLayerBase):
         return CompressorBackend
 
 
-class DeepseekCompressor(nn.Module):
+class MacaDeepseekCompressor(nn.Module):
     def __init__(
         self,
         vllm_config: VllmConfig,
@@ -246,21 +239,18 @@ class DeepseekCompressor(nn.Module):
             assert not use_fp4_cache, (
                 "MXFP4 cache is only supported for indexer (head=128)"
             )
-            self._fused_kernel = _fused_kv_compress_norm_rope_insert_sparse_attn
+            self._fused_kernel = _fused_kv_compress_norm_rope_insert_sparse_attn_bf16
             self._quant_block = 64
-            self._token_stride = self.nope_head_dim + self.rope_head_dim * 2
-            self._scale_dim = self.nope_head_dim // 64 + 1  # 7 real + 1 pad
+            self._token_stride = self.nope_head_dim + self.rope_head_dim
+            self._scale_dim = 0
             self._num_warps = 4
         elif self.head_dim == 128:
             if use_fp4_cache:
-                self._fused_kernel = (
-                    _fused_kv_compress_norm_rope_insert_indexer_mxfp4_attn
-                )
-                self._quant_block = MXFP4_BLOCK_SIZE
-                self._token_stride = self.head_dim // 2
-                self._scale_dim = self.head_dim // MXFP4_BLOCK_SIZE
+                raise AssertionError("not support fp4")
             else:
-                self._fused_kernel = _fused_kv_compress_norm_rope_insert_indexer_attn
+                self._fused_kernel = (
+                    _fused_kv_compress_norm_rope_insert_indexer_attn_int8
+                )
                 self._quant_block = 128
                 self._token_stride = self.head_dim
                 self._scale_dim = 4  # single float32 scale
@@ -272,16 +262,12 @@ class DeepseekCompressor(nn.Module):
 
     def forward(
         self,
-        # [num_tokens, hidden_size]
-        x: torch.Tensor,
+        # [num_tokens, 2 * self.coff * self.head_dim]
+        kv_score: torch.Tensor,
         # [num_tokens]
         positions: torch.Tensor,
         rotary_emb,
     ) -> None:
-        num_tokens, _ = x.shape
-        # bf16 weights/activations but fp32 output for numerical stability of
-        # the downstream compressor math.
-        kv_score = cublas_gemm_bf16_bf16_fp32(x, self.fused_wkv_wgate.weight)
         # Each of shape [num_tokens, coff * self.head_dim]
         # input bf16, output are fp32
         kv, score = kv_score.split(
@@ -330,7 +316,7 @@ class DeepseekCompressor(nn.Module):
             TRITON_BLOCK_SIZE=triton.next_power_of_2(kv.shape[-1]),
             STATE_WIDTH=state_width,
             COMPRESS_RATIO=self.compress_ratio,
-            launch_pdl=False,
+            # launch_pdl=False,
         )
 
         # Fused: compress → RMSNorm → RoPE → FP8 quant → KV cache write.
@@ -373,13 +359,13 @@ class DeepseekCompressor(nn.Module):
             COMPRESS_RATIO=self.compress_ratio,
             OVERLAP=self.overlap,
             ROPE_HEAD_DIM=self.rope_head_dim,
-            FP8_MAX=448.0,
+            INT8_MAX=127.0,
             QUANT_BLOCK=self._quant_block,
             TOKEN_STRIDE=self._token_stride,
             SCALE_DIM=self._scale_dim,
             KV_BLOCK_STRIDE=kv_cache.stride(0),
             num_warps=self._num_warps,
-            launch_pdl=False,
+            # launch_pdl=False,
         )
 
 
