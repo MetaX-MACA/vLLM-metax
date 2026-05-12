@@ -41,6 +41,7 @@ from vllm.v1.attention.backends.utils import (
     split_prefill_chunks,
 )
 from vllm_metax.v1.attention.ops.flashmla import (
+    FlashMLASchedMeta,
     flash_mla_sparse_fwd,
     flash_mla_sparse_decode,
     flash_mla_with_kvcache,
@@ -151,7 +152,7 @@ class MacaFlashMLASparseBackend(AttentionBackend):
             return (num_blocks, block_size, head_size)
 
 
-class DeepseekV4FlashMLASparseBackend(MacaFlashMLASparseBackend):
+class MacaDeepseekV4FlashMLASparseBackend(MacaFlashMLASparseBackend):
     @staticmethod
     def get_supported_kernel_block_sizes() -> list[int | MultipleOf]:
         return [256]
@@ -193,8 +194,7 @@ class FlashMLASparseMetadata(AttentionMetadata):
 
     @dataclass
     class FP8KernelMetadata:
-        scheduler_metadata: torch.Tensor | None
-        num_splits: torch.Tensor
+        scheduler_metadata: FlashMLASchedMeta
         dummy_block_table: torch.Tensor
         cache_lens: torch.Tensor
 
@@ -249,8 +249,7 @@ class FlashMLASparseMetadata(AttentionMetadata):
 
     @dataclass
     class BF16KernelMetadata:
-        scheduler_metadata: torch.Tensor | None
-        num_splits: torch.Tensor
+        scheduler_metadata: FlashMLASchedMeta
         dummy_block_table: torch.Tensor
         cache_lens: torch.Tensor
 
@@ -456,7 +455,7 @@ class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetad
         padded_heads = self.fp8_decode_padded_heads
 
         # Build metadata for all tokens as a single batch
-        tile_scheduler_metadata, num_splits = get_mla_metadata(
+        scheduler_metadata, _ = get_mla_metadata(
             cache_seqlens=self.topk_tokens_tensor[:1],  # Single batch
             num_q_tokens_per_head_k=num_tokens * padded_heads,
             topk=self.topk_tokens,
@@ -465,17 +464,8 @@ class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetad
             is_fp8_kvcache=True,
         )
 
-        num_sm_parts = tile_scheduler_metadata.size(0)
-        tile_scheduler_metadata_buffer = self.tile_scheduler_metadata_buffer[
-            :num_sm_parts
-        ]
-        tile_scheduler_metadata_buffer.copy_(tile_scheduler_metadata)
-        num_splits_view = self.num_splits_buffer[:2]
-        num_splits_view.copy_(num_splits)
-
         fp8_metadata = FlashMLASparseMetadata.FP8KernelMetadata(
-            scheduler_metadata=tile_scheduler_metadata_buffer,
-            num_splits=num_splits_view,
+            scheduler_metadata=scheduler_metadata,
             cache_lens=self.max_model_len_tensor[:1],
             dummy_block_table=self.dummy_block_table[:1],
         )
@@ -610,29 +600,10 @@ class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetad
             decode_query_len = (query_start_loc_cpu[1] - query_start_loc_cpu[0]).item()
 
             # Use padded head count since that's what the kernel will see
-            padded_heads = self.fp8_decode_padded_heads
-            tile_scheduler_metadata, num_splits = get_mla_metadata(
-                cache_seqlens=self.topk_tokens_tensor[:num_decodes],
-                num_q_tokens_per_head_k=decode_query_len * padded_heads,
-                topk=self.topk_tokens,
-                num_heads_q=padded_heads,
-                num_heads_k=1,
-                is_fp8_kvcache=True,
-            )
-
-            num_sm_parts = tile_scheduler_metadata.size(0)
-            # Copy to persistent buffer for full-CG support
-            tile_scheduler_metadata_buffer = self.tile_scheduler_metadata_buffer[
-                :num_sm_parts
-            ]
-            tile_scheduler_metadata_buffer.copy_(tile_scheduler_metadata)
-            # num_splits has size [num_decodes + 1]
-            num_splits_view = self.num_splits_buffer[: num_decodes + 1]
-            num_splits_view.copy_(num_splits)
+            scheduler_metadata, _ = get_mla_metadata()
 
             kernel_meta = FlashMLASparseMetadata.FP8KernelMetadata(
-                scheduler_metadata=tile_scheduler_metadata_buffer,
-                num_splits=num_splits_view,
+                scheduler_metadata=scheduler_metadata,
                 dummy_block_table=self.dummy_block_table[:num_decodes],
                 cache_lens=self.max_model_len_tensor[:num_decodes],
             )
@@ -673,28 +644,10 @@ class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetad
             query_start_loc_cpu = common_attn_metadata.query_start_loc_cpu
             decode_query_len = (query_start_loc_cpu[1] - query_start_loc_cpu[0]).item()
 
-            tile_scheduler_metadata, num_splits = get_mla_metadata(
-                cache_seqlens=self.topk_tokens_tensor[:num_decodes],
-                num_q_tokens_per_head_k=decode_query_len * self.num_heads,
-                topk=self.topk_tokens,
-                num_heads_q=self.num_heads,
-                num_heads_k=1,
-                is_fp8_kvcache=False,
-            )
-
-            num_sm_parts = tile_scheduler_metadata.size(0)
-            # Copy to persistent buffer for full-CG support
-            tile_scheduler_metadata_buffer = self.tile_scheduler_metadata_buffer[
-                :num_sm_parts
-            ]
-            tile_scheduler_metadata_buffer.copy_(tile_scheduler_metadata)
-            # num_splits has size [num_decodes + 1]
-            num_splits_view = self.num_splits_buffer[: num_decodes + 1]
-            num_splits_view.copy_(num_splits)
+            scheduler_metadata, _ = get_mla_metadata()
 
             kernel_meta = FlashMLASparseMetadata.BF16KernelMetadata(
-                scheduler_metadata=tile_scheduler_metadata_buffer,
-                num_splits=num_splits_view,
+                scheduler_metadata=scheduler_metadata,
                 dummy_block_table=self.dummy_block_table[:num_decodes],
                 cache_lens=self.max_model_len_tensor[:num_decodes],
             )
@@ -737,6 +690,7 @@ class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetad
                 self.compress_ratio,
                 out=self.compressed_slot_mapping_buffer,
             )
+
         if self.use_fp8_kv_cache:
             fp8_extra_metadata: (
                 FlashMLASparseMetadata.FP8SeparatePrefillDecode
@@ -752,21 +706,21 @@ class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetad
                 | FlashMLASparseMetadata.BF16KernelMetadata
                 | None
             ) = None
-
-            bf16_use_mixed_batch = False  # default use separate_prefill_decode
+            bf16_use_mixed_batch = False and not self.is_deepseek_v4
 
         # DeepseekV4 has its own attention impl (DeepseekV4MLAAttention) that does not
         # consume fp8_extra_metadata. Skipping the build here avoids a
         # forced D2H sync on seq_lens that would otherwise fire on every
         # prefill-bearing step, lifting GPU utilization on long-prefill
         # workloads (e.g. LongBench) from ~83% to ~100%.
-        if self.use_fp8_kv_cache and not self.is_deepseek_v4:
-            if fp8_use_mixed_batch:
-                fp8_extra_metadata = self._build_fp8_mixed_decode_prefill(cm)
-            else:
-                fp8_extra_metadata = self._build_fp8_separate_prefill_decode(cm)
-        elif self.use_bf16_kv_cache:
-            bf16_extra_metadata = self._build_bf16_separate_prefill_decode(cm)
+        if not self.is_deepseek_v4:
+            if self.use_fp8_kv_cache:
+                if fp8_use_mixed_batch:
+                    fp8_extra_metadata = self._build_fp8_mixed_decode_prefill(cm)
+                else:
+                    fp8_extra_metadata = self._build_fp8_separate_prefill_decode(cm)
+            elif self.use_bf16_kv_cache:
+                bf16_extra_metadata = self._build_bf16_separate_prefill_decode(cm)
 
         # Pre-compute C128A topk indices for DeepseekV4.
         c128a_fields = {}
