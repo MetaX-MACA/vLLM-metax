@@ -53,7 +53,7 @@ export LD_LIBRARY_PATH=${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu
 Clone vllm-metax project:
 
 ```bash 
-git clone --branch v0.19.0-dev https://github.com/MetaX-MACA/vLLM-metax
+git clone https://github.com/MetaX-MACA/vLLM-metax
 cd vLLM-metax
 ```
 
@@ -79,7 +79,7 @@ Build the plugin:
 Clone vllm project:
 
 ```bash 
-git clone  --depth 1 --branch releases/v0.19.0 https://github.com/vllm-project/vllm 
+git clone  --depth 1 --branch releases/v0.20.0 https://github.com/vllm-project/vllm 
 cd vllm
 ```
 
