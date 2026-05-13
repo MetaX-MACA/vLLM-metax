@@ -9,7 +9,7 @@ docker build \
     --network host \
     -f docker/vllm_metax.Dockerfile \
     -t vllm_metax:v0 \
-    --build-arg VLLM_VERSION=v0.18.0 \
+    --build-arg VLLM_VERSION=v0.19.0 \
     --build-arg MACA_VERSION=3.5.3 \
      .
 
