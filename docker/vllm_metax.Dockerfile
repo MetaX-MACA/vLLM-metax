@@ -29,11 +29,7 @@ RUN python3 --version && \
 ENV UV_INDEX_STRATEGY="unsafe-best-match"
 
 # Use copy mode to avoid hardlink failures with Docker cache mounts
-ARG UV_EXTRA_INDEX_URL
-ARG UV_INDEX_URL
 ENV UV_LINK_MODE=copy
-ENV UV_EXTRA_INDEX_URL=${UV_EXTRA_INDEX_URL}
-ENV UV_INDEX_URL=${UV_INDEX_URL}
 
 WORKDIR /workspace
 
@@ -111,6 +107,9 @@ ENV LD_LIBRARY_PATH=/opt/mxdriver/lib:${MACA_PATH}/lib:${MACA_PATH}/mxgpu_llvm/l
 # install build and runtime dependencies and cache them
 WORKDIR /workspace
 
+ARG UV_INDEX_URL
+ENV UV_INDEX_URL=${UV_INDEX_URL}
+
 # install vllm-metax build dependencies
 COPY requirements/build.txt requirements/build.txt
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -163,7 +162,9 @@ COPY --from=clean_maca /opt/mxdriver /opt/mxdriver
 
 WORKDIR /workspace
 ARG UV_EXTRA_INDEX_URL
+ARG UV_INDEX_URL
 ENV UV_EXTRA_INDEX_URL=${UV_EXTRA_INDEX_URL}
+ENV UV_INDEX_URL=${UV_INDEX_URL}
 
 # install vllm-metax from built wheels
 COPY --from=wheel_build /workspace/vllm_metax_wheel_dist /tmp/wheels
@@ -181,6 +182,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Fix(hank): don't know why vllm installation also brings in flashinfer-python, remove it here.
 RUN uv pip uninstall flashinfer-python cupy-cuda12x
 
+# Fix(hank): torch-metax still use numpy<2?
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install numpy==1.26
 #################### FINAL IMAGE ####################
