@@ -40,8 +40,13 @@ from vllm.entrypoints.cli.serve import ServeSubcommand
 from vllm.model_executor.model_loader import get_model_loader
 from vllm.platforms import current_platform
 from vllm.transformers_utils.tokenizer import get_tokenizer
-from vllm.utils import (FlexibleArgumentParser, GB_bytes,
-                        cuda_device_count_stateless, get_open_port)
+try:
+    from vllm.utils import FlexibleArgumentParser, GB_bytes, cuda_device_count_stateless, get_open_port
+except ImportError:
+    from vllm.utils.argparse_utils import FlexibleArgumentParser
+    from vllm.utils.mem_constants import GB_bytes
+    from vllm.utils.torch_utils import cuda_device_count_stateless
+    from vllm.utils.network_utils import get_open_port
 
 if current_platform.is_rocm():
     from amdsmi import (amdsmi_get_gpu_vram_usage,
@@ -1151,3 +1156,14 @@ def override_cutlass_fp8_supported(value: bool):
             "vllm.model_executor.layers.quantization.utils.w8a8_utils.cutlass_fp8_supported",
             return_value=value):
         yield
+
+
+# Compatibility shim for tests imported from newer upstream vLLM
+class ensure_current_vllm_config:
+    """Dummy context manager/decorator for backward compatibility."""
+    def __call__(self, func):
+        return func
+    def __enter__(self):
+        pass
+    def __exit__(self, *args):
+        pass
