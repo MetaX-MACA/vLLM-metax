@@ -4,6 +4,7 @@
 
 import torch
 
+import vllm.envs as envs
 from vllm.forward_context import get_forward_context
 from vllm.logger import init_logger
 from vllm.platforms import current_platform
@@ -25,6 +26,26 @@ from vllm.v1.worker.workspace import current_workspace_manager
 from vllm_metax import _custom_ops as mx_ops
 
 logger = init_logger(__name__)
+
+RADIX_TOPK_WORKSPACE_SIZE = 1024 * 1024
+
+
+def _gather_workspace_shapes_bf16(
+    total_seq_lens: int,
+    head_dim: int,
+    bf16_dtype: torch.dtype,
+) -> tuple[tuple[tuple[int, int], torch.dtype]]:
+    """Return ((values_shape, values_dtype) for
+    the K-gather workspace."""
+    return (((total_seq_lens, head_dim), bf16_dtype),)
+
+
+def kv_cache_as_quant_view(
+    kv_cache: torch.Tensor,
+    head_dim: int,
+    use_fp4_cache: bool,
+) -> torch.Tensor:
+    return kv_cache.unsqueeze(-2)
 
 
 def sparse_attn_indexer_bf16(
@@ -48,23 +69,29 @@ def sparse_attn_indexer_bf16(
     assert q_scale is None, "q_scale is not needed for bf16 indexer"
     # careful! this will be None in dummy run
     attn_metadata = get_forward_context().attn_metadata
-
-    # ----------------------------------------------
-    # Metax Note: we use bf16 instead of fp8 here
-    fp8_dtype = current_platform.fp8_dtype()  # noqa: F841
     k_cache_prefix = _resolve_layer_name(k_cache_prefix)
 
     # assert isinstance(attn_metadata, dict)
     if not isinstance(attn_metadata, dict):
         # Reserve workspace for indexer during profiling run
-
+        values_spec = _gather_workspace_shapes_bf16(
+            total_seq_lens, head_dim, torch.bfloat16
+        )
         # ----------------------------------------------------
         # Metax Note: we use bf16 instead of fp8 here, so we need to
         # preare workspace only for k_bf16, and skip k_scale (bf16 does not need scale)
         current_workspace_manager().get_simultaneous(
-            ((total_seq_lens, head_dim), torch.bfloat16),
-            # ((total_seq_lens, 4), torch.uint8),
+            values_spec,
+            ((RADIX_TOPK_WORKSPACE_SIZE,), torch.uint8),
         )
+
+        # Dummy allocation to simulate for peak logits tensor memory during inference.
+        # FP8 elements so elements == bytes
+        max_logits_elems = envs.VLLM_SPARSE_INDEXER_MAX_LOGITS_MB * 1024 * 1024
+        _ = torch.empty(
+            max_logits_elems, dtype=torch.uint8, device=hidden_states.device
+        )
+
         return sparse_attn_indexer_bf16_fake(
             hidden_states,
             k_cache_prefix,
@@ -83,18 +110,19 @@ def sparse_attn_indexer_bf16(
             skip_k_cache_insert,
             use_fp4_cache,
         )
-    attn_metadata = attn_metadata[k_cache_prefix]
-    assert isinstance(attn_metadata, DeepseekV32IndexerMetadata)
-    slot_mapping = attn_metadata.slot_mapping
-    has_decode = attn_metadata.num_decodes > 0
-    has_prefill = attn_metadata.num_prefills > 0
-    num_decode_tokens = attn_metadata.num_decode_tokens
+    attn_metadata_narrowed = attn_metadata[k_cache_prefix]
+    assert isinstance(attn_metadata_narrowed, DeepseekV32IndexerMetadata)
+    slot_mapping = attn_metadata_narrowed.slot_mapping
+    has_decode = attn_metadata_narrowed.num_decodes > 0
+    has_prefill = attn_metadata_narrowed.num_prefills > 0
+    num_decode_tokens = attn_metadata_narrowed.num_decode_tokens
 
     # During speculative decoding, k may be padded to the CUDA graph batch
     # size while slot_mapping only covers actual tokens. Truncate k to avoid
     # out-of-bounds reads in the kernel.
     num_tokens = slot_mapping.shape[0]
-    k_bf16 = k_bf16[:num_tokens]
+    if k_bf16 is not None:
+        k_bf16 = k_bf16[:num_tokens]
 
     mx_ops.indexer_k_quant_and_cache(
         k_bf16,
@@ -106,17 +134,20 @@ def sparse_attn_indexer_bf16(
 
     topk_indices_buffer[: hidden_states.shape[0]] = -1
     if has_prefill:
-        prefill_metadata = attn_metadata.prefill
+        prefill_metadata = attn_metadata_narrowed.prefill
+        assert prefill_metadata is not None
 
-        # Get the full shared workspace buffers once (will allocate on first use)
+        # Get the full shared workspace buffers once (will allocate on first use).
 
         # ----------------------------------------------------
         # Metax Note: we use bf16 instead of fp8 here, so we need to
         # preare workspace only for k_bf16, and skip k_scale_full (bf16 does not need scale)
         workspace_manager = current_workspace_manager()
+        values_spec = _gather_workspace_shapes_bf16(
+            total_seq_lens, head_dim, torch.bfloat16
+        )
         k_bf16_full = workspace_manager.get_simultaneous(
             ((total_seq_lens, head_dim), torch.bfloat16),
-            # ((total_seq_lens, 4), torch.uint8),
         )[0]
         for chunk in prefill_metadata.chunks:
             k_bf16 = k_bf16_full[: chunk.total_seq_lens]
@@ -162,16 +193,17 @@ def sparse_attn_indexer_bf16(
             )
 
     if has_decode:
-        decode_metadata = attn_metadata.decode
+        decode_metadata = attn_metadata_narrowed.decode
+        assert decode_metadata is not None
         # kv_cache size requirement [num_block, block_size, n_head, head_dim],
         # we only have [num_block, block_size, head_dim],
-        kv_cache = kv_cache.unsqueeze(-2)
+        kv_cache = kv_cache_as_quant_view(kv_cache, head_dim, False)
         decode_lens = decode_metadata.decode_lens
         if decode_metadata.requires_padding:
             # pad in edge case where we have short chunked prefill length <
             # decode_threshold since we unstrictly split
             # prefill and decode by decode_threshold
-            # (currently set to 1 + speculative tokens)
+            # (currently set to 1 + speculative tokens).
             padded_q_bf16_decode_tokens = pack_seq_triton(
                 q_bf16[:num_decode_tokens], decode_lens
             )
@@ -184,43 +216,42 @@ def sparse_attn_indexer_bf16(
         next_n = padded_q_bf16_decode_tokens.shape[1]
         assert batch_size == decode_metadata.seq_lens.shape[0]
         num_padded_tokens = batch_size * next_n
-
+        seq_lens = decode_metadata.seq_lens[:batch_size]
         logits = bf16_paged_mqa_logits(
             padded_q_bf16_decode_tokens,
             kv_cache,
             weights[:num_padded_tokens],
-            decode_metadata.seq_lens,
+            seq_lens,
             decode_metadata.block_table,
             decode_metadata.schedule_metadata,
             max_model_len=max_model_len,
         )
-
         num_rows = logits.shape[0]
         topk_indices = topk_indices_buffer[:num_padded_tokens, :topk_tokens]
 
-        if decode_metadata.use_large_context_topk:
-            if next_n == 1:
-                lengths = decode_metadata.seq_lens
-            else:
-                # (bs,) -> (bs, 1) + (next_n,) -> (bs, next_n) -> (bs * next_n,)
-                lengths = (
-                    decode_metadata.seq_lens.unsqueeze(1)
-                    - next_n
-                    + 1
-                    + decode_metadata.offsets
-                ).flatten()
-
-            torch.ops._C.large_context_topk(
+        allowed_topk = (
+            (512, 1024, 2048)
+            if current_platform.is_device_capability_family(100)
+            else (512, 2048)
+        )
+        if current_platform.is_cuda_alike() and topk_tokens in allowed_topk:
+            workspace_manager = current_workspace_manager()
+            (topk_workspace,) = workspace_manager.get_simultaneous(
+                ((RADIX_TOPK_WORKSPACE_SIZE,), torch.uint8),
+            )
+            torch.ops._C.persistent_topk(
                 logits,
+                seq_lens,
                 topk_indices,
-                lengths,
-                None,
+                topk_workspace,
+                topk_tokens,
+                attn_metadata_narrowed.max_seq_len,
             )
         else:
             torch.ops._C.top_k_per_row_decode(
                 logits,
                 next_n,
-                decode_metadata.seq_lens,
+                seq_lens,
                 topk_indices,
                 num_rows,
                 logits.stride(0),
@@ -235,7 +266,7 @@ def sparse_attn_indexer_bf16(
                 topk_indices.reshape(batch_size, -1, topk_indices.shape[-1]),
                 decode_lens,
             )
-            topk_indices_buffer[:num_decode_tokens, : topk_indices.shape[-1]] = (
+            topk_indices_buffer[: topk_indices.shape[0], : topk_indices.shape[-1]] = (
                 topk_indices
             )
 
