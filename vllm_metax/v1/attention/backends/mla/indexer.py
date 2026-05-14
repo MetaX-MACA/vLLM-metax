@@ -322,10 +322,12 @@ class DeepseekV32IndexerMetadataBuilder(AttentionMetadataBuilder):
             device=self.device,
         )
 
+        # ----------------------------
+        # Align with deepgemm+metax
         num_blocks = get_num_blocks_paged_mqa_logits_metadata(self.num_sms)
         self.scheduler_metadata_buffer = torch.empty(
             (num_blocks + 1, 2), dtype=torch.int32, device=self.device
-        )  # aligned with deepgemm
+        )
 
         # KV compression. Default to 1 for no compression.
         self.compress_ratio = 1

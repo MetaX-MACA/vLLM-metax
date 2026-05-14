@@ -43,14 +43,11 @@ _tf32_hc_prenorm_gemm_impl: Callable[..., Any] | None = None
 #   - bf16_paged_mqa_logits.
 def _lazy_init() -> None:
     """Import deep_gemm and resolve symbols on first use."""
-    global \
-        _bf16_mqa_logits_impl, \
-        _bf16_paged_mqa_logits_impl, \
-        _get_num_blocks_paged_mqa_logits_metadata_impl, \
-        _int8_mqa_logits_impl, \
-        _int8_paged_mqa_logits_impl, \
-        _bf16_einsum, \
-        _tf32_hc_prenorm_gemm_impl
+    global _bf16_mqa_logits_impl, _bf16_paged_mqa_logits_impl
+    global _int8_mqa_logits_impl, _int8_paged_mqa_logits_impl
+    global _get_num_blocks_paged_mqa_logits_metadata_impl
+    global _bf16_einsum
+    global _tf32_hc_prenorm_gemm_impl
 
     # fast path
     if (
