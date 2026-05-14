@@ -322,7 +322,7 @@ class MacaDeepseekV4MultiHeadLatentAttentionWrapper(PluggableLayer):
             rope_dim=self.rope_head_dim,
         )
 
-        wo_a_bf16 = self.wo_a.weight.unsqueeze(0)
+        wo_a_bf16 = self.wo_a.weight.view(self.n_local_groups, self.o_lora_rank, -1)
 
         # bhr (2048, 1, 4096
         # hdr 1*1024*4096

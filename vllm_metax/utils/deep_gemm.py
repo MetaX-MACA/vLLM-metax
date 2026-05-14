@@ -34,6 +34,8 @@ _bf16_paged_mqa_logits_impl: Callable[..., Any] | None = None
 _get_num_blocks_paged_mqa_logits_metadata_impl: Callable[..., Any] | None = None
 _int8_mqa_logits_impl: Callable[..., Any] | None = None
 _int8_paged_mqa_logits_impl: Callable[..., Any] | None = None
+_bf16_einsum: Callable[..., Any] | None = None
+_tf32_hc_prenorm_gemm_impl: Callable[..., Any] | None = None
 
 
 # _layz_init for:
@@ -47,7 +49,20 @@ def _lazy_init() -> None:
         _get_num_blocks_paged_mqa_logits_metadata_impl, \
         _int8_mqa_logits_impl, \
         _int8_paged_mqa_logits_impl, \
-        _bf16_einsum
+        _bf16_einsum, \
+        _tf32_hc_prenorm_gemm_impl
+
+    # fast path
+    if (
+        _bf16_mqa_logits_impl is not None
+        or _bf16_paged_mqa_logits_impl is not None
+        or _get_num_blocks_paged_mqa_logits_metadata_impl is not None
+        or _int8_mqa_logits_impl is not None
+        or _int8_paged_mqa_logits_impl is not None
+        or _bf16_einsum is not None
+        or _tf32_hc_prenorm_gemm_impl is not None
+    ):
+        return
 
     if not has_deep_gemm():
         return
@@ -70,6 +85,7 @@ def _lazy_init() -> None:
     _int8_paged_mqa_logits_impl = getattr(_dg, "int8_paged_mqa_logits", None)
     _int8_paged_mqa_logits_impl = getattr(_dg, "int8_paged_mqa_logits", None)
     _bf16_einsum = getattr(_dg, "einsum", None)
+    _tf32_hc_prenorm_gemm_impl = getattr(_dg, "tf32_hc_prenorm_gemm", None)
 
 
 def get_num_blocks_paged_mqa_logits_metadata(num_sms: int) -> int:
@@ -250,6 +266,26 @@ def bf16_einsum(*args, **kwargs):
     return _bf16_einsum(*args, **kwargs)
 
 
+def tf32_hc_prenorm_gemm(
+    x: torch.Tensor,
+    fn: torch.Tensor,
+    out: torch.Tensor,
+    sqrsum: torch.Tensor,
+    num_split: int,
+) -> torch.Tensor:
+    """
+    Perform the following computation:
+        out = x.float() @ fn.T
+        sqrsum = x.float().square().sum(-1)
+
+    See the caller function for shape requirement
+    """
+    _lazy_init()
+    if _tf32_hc_prenorm_gemm_impl is None:
+        return _missing()
+    return _tf32_hc_prenorm_gemm_impl(x, fn, out, sqrsum, num_split, "torch")
+
+
 __all__ = [
     "bf16_mqa_logits",
     "bf16_paged_mqa_logits",
@@ -257,4 +293,6 @@ __all__ = [
     "int8_mqa_logits",
     "int8_paged_mqa_logits",
     "bf16_einsum",
+    "tf32_hc_prenorm_gemm",
+    "get_num_blocks_paged_mqa_logits_metadata",
 ]

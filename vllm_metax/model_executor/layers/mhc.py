@@ -293,7 +293,7 @@ def mhc_pre(
 
     residual_flat = residual.view(-1, mhc_mult, hidden_size)
     num_tokens = residual_flat.shape[0]
-    fn_flat = fn  # noqa: F841
+    fn_flat = fn
 
     post_mix = torch.empty(
         num_tokens, mhc_mult, dtype=torch.float32, device=residual.device
@@ -312,20 +312,14 @@ def mhc_pre(
         n_splits, num_tokens, dtype=torch.float32, device=residual.device
     )
 
-    # TileLang implementation doesn't support split-k, so we set n_splits to 1
-    # You may want to adopt the DeepGEMM implementation with split-k for better performance
-    n_splits = 1
-    gemm_out_mul = gemm_out_mul[:1]
-    gemm_out_sqrsum = gemm_out_sqrsum[:1]
+    from vllm_metax.utils.deep_gemm import tf32_hc_prenorm_gemm
 
-    fn = round_to_tf32(fn)
-
-    fwd_mul_kernel = _mhc_pre_norm_fn_fwd_mul(mhc_mult3, 1, mhc_hidden_size)
-    fwd_mul_kernel(
-        residual_flat.view(-1, mhc_hidden_size),
-        fn,
-        gemm_out_mul.view(-1, 1, mhc_mult3),
-        gemm_out_sqrsum.view(-1, 1),
+    tf32_hc_prenorm_gemm(
+        residual_flat.view(num_tokens, mhc_mult * hidden_size),
+        fn_flat,
+        gemm_out_mul,
+        gemm_out_sqrsum,
+        n_splits,
     )
     # END of TileLang implementation of pre-norm-fn forward matmul
 

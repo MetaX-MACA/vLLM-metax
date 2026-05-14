@@ -63,7 +63,6 @@ from vllm.model_executor.models.utils import (
     make_layers,
     maybe_prefix,
 )
-from vllm_metax.model_executor.layers.mhc_torch import mhc_post, mhc_pre  # noqa: F401
 
 _DEEPSEEK_V4_EXPERT_DTYPES = ("fp4", "fp8")
 
@@ -1176,7 +1175,7 @@ class DeepseekV4DecoderLayer(nn.Module):
         hc_base: torch.Tensor,
     ):
         # post_mix, res_mix, layer_input = torch.ops.vllm.mx_mhc_pre(
-        post_mix, res_mix, layer_input = mhc_pre(
+        post_mix, res_mix, layer_input = torch.ops.vllm.mx_mhc_pre(
             residual=x,
             fn=hc_fn,
             hc_scale=hc_scale,
@@ -1196,8 +1195,7 @@ class DeepseekV4DecoderLayer(nn.Module):
         post: torch.Tensor,
         comb: torch.Tensor,
     ):
-        # return torch.ops.vllm.mx_mhc_post(x, residual, post, comb)
-        return mhc_post(x, residual, post, comb)
+        return torch.ops.vllm.mx_mhc_post(x, residual, post, comb)
 
     def forward(
         self,
