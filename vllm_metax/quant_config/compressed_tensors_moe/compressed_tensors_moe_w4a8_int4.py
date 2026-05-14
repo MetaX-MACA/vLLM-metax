@@ -20,7 +20,7 @@ from vllm.model_executor.layers.quantization.utils.quant_utils import GroupShape
 
 from vllm.model_executor.utils import set_weight_attrs
 from vllm.model_executor.layers.fused_moe.activation import MoEActivation
-
+import vllm.model_executor.layers.fused_moe.modular_kernel as mk
 
 # -----------------------------------------------------------
 # Note: We need to keep the method name **the same** as vLLM's
@@ -380,6 +380,7 @@ class CompressedTensorsW4A8Int8MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
             layer.w2_weight_scale.transpose(1, 2).contiguous(),
             requires_grad=False,
         )
+        self.moe_kernel = None  # need do_naive_dispatch_combine
 
     def get_fused_moe_quant_config(
         self, layer: torch.nn.Module
@@ -404,6 +405,12 @@ class CompressedTensorsW4A8Int8MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
             config.__class__ = PerTokenForcedConfig
 
         return config
+
+    def maybe_make_prepare_finalize(
+        self,
+        routing_tables: tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None = None,
+    ) -> mk.FusedMoEPrepareAndFinalizeModular | None:
+        return None
 
     def apply(
         self,
