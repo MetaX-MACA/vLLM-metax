@@ -79,8 +79,8 @@ from vllm_metax.v1.attention.backends.mla.indexer import (
 )
 from vllm_metax.v1.attention.backends.mla.sparse_swa import DeepseekV4SWACache
 from vllm_metax.v1.attention.ops.flashmla import (
-    flash_mla_sparse_fwd,
-    flash_mla_sparse_decode,
+    flash_mla_sparse_fwd_v2,
+    flash_mla_sparse_decode_v2,
 )
 from vllm.v1.kv_cache_interface import KVCacheSpec, MLAAttentionSpec
 from vllm.v1.worker.workspace import current_workspace_manager
@@ -882,7 +882,7 @@ class DeepseekV4MLAAttention(nn.Module, AttentionLayerBase):
             "allocate one for this layer type."
         )
 
-        out, _ = flash_mla_sparse_decode(
+        out, _ = flash_mla_sparse_decode_v2(
             q=q,
             k_cache=swa_cache,
             block_table=None,
@@ -1010,7 +1010,7 @@ class DeepseekV4MLAAttention(nn.Module, AttentionLayerBase):
                 N,
             )
 
-            output_chunk, _, _ = flash_mla_sparse_fwd(
+            output_chunk, _, _ = flash_mla_sparse_fwd_v2(
                 q=q[query_start:query_end],
                 kv=kv.view(-1, 1, q.shape[-1]),
                 indices=combined_indices.unsqueeze(1),

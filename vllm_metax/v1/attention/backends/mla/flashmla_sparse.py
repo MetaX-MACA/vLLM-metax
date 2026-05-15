@@ -47,6 +47,7 @@ from vllm_metax.v1.attention.ops.flashmla import (
     flash_mla_with_kvcache,
     get_mla_metadata,
 )
+
 from vllm.v1.kv_cache_interface import AttentionSpec
 from vllm.v1.worker.workspace import current_workspace_manager
 from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
@@ -176,6 +177,10 @@ class MacaDeepseekV4FlashMLASparseBackend(MacaFlashMLASparseBackend):
         else:
             return (num_blocks, block_size, head_size)
 
+    @staticmethod
+    def get_builder_cls() -> type["DeepSeekV4FlashMLASparseMetadataBuilder"]:
+        return DeepSeekV4FlashMLASparseMetadataBuilder
+
 
 @dataclass
 class FlashMLASparseMetadata(AttentionMetadata):
@@ -292,7 +297,9 @@ def get_prefill_workspace_size(max_model_len: int):
     return max_model_len * 5
 
 
-class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetadata]):
+class DeepSeekV4FlashMLASparseMetadataBuilder(
+    AttentionMetadataBuilder[FlashMLASparseMetadata]
+):
     _cudagraph_support: ClassVar[AttentionCGSupport] = AttentionCGSupport.UNIFORM_BATCH
 
     def __init__(
@@ -455,7 +462,7 @@ class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetad
         padded_heads = self.fp8_decode_padded_heads
 
         # Build metadata for all tokens as a single batch
-        scheduler_metadata, _ = get_mla_metadata(
+        tile_scheduler_metadata, num_splits = get_mla_metadata(
             cache_seqlens=self.topk_tokens_tensor[:1],  # Single batch
             num_q_tokens_per_head_k=num_tokens * padded_heads,
             topk=self.topk_tokens,
@@ -464,8 +471,19 @@ class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetad
             is_fp8_kvcache=True,
         )
 
+        num_sm_parts = tile_scheduler_metadata.size(0)
+        tile_scheduler_metadata_buffer = self.tile_scheduler_metadata_buffer[
+            :num_sm_parts
+        ]
+        tile_scheduler_metadata_buffer.copy_(tile_scheduler_metadata)
+        num_splits_view = self.num_splits_buffer[:2]
+        num_splits_view.copy_(num_splits)
+
         fp8_metadata = FlashMLASparseMetadata.FP8KernelMetadata(
-            scheduler_metadata=scheduler_metadata,
+            scheduler_metadata=FlashMLASchedMeta(
+                scheduler_metadata=tile_scheduler_metadata_buffer,
+                num_splits=num_splits_view,
+            ),
             cache_lens=self.max_model_len_tensor[:1],
             dummy_block_table=self.dummy_block_table[:1],
         )
@@ -690,7 +708,6 @@ class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetad
                 self.compress_ratio,
                 out=self.compressed_slot_mapping_buffer,
             )
-
         if self.use_fp8_kv_cache:
             fp8_extra_metadata: (
                 FlashMLASparseMetadata.FP8SeparatePrefillDecode
@@ -706,21 +723,579 @@ class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetad
                 | FlashMLASparseMetadata.BF16KernelMetadata
                 | None
             ) = None
-            bf16_use_mixed_batch = False and not self.is_deepseek_v4
+
+            bf16_use_mixed_batch = False  # default use separate_prefill_decode
 
         # DeepseekV4 has its own attention impl (DeepseekV4MLAAttention) that does not
         # consume fp8_extra_metadata. Skipping the build here avoids a
         # forced D2H sync on seq_lens that would otherwise fire on every
         # prefill-bearing step, lifting GPU utilization on long-prefill
         # workloads (e.g. LongBench) from ~83% to ~100%.
-        if not self.is_deepseek_v4:
-            if self.use_fp8_kv_cache:
-                if fp8_use_mixed_batch:
-                    fp8_extra_metadata = self._build_fp8_mixed_decode_prefill(cm)
-                else:
-                    fp8_extra_metadata = self._build_fp8_separate_prefill_decode(cm)
-            elif self.use_bf16_kv_cache:
-                bf16_extra_metadata = self._build_bf16_separate_prefill_decode(cm)
+        if self.use_fp8_kv_cache and not self.is_deepseek_v4:
+            if fp8_use_mixed_batch:
+                fp8_extra_metadata = self._build_fp8_mixed_decode_prefill(cm)
+            else:
+                fp8_extra_metadata = self._build_fp8_separate_prefill_decode(cm)
+        elif self.use_bf16_kv_cache:
+            bf16_extra_metadata = self._build_bf16_separate_prefill_decode(cm)
+
+        # Pre-compute C128A topk indices for DeepseekV4.
+        c128a_fields = {}
+        if self.is_deepseek_v4 and self.compress_ratio == 128:
+            c128a_fields = self._build_c128a_metadata(cm, req_id_per_token)
+
+        metadata = FlashMLASparseMetadata(
+            num_reqs=cm.num_reqs,
+            max_query_len=cm.max_query_len,
+            max_seq_len=cm.max_seq_len,
+            num_actual_tokens=cm.num_actual_tokens,
+            query_start_loc=cm.query_start_loc,
+            slot_mapping=slot_mapping,
+            block_table=cm.block_table_tensor,
+            req_id_per_token=req_id_per_token,
+            block_size=self.kv_cache_spec.block_size,
+            topk_tokens=self.topk_tokens,
+            fp8_extra_metadata=fp8_extra_metadata if self.use_fp8_kv_cache else None,
+            fp8_use_mixed_batch=fp8_use_mixed_batch if self.use_fp8_kv_cache else False,
+            bf16_extra_metadata=bf16_extra_metadata if self.use_bf16_kv_cache else None,
+            bf16_use_mixed_batch=bf16_use_mixed_batch
+            if self.use_bf16_kv_cache
+            else False,
+            **c128a_fields,
+        )
+
+        return metadata
+
+    def _build_c128a_metadata(
+        self,
+        cm: CommonAttentionMetadata,
+        req_id_per_token: torch.Tensor,
+    ) -> dict[str, torch.Tensor | None]:
+        """Pre-compute C128A topk indices for DeepseekV4 (compress_ratio >= 128)."""
+        # Must match SWA's decode split (no `require_uniform=True`) so
+        # `c128a_global_decode_topk_indices.shape[0]` lines up with q in
+        # `_forward_decode`. The per-token C128A kernel handles non-uniform
+        # query lengths.
+        (num_decodes, _, num_decode_tokens, num_prefill_tokens) = (
+            split_decodes_and_prefills(
+                cm,
+                decode_threshold=self.reorder_batch_threshold or 1,
+            )
+        )
+
+        num_total = num_decode_tokens + num_prefill_tokens
+        if num_total == 0:
+            return {}
+
+        assert cm.positions is not None, (
+            "positions is required for C128A metadata build"
+        )
+        block_size = self.kv_cache_spec.block_size // self.compress_ratio
+        global_decode, decode_lens, prefill_local = build_c128a_topk_metadata(
+            cm.positions[:num_total],
+            self.compress_ratio,
+            num_decode_tokens,
+            req_id_per_token,
+            cm.block_table_tensor[:num_decodes],
+            block_size,
+            cm.slot_mapping,
+            self.c128a_global_decode_buffer,
+            self.c128a_decode_lens_buffer,
+            self.c128a_prefill_buffer,
+            max_compressed_tokens=self.c128a_max_compressed,
+        )
+
+        result: dict[str, torch.Tensor | None] = {}
+        if num_decode_tokens > 0:
+            result["c128a_global_decode_topk_indices"] = global_decode.view(
+                num_decode_tokens, 1, -1
+            )
+            result["c128a_decode_topk_lens"] = decode_lens
+        if num_prefill_tokens > 0:
+            result["c128a_prefill_topk_indices"] = prefill_local
+        return result
+
+
+class FlashMLASparseMetadataBuilder(AttentionMetadataBuilder[FlashMLASparseMetadata]):
+    _cudagraph_support: ClassVar[AttentionCGSupport] = AttentionCGSupport.UNIFORM_BATCH
+
+    def __init__(
+        self,
+        kv_cache_spec: AttentionSpec,
+        layer_names: list[str],
+        vllm_config: VllmConfig,
+        device: torch.device,
+    ) -> None:
+        self.vllm_config = vllm_config
+        self.layer_names = layer_names
+        cache_config = vllm_config.cache_config
+        self.kv_cache_spec = kv_cache_spec
+        self.model_config = vllm_config.model_config
+        parallel_config = vllm_config.parallel_config
+        self.device = device
+
+        # Classify single-token queries (plus num_speculative_tokens via
+        # supports_spec_as_decode=True) as decodes; longer queries go to
+        # prefill.
+        self._init_reorder_batch_threshold(1, supports_spec_as_decode=True)
+
+        sm_count = num_compute_units(device.index)
+
+        self.num_heads = self.model_config.get_num_attention_heads(parallel_config)
+        self.mla_dims = get_mla_dims(self.model_config)
+        # FP8 decode kernel only supports h_q = 64 or 128, so we need to pad
+        self.fp8_decode_padded_heads = (
+            FlashMLASparseImpl._compute_fp8_decode_padded_heads(self.num_heads)
+        )
+
+        self.topk_tokens = vllm_config.model_config.hf_config.index_topk
+        self.use_fp8_kv_cache = cache_config.cache_dtype == "fp8_ds_mla"
+        self.use_bf16_kv_cache = cache_config.cache_dtype in ["auto", "bfloat16"]
+        # self.use_int8_kv_cache = cache_config.cache_dtype == "int8"
+        max_num_seqs = vllm_config.scheduler_config.max_num_seqs
+        # Shape: [max_num_seqs], all elements = topk_tokens (constant for full-CG)
+        self.topk_tokens_tensor = torch.full(
+            (max_num_seqs,), self.topk_tokens, device=device, dtype=torch.int32
+        )
+        # Shape: [max_num_seqs], all elements = max_model_len
+        self.max_model_len_tensor = torch.full(
+            (max_num_seqs,),
+            self.model_config.max_model_len,
+            device=device,
+            dtype=torch.int32,
+        )
+        # this is ignored by `flash_mla_with_kvcache` if indices not None
+        self.dummy_block_table = torch.empty(
+            (max_num_seqs, 1), dtype=torch.int32, device=self.device
+        )
+
+        # Equation taken from FlashMLA/csrc/api/sparse_decode.h
+        # For sparse FP8 decode, the formula depends on architecture:
+        # - SM90 (Hopper): num_sm_parts = num_sms / s_q / (h_q/64)
+        # - SM100 (Blackwell head64/head64x2): num_sm_parts = num_sms / s_q
+        # - SM100 (Blackwell head128): num_sm_parts = num_sms / s_q / 2
+        # For max buffer size, use s_q = 1 (the case that produces largest output)
+        # Use padded head count since that's what will be passed to the kernel
+        h_q = self.fp8_decode_padded_heads
+        if current_platform.is_device_capability_family(100):
+            # SM100 head64 or head64x2 uses full SM count
+            max_num_sm_parts = sm_count
+        else:
+            # SM90 uses h_q/64 divisor
+            max_num_sm_parts = sm_count // max(1, h_q // 64)
+        self.tile_scheduler_metadata_buffer = torch.empty(
+            # TileSchedulerMetaDataSize = 8
+            # see: FlashMLA/csrc/params.h
+            (max_num_sm_parts, 8),
+            dtype=torch.int32,
+            device=device,
+        )
+        # Sized for per-request batching (num_decodes + 1)
+        self.num_splits_buffer = torch.empty(
+            (max_num_seqs + 1,),
+            dtype=torch.int32,
+            device=device,
+        )
+        self.req_id_per_token_buffer = torch.empty(
+            (vllm_config.scheduler_config.max_num_batched_tokens,),
+            dtype=torch.int32,
+            device=device,
+        )
+
+        # DeepseekV4: has compress_ratios in hf_config.
+        hf_config = vllm_config.model_config.hf_config
+        self.is_deepseek_v4 = (
+            hasattr(hf_config, "compress_ratios") and len(hf_config.compress_ratios) > 0
+        )
+        self.compress_ratio = 1
+        if self.is_deepseek_v4:
+            assert hasattr(self.kv_cache_spec, "compress_ratio")
+            self.compress_ratio = self.kv_cache_spec.compress_ratio
+            # Pre-allocate compressed slot mapping buffer for CUDA graph
+            # address stability when compress_ratio > 1.
+            if self.compress_ratio > 1:
+                max_num_batched_tokens = (
+                    vllm_config.scheduler_config.max_num_batched_tokens
+                )
+                self.compressed_slot_mapping_buffer = torch.empty(
+                    max_num_batched_tokens,
+                    dtype=torch.int64,
+                    device=self.device,
+                )
+
+            # Pre-allocate C128A topk buffers for CUDA graph address stability.
+            if self.compress_ratio == 128:
+                max_num_batched_tokens = (
+                    vllm_config.scheduler_config.max_num_batched_tokens
+                )
+                # Pad to B_TOPK alignment (128 covers both h_q=64 B_TOPK=64 and
+                # h_q=128 B_TOPK=128). FlashMLA decode asserts extra_topk % B_TOPK
+                # == 0; unaligned widths (e.g. 17 = ceil(2136/128)) crash the
+                # sm100 head64 kernel. Padded slots stay -1 and decode_lens caps
+                # them via topk_length, so the pad is a no-op at kernel level.
+                # Mirrors _SPARSE_PREFILL_TOPK_ALIGNMENT in cache_utils.py.
+                _C128A_TOPK_ALIGNMENT = 128
+                c128a_max_compressed = cdiv(
+                    self.model_config.max_model_len, self.compress_ratio
+                )
+                c128a_max_compressed = (
+                    cdiv(c128a_max_compressed, _C128A_TOPK_ALIGNMENT)
+                    * _C128A_TOPK_ALIGNMENT
+                )
+                # Stored so _build_c128a_metadata passes it as the kernel's
+                # max_compressed_tokens, matching the buffer stride. Otherwise
+                # the kernel's default 8192 iterates past row width and spills
+                # writes into adjacent rows (present in both decode and prefill
+                # branches of _build_c128a_topk_metadata_kernel).
+                self.c128a_max_compressed = c128a_max_compressed
+                self.c128a_global_decode_buffer = torch.empty(
+                    (max_num_batched_tokens, c128a_max_compressed),
+                    dtype=torch.int32,
+                    device=self.device,
+                )
+                self.c128a_decode_lens_buffer = torch.empty(
+                    max_num_batched_tokens,
+                    dtype=torch.int32,
+                    device=self.device,
+                )
+                self.c128a_prefill_buffer = torch.empty(
+                    (max_num_batched_tokens, c128a_max_compressed),
+                    dtype=torch.int32,
+                    device=self.device,
+                )
+
+    def _build_fp8_mixed_decode_prefill(
+        self,
+        common_attn_metadata: CommonAttentionMetadata,
+    ) -> "FlashMLASparseMetadata.FP8KernelMetadata":
+        """Build FP8 metadata treating all tokens as one mixed batch.
+
+        This matches main branch's approach and avoids the BF16 prefill kernel
+        which has head padding overhead when num_heads is small (high TP case).
+        """
+        num_tokens = common_attn_metadata.num_actual_tokens
+
+        # Use padded head count since that's what the kernel will see
+        padded_heads = self.fp8_decode_padded_heads
+
+        # Build metadata for all tokens as a single batch
+        tile_scheduler_metadata, num_splits = get_mla_metadata(
+            cache_seqlens=self.topk_tokens_tensor[:1],  # Single batch
+            num_q_tokens_per_head_k=num_tokens * padded_heads,
+            topk=self.topk_tokens,
+            num_heads_q=padded_heads,
+            num_heads_k=1,
+            is_fp8_kvcache=True,
+        )
+
+        num_sm_parts = tile_scheduler_metadata.size(0)
+        tile_scheduler_metadata_buffer = self.tile_scheduler_metadata_buffer[
+            :num_sm_parts
+        ]
+        tile_scheduler_metadata_buffer.copy_(tile_scheduler_metadata)
+        num_splits_view = self.num_splits_buffer[:2]
+        num_splits_view.copy_(num_splits)
+
+        fp8_metadata = FlashMLASparseMetadata.FP8KernelMetadata(
+            scheduler_metadata=FlashMLASchedMeta(
+                scheduler_metadata=tile_scheduler_metadata_buffer,
+                num_splits=num_splits_view,
+            ),
+            cache_lens=self.max_model_len_tensor[:1],
+            dummy_block_table=self.dummy_block_table[:1],
+        )
+
+        return fp8_metadata
+
+    def _build_fp8_separate_prefill_decode(
+        self,
+        common_attn_metadata: CommonAttentionMetadata,
+    ) -> "FlashMLASparseMetadata.FP8SeparatePrefillDecode":
+        num_tokens = common_attn_metadata.num_actual_tokens
+
+        (num_decodes, num_prefills, num_decode_tokens, num_prefill_tokens) = (
+            split_decodes_and_prefills(
+                common_attn_metadata,
+                decode_threshold=self.reorder_batch_threshold or 1,
+                require_uniform=True,
+            )
+        )
+
+        FP8Meta = FlashMLASparseMetadata.FP8SeparatePrefillDecode
+        fp8_metadata = FP8Meta(
+            num_decodes=num_decodes,
+            num_prefills=num_prefills,
+            num_decode_tokens=num_decode_tokens,
+            num_prefill_tokens=num_prefill_tokens,
+        )
+
+        # Extract prefill sequence lengths (context + query, not just query)
+        # Decode requests come first in the batch, prefill requests follow
+        prefill_seq_lens = None
+        prefill_request_id = None
+        prefill_workspace_starts = None
+        prefill_chunks = None
+
+        # For pure decode batches, prefill_request_id will be None
+        # For mixed batches, it will have -1 for decode and request_id for prefill
+        if num_prefills > 0:
+            # Upper bound is exact for prefill rows (the `[num_decodes:]`
+            # slice below), so no D2H sync is needed.
+            seq_lens_cpu = common_attn_metadata.seq_lens_cpu_upper_bound
+            assert seq_lens_cpu is not None
+            seq_lens = common_attn_metadata.seq_lens
+            query_start_loc_cpu = common_attn_metadata.query_start_loc_cpu
+
+            prefill_seq_lens_cpu = seq_lens_cpu[num_decodes:]
+            prefill_seq_lens = seq_lens[num_decodes:]
+
+            # Build prefill_request_id: -1 for decode, request index for
+            # prefill. This enables a single
+            # convert_logical_index_to_physical_index call for all tokens
+            prefill_request_id = torch.full(
+                (num_tokens,), -1, dtype=torch.int32, device=self.device
+            )
+            # Map prefill tokens to their request IDs (0, 1, 2, ...)
+            for req_idx in range(num_prefills):
+                # Get query token range for this prefill request
+                global_req_idx = num_decodes + req_idx
+                req_query_start = query_start_loc_cpu[global_req_idx]
+                req_query_end = query_start_loc_cpu[global_req_idx + 1]
+                prefill_request_id[req_query_start:req_query_end] = req_idx
+
+            # will be adjusted by chunk loop
+            prefill_workspace_starts_cpu = torch.zeros(
+                num_prefills, dtype=torch.int32, pin_memory=True
+            )
+            prefill_workspace_starts_cpu[1:] = torch.cumsum(
+                prefill_seq_lens_cpu[:-1], dim=0
+            )
+            # populated by non-blocking copy after prefill_workspace_starts_cpu is
+            # updated by each chunk
+            prefill_workspace_starts = torch.empty(
+                num_prefills, dtype=torch.int32, device=self.device
+            )
+
+            # Chunk prefill requests to fit within workspace size
+            max_prefill_buffer_size = get_prefill_workspace_size(
+                self.vllm_config.model_config.max_model_len
+            )
+            chunk_bounds = split_prefill_chunks(
+                prefill_seq_lens_cpu, max_prefill_buffer_size
+            )
+
+            prefill_chunks = []
+            for chunk_start, chunk_end in chunk_bounds:
+                # Adjust workspace_starts in-place per chunk to be
+                # 0-indexed within each chunk
+                # Example: seq_lens=[10,15,20,5], chunks=[[0,2],[2,4]]
+                #   Initial: workspace_starts=[0,10,25,45]
+                #   After:   workspace_starts=[0,10,0,20]
+                #           (chunk 0 starts at 0, chunk 1 starts at 0)
+                offset = prefill_workspace_starts_cpu[chunk_start].item()
+                prefill_workspace_starts_cpu[chunk_start:chunk_end] -= offset
+
+                chunk_seq_lens = prefill_seq_lens[chunk_start:chunk_end]
+                chunk_tot_seqlen = prefill_seq_lens_cpu[chunk_start:chunk_end].sum()
+                token_start = query_start_loc_cpu[num_decodes + chunk_start].item()
+                token_end = query_start_loc_cpu[num_decodes + chunk_end].item()
+                tokens_slice = slice(token_start, token_end)
+
+                # Create chunk view of gpu tensor
+                chunk_workspace_starts = prefill_workspace_starts[chunk_start:chunk_end]
+                chunk_block_table = common_attn_metadata.block_table_tensor[
+                    num_decodes + chunk_start : num_decodes + chunk_end
+                ]
+
+                prefill_chunks.append(
+                    FP8Meta.Prefill.Chunk(
+                        seq_lens=chunk_seq_lens,
+                        tokens_slice=tokens_slice,
+                        block_table=chunk_block_table,
+                        req_start_idx=chunk_start,
+                        workspace_starts=chunk_workspace_starts,
+                        chunk_tot_seqlen=chunk_tot_seqlen,
+                    )
+                )
+
+            prefill_workspace_starts.copy_(
+                prefill_workspace_starts_cpu, non_blocking=True
+            )
+
+            fp8_metadata.prefill = FP8Meta.Prefill(
+                seq_lens=prefill_seq_lens,
+                request_ids=prefill_request_id,
+                workspace_starts=prefill_workspace_starts,
+                chunks=prefill_chunks,
+            )
+
+        if num_decodes > 0:
+            # Compute decode_query_len for spec decode (uniform due to require_uniform)
+            query_start_loc_cpu = common_attn_metadata.query_start_loc_cpu
+            decode_query_len = (query_start_loc_cpu[1] - query_start_loc_cpu[0]).item()
+
+            # Use padded head count since that's what the kernel will see
+            padded_heads = self.fp8_decode_padded_heads
+            tile_scheduler_metadata, num_splits = get_mla_metadata(
+                cache_seqlens=self.topk_tokens_tensor[:num_decodes],
+                num_q_tokens_per_head_k=decode_query_len * padded_heads,
+                topk=self.topk_tokens,
+                num_heads_q=padded_heads,
+                num_heads_k=1,
+                is_fp8_kvcache=True,
+            )
+
+            num_sm_parts = tile_scheduler_metadata.size(0)
+            # Copy to persistent buffer for full-CG support
+            tile_scheduler_metadata_buffer = self.tile_scheduler_metadata_buffer[
+                :num_sm_parts
+            ]
+            tile_scheduler_metadata_buffer.copy_(tile_scheduler_metadata)
+            # num_splits has size [num_decodes + 1]
+            num_splits_view = self.num_splits_buffer[: num_decodes + 1]
+            num_splits_view.copy_(num_splits)
+
+            kernel_meta = FlashMLASparseMetadata.FP8KernelMetadata(
+                scheduler_metadata=FlashMLASchedMeta(
+                    scheduler_metadata=tile_scheduler_metadata_buffer,
+                    num_splits=num_splits_view,
+                ),
+                dummy_block_table=self.dummy_block_table[:num_decodes],
+                cache_lens=self.max_model_len_tensor[:num_decodes],
+            )
+            fp8_metadata.decode = FP8Meta.Decode(
+                seq_lens=common_attn_metadata.seq_lens[:num_decodes],
+                kernel_metadata=kernel_meta,
+                decode_query_len=decode_query_len,
+            )
+
+        return fp8_metadata
+
+    def _build_bf16_separate_prefill_decode(
+        self,
+        common_attn_metadata: CommonAttentionMetadata,
+    ) -> "FlashMLASparseMetadata.BF16SeparatePrefillDecode":
+        num_tokens = common_attn_metadata.num_actual_tokens
+
+        (num_decodes, num_prefills, num_decode_tokens, num_prefill_tokens) = (
+            split_decodes_and_prefills(
+                common_attn_metadata,
+                decode_threshold=self.reorder_batch_threshold or 1,
+                require_uniform=True,
+            )
+        )
+
+        assert num_decode_tokens + num_prefill_tokens == num_tokens
+
+        BF16Meta = FlashMLASparseMetadata.BF16SeparatePrefillDecode
+        bf16_metadata = BF16Meta(
+            num_decodes=num_decodes,
+            num_prefills=num_prefills,
+            num_decode_tokens=num_decode_tokens,
+            num_prefill_tokens=num_prefill_tokens,
+        )
+
+        if num_decodes > 0:
+            # Compute decode_query_len for spec decode (uniform due to require_uniform)
+            query_start_loc_cpu = common_attn_metadata.query_start_loc_cpu
+            decode_query_len = (query_start_loc_cpu[1] - query_start_loc_cpu[0]).item()
+
+            tile_scheduler_metadata, num_splits = get_mla_metadata(
+                cache_seqlens=self.topk_tokens_tensor[:num_decodes],
+                num_q_tokens_per_head_k=decode_query_len * self.num_heads,
+                topk=self.topk_tokens,
+                num_heads_q=self.num_heads,
+                num_heads_k=1,
+                is_fp8_kvcache=False,
+            )
+
+            num_sm_parts = tile_scheduler_metadata.size(0)
+            # Copy to persistent buffer for full-CG support
+            tile_scheduler_metadata_buffer = self.tile_scheduler_metadata_buffer[
+                :num_sm_parts
+            ]
+            tile_scheduler_metadata_buffer.copy_(tile_scheduler_metadata)
+            # num_splits has size [num_decodes + 1]
+            num_splits_view = self.num_splits_buffer[: num_decodes + 1]
+            num_splits_view.copy_(num_splits)
+
+            kernel_meta = FlashMLASparseMetadata.BF16KernelMetadata(
+                scheduler_metadata=FlashMLASchedMeta(
+                    scheduler_metadata=tile_scheduler_metadata_buffer,
+                    num_splits=num_splits_view,
+                ),
+                dummy_block_table=self.dummy_block_table[:num_decodes],
+                cache_lens=self.max_model_len_tensor[:num_decodes],
+            )
+            bf16_metadata.decode = BF16Meta.Decode(
+                seq_lens=common_attn_metadata.seq_lens[:num_decodes],
+                kernel_metadata=kernel_meta,
+                decode_query_len=decode_query_len,
+            )
+
+        return bf16_metadata
+
+    def build(
+        self,
+        common_prefix_len: int,
+        common_attn_metadata: CommonAttentionMetadata,
+        fast_build: bool = False,
+    ) -> FlashMLASparseMetadata:
+        cm = common_attn_metadata
+        num_tokens = cm.num_actual_tokens
+        starts = np.asarray(cm.query_start_loc_cpu, dtype=np.int32)
+        seg_lengths = np.diff(starts)
+        req_id_per_token = np.repeat(
+            np.arange(seg_lengths.shape[0], dtype=np.int32), seg_lengths
+        )
+        # Zero-fill for cudagraphs
+        self.req_id_per_token_buffer.fill_(0)
+        self.req_id_per_token_buffer[: req_id_per_token.shape[0]].copy_(
+            torch.from_numpy(req_id_per_token), non_blocking=True
+        )
+        req_id_per_token = self.req_id_per_token_buffer[:num_tokens]
+
+        slot_mapping = cm.slot_mapping
+        if self.compress_ratio > 1:
+            slot_mapping = get_compressed_slot_mapping(
+                common_attn_metadata.num_actual_tokens,
+                common_attn_metadata.query_start_loc,
+                common_attn_metadata.seq_lens,
+                common_attn_metadata.block_table_tensor.clamp(min=0),
+                int(self.kv_cache_spec.storage_block_size),
+                self.compress_ratio,
+                out=self.compressed_slot_mapping_buffer,
+            )
+        if self.use_fp8_kv_cache:
+            fp8_extra_metadata: (
+                FlashMLASparseMetadata.FP8SeparatePrefillDecode
+                | FlashMLASparseMetadata.FP8KernelMetadata
+                | None
+            ) = None
+            fp8_use_mixed_batch = (
+                self.num_heads < MIN_HEADS_FOR_BF16_PREFILL and not self.is_deepseek_v4
+            )
+        elif self.use_bf16_kv_cache:
+            bf16_extra_metadata: (
+                FlashMLASparseMetadata.BF16SeparatePrefillDecode
+                | FlashMLASparseMetadata.BF16KernelMetadata
+                | None
+            ) = None
+
+            bf16_use_mixed_batch = False  # default use separate_prefill_decode
+
+        # DeepseekV4 has its own attention impl (DeepseekV4MLAAttention) that does not
+        # consume fp8_extra_metadata. Skipping the build here avoids a
+        # forced D2H sync on seq_lens that would otherwise fire on every
+        # prefill-bearing step, lifting GPU utilization on long-prefill
+        # workloads (e.g. LongBench) from ~83% to ~100%.
+        if self.use_fp8_kv_cache and not self.is_deepseek_v4:
+            if fp8_use_mixed_batch:
+                fp8_extra_metadata = self._build_fp8_mixed_decode_prefill(cm)
+            else:
+                fp8_extra_metadata = self._build_fp8_separate_prefill_decode(cm)
+        elif self.use_bf16_kv_cache:
+            bf16_extra_metadata = self._build_bf16_separate_prefill_decode(cm)
 
         # Pre-compute C128A topk indices for DeepseekV4.
         c128a_fields = {}
@@ -920,8 +1495,8 @@ class FlashMLASparseImpl(SparseMLAAttentionImpl[FlashMLASparseMetadata]):
                 block_table=decode_metadata.dummy_block_table,
                 cache_seqlens=decode_metadata.cache_lens,
                 head_dim_v=512,
-                tile_scheduler_metadata=decode_metadata.scheduler_metadata,
-                num_splits=decode_metadata.num_splits,
+                tile_scheduler_metadata=decode_metadata.scheduler_metadata.scheduler_metadata,
+                num_splits=decode_metadata.scheduler_metadata.num_splits,
                 softmax_scale=self.softmax_scale,
                 indices=topk_indices,
             )
@@ -1155,7 +1730,7 @@ class FlashMLASparseImpl(SparseMLAAttentionImpl[FlashMLASparseMetadata]):
             block_table=kernel_metadata.dummy_block_table,
             head_dim_v=512,
             cache_seqlens=kernel_metadata.cache_lens,
-            tile_scheduler_metadata=kernel_metadata.scheduler_metadata,
+            tile_scheduler_metadata=kernel_metadata.scheduler_metadata.scheduler_metadata,
             is_fp8_kvcache=True,
             indices=topk_indices,
             softmax_scale=self.softmax_scale,
