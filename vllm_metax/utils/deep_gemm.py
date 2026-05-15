@@ -77,8 +77,6 @@ def _lazy_init() -> None:
         )
 
     _dg = importlib.import_module("deep_gemm")
-    if _dg is None:
-        return
 
     _bf16_mqa_logits_impl = getattr(_dg, "bf16_mqa_logits", None)
     _bf16_paged_mqa_logits_impl = getattr(_dg, "bf16_paged_mqa_logits", None)
