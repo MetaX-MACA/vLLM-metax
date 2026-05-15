@@ -709,7 +709,7 @@ void top_k_per_row_decode(const torch::Tensor& logits, int64_t next_n,
             static_cast<int>(next_n), seqLensIs2D,
             outLogitsAux.data_ptr<float>());
 
-    constexpr int kNumThreadsPerBlockMerge = 1024;
+    constexpr int kNumThreadsPerBlockMerge = 512;
     vllm::topKPerRowDecode<kNumThreadsPerBlockMerge, true, false, true>
         <<<numRows, kNumThreadsPerBlockMerge, topK * sizeof(int32_t), stream>>>(
             outLogitsAux.data_ptr<float>(), seqLens.data_ptr<int>(),
