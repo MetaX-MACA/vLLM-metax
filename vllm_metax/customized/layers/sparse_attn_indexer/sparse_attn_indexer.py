@@ -5,13 +5,14 @@
 
 import torch
 
-
+import vllm_metax.envs as mx_envs
 from vllm.logger import init_logger
 
-from vllm.model_executor.layers.sparse_attn_indexer import (
-    SparseAttnIndexer as vllm_SparseAttnIndexer,
-)
-from . import bf16, fp8  # noqa: F401
+from vllm.model_executor.layers.sparse_attn_indexer import SparseAttnIndexer
+from . import bf16, int8  # noqa: F401
+
+if mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER:
+    from . import fp8  # noqa: F401
 
 from vllm.utils.torch_utils import (
     _encode_layer_name,
@@ -20,8 +21,8 @@ from vllm.utils.torch_utils import (
 logger = init_logger(__name__)
 
 
-@vllm_SparseAttnIndexer.register_oot
-class SparseAttnIndexer(vllm_SparseAttnIndexer):
+@SparseAttnIndexer.register_oot
+class MacaSparseAttnIndexer(SparseAttnIndexer):
     def __init__(
         self,
         k_cache,
@@ -35,7 +36,7 @@ class SparseAttnIndexer(vllm_SparseAttnIndexer):
         skip_k_cache_insert: bool = False,
         use_fp4_cache: bool = False,
     ):
-        super(vllm_SparseAttnIndexer, self).__init__()
+        super(SparseAttnIndexer, self).__init__()
         self.k_cache = k_cache
         self.quant_block_size = quant_block_size
         self.scale_fmt = scale_fmt
@@ -50,7 +51,7 @@ class SparseAttnIndexer(vllm_SparseAttnIndexer):
     def forward_oot(
         self,
         hidden_states: torch.Tensor,
-        q_quant: torch.Tensor,
+        q_quant: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
         k: torch.Tensor,
         weights: torch.Tensor,
     ):
@@ -63,8 +64,14 @@ class SparseAttnIndexer(vllm_SparseAttnIndexer):
 
         if q_values.dtype in (torch.bfloat16, torch.float16):
             sparse_attn_indexer_impl = torch.ops.vllm.mx_sparse_attn_indexer_bf16
-        else:
+        elif q_values.dtype is torch.int8:
+            sparse_attn_indexer_impl = torch.ops.vllm.mx_sparse_attn_indexer_int8
+        elif mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER:
             sparse_attn_indexer_impl = torch.ops.vllm.mx_sparse_attn_indexer
+        else:
+            raise NotImplementedError(
+                f"MacaSparseAttnIndexer only support bf16,fp16 and fp8. But got {q_quant.dtype}"
+            )
 
         return sparse_attn_indexer_impl(
             hidden_states,
@@ -88,8 +95,8 @@ class SparseAttnIndexer(vllm_SparseAttnIndexer):
     def forward_native(
         self,
         hidden_states: torch.Tensor,
-        q_fp8: torch.Tensor,
+        q_quant: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
         k: torch.Tensor,
         weights: torch.Tensor,
     ):
-        return self.forward_oot(hidden_states, q_fp8, k, weights)
+        return self.forward_oot(hidden_states, q_quant, k, weights)

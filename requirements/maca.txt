@@ -3,3 +3,5 @@
 -r common.txt
 
 numba == 0.61.2
+
+torch-c-dlpack-ext

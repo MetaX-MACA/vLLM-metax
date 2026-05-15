@@ -4,6 +4,8 @@ import torch
 from vllm.model_executor.layers.fused_moe import FusedMoE
 from vllm.model_executor.layers.fused_moe.config import (
     FusedMoEConfig,
+    FusedMoEQuantConfig,
+    int8_w8a8_moe_quant_config,
 )
 
 from compressed_tensors.quantization import (
@@ -20,7 +22,6 @@ from vllm.model_executor.layers.quantization.utils.quant_utils import (
     kInt8DynamicTokenSym,
     kInt8StaticChannelSym,
 )
-
 
 import vllm.model_executor.layers.fused_moe.modular_kernel as mk
 
@@ -70,6 +71,36 @@ def select_int8_moe_backend(
     return requested_backend, k_cls
 
 
+def make_int8_moe_quant_config(
+    w1_scale: torch.Tensor,
+    w2_scale: torch.Tensor,
+    a1_scale: torch.Tensor | None = None,
+    a2_scale: torch.Tensor | None = None,
+    per_act_token_quant: bool = False,
+) -> FusedMoEQuantConfig:
+    # assert (a1_scale is None and a2_scale is None) or (
+    #     a1_scale is not None and a2_scale is not None
+    # ), "a1_scale and a2_scale must both be provided or both be None"
+
+    # if a1_scale is None or a2_scale is None:
+    #     return int8_w8a16_moe_quant_config(
+    #         w1_scale=w1_scale,
+    #         w2_scale=w2_scale,
+    #         w1_zp=None,
+    #         w2_zp=None,
+    #     )
+
+    # remove the int8_w8a16 logic since dynamic per token int8_w8a8
+    # has no a1/a2 scale, and we want to avoid confusion
+    return int8_w8a8_moe_quant_config(
+        w1_scale=w1_scale,
+        w2_scale=w2_scale,
+        a1_scale=a1_scale,
+        a2_scale=a2_scale,
+        per_act_token_quant=per_act_token_quant,
+    )
+
+
 # -----------------------------------------------------------
 # Note: We need to keep the method name **the same** as vLLM's
 # -----------------------------------------------------------
@@ -108,6 +139,15 @@ class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm_w8a8_int8):
             config=self.moe,
             weight_key=kInt8StaticChannelSym,
             activation_key=kInt8DynamicTokenSym,
+        )
+
+    def get_fused_moe_quant_config(self, layer: torch.nn.Module) -> FusedMoEQuantConfig:
+        return make_int8_moe_quant_config(
+            w1_scale=layer.w13_weight_scale,
+            w2_scale=layer.w2_weight_scale,
+            a1_scale=layer.w13_input_scale,
+            a2_scale=layer.w2_input_scale,
+            per_act_token_quant=True,
         )
 
     def apply(

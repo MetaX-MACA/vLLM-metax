@@ -1868,6 +1868,8 @@ def _prepare_expert_assignment(
     *,
     use_int8_w8a16: bool = False,
     use_int4_w4a16: bool = False,
+    use_int8_w8a8: bool = False,
+    use_int4_w4a8: bool = False,
     block_shape: list[int] | None = None,
     ignore_invalid_experts: bool = False,
 ) -> tuple[torch.Tensor | None, torch.Tensor, torch.Tensor]:
@@ -1883,6 +1885,12 @@ def _prepare_expert_assignment(
             (use_int8_w8a16 or use_int4_w4a16)
             and block_shape is not None
             and block_shape[1] > 0
+        )
+        # -----------------------------------------------------------------
+        # Metax Modification: for int8_w8a8 & int4_w4a8
+        and not (
+            (use_int8_w8a8 or use_int4_w4a8)
+            and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
         )
     )
 
@@ -2681,6 +2689,57 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                     block_shape=self.block_shape,
                 )
             )
+        # ┌------------------------  Metax Modification -------------------------┐
+        # Equals to non-naive_block-assignment
+        if sorted_token_ids is not None:
+            if (
+                self.quant_config.use_int8_w8a8
+                and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+            ):
+                kernel_m = mctlass_ops.cutlass_moe_mm_w8a8_get_kernel_m(
+                    hidden_states, w1, intermediate_cache1, top_k_num
+                )
+                assert kernel_m > 0, (
+                    "cutlass_moe_w8a8 BLOCK_SIZE_M must greater than zero."
+                )
+                # override kernel_m to config["BLOCK_SIZE_M"]
+                stage1_config["BLOCK_SIZE_M"] = kernel_m
+                stage2_config["BLOCK_SIZE_M"] = kernel_m
+            if (
+                self.quant_config.use_int4_w4a8
+                and mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API
+            ):
+                if self.block_shape is None:
+                    # is Per-Channel
+                    kernel_m = mctlass_ops.cutlass_moe_mm_w4a8_get_kernel_m_per_channel(
+                        a=hidden_states,
+                        b=w1,
+                        c=intermediate_cache1,
+                        K=K,
+                        num_valid_tokens=hidden_states.size(0) * top_k_num,
+                        topk=top_k_num,
+                    )
+                else:
+                    # is Per-Block
+                    kernel_m = mctlass_ops.mctlassEx_fused_moe_w4a8_get_kernel_m(
+                        hidden_states,
+                        w1.view(dtype=torch.quint4x2),
+                        intermediate_cache1,
+                        num_experts=w1.size(0),
+                        batch_size=hidden_states.size(0),
+                        N=N,
+                        K=K,
+                        num_valid_tokens=num_tokens,
+                        topk=top_k_num,
+                        group_size=self.block_shape[1],
+                    )
+                assert kernel_m > 0, (
+                    "cutlass_fused_moe_w4a8 BLOCK_SIZE_M must greater than zero."
+                )
+                # override kernel_m to config["BLOCK_SIZE_M"]
+                stage1_config["BLOCK_SIZE_M"] = kernel_m
+                stage2_config["BLOCK_SIZE_M"] = kernel_m
+            # └------------------------- Metax Modification -------------------------┘
 
         if expert_map is not None or stage2_config.get("SPLIT_K", 1) > 1:
             intermediate_cache3.zero_()

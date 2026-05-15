@@ -14,6 +14,7 @@ from vllm.utils.deep_gemm import get_paged_mqa_logits_metadata
 from vllm_metax.utils.deep_gemm import (
     has_deep_gemm,
     get_num_blocks_paged_mqa_logits_metadata,
+    get_num_blocks_paged_mqa_logits_metadata,
 )
 from vllm.utils.math_utils import cdiv
 from vllm.utils.platform_utils import num_compute_units
@@ -192,7 +193,7 @@ class DeepSeekV32IndexerDecodeMetadata:
     # seq_lens: per-token effective context lengths.
     #   - flatten path / plain decode: 1D (batch_size,)
     #   - native MTP path: 2D (B, next_n) where [b,j] = L_b - next_n + j + 1
-    # Both fp8_paged_mqa_logits and the topk kernels accept both shapes.
+    # Both fp8_fp4_paged_mqa_logits and the topk kernels accept both shapes.
     seq_lens: torch.Tensor
     decode_lens: torch.Tensor
     requires_padding: bool

@@ -66,7 +66,7 @@ environment_variables: dict[str, Callable[[], Any]] = {
     ),
     # if set, enable combine allreduce all2all
     "VLLM_METAX_OPTIMIZED_DP_ALL2ALL": lambda: bool(
-        int(os.environ.get("VLLM_METAX_OPTIMIZED_DP_ALL2ALL", "1"))
+        int(os.environ.get("VLLM_METAX_OPTIMIZED_DP_ALL2ALL", "0"))
     ),
     # if set, enable FA split forward into
     # prefill and decode for better latency
