@@ -654,7 +654,10 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
                 - common_attn_metadata.query_start_loc[num_decodes]
             )
             prefill_seq_lens = common_attn_metadata.seq_lens[num_decodes:num_reqs]
-            prefill_max_seq_len = int(prefill_seq_lens.max().item())
+            prefill_seq_lens_cpu = common_attn_metadata.seq_lens_cpu[
+                num_decodes:num_reqs
+            ]
+            prefill_max_seq_len = int(prefill_seq_lens_cpu.max().item())
             prefill_block_table_tensor = common_attn_metadata.block_table_tensor[
                 num_decodes:num_reqs
             ]
