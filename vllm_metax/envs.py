@@ -62,7 +62,7 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # if set, enable bf16 cutlass moe on stage2
     # or w8a8 cutlass moe on both stage1 and stage2
     "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE": lambda: bool(
-        int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE", "1"))
+        int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE", "0"))
     ),
     # if set, enable combine allreduce all2all
     "VLLM_METAX_OPTIMIZED_DP_ALL2ALL": lambda: bool(
