@@ -15,13 +15,41 @@ import torch
 from torch._prims_common import TensorLikeType
 
 from tests.kernels.quant_utils import native_w8a8_block_matmul
-from vllm.attention import AttentionBackend, AttentionMetadata, AttentionType
+try:
+    from vllm.attention import AttentionBackend, AttentionMetadata, AttentionType
+except ModuleNotFoundError:
+    from enum import Enum
+
+    AttentionBackend = Any
+    AttentionMetadata = Any
+
+    class AttentionType(Enum):
+        ENCODER_DECODER = "encoder_decoder"
+
 from vllm.model_executor.layers.activation import SiluAndMul
 from vllm.model_executor.layers.fused_moe.utils import (
     moe_kernel_quantize_input)
-from vllm.platforms.interface import _Backend
-from vllm.utils import (STR_BACKEND_ENV_VAR, STR_FLASH_ATTN_VAL,
-                        STR_XFORMERS_ATTN_VAL, make_tensor_with_pad)
+try:
+    from vllm.platforms.interface import _Backend
+except ImportError:
+    _Backend = Any
+try:
+    from vllm.utils import (STR_BACKEND_ENV_VAR, STR_FLASH_ATTN_VAL,
+                            STR_XFORMERS_ATTN_VAL, make_tensor_with_pad)
+except ImportError:
+    STR_BACKEND_ENV_VAR = "VLLM_ATTENTION_BACKEND"
+    STR_FLASH_ATTN_VAL = "FLASH_ATTN"
+    STR_XFORMERS_ATTN_VAL = "XFORMERS"
+
+    def make_tensor_with_pad(
+        x: list[list[int]],
+        max_len: int,
+        pad: int,
+        dtype: torch.dtype,
+        device: Union[torch.device, str],
+    ) -> torch.Tensor:
+        padded = [item + [pad] * (max_len - len(item)) for item in x]
+        return torch.tensor(padded, dtype=dtype, device=device)
 
 # For now, disable "test_aot_dispatch_dynamic" since there are some
 # bugs related to this test in PyTorch 2.4.

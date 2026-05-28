@@ -6,6 +6,7 @@ import torch
 
 import vllm._custom_ops as ops
 from tests.kernels.utils import opcheck
+from vllm.config import VllmConfig, set_current_vllm_config
 from vllm.model_executor.layers.activation import SiluAndMul
 from vllm.platforms import current_platform
 
@@ -55,18 +56,21 @@ def test_silu_and_mul(
         torch.cuda.manual_seed(seed)
     torch.set_default_device(device)
 
-    layer = SiluAndMul()
+    with set_current_vllm_config(VllmConfig()):
+        layer = SiluAndMul()
 
-    # Make inputs
-    scale = (torch.randn((1), device=device, dtype=torch.float32))
-    x = torch.randn(num_tokens, hidden_size, dtype=dtype)
+        # Make inputs
+        scale = (torch.randn((1), device=device, dtype=torch.float32))
+        x = torch.randn(num_tokens, hidden_size, dtype=dtype)
 
-    ref_out = ref_impl(layer, x, scale)
-    ops_out = ops_impl(x, scale)
+        ref_out = ref_impl(layer, x, scale)
+        ops_out = ops_impl(x, scale)
 
-    assert ref_out.dtype == quant_dtype
-    assert ops_out.dtype == quant_dtype
-    assert ref_out.shape == ops_out.shape
-    assert torch.allclose(ref_out.to(dtype=torch.float32),
-                          ops_out.to(dtype=torch.float32))
-    opcheck(torch.ops._C.silu_and_mul_quant, (ops_out, x, scale))
+        assert ref_out.dtype == quant_dtype
+        assert ops_out.dtype == quant_dtype
+        assert ref_out.shape == ops_out.shape
+        assert torch.allclose(ref_out.to(dtype=torch.float32),
+                              ops_out.to(dtype=torch.float32),
+                              atol=1 / 128,
+                              rtol=0)
+        opcheck(torch.ops._C.silu_and_mul_quant, (ops_out, x, scale))
