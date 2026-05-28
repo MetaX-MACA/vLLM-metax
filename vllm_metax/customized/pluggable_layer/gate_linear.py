@@ -46,7 +46,7 @@ class MacaGateLinear(GateLinear):
         if force_fp32_compute and not can_use_specialized_kernels:
             params_dtype = torch.float32
 
-        super().__init__(
+        super(GateLinear, self).__init__(
             input_size,
             output_size,
             bias=bias,
