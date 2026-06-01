@@ -14,7 +14,7 @@ DOCKER_BUILDKIT=1 docker build \
     --network host \
     --secret id=rhsm,src=${RHSM_SECRET_FILE} \
     -f docker/vllm-cpu.Dockerfile \
-    -t vllm_cpu:v1 \
+    -t vllm_cpu:new_base_img \
     --build-arg VLLM_VERSION=v0.18.0 \
      .
 
