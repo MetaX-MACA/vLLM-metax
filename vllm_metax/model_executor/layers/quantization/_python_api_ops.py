@@ -130,8 +130,8 @@ def mctlassEx_fused_moe_bf16_gemm(
         batch_size: int, N: int, K: int,
         num_experts: int, EM: int, topk: int,
         A: torch.Tensor, B: torch.Tensor, C: torch.Tensor,
-        scale_a: torch.Tensor, scale_b: torch.Tensor, bias: torch.Tensor,
-        topk_weights: torch.Tensor, token_ids:torch.Tensor, expert_ids: torch.Tensor,
+        scale_a: torch.Tensor | None, scale_b: torch.Tensor | None, bias: torch.Tensor | None,
+        topk_weights: torch.Tensor, token_ids: torch.Tensor, expert_ids: torch.Tensor,
         num_tokens_post_padded: torch.Tensor, mul_routed_weight: bool) -> torch.Tensor:
     assert mctlass_moe_gemm is not None, "mctlass op is not imported correctly"
     mctlass_moe_gemm(
