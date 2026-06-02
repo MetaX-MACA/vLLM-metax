@@ -307,6 +307,33 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 stage2_config["BLOCK_SIZE_M"] = kernel_m
                 return kernel_m
 
+            # bf16 moe
+            if (
+                hidden_states.dtype == torch.bfloat16
+                and not self.quant_config.use_int4_w4a8
+                and not self.quant_config.use_int4_w4a16
+                and not self.quant_config.use_int8_w8a8
+                and not self.quant_config.use_int8_w8a16
+                and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+                and mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API
+            ):
+                kernel_m = mctlass_ops.mctlassEx_fused_moe_bf16_get_kernel_m(
+                    hidden_states,                # A
+                    w1,                           # B
+                    intermediate_cache1,          # C
+                    global_num_experts,           # num_experts
+                    hidden_states.shape[0],       # batch_size
+                    N,                            # N
+                    hidden_states.shape[1],       # K
+                    top_k_num,                    # topk
+                )
+                assert kernel_m > 0, (
+                    "cutlass_fused_moe_bf16 BLOCK_SIZE_M must greater than zero."
+                )
+                stage1_config["BLOCK_SIZE_M"] = kernel_m
+                stage2_config["BLOCK_SIZE_M"] = kernel_m
+                return kernel_m
+
             return block_size_m
 
         # Ensure correctness when SPLIT_K>1 (atomic_add path).
