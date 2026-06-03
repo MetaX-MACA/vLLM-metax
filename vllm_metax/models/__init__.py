@@ -38,3 +38,13 @@ def register_model():
     ModelRegistry.register_model(
         "MiniMaxM2ForCausalLM", "vllm_metax.models.minimax_m2:MiniMaxM2ForCausalLM",
     )
+
+    ModelRegistry.register_model(
+        "Qwen3VLForConditionalGeneration",
+        "vllm_metax.models.qwen3_vl:Qwen3VLForConditionalGeneration",
+    )
+
+    ModelRegistry.register_model(
+        "Qwen3VLMoeForConditionalGeneration",
+        "vllm_metax.models.qwen3_vl_moe:Qwen3VLMoeForConditionalGeneration",
+    )

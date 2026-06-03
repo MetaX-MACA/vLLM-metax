@@ -31,9 +31,9 @@ def rejection_greedy_sample_kernel(
     req_idx = tl.program_id(0)
     # FIXME(woosuk): Because is_greedy_ptr is not None at profiling run,
     # re-compilation may happen during runtime when is_greedy_ptr is None.
-    is_greedy = True if is_greedy_ptr is None else tl.load(is_greedy_ptr + req_idx)
     # /------------------------  Metax Modification -------------------------\
-    if is_greedy is None:
+    is_greedy = 1 if is_greedy_ptr is None else tl.load(is_greedy_ptr + req_idx)
+    if is_greedy == 0:
         # Early exit for non-greedy sampling requests.
         return
     # \------------------------- Metax Modification -------------------------/
@@ -198,7 +198,7 @@ def sample_recovered_tokens_kernel(
     draft_token_ids_ptr,  # [num_tokens]
     draft_probs_ptr,  # [num_tokens, vocab_size] or None
     target_probs_ptr,  # [num_tokens, vocab_size]
-    q_ptr,  # [batch_size, vocab_size]
+    inv_q_ptr,  # [batch_size, vocab_size]
     vocab_size,
     PADDED_VOCAB_SIZE: tl.constexpr,
     NO_DRAFT_PROBS: tl.constexpr,
@@ -257,15 +257,15 @@ def sample_recovered_tokens_kernel(
             # NOTE(woosuk): We don't need `prob = prob / tl.sum(prob)` here because
             # `tl.argmax` will select the maximum value.
 
-        q = tl.load(
-            q_ptr + req_idx * vocab_size + block_start + vocab_offset,
+        inv_q = tl.load(
+            inv_q_ptr + req_idx * vocab_size + block_start + vocab_offset,
             mask=vocab_offset < block_end - block_start,
-            other=float("-inf"),
+            other=0.0,
         )
 
         # recovered_id = tl.argmax(prob / q, axis=-1)
         # calc block prob and token ID
-        block_prob = prob / q
+        block_prob = prob * inv_q
         block_max_prob = tl.max(block_prob, axis=-1)
         block_best_token_id = tl.argmax(block_prob, axis=-1) + block_start
 
@@ -319,7 +319,8 @@ def sample_recovered_tokens(
         target_probs,
         inv_q,
         vocab_size,
-        BLOCK_SIZE,
+        PADDED_VOCAB_SIZE=triton.next_power_of_2(vocab_size),
+        BLOCK_SIZE=BLOCK_SIZE,
         NO_DRAFT_PROBS=draft_probs is None,
     )
     return recovered_token_ids

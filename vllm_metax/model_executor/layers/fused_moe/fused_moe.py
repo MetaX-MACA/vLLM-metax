@@ -1884,6 +1884,9 @@ def _prepare_expert_assignment(
             and block_shape is not None
             and block_shape[1] > 0
         )
+        # / --- mctlassEx not support token_ids=None ---- \
+        and not mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+        # \ --------------------------------------------- /
     )
 
     if naive_block_assignment:
@@ -2587,6 +2590,24 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
         if stage1_config.get("SPLIT_K", 1) > 1:
             intermediate_cache1.zero_()
 
+        if mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+            # kerenel_m for both stage1 and stage2
+            assert hidden_states.dtype == torch.bfloat16, "Here is bf16"
+            kernel_m = mctlass_ops.cutlass_moe_mm_bf16_get_kernel_m(
+                hidden_states,  # A
+                w1,  # B
+                intermediate_cache1,  # C
+                global_num_experts,  # num_experts
+                hidden_states.shape[0],  # batch_size
+                N,  # N
+                hidden_states.shape[1],  # K
+                top_k_num,  # topk
+            )
+            assert kernel_m > 0, "BLOCK_SIZE_M must greater than zero."
+            # override kernel_m to config for both stage1 and stage2
+            stage1_config["BLOCK_SIZE_M"] = kernel_m
+            stage2_config["BLOCK_SIZE_M"] = kernel_m
+
         sorted_token_ids, expert_ids, num_tokens_post_padded = (
             _prepare_expert_assignment(
                 topk_ids,
@@ -2601,29 +2622,71 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
             )
         )
 
-        invoke_fused_moe_triton_kernel(
-            hidden_states,
-            w1,
-            intermediate_cache1,
-            a1q_scale,
-            self.w1_scale,
-            None,  # topk_weights
-            sorted_token_ids,
-            expert_ids,
-            num_tokens_post_padded,
-            False,  # mul_routed_weights
-            top_k_num,
-            stage1_config,
-            compute_type=compute_type,
-            use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
-            use_int8_w8a8=self.quant_config.use_int8_w8a8,
-            use_int8_w8a16=self.quant_config.use_int8_w8a16,
-            use_int4_w4a8=self.quant_config.use_int4_w4a8,
-            use_int4_w4a16=self.quant_config.use_int4_w4a16,
-            per_channel_quant=self.per_act_token_quant,
-            block_shape=self.block_shape,
-            B_bias=self.w1_bias,
-        )
+        # stage1
+        if mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+            if sorted_token_ids is not None:
+                EM = sorted_token_ids.size(0)
+                if hidden_states.size(0) < stage1_config["BLOCK_SIZE_M"]:
+                    # optimize for small batch_size.
+                    # We assume that top_ids of each token is unique,
+                    # so num_valid_experts <= batch_size <= BLOCK_SIZE_M,
+                    # and we can skip some invalid blocks.
+                    EM = min(
+                        sorted_token_ids.size(0),
+                        hidden_states.size(0)
+                        * top_k_num
+                        * stage1_config["BLOCK_SIZE_M"],
+                    )
+            else:
+                EM = num_tokens * stage1_config["BLOCK_SIZE_M"]
+                raise AssertionError(
+                    "METAX mctlassEx not support sorted_token_ids=None."
+                )
+
+            assert hidden_states.dtype == torch.bfloat16, "Here is bf16"
+            mctlass_ops.cutlass_moe_mm_bf16(
+                hidden_states.shape[0],  # batch_size
+                w1.shape[1],  # N
+                hidden_states.shape[1],  # K
+                global_num_experts,  # num_experts
+                EM,  # EM
+                top_k_num,  # topk
+                hidden_states,  # a
+                w1,  # b
+                intermediate_cache1,  # c
+                a1q_scale,  # scale_a
+                self.w1_scale,  # scale_b
+                self.w1_bias,  # bias
+                topk_weights,  # topk_weights
+                sorted_token_ids,  # token_ids
+                expert_ids,  # expert_ids
+                num_tokens_post_padded,  # num_tokens_post_padded
+                apply_router_weight_on_input,  # mul_routed_weight
+            )
+        else:
+            invoke_fused_moe_triton_kernel(
+                hidden_states,
+                w1,
+                intermediate_cache1,
+                a1q_scale,
+                self.w1_scale,
+                None,  # topk_weights
+                sorted_token_ids,
+                expert_ids,
+                num_tokens_post_padded,
+                False,  # mul_routed_weights
+                top_k_num,
+                stage1_config,
+                compute_type=compute_type,
+                use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
+                use_int8_w8a8=self.quant_config.use_int8_w8a8,
+                use_int8_w8a16=self.quant_config.use_int8_w8a16,
+                use_int4_w4a8=self.quant_config.use_int4_w4a8,
+                use_int4_w4a16=self.quant_config.use_int4_w4a16,
+                per_channel_quant=self.per_act_token_quant,
+                block_shape=self.block_shape,
+                B_bias=self.w1_bias,
+            )
 
         # LoRA w13: applied to intermediate_cache1 before activation, using
         # hidden_states as the lora_a input.  moe_lora_align_block_size is
@@ -2685,29 +2748,71 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
         if expert_map is not None or stage2_config.get("SPLIT_K", 1) > 1:
             intermediate_cache3.zero_()
 
-        invoke_fused_moe_triton_kernel(
-            qintermediate_cache2,
-            w2,
-            intermediate_cache3,
-            a2q_scale,
-            self.w2_scale,
-            topk_weights,
-            sorted_token_ids,
-            expert_ids,
-            num_tokens_post_padded,
-            not apply_router_weight_on_input,
-            1,
-            stage2_config,
-            compute_type=compute_type,
-            use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
-            use_int8_w8a8=self.quant_config.use_int8_w8a8,
-            use_int8_w8a16=self.quant_config.use_int8_w8a16,
-            use_int4_w4a8=self.quant_config.use_int4_w4a8,
-            use_int4_w4a16=self.quant_config.use_int4_w4a16,
-            per_channel_quant=self.per_act_token_quant,
-            block_shape=self.block_shape,
-            B_bias=self.w2_bias,
-        )
+        # stage2
+        if mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+            if sorted_token_ids is not None:
+                EM = sorted_token_ids.size(0)
+                if qintermediate_cache2.size(0) < stage2_config["BLOCK_SIZE_M"]:
+                    # optimize for small batch_size.
+                    # We assume that top_ids of each token is unique,
+                    # so num_valid_experts <= batch_size <= BLOCK_SIZE_M,
+                    # and we can skip some invalid blocks.
+                    EM = min(
+                        sorted_token_ids.size(0),
+                        qintermediate_cache2.size(0)
+                        * 1
+                        * stage2_config["BLOCK_SIZE_M"],
+                    )
+            else:
+                EM = num_tokens * stage2_config["BLOCK_SIZE_M"]
+                raise AssertionError(
+                    "METAX mctlassEx not support sorted_token_ids=None."
+                )
+
+            assert qintermediate_cache2.dtype == torch.bfloat16, "Here is bf16"
+            mctlass_ops.cutlass_moe_mm_bf16(
+                qintermediate_cache2.shape[0],  # batch_size
+                w2.shape[1],  # N
+                qintermediate_cache2.shape[1],  # K
+                global_num_experts,  # num_experts
+                EM,  # EM
+                1,  # topk
+                qintermediate_cache2,  # a
+                w2,  # b
+                intermediate_cache3,  # c
+                a2q_scale,  # scale_a
+                self.w2_scale,  # scale_b
+                self.w2_bias,  # bias
+                topk_weights,  # topk_weights
+                sorted_token_ids,  # token_ids
+                expert_ids,  # expert_ids
+                num_tokens_post_padded,  # num_tokens_post_padded
+                not apply_router_weight_on_input,  # mul_routed_weight
+            )
+        else:
+            invoke_fused_moe_triton_kernel(
+                qintermediate_cache2,
+                w2,
+                intermediate_cache3,
+                a2q_scale,
+                self.w2_scale,
+                topk_weights,
+                sorted_token_ids,
+                expert_ids,
+                num_tokens_post_padded,
+                not apply_router_weight_on_input,
+                1,
+                stage2_config,
+                compute_type=compute_type,
+                use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
+                use_int8_w8a8=self.quant_config.use_int8_w8a8,
+                use_int8_w8a16=self.quant_config.use_int8_w8a16,
+                use_int4_w4a8=self.quant_config.use_int4_w4a8,
+                use_int4_w4a16=self.quant_config.use_int4_w4a16,
+                per_channel_quant=self.per_act_token_quant,
+                block_shape=self.block_shape,
+                B_bias=self.w2_bias,
+            )
 
         # LoRA w2: applied to intermediate_cache3 before moe_sum, using the
         # unquantized intermediate_cache2 as the lora_a input.  Reuses the

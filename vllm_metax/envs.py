@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     USE_VLLM_TRITON_EXPERT: bool = False
     VLLM_METAX_ENABLE_FA_SPLIT_FORWARD: bool = True
     VLLM_FUSED_MOE_CHUNK_SIZE: int = 16 * 1024
+    VLLM_METAX_ENABLE_FP8_WEIGHT: bool = False
     VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER: bool = False
     VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK: bool = False
 
@@ -66,7 +67,7 @@ environment_variables: dict[str, Callable[[], Any]] = {
     ),
     # if set, enable combine allreduce all2all
     "VLLM_METAX_OPTIMIZED_DP_ALL2ALL": lambda: bool(
-        int(os.environ.get("VLLM_METAX_OPTIMIZED_DP_ALL2ALL", "1"))
+        int(os.environ.get("VLLM_METAX_OPTIMIZED_DP_ALL2ALL", "0"))
     ),
     # if set, enable FA split forward into
     # prefill and decode for better latency
@@ -76,6 +77,10 @@ environment_variables: dict[str, Callable[[], Any]] = {
     ),
     "VLLM_FUSED_MOE_CHUNK_SIZE": lambda: int(
         os.getenv("VLLM_FUSED_MOE_CHUNK_SIZE", str(16 * 1024))
+    ),
+    # if set, support fp8 weight
+    "VLLM_METAX_ENABLE_FP8_WEIGHT": lambda: bool(
+        int(os.environ.get("VLLM_METAX_ENABLE_FP8_WEIGHT", "0"))
     ),
     # if set, use fp8 deep gemm kernel for DSA
     "VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER": lambda: bool(

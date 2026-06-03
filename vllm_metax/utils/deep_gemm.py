@@ -25,7 +25,7 @@ def _missing(*_: Any, **__: Any) -> NoReturn:
     """Placeholder for unavailable DeepGEMM backend."""
     raise RuntimeError(
         "DeepGEMM backend is not available. Please install the `deep_gemm` "
-        "package to enable BF16 kernels."
+        "package to enable BF16/FP8 kernels."
     )
 
 
@@ -33,6 +33,7 @@ _fp8_mqa_logits_impl: Callable[..., Any] | None = None
 _fp8_paged_mqa_logits_impl: Callable[..., Any] | None = None
 _bf16_mqa_logits_impl: Callable[..., Any] | None = None
 _bf16_paged_mqa_logits_impl: Callable[..., Any] | None = None
+_get_num_blocks_paged_mqa_logits_metadata_impl: Callable[..., Any] | None = None
 
 
 # _layz_init for:
@@ -41,7 +42,10 @@ _bf16_paged_mqa_logits_impl: Callable[..., Any] | None = None
 def _lazy_init() -> None:
     """Import deep_gemm and resolve symbols on first use."""
     global _fp8_mqa_logits_impl, _fp8_paged_mqa_logits_impl
-    global _bf16_mqa_logits_impl, _bf16_paged_mqa_logits_impl
+    global \
+        _bf16_mqa_logits_impl, \
+        _bf16_paged_mqa_logits_impl, \
+        _get_num_blocks_paged_mqa_logits_metadata_impl
 
     # fast path
     if (
@@ -70,6 +74,25 @@ def _lazy_init() -> None:
     _bf16_paged_mqa_logits_impl = getattr(_dg, "bf16_paged_mqa_logits", None)
     _fp8_mqa_logits_impl = getattr(_dg, "fp8_mqa_logits", None)
     _fp8_paged_mqa_logits_impl = getattr(_dg, "fp8_paged_mqa_logits", None)
+    _get_num_blocks_paged_mqa_logits_metadata_impl = getattr(
+        _dg, "get_num_blocks_paged_mqa_logits_metadata", None
+    )
+
+
+def get_num_blocks_paged_mqa_logits_metadata(num_sms: int) -> int:
+    """Get scheduling metadata buffer size for paged MQA logits.
+
+    Args:
+        num_sms: Number of SMs available.
+
+    Returns:
+        Backend-specific tensor shape[0] consumed by `bf16_paged_mqa_logits` to
+        schedule work across SMs.
+    """
+    _lazy_init()
+    if _get_num_blocks_paged_mqa_logits_metadata_impl is None:
+        return num_sms
+    return _get_num_blocks_paged_mqa_logits_metadata_impl(num_sms)
 
 
 def fp8_mqa_logits(
