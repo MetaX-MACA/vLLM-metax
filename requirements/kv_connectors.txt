@@ -1,1 +1,2 @@
-lmcache
+--extra-index-url https://repos.metax-tech.com/r/maca-pypi/simple
+lmcache==0.4.4+maca3.7.0.107
