@@ -75,9 +75,5 @@
 
 # --8<-- [start:post-build]
 !!! note
-    Currently vllm-metax still only support build with `numpy<2`. While in building vllm, numpy would be overridden to `numpy>2`. So we need manually restore it to original version by:
-
-    ```bash
-    uv pip install 'numpy<2'
-    ```
+    None
 # --8<-- [end:post-build]
