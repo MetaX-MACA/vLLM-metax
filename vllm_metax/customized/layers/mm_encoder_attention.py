@@ -71,7 +71,6 @@ class MMEncoderAttention(vllm_MMEncoderAttention):
         logger.info_once(
             f"Using {self.attn_backend} for MacaMMEncoderAttention.", scope="local"
         )
-        self._init_fp8_state()
 
     def _forward_fa(
         self,

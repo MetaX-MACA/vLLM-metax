@@ -73,6 +73,7 @@ def _get_backend_priorities(
             AttentionBackendEnum.TRITON_ATTN,
             AttentionBackendEnum.TREE_ATTN,
             AttentionBackendEnum.FLEX_ATTENTION,
+            AttentionBackendEnum.TURBOQUANT,
         ]
 
 
@@ -109,6 +110,10 @@ def register_attention_backends() -> None:
     register_backend(
         backend=AttentionBackendEnum.FLEX_ATTENTION,
         class_path="vllm_metax.v1.attention.backends.flex_attention.MacaFlexAttentionBackend",
+    )
+    register_backend(
+        backend=AttentionBackendEnum.TURBOQUANT,
+        class_path="vllm_metax.v1.attention.backends.turboquant_attn.MacaTurboQuantAttentionBackend",
     )
 
 
@@ -309,6 +314,13 @@ class MacaPlatformBase(Platform):
                 tuned_dir_with_h,
                 f"set FusedMoE tuned config dir by hidden_size={hidden_size}",
             )
+
+        # ---------------------------------------------------------------------------
+        # Note: Temp fix for Gemma 4 flash attention issue (same error in upstream).
+        # ---------------------------------------------------------------------------
+        if model_config is not None:
+            if model_config.hf_config.model_type in ("gemma4_text", "gemma4"):
+                model_config.model_arch_config.is_mm_prefix_lm = False
 
     @classmethod
     def get_current_memory_usage(
@@ -755,6 +767,12 @@ mx_envs.override_vllm_env(
     "VLLM_FLOAT32_MATMUL_PRECISION",
     "high",
     "set float32 matmul precision to high for better performance on Maca platform",
+)
+
+mx_envs.override_vllm_env(
+    "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS",
+    0,
+    "the feature can't estimate cuda graph size correctly",
 )
 
 # --------------------------------------------------

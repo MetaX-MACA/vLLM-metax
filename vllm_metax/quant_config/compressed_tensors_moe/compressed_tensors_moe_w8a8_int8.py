@@ -4,6 +4,8 @@ import torch
 from vllm.model_executor.layers.fused_moe import FusedMoE
 from vllm.model_executor.layers.fused_moe.config import (
     FusedMoEConfig,
+    FusedMoEQuantConfig,
+    int8_w8a8_moe_quant_config,
 )
 
 from compressed_tensors.quantization import (
@@ -110,6 +112,28 @@ class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm_w8a8_int8):
             activation_key=kInt8DynamicTokenSym,
         )
 
+    def process_weights_after_loading(self, layer: FusedMoE) -> None:
+        self.moe_quant_config = self.get_fused_moe_quant_config(layer)
+        assert self.experts_cls is not None
+        self.moe_kernel = None  # need do_naive_dispatch_combine
+
+    def get_fused_moe_quant_config(
+        self, layer: torch.nn.Module
+    ) -> FusedMoEQuantConfig | None:
+        return int8_w8a8_moe_quant_config(
+            w1_scale=layer.w13_weight_scale,
+            w2_scale=layer.w2_weight_scale,
+            a1_scale=None,
+            a2_scale=None,
+            per_act_token_quant=True,
+        )
+
+    def maybe_make_prepare_finalize(
+        self,
+        routing_tables: tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None = None,
+    ) -> mk.FusedMoEPrepareAndFinalizeModular | None:
+        return None
+
     def apply(
         self,
         layer: FusedMoE,
@@ -118,17 +142,20 @@ class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm_w8a8_int8):
         topk_ids: torch.Tensor,
         shared_experts_input: torch.Tensor | None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-        assert not self.is_monolithic
-        assert self.moe_kernel is not None
-        return self.moe_kernel.apply(
-            x,
-            layer.w13_weight,
-            layer.w2_weight,
+        from vllm_metax.utils.fused_moe import get_fused_experts_fn
+
+        fused_experts = get_fused_experts_fn()
+
+        return fused_experts(
+            hidden_states=x,
+            w1=layer.w13_weight,
+            w2=layer.w2_weight,
             topk_weights=topk_weights,
             topk_ids=topk_ids,
+            inplace=not self.moe.disable_inplace,
             activation=layer.activation,
+            apply_router_weight_on_input=layer.apply_router_weight_on_input,
             global_num_experts=layer.global_num_experts,
             expert_map=layer.expert_map,
-            apply_router_weight_on_input=layer.apply_router_weight_on_input,
-            shared_experts_input=shared_experts_input,
+            quant_config=self.moe_quant_config,
         )

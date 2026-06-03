@@ -23,6 +23,10 @@ from .compressed_tensors_moe_wna16 import (
 
 from .compressed_tensors_moe_w4a8_int4 import CompressedTensorsW4A8Int4MoEMethod
 
+from vllm.logger import init_logger
+
+logger = init_logger(__name__)
+
 
 # -----------------------------------------------------------
 # Note: We need to keep the method name **the same** as vLLM's
@@ -67,12 +71,20 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
         #  - `weights_quant`
         #  - `input_quant`
         # -------------------------------------------
-        if quant_config._is_dynamic_token_w8a8(weight_quant, input_quant):
+        if (
+            weight_quant is not None
+            and input_quant is not None
+            and quant_config._is_dynamic_token_w8a8(weight_quant, input_quant)
+        ):
             return CompressedTensorsW8A8Int8MoEMethod(
                 weight_quant, input_quant, layer.moe_config
             )
 
-        if quant_config._is_dynamic_token_w4a8_int(weight_quant, input_quant):
+        if (
+            weight_quant is not None
+            and input_quant is not None
+            and quant_config._is_dynamic_token_w4a8_int(weight_quant, input_quant)
+        ):
             # --------------------------------------------------------------------
             # Note!: On maca W4A8 is hardware supported. The quantization scheme
             #       is selected by `quant_config._is_dynamic_token_w4a8_int`. So we
@@ -105,9 +117,7 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
             # We do not support CompressedTensors-MarlinMoEMethod currently
             # Fallback to non-Marlin methods
             # -----------------------------------------------------------
-            vllm_ctm.logger.info_once(
-                "Fallback to non-marlin CompressedTensorsWNA16MoEMethod"
-            )
+            logger.info_once("Fallback to non-marlin CompressedTensorsWNA16MoEMethod")
             return CompressedTensorsWNA16MoEMethod(
                 weight_quant, input_quant, layer.moe_config
             )
