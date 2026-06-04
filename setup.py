@@ -83,6 +83,26 @@ def is_url_available(url: str) -> bool:
     return status == 200
 
 
+def get_maca_cuda_compiler() -> str:
+    candidates = []
+    if CUDA_HOME:
+        candidates.append(Path(CUDA_HOME) / "bin" / "nvcc")
+    if os.getenv("CUCC_PATH"):
+        candidates.append(Path(os.environ["CUCC_PATH"]) / "bin" / "cucc")
+    if os.getenv("MACA_PATH"):
+        candidates.append(Path(os.environ["MACA_PATH"]) / "tools" / "cu-bridge" / "bin" / "cucc")
+
+    for compiler in candidates:
+        if compiler.is_file() and os.access(compiler, os.X_OK):
+            return str(compiler)
+
+    searched = ", ".join(str(path) for path in candidates) or "<none>"
+    raise RuntimeError(
+        "Cannot find MACA CUDA compiler. Set CUDA_HOME/CUDA_PATH or CUCC_PATH "
+        f"to a valid cu-bridge installation. Searched: {searched}"
+    )
+
+
 class CMakeExtension(Extension):
     def __init__(self, name: str, cmake_lists_dir: str = ".", **kwa) -> None:
         super().__init__(name, sources=[], py_limited_api=True, **kwa)
@@ -189,9 +209,9 @@ class cmake_build_ext(build_ext):
             # Default build tool to whatever cmake picks.
             build_tool = []
 
-        # Make sure we use the nvcc from CUDA_HOME
+        # MetaX SDK images may expose cu-bridge as cucc instead of nvcc.
         if _is_maca():
-            cmake_args += [f"-DCMAKE_CUDA_COMPILER={CUDA_HOME}/bin/nvcc"]
+            cmake_args += [f"-DCMAKE_CUDA_COMPILER={get_maca_cuda_compiler()}"]
             cmake_args += ["-DUSE_MACA=1"]
 
         if not _build_custom_ops():
