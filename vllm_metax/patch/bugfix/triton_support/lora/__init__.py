@@ -8,3 +8,4 @@
 from . import fused_moe_lora_op
 from . import lora_shrink_op
 from . import kernel_utils
+from . import lora_split_3d_moe
