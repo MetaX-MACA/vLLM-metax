@@ -216,8 +216,41 @@ def get_gpu_info(run_lambda):
     return re.sub(uuid_regex, "", out)
 
 
+def get_cuda_compiler_version_commands():
+    commands = []
+    seen = set()
+
+    def add_command(command):
+        key = tuple(command) if isinstance(command, list) else command
+        if key in seen:
+            return
+        seen.add(key)
+        commands.append(command)
+
+    cucc_path = os.environ.get("CUCC_PATH")
+    if cucc_path:
+        add_command([os.path.join(cucc_path, "bin", "cucc"), "--version"])
+
+    maca_path = os.environ.get("MACA_PATH")
+    if maca_path:
+        add_command(
+            [
+                os.path.join(maca_path, "tools", "cu-bridge", "bin", "cucc"),
+                "--version",
+            ]
+        )
+
+    add_command(["cucc", "--version"])
+    add_command(["nvcc", "--version"])
+    return commands
+
+
 def get_running_cuda_version(run_lambda):
-    return run_and_parse_first_match(run_lambda, "nvcc --version", r"release .+ V(.*)")
+    for command in get_cuda_compiler_version_commands():
+        version = run_and_parse_first_match(run_lambda, command, r"release .+ V(.*)")
+        if version is not None:
+            return version
+    return None
 
 
 def get_maca_sdk_version(run_lambda):
