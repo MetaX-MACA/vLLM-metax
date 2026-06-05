@@ -278,9 +278,13 @@ def get_maca_version() -> Version:
     """
     Returns the MACA SDK Version
     """
-    file_full_path = os.path.join(os.getenv("MACA_PATH"), "Version.txt")
+    maca_home = os.getenv("MACA_PATH") or os.getenv("MACA_HOME")
+    if not maca_home:
+        return parse("0")
+
+    file_full_path = os.path.join(maca_home, "Version.txt")
     if not os.path.isfile(file_full_path):
-        return None
+        return parse("0")
 
     with open(file_full_path, encoding="utf-8") as file:
         first_line = file.readline().strip()
@@ -313,7 +317,8 @@ def get_plugin_version() -> str:
     sep = "+" if "+" not in version else "."  # dev versions might contain +
 
     if _is_maca():
-        maca_version_str = str(get_maca_version())
+        maca_version = get_maca_version()
+        maca_version_str = str(maca_version) if maca_version != parse("0") else "unknown"
         torch_version = torch.__version__
         major_minor_version = ".".join(torch_version.split(".")[:2])
         version += f"{sep}maca{maca_version_str}.torch{major_minor_version}"
