@@ -599,28 +599,42 @@ def get_env_vars():
 
     all_envs = vllm_envs | plugin_envs
 
-    env_vars = ""
-    secret_terms = ("secret", "token", "api", "access", "password")
+    env_vars = []
+    reported = set()
+    secret_terms = ("secret", "token", "api_key", "apikey", "access", "password")
     report_prefix = (
         "TORCH",
         "NCCL",
+        "MCCL",
         "PYTORCH",
         "CUDA",
+        "CUCC",
         "CUBLAS",
         "CUDNN",
+        "MACA",
+        "METAX",
+        "MX",
+        "MXSML",
         "OMP_",
         "MKL_",
         "NVIDIA",
     )
+
+    def add_env_var(name, value):
+        if name in reported:
+            return
+        reported.add(name)
+        env_vars.append("{}={}".format(name, value))
+
     for k, v in os.environ.items():
         if any(term in k.lower() for term in secret_terms):
             continue
         if k in all_envs:
-            env_vars = env_vars + "{}={}".format(k, v) + "\n"
+            add_env_var(k, v)
         if k.startswith(report_prefix):
-            env_vars = env_vars + "{}={}".format(k, v) + "\n"
+            add_env_var(k, v)
 
-    return env_vars
+    return "\n".join(env_vars)
 
 
 def get_env_info():
