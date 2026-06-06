@@ -97,19 +97,22 @@ def test_metax_reorder_sorts_decode_then_extend_then_prefill(reorder_fn):
 
 
 def test_metax_reorder_keeps_decode_sort_stable_for_equal_lengths(reorder_fn):
+    # Place "ext" first so the batch is NOT already in target order: this
+    # forces the reorder to actually run, exercising the sort/swap path while
+    # checking that two equal-length decodes keep their relative order (stable).
     batch = FakeInputBatch(
-        req_ids=["dec_a", "dec_b", "ext", "pre"],
-        computed_tokens=[3, 4, 5, 0],
+        req_ids=["ext", "dec_a", "dec_b", "pre"],
+        computed_tokens=[5, 3, 4, 0],
     )
     scheduler_output = FakeSchedulerOutput(
-        num_scheduled_tokens={"dec_a": 2, "dec_b": 2, "ext": 4, "pre": 1}
+        num_scheduled_tokens={"ext": 4, "dec_a": 2, "dec_b": 2, "pre": 1}
     )
 
     changed = reorder_fn(batch, scheduler_output, decode_threshold=2)
 
-    assert changed is False
+    assert changed is True
     assert batch.req_ids == ["dec_a", "dec_b", "ext", "pre"]
-    assert batch.swaps == []
+    assert batch.swaps
 
 
 def test_metax_reorder_returns_false_when_order_is_already_target(reorder_fn):
