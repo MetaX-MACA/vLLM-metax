@@ -59,8 +59,10 @@ def test_silu_and_mul(
     with set_current_vllm_config(VllmConfig()):
         layer = SiluAndMul()
 
-        # Make inputs
-        scale = (torch.randn((1), device=device, dtype=torch.float32))
+        # Make inputs. The quantization scale must be strictly positive: a
+        # negative scale would flip signs and a near-zero one risks
+        # divide-by-zero / overflow, so take abs and nudge off zero.
+        scale = torch.randn((1), device=device, dtype=torch.float32).abs() + 1e-5
         x = torch.randn(num_tokens, hidden_size, dtype=dtype)
 
         ref_out = ref_impl(layer, x, scale)
@@ -69,8 +71,13 @@ def test_silu_and_mul(
         assert ref_out.dtype == quant_dtype
         assert ops_out.dtype == quant_dtype
         assert ref_out.shape == ops_out.shape
+        # fp8 is highly discrete: a tiny float rounding difference between the
+        # fused kernel and the reference can land in an adjacent fp8 bucket, so
+        # an absolute-only tolerance is flaky. Compare with a relative tolerance
+        # of 1 ULP for e4m3 (2**-3 = 0.125), which holds at any magnitude, plus
+        # a small atol to absorb values near zero.
         assert torch.allclose(ref_out.to(dtype=torch.float32),
                               ops_out.to(dtype=torch.float32),
                               atol=1 / 128,
-                              rtol=0)
+                              rtol=0.125)
         opcheck(torch.ops._C.silu_and_mul_quant, (ops_out, x, scale))
