@@ -17,7 +17,7 @@ from torch._prims_common import TensorLikeType
 from tests.kernels.quant_utils import native_w8a8_block_matmul
 try:
     from vllm.attention import AttentionBackend, AttentionMetadata, AttentionType
-except ModuleNotFoundError:
+except ImportError:
     from enum import Enum
 
     AttentionBackend = Any
@@ -48,7 +48,11 @@ except ImportError:
         dtype: torch.dtype,
         device: Union[torch.device, str],
     ) -> torch.Tensor:
-        padded = [item + [pad] * (max_len - len(item)) for item in x]
+        # Truncate items longer than max_len before padding: otherwise
+        # max_len - len(item) is negative, [pad] * negative is [], the item is
+        # left at its original (over-length) size, and torch.tensor() raises on
+        # the ragged result.
+        padded = [item[:max_len] + [pad] * (max_len - len(item)) for item in x]
         return torch.tensor(padded, dtype=dtype, device=device)
 
 # For now, disable "test_aot_dispatch_dynamic" since there are some
