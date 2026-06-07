@@ -38,6 +38,7 @@ Homepage="https://github.com/MetaX-MACA/vLLM-metax"
 
 [project.scripts]
 vllm_collect_env = "vllm_metax:collect_env"
+vllm_metax_preflight = "vllm_metax.preflight:main"
 
 [project.entry-points."vllm.platform_plugins"]
 metax = "vllm_metax:register"
