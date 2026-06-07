@@ -22,6 +22,14 @@ if TYPE_CHECKING:
     VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER: bool = False
     VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK: bool = False
 
+
+def _parse_bool_env(name: str, default: str) -> bool:
+    value = os.getenv(name, default)
+    if value not in {"0", "1"}:
+        raise ValueError(f"{name} must be set to 0 or 1, got {value!r}")
+    return bool(int(value))
+
+
 environment_variables: dict[str, Callable[[], Any]] = {
     # ================== Installation Time Env Vars ==================
     # Target device of vLLM, supporting [cuda (by default),
@@ -39,7 +47,7 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # Available options: "Debug", "Release", "RelWithDebInfo"
     "CMAKE_BUILD_TYPE": lambda: os.getenv("CMAKE_BUILD_TYPE"),
     # If set, vllm will print verbose logs during installation
-    "VERBOSE": lambda: bool(int(os.getenv("VERBOSE", "0"))),
+    "VERBOSE": lambda: _parse_bool_env("VERBOSE", "0"),
     # path to cudatoolkit home directory, under which should be bin, include,
     # and lib directories.
     "CUDA_HOME": lambda: os.environ.get("CUDA_HOME", None),
@@ -51,45 +59,41 @@ environment_variables: dict[str, Callable[[], Any]] = {
     "LD_LIBRARY_PATH": lambda: os.environ.get("LD_LIBRARY_PATH", None),
     # if set, vllm-metax kernels would be imported from mcoplib and won't compile
     # during building
-    "USE_PRECOMPILED_KERNEL": lambda: bool(
-        int(os.environ.get("USE_PRECOMPILED_KERNEL", "1"))
-    ),
+    "USE_PRECOMPILED_KERNEL": lambda: _parse_bool_env("USE_PRECOMPILED_KERNEL", "1"),
     # ================== Runtime Env Vars ==================
     # if set, enable mctlass python api, only support scaled_mm and moe_w8a8 int8
-    "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": lambda: bool(
-        int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_PYTHON_API", "1"))
+    "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": lambda: _parse_bool_env(
+        "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API", "1"
     ),
     # if set, enable bf16 cutlass moe on stage2
     # or w8a8 cutlass moe on both stage1 and stage2
-    "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE": lambda: bool(
-        int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE", "0"))
+    "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE": lambda: _parse_bool_env(
+        "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE", "0"
     ),
     # if set, enable combine allreduce all2all
-    "VLLM_METAX_OPTIMIZED_DP_ALL2ALL": lambda: bool(
-        int(os.environ.get("VLLM_METAX_OPTIMIZED_DP_ALL2ALL", "0"))
+    "VLLM_METAX_OPTIMIZED_DP_ALL2ALL": lambda: _parse_bool_env(
+        "VLLM_METAX_OPTIMIZED_DP_ALL2ALL", "0"
     ),
     # if set, enable FA split forward into
     # prefill and decode for better latency
     # and memory usage during decoding
-    "VLLM_METAX_ENABLE_FA_SPLIT_FORWARD": lambda: bool(
-        int(os.environ.get("VLLM_METAX_ENABLE_FA_SPLIT_FORWARD", "1"))
+    "VLLM_METAX_ENABLE_FA_SPLIT_FORWARD": lambda: _parse_bool_env(
+        "VLLM_METAX_ENABLE_FA_SPLIT_FORWARD", "1"
     ),
     "VLLM_FUSED_MOE_CHUNK_SIZE": lambda: int(
         os.getenv("VLLM_FUSED_MOE_CHUNK_SIZE", str(16 * 1024))
     ),
     # if set, use fp8 deep gemm kernel for DSA
-    "VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER": lambda: bool(
-        int(os.environ.get("VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER", "0"))
+    "VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER": lambda: _parse_bool_env(
+        "VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER", "0"
     ),
     # if set, enable sglang fused grouped topk ops on deepseek and kimi model
-    "VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK": lambda: bool(
-        int(os.getenv("VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK", "0"))
+    "VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK": lambda: _parse_bool_env(
+        "VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK", "0"
     ),
     # =================== Debug Env Vars ==================
     # if set, use vllm's fused_moe implementation instead of maca's one for debugging and comparison
-    "USE_VLLM_TRITON_EXPERT": lambda: bool(
-        int(os.getenv("USE_VLLM_TRITON_EXPERT", "0"))
-    ),
+    "USE_VLLM_TRITON_EXPERT": lambda: _parse_bool_env("USE_VLLM_TRITON_EXPERT", "0"),
 }
 
 
