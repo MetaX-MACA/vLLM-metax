@@ -220,9 +220,27 @@ def get_running_cuda_version(run_lambda):
     return run_and_parse_first_match(run_lambda, "nvcc --version", r"release .+ V(.*)")
 
 
+def get_maca_home():
+    for env_name in ("MACA_PATH", "MACA_HOME"):
+        value = os.environ.get(env_name)
+        if value:
+            return value
+    if TORCH_AVAILABLE:
+        try:
+            from torch.utils.cpp_extension import MACA_HOME
+        except ImportError:
+            return None
+        return MACA_HOME
+    return None
+
+
 def get_maca_sdk_version(run_lambda):
+    maca_home = get_maca_home()
+    if not maca_home:
+        return None
+    version_file = os.path.join(maca_home, "Version.txt")
     return run_and_parse_first_match(
-        run_lambda, "cat $MACA_PATH/Version.txt", r"Version:(.*)"
+        run_lambda, ["cat", version_file], r"Version:(.*)"
     )
 
 
