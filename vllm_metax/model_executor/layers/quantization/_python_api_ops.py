@@ -134,6 +134,19 @@ with contextlib.suppress(ImportError):
             )
 
 
+def _check_mctlass_w8a8_scaled_mm_shape(
+    a: torch.Tensor,
+    out: torch.Tensor,
+) -> None:
+    k = a.shape[-1]
+    n = out.shape[-1]
+    if k % 16 != 0 or n % 16 != 0:
+        raise ValueError(
+            "mctlassEx W8A8 scaled_mm requires K and N to be multiples of 16, "
+            f"but got K={k}, N={n}"
+        )
+
+
 # w8a8 scaled mm
 def mctlassEx_w8a8_scaled_mm_azp(
     out: torch.Tensor,
@@ -147,6 +160,8 @@ def mctlassEx_w8a8_scaled_mm_azp(
 ) -> torch.Tensor:
     if bias is not None and bias.dim() == 1:
         bias = bias.unsqueeze(0)
+
+    _check_mctlass_w8a8_scaled_mm_shape(a, out)
 
     if azp is not None or azp_adj is not None or bias is not None:
         assert mctlass_scaled_gemm is not None, (
