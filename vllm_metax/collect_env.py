@@ -5,7 +5,9 @@
 # ruff: noqa
 # code borrowed from https://github.com/pytorch/pytorch/blob/main/torch/utils/collect_env.py
 
+import argparse
 import datetime
+import json
 import locale
 import os
 import subprocess
@@ -839,9 +841,18 @@ def get_pretty_env_info():
     return pretty_str(get_env_info())
 
 
+def get_json_env_info():
+    return json.dumps(get_env_info()._asdict(), indent=2, sort_keys=True)
+
+
 def main():
-    print("Collecting environment information...")
-    output = get_pretty_env_info()
+    parser = argparse.ArgumentParser(description="Collect vLLM-MetaX environment information.")
+    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    args = parser.parse_args()
+
+    if not args.json:
+        print("Collecting environment information...")
+    output = get_json_env_info() if args.json else get_pretty_env_info()
     print(output)
 
     if (
