@@ -40,3 +40,53 @@ You could get the docker image at [MetaX develop community](https://developer.me
     **vLLM-MetaX is out of box via docker images provided above.**
 
     All the vllm tests are based on the related maca version. Using incorresponding version of maca for vllm may cause unexpected bugs or errors. This is not guaranteed.
+## Install via pip (pre-built wheels)
+
+If you are on a cloud instance that already ships the MACA SDK and a MetaX build
+of PyTorch (e.g. Gitee.AI / 模力方舟 images), you can install vllm-metax from the
+MetaX PyPI index instead of using docker:
+
+```bash
+pip install "vllm-metax==<version>" \
+    -i https://repos.metax-tech.com/r/maca-pypi/simple \
+    --trusted-host repos.metax-tech.com
+```
+
+Pick the wheel that matches the **MACA runtime** (`mx-smi | grep "MACA Version"`,
+major.minor must match), the **torch build** (`pip show torch`) and your Python:
+
+| vllm-metax wheel | MACA runtime | torch | mcoplib |
+|:---|:---|:---|:---|
+| 0.13.0+...maca3.3.0.15.torch2.8 | 3.3.x | 2.8.0+metax3.3.x | bundled in wheel |
+| 0.17.0+...maca3.5.3.20.torch2.8 | 3.5.x | 2.8.0+metax3.5.x | 0.4.2 (install separately) |
+| 0.19.0+...maca3.5.3.20.torch2.8 | 3.5.x | 2.8.0+metax3.5.x | 0.4.4 (install separately) |
+| 0.20.0+...maca3.7.0.37.torch2.8 | 3.7.x | 2.8.0+metax3.7.x | 0.4.5 (install separately) |
+
+Wheels up to v0.13.0 bundle `_C`/`_moe_C`; from v0.14.0 on, install the matching
+`mcoplib` from the same index (see the release table above). mcoplib checks the
+MACA runtime at import time and only requires major.minor to match.
+
+The upstream `vllm` package is not hosted on the MetaX index; install the
+matching version from PyPI without its CUDA dependency set:
+
+```bash
+pip download vllm==<version> --no-deps -d /tmp/vllm-whl -i https://pypi.org/simple
+pip install /tmp/vllm-whl/vllm-*.whl --no-deps
+```
+
+### Common pitfalls
+
+- **`No matching distribution found for torch==2.7.0` while resolving
+  `arctic-inference`**: pip picked a vllm-metax wheel built for a different
+  torch than the installed MetaX torch. Pin the full wheel version (including
+  the `+...macaX.Y.Z.torchA.B` suffix) instead of letting pip resolve the
+  latest.
+- **mcoplib refuses to load (`Check the current MACA version`)**: the MACA
+  runtime major.minor differs from the mcoplib build. Switch the instance
+  image rather than mixing versions; e.g. mcoplib 0.4.x will not run on a
+  3.3.x runtime.
+- **Wrong device count on some single-GPU instances**: torch can report an
+  extra device; set `CUDA_VISIBLE_DEVICES=0`.
+- **Plain `pip install vllm` is a cuda build** with extra dependencies and
+  preconditions that may pass cuda-only checks on maca; install with
+  `--no-deps` as above (see warning in Installation).
