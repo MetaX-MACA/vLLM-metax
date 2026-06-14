@@ -12,8 +12,8 @@ from vllm_metax import envs as mx_envs
 
 from vllm.distributed import tensor_model_parallel_all_reduce
 
-from vllm.model_executor.layers.fused_moe.runner.default_moe_runner import (
-    DefaultMoERunner,
+from vllm.model_executor.layers.fused_moe.runner.moe_runner import (
+    MoERunner as DefaultMoERunner,
 )
 
 
