@@ -13,7 +13,7 @@
 # Note: Reduce Triton `num_stages` in `chunk_delta_h` kernels to stay within
 #       MACA shared-memory limits.
 #
-# Affected versions: v0.22.0
+# Affected versions: v0.21.0
 # -----------------------------------------------
 
 from vllm.triton_utils import tl, triton

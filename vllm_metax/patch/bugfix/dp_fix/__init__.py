@@ -6,4 +6,4 @@
 # Affected versions: v0.21.0
 # -----------------------------------------------
 
-from . import coordinator, fused_moe_layer  # , shared_fused_moe
+from . import coordinator

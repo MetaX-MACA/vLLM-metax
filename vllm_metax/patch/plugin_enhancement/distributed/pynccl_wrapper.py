@@ -196,6 +196,12 @@ class MCCLLibrary:
         # it is better not to call it at all.
         # ncclResult_t  ncclCommDestroy(ncclComm_t comm);
         Function("mcclCommDestroy", ncclResult_t, [ncclComm_t]),
+        # ncclCommAbort frees resources associated with the communicator
+        # without requiring a collective synchronization. Unlike
+        # ncclCommDestroy, it is safe to call during an uncoordinated
+        # shutdown when peer ranks may already be gone.
+        # ncclResult_t  ncclCommAbort(ncclComm_t comm);
+        Function("mcclCommAbort", ncclResult_t, [ncclComm_t]),
         # ncclResult_t ncclGroupStart();
         Function("mcclGroupStart", ncclResult_t, []),
         # ncclResult_t ncclGroupEnd();
@@ -456,6 +462,9 @@ class MCCLLibrary:
 
     def ncclCommDestroy(self, comm: ncclComm_t) -> None:
         self.NCCL_CHECK(self._funcs["mcclCommDestroy"](comm))
+
+    def ncclCommAbort(self, comm: ncclComm_t) -> None:
+        self.NCCL_CHECK(self._funcs["mcclCommAbort"](comm))
 
     def ncclGroupStart(self) -> None:
         self.NCCL_CHECK(self._funcs["mcclGroupStart"]())
