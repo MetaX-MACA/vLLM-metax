@@ -79,7 +79,7 @@ def _get_backend_priorities(
 
 
 def register_attention_backends() -> None:
-    from vllm_metax.patch.plugin_enhancement.prefill_backend_registry import (
+    from vllm.v1.attention.backends.mla.prefill.registry import (
         register_mla_prefill_backend,
     )
 
@@ -292,10 +292,7 @@ class MacaPlatformBase(Platform):
             vllm_config.model_config.disable_cascade_attn = True
 
         if attention_config := vllm_config.attention_config:
-            attention_config.use_cudnn_prefill = False
-            attention_config.use_trtllm_ragged_deepseek_prefill = False
-            attention_config.use_trtllm_attention = False
-            attention_config.disable_flashinfer_prefill = True
+            attention_config.mla_prefill_backend = MLAPrefillBackendEnum.FLASH_ATTN
 
         # -------------------------------------------------------
         # Append H=hidden_size at runtime (once model config is available)
@@ -573,8 +570,8 @@ class MacaPlatformBase(Platform):
         dst_block_indices: torch.Tensor,
     ) -> None:
         """Copy blocks from src_cache to dst_cache on GPU."""
-        _src_cache = src_cache[:, src_block_indices]
-        dst_cache[:, dst_block_indices] = _src_cache.to(dst_cache.device)
+        _src_cache = src_cache[src_block_indices]
+        dst_cache[dst_block_indices] = _src_cache.to(dst_cache.device)
 
     @classmethod
     def swap_out_blocks_to_host(
@@ -585,8 +582,8 @@ class MacaPlatformBase(Platform):
         dst_block_indices: torch.Tensor,
     ) -> None:
         """Copy blocks from GPU to host (CPU)."""
-        _src_cache = src_cache[:, src_block_indices]
-        dst_cache[:, dst_block_indices] = _src_cache.cpu()
+        _src_cache = src_cache[src_block_indices]
+        dst_cache[dst_block_indices] = _src_cache.cpu()
 
     @classmethod
     def support_hybrid_kv_cache(cls) -> bool:
@@ -628,7 +625,9 @@ class MacaPlatformBase(Platform):
         if envs.VLLM_USE_OINK_OPS:
             rms_norm = ["oink"] + default
 
-        return IrOpPriorityConfig.with_default(default, rms_norm=rms_norm)
+        return IrOpPriorityConfig.with_default(
+            default, rms_norm=rms_norm, fused_add_rms_norm=rms_norm
+        )
 
     @classmethod
     def pre_register_and_update(

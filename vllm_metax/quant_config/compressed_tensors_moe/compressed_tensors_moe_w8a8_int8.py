@@ -79,6 +79,8 @@ def make_int8_moe_quant_config(
     w2_scale: torch.Tensor,
     a1_scale: torch.Tensor | None = None,
     a2_scale: torch.Tensor | None = None,
+    w1_bias: torch.Tensor | None = None,
+    w2_bias: torch.Tensor | None = None,
     per_act_token_quant: bool = False,
 ) -> FusedMoEQuantConfig:
     # assert (a1_scale is None and a2_scale is None) or (
@@ -100,6 +102,8 @@ def make_int8_moe_quant_config(
         w2_scale=w2_scale,
         a1_scale=a1_scale,
         a2_scale=a2_scale,
+        w1_bias=w1_bias,
+        w2_bias=w2_bias,
         per_act_token_quant=per_act_token_quant,
     )
 

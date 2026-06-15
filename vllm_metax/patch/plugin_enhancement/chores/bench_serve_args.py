@@ -212,6 +212,16 @@ def add_cli_args(parser: argparse.ArgumentParser):
         "Warning: ignore_eos is not supported in deepspeed_mii and tgi.",
     )
     parser.add_argument(
+        "--self-timed",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Use timing information from the traces instead of the configuration. "
+        "This is useful when replaying traces faithfully based on their timestamps. "
+        "When unset, defaults to False, except for --dataset-name=timed_trace where "
+        "it defaults to True. Use --no-self-timed to force off. When off, user "
+        "defined generation rates are used and in trace timing info is ignored.",
+    )
+    parser.add_argument(
         "--percentile-metrics",
         type=str,
         default=None,
@@ -363,6 +373,15 @@ def add_cli_args(parser: argparse.ArgumentParser):
         "in seconds. Ready check will be skipped by default.",
     )
 
+    parser.add_argument(
+        "--chat-template-kwargs",
+        type=json.loads,
+        default=None,
+        help="A JSON string of kwargs forwarded to the tokenizer's "
+        "apply_chat_template when a dataset renders prompts client-side "
+        "(e.g. custom / speed_bench). "
+        "Example: '{\"thinking\": true}' to enable reasoning models.",
+    )
     parser.add_argument(
         "--extra-body",
         help="A JSON string representing extra body parameters to include "

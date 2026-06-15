@@ -13,11 +13,11 @@
 # Note: Reduce Triton `num_stages` in `chunk_delta_h` kernels to stay within
 #       MACA shared-memory limits.
 #
-# Affected versions: v0.21.0
+# Affected versions: v0.22.0
 # -----------------------------------------------
 
 from vllm.triton_utils import tl, triton
-from vllm.model_executor.layers.fla.ops.op import exp
+from vllm.model_executor.layers.fla.ops.op import exp, exp2
 from vllm.model_executor.layers.fla.ops.utils import use_cuda_graph
 
 
@@ -69,6 +69,7 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
     STORE_FINAL_STATE: tl.constexpr,
     SAVE_NEW_VALUE: tl.constexpr,
     IS_VARLEN: tl.constexpr,
+    USE_EXP2: tl.constexpr,
 ):
     i_v, i_nh = tl.program_id(0), tl.program_id(1)
     i_n, i_h = i_nh // H, i_nh % H
@@ -214,8 +215,12 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
                 g + bos * H + i_h, (T,), (H,), (i_t * BT,), (BT,), (0,)
             )
             b_g = tl.load(p_g, boundary_check=(0,))
-            b_v = b_v * tl.where(m_t, exp(b_g_last - b_g), 0)[:, None]
-            b_g_last = exp(b_g_last)
+            if USE_EXP2:
+                b_v = b_v * tl.where(m_t, exp2(b_g_last - b_g), 0)[:, None]
+                b_g_last = exp2(b_g_last)
+            else:
+                b_v = b_v * tl.where(m_t, exp(b_g_last - b_g), 0)[:, None]
+                b_g_last = exp(b_g_last)
             b_h1 *= b_g_last
             if K > 64:
                 b_h2 *= b_g_last
@@ -231,7 +236,10 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
                 mask=(o_k1 < K),
                 other=0.0,
             )
-            b_h1 *= exp(b_gk_last1)[None, :]
+            if USE_EXP2:
+                b_h1 *= exp2(b_gk_last1)[None, :]
+            else:
+                b_h1 *= exp(b_gk_last1)[None, :]
             if K > 64:
                 o_k2 = 64 + o_k1
                 b_gk_last2 = tl.load(
@@ -239,7 +247,10 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
                     mask=(o_k2 < K),
                     other=0.0,
                 )
-                b_h2 *= exp(b_gk_last2)[None, :]
+                if USE_EXP2:
+                    b_h2 *= exp2(b_gk_last2)[None, :]
+                else:
+                    b_h2 *= exp(b_gk_last2)[None, :]
             if K > 128:
                 o_k3 = 128 + o_k1
                 b_gk_last3 = tl.load(
@@ -247,7 +258,10 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
                     mask=(o_k3 < K),
                     other=0.0,
                 )
-                b_h3 *= exp(b_gk_last3)[None, :]
+                if USE_EXP2:
+                    b_h3 *= exp2(b_gk_last3)[None, :]
+                else:
+                    b_h3 *= exp(b_gk_last3)[None, :]
             if K > 192:
                 o_k4 = 192 + o_k1
                 b_gk_last4 = tl.load(
@@ -255,7 +269,10 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
                     mask=(o_k4 < K),
                     other=0.0,
                 )
-                b_h4 *= exp(b_gk_last4)[None, :]
+                if USE_EXP2:
+                    b_h4 *= exp2(b_gk_last4)[None, :]
+                else:
+                    b_h4 *= exp(b_gk_last4)[None, :]
         b_v = b_v.to(k.dtype.element_ty)
 
         p_k = tl.make_block_ptr(

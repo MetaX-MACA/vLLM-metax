@@ -8,120 +8,15 @@
 # Affected versions: v0.21.0
 # -----------------------------------------------
 
-
-import vllm
-from vllm.logger import init_logger
-from vllm.utils.mem_utils import format_gib
-from vllm.tracing import instrument
-from vllm.utils.torch_utils import is_quantized_kv_cache
-
-logger = init_logger(__name__)
-
-from contextlib import AbstractContextManager, nullcontext
-from vllm.utils.mem_constants import GiB_bytes
-
-import torch
-
-# from vllm.v1.worker import worker_base
-from vllm.v1.worker.gpu_worker import Worker
-from vllm.v1.kv_cache_interface import KVCacheConfig
-from vllm.distributed.kv_transfer import ensure_kv_transfer_initialized
+from vllm.device_allocator import MemAllocator
 
 
-def sleep(self, level: int = 1) -> None:
+def get_mem_allocator_instance() -> MemAllocator:
     from vllm_metax.device_allocator.cumem import CuMemAllocator
 
-    free_bytes_before_sleep = torch.cuda.mem_get_info()[0]
-
-    # Save the buffers before level 2 sleep
-    if level == 2:
-        model = self.model_runner.model
-        self._sleep_saved_buffers = {
-            name: buffer.cpu().clone() for name, buffer in model.named_buffers()
-        }
-
-    allocator = CuMemAllocator.get_instance()
-    allocator.sleep(offload_tags=("weights",) if level == 1 else tuple())
-    free_bytes_after_sleep, total = torch.cuda.mem_get_info()
-    freed_bytes = free_bytes_after_sleep - free_bytes_before_sleep
-    used_bytes = total - free_bytes_after_sleep
-    assert freed_bytes >= 0, "Memory usage increased after sleeping."
-    logger.info(
-        "Sleep mode freed %s GiB memory, %s GiB memory is still in use.",
-        format_gib(freed_bytes),
-        format_gib(used_bytes),
-    )
+    return CuMemAllocator.get_instance()
 
 
-def wake_up(self, tags: list[str] | None = None) -> None:
-    from vllm_metax.device_allocator.cumem import CuMemAllocator
+import vllm.device_allocator
 
-    allocator = CuMemAllocator.get_instance()
-    allocator.wake_up(tags)
-
-    # Restore the buffers after level 2 sleep
-    if len(self._sleep_saved_buffers):
-        model = self.model_runner.model
-        for name, buffer in model.named_buffers():
-            if name in self._sleep_saved_buffers:
-                buffer.data.copy_(self._sleep_saved_buffers[name].data)
-        self._sleep_saved_buffers = {}
-
-    if tags is None or "kv_cache" in tags:
-        self.model_runner.post_kv_cache_wake_up()
-
-
-def _maybe_get_memory_pool_context(self, tag: str) -> AbstractContextManager:
-    if not self.vllm_config.model_config.enable_sleep_mode:
-        return nullcontext()
-
-    from vllm_metax.device_allocator.cumem import CuMemAllocator
-
-    allocator = CuMemAllocator.get_instance()
-    if tag == "weights":
-        assert allocator.get_current_usage() == 0, (
-            "Sleep mode can only be used for one instance per process."
-        )
-    return allocator.use_memory_pool(tag=tag)
-
-
-@instrument(span_name="Allocate KV cache")
-def initialize_from_config(self, kv_cache_config: KVCacheConfig) -> None:
-    """Allocate GPU KV cache with the specified kv_cache_config."""
-
-    # Update local config with adjusted num blocks after profiling,
-    # so that it's available to the warmup stage.
-    self.cache_config.num_gpu_blocks = kv_cache_config.num_blocks
-
-    # Init kv cache connector here, because it requires
-    # `kv_cache_config`.
-    # NOTE(Kuntai): This need to be done before `initialize_kv_cache`,
-    # because `initialize_kv_cache` will inject kv cache groups not
-    # related to kv cache connector (e.g. kv cache sharing layers).
-    ensure_kv_transfer_initialized(self.vllm_config, kv_cache_config)
-
-    if self.vllm_config.model_config.enable_sleep_mode:
-        from vllm_metax.device_allocator.cumem import CuMemAllocator
-
-        allocator = CuMemAllocator.get_instance()
-        with allocator.use_memory_pool(tag="kv_cache"):
-            self.model_runner.initialize_kv_cache(kv_cache_config)
-    else:
-        self.model_runner.initialize_kv_cache(kv_cache_config)
-
-    if self.model_config.enable_return_routed_experts:
-        self.model_runner.init_routed_experts_capturer()
-
-    # Build KV-zero metadata outside the CuMem pool so the bookkeeping
-    # GPU tensors (seg_addrs, block-id buffers) use the standard PyTorch
-    # allocator and are not discarded during sleep/wake cycles.
-    if kv_cache_config.needs_kv_cache_zeroing and hasattr(
-        self.model_runner, "_init_kv_zero_meta"
-    ):
-        self.model_runner._init_kv_zero_meta()
-
-
-Worker.sleep = sleep
-Worker.wake_up = wake_up
-Worker._maybe_get_memory_pool_context = _maybe_get_memory_pool_context
-Worker.initialize_from_config = initialize_from_config
+vllm.device_allocator.get_mem_allocator_instance = get_mem_allocator_instance

@@ -19,10 +19,6 @@ class MacaGateLinear(GateLinear):
     method which is only known later).
     """
 
-    # Dimensions supported by the DSV3 specialized kernel
-    DSV3_SUPPORTED_NUM_EXPERTS = [256, 384]
-    DSV3_SUPPORTED_HIDDEN_SIZES = [7168]
-
     def __init__(
         self,
         input_size: int,
@@ -59,6 +55,13 @@ class MacaGateLinear(GateLinear):
         # DSV3 specialized kernel eligibility (SM90+, exact dims)
         self.allow_specialized_router_gemm = can_use_specialized_kernels
         self.allow_dsv3_router_gemm = False
+
+        self.allow_fp32_router_gemm = (
+            not bias
+            and self.weight.dtype == torch.float32
+            and output_size in self.FP32_SUPPORTED_NUM_EXPERTS
+            and input_size in self.FP32_SUPPORTED_HIDDEN_SIZES
+        )
 
         # cuBLAS bf16→fp32 eligibility
         self.allow_cublas_router_gemm = (

@@ -27,7 +27,6 @@ def _gather_block_tables_kernel(
     num_blocks_ptr,  # [num_kv_cache_groups, max_num_reqs]
     num_blocks_stride,
     num_reqs,  # actual number of requests (for padding)
-    max_num_blocks,  # stride for zeroing padded rows
     BLOCK_SIZE: tl.constexpr,
 ):
     # kv cache group id
@@ -35,6 +34,7 @@ def _gather_block_tables_kernel(
     batch_idx = tl.program_id(1)
 
     stride = tl.load(block_table_strides + group_id)
+    max_num_blocks = stride  # stride equals max_num_blocks for this group.
     dst_block_table_ptr = _load_ptr_i32(dst_block_table_ptrs + group_id)
     dst_row_ptr = dst_block_table_ptr + batch_idx * stride
 

@@ -41,6 +41,7 @@ def rejection_sample(
     sampling_metadata: SamplingMetadata,
     synthetic_mode: bool = False,
     synthetic_conditional_rates: torch.Tensor | None = None,
+    use_fp64_gumbel: bool = False,
 ) -> torch.Tensor:
     assert draft_token_ids.ndim == 1
     assert draft_probs is None or draft_probs.ndim == 2
@@ -115,6 +116,7 @@ def rejection_sample(
         target_probs,
         sampling_metadata,
         device,
+        use_fp64_gumbel,
     )
 
     # Rejection sampling for random sampling requests.
@@ -151,13 +153,15 @@ def sample_recovered_tokens(
     target_probs: torch.Tensor,
     sampling_metadata: SamplingMetadata,
     device: torch.device,
+    use_fp64_gumbel: bool = False,
 ) -> torch.Tensor:
     # NOTE(woosuk): Create only one distribution for each request.
     batch_size = len(num_draft_tokens)
     vocab_size = target_probs.shape[-1]
+    q_dtype = torch.float64 if use_fp64_gumbel else torch.float32
     q = torch.empty(
         (batch_size, vocab_size),
-        dtype=torch.float32,
+        dtype=q_dtype,
         device=device,
     )
     q.exponential_()
@@ -182,6 +186,7 @@ def sample_recovered_tokens(
         PADDED_VOCAB_SIZE=triton.next_power_of_2(vocab_size),
         BLOCK_SIZE=BLOCK_SIZE,
         NO_DRAFT_PROBS=draft_probs is None,
+        USE_FP64_GUMBEL=use_fp64_gumbel,
     )
     return recovered_token_ids
 
@@ -253,7 +258,8 @@ def sample_recovered_tokens_kernel(
     vocab_size,
     PADDED_VOCAB_SIZE: tl.constexpr,
     NO_DRAFT_PROBS: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr = 1024,
+    BLOCK_SIZE: tl.constexpr,
+    USE_FP64_GUMBEL: tl.constexpr,
 ):
     """Handles large vocabs by chunking to avoid memory constraints."""
     req_idx = tl.program_id(0)
@@ -266,7 +272,10 @@ def sample_recovered_tokens_kernel(
     if pos >= num_draft_tokens:
         return
 
-    max_prob = -float("inf")
+    if USE_FP64_GUMBEL:
+        max_prob = tl.full((), float("-inf"), tl.float64)
+    else:
+        max_prob = tl.full((), float("-inf"), tl.float32)
     best_token_id = 0
 
     for block_start in range(0, PADDED_VOCAB_SIZE, BLOCK_SIZE):
