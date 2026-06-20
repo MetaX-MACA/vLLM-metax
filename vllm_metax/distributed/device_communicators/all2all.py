@@ -8,6 +8,7 @@ from vllm.forward_context import get_forward_context
 from vllm.distributed.device_communicators.base_device_communicator import (
     All2AllManagerBase,
 )
+from vllm.platforms import current_platform
 
 
 class CoArAll2AllManager(All2AllManagerBase):
@@ -134,6 +135,149 @@ class CoArAll2AllManager(All2AllManagerBase):
 
             all_hidden_states = get_ep_group().all_reduce(hidden_states)
             hidden_states = all_hidden_states[start:end, :]
+        return hidden_states
+
+    def destroy(self):
+        pass
+
+
+class MacaAgRsAll2AllManager(All2AllManagerBase):
+    """
+    An implementation of all2all communication based on
+    all-gather (dispatch) and reduce-scatter (combine).
+    """
+
+    def __init__(self, cpu_group, tcp_store_group=None):
+        super().__init__(cpu_group, tcp_store_group)
+
+    def dispatch_router_logits(
+        self,
+        hidden_states: torch.Tensor,
+        router_logits: torch.Tensor,
+        is_sequence_parallel: bool = False,
+        extra_tensors: list[torch.Tensor] | None = None,
+    ) -> (
+        tuple[torch.Tensor, torch.Tensor]
+        | tuple[torch.Tensor, torch.Tensor, list[torch.Tensor]]
+    ):
+        """
+        Gather hidden_states and router_logits from all dp ranks.
+        """
+        dp_metadata = get_forward_context().dp_metadata
+        assert dp_metadata is not None
+        sizes = dp_metadata.get_chunk_sizes_across_dp_rank()
+        assert sizes is not None
+        dist_group = get_ep_group() if is_sequence_parallel else get_dp_group()
+        assert sizes[dist_group.rank_in_group] == hidden_states.shape[0]
+
+        tensors_to_gather = [hidden_states, router_logits]
+        if extra_tensors is not None:
+            tensors_to_gather.extend(extra_tensors)
+
+        gathered_tensors = dist_group.all_gatherv(
+            tensors_to_gather,
+            dim=0,
+            sizes=sizes,
+        )
+
+        if extra_tensors is not None:
+            return (gathered_tensors[0], gathered_tensors[1], gathered_tensors[2:])
+        return gathered_tensors[0], gathered_tensors[1]
+
+    @torch.compile(dynamic=True, backend=current_platform.simple_compile_backend)
+    def _pack(
+        self,
+        topk_weights: torch.Tensor,
+        topk_ids: torch.Tensor,
+        extra_tensors: list[torch.Tensor] | None = None,
+    ) -> torch.Tensor:
+        topk_id_float = topk_ids.to(torch.float32)
+
+        if extra_tensors is not None and len(extra_tensors) == 1:
+            combined = torch.cat([topk_weights, topk_id_float, extra_tensors[0]], dim=1)
+        else:
+            combined = torch.cat([topk_weights, topk_id_float], dim=1)
+        return combined
+
+    def _unpack(
+        self,
+        topk: int,
+        gathered_tensors: list[torch.Tensor],
+        extra_tensors: list[torch.Tensor] | None = None,
+    ) -> (
+        tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+        | tuple[torch.Tensor, torch.Tensor, torch.Tensor, list[torch.Tensor]]
+    ):
+        hidden_states = gathered_tensors[0]
+        packed = gathered_tensors[1]
+        n = packed.shape[1] - 2 * topk
+        m = packed.shape[0]
+        topk_weights = torch.empty(
+            m, topk, device=hidden_states.device, dtype=torch.float32
+        )
+        topk_ids = torch.empty(m, topk, device=hidden_states.device, dtype=torch.int32)
+        scale = torch.empty(m, n, device=hidden_states.device, dtype=torch.float32)
+        torch.ops._C.fused_unpack(packed, topk, n, topk_weights, topk_ids, scale)
+
+        if extra_tensors is None:
+            return hidden_states, topk_weights, topk_ids
+
+        if len(extra_tensors) == 1:
+            return hidden_states, topk_weights, topk_ids, [scale]
+
+        return hidden_states, topk_weights, topk_ids, gathered_tensors[2:]
+
+    def dispatch(
+        self,
+        hidden_states: torch.Tensor,
+        topk_weights: torch.Tensor,
+        topk_ids: torch.Tensor,
+        is_sequence_parallel: bool = False,
+        extra_tensors: list[torch.Tensor] | None = None,
+    ) -> (
+        tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+        | tuple[torch.Tensor, torch.Tensor, torch.Tensor, list[torch.Tensor]]
+    ):
+        """
+        Gather hidden_states and router_logits from all dp ranks.
+        """
+        dp_metadata = get_forward_context().dp_metadata
+        assert dp_metadata is not None
+        sizes = dp_metadata.get_chunk_sizes_across_dp_rank()
+        assert sizes is not None
+        dist_group = get_ep_group() if is_sequence_parallel else get_dp_group()
+        assert sizes[dist_group.rank_in_group] == hidden_states.shape[0]
+
+        topk = topk_weights.shape[1]
+
+        combined = self._pack(topk_weights, topk_ids, extra_tensors)
+
+        tensors_to_gather = [hidden_states, combined]
+
+        if extra_tensors is not None and len(extra_tensors) != 1:
+            tensors_to_gather.extend(extra_tensors)
+
+        gathered_tensors = dist_group.all_gatherv(
+            tensors_to_gather,
+            dim=0,
+            sizes=sizes,
+        )
+
+        return self._unpack(topk, gathered_tensors, extra_tensors)
+
+    def combine(
+        self, hidden_states: torch.Tensor, is_sequence_parallel: bool = False
+    ) -> torch.Tensor:
+        """
+        Reduce-scatter hidden_states across all dp ranks.
+        """
+        dp_metadata = get_forward_context().dp_metadata
+        assert dp_metadata is not None
+        sizes = dp_metadata.get_chunk_sizes_across_dp_rank()
+        assert sizes is not None
+
+        dist_group = get_ep_group() if is_sequence_parallel else get_dp_group()
+        hidden_states = dist_group.reduce_scatterv(hidden_states, dim=0, sizes=sizes)
         return hidden_states
 
     def destroy(self):

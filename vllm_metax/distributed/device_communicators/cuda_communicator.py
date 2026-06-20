@@ -40,16 +40,13 @@ class MacaCommunicator(CudaCommunicator):
         if (
             self.use_all2all
             and mx_envs.VLLM_METAX_OPTIMIZED_DP_ALL2ALL
-            and (
-                self.all2all_backend == "naive"
-                or self.all2all_backend == "allgather_reducescatter"
-            )
+            and self.all2all_backend == "allgather_reducescatter"
         ):
             from vllm_metax.distributed.device_communicators.all2all import (
-                CoArAll2AllManager,
+                MacaAgRsAll2AllManager,
             )
 
-            self.all2all_manager = CoArAll2AllManager(self.cpu_group)
+            self.all2all_manager = MacaAgRsAll2AllManager(self.cpu_group)
             logger.info_once(
                 "Maca switch all2all_backend to %s all2all manager for better performance.",
                 self.all2all_manager.__class__.__name__,

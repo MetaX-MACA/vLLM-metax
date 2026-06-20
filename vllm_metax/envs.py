@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     CMAKE_BUILD_TYPE: str | None
     VERBOSE: bool = False
     USE_PRECOMPILED_KERNEL: bool = True
-    VLLM_METAX_OPTIMIZED_DP_ALL2ALL: bool = False
+    VLLM_METAX_OPTIMIZED_DP_ALL2ALL: bool = True
     MACA_VLLM_ENABLE_MCTLASS_PYTHON_API: bool = True
     MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: bool = False
     USE_VLLM_TRITON_EXPERT: bool = False
@@ -66,7 +66,7 @@ environment_variables: dict[str, Callable[[], Any]] = {
     ),
     # if set, enable combine allreduce all2all
     "VLLM_METAX_OPTIMIZED_DP_ALL2ALL": lambda: bool(
-        int(os.environ.get("VLLM_METAX_OPTIMIZED_DP_ALL2ALL", "0"))
+        int(os.environ.get("VLLM_METAX_OPTIMIZED_DP_ALL2ALL", "1"))
     ),
     # if set, enable FA split forward into
     # prefill and decode for better latency
