@@ -792,7 +792,7 @@ mx_envs.override_vllm_env(
 )
 
 mx_envs.override_vllm_env(
-    "VLLM_ENGINE_READY_TIMEOUT_S", 3600, "set timeout to 3600s for model loading"
+    "VLLM_ENGINE_READY_TIMEOUT_S", 7200, "set timeout to 7200s for model loading"
 )
 
 mx_envs.override_vllm_env(
