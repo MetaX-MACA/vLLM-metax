@@ -75,6 +75,7 @@ def _get_backend_priorities(
             AttentionBackendEnum.FLASHINFER,
             AttentionBackendEnum.TRITON_ATTN,
             AttentionBackendEnum.FLEX_ATTENTION,
+            AttentionBackendEnum.TURBOQUANT,
         ]
 
 
@@ -111,6 +112,10 @@ def register_attention_backends() -> None:
     register_backend(
         backend=AttentionBackendEnum.FLEX_ATTENTION,
         class_path="vllm_metax.v1.attention.backends.flex_attention.MacaFlexAttentionBackend",
+    )
+    register_backend(
+        backend=AttentionBackendEnum.TURBOQUANT,
+        class_path="vllm_metax.v1.attention.backends.turboquant_attn.MacaTurboQuantAttentionBackend",
     )
     register_mla_prefill_backend(
         backend=MLAPrefillBackendEnum.FLASH_ATTN,
