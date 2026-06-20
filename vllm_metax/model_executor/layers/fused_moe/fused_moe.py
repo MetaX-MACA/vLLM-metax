@@ -951,6 +951,34 @@ def invoke_fused_moe_triton_kernel(
                 mul_routed_weight,
                 group_size=block_shape[1],
             )
+    elif (
+        A.dtype == torch.bfloat16
+        and B.dtype == torch.bfloat16
+        and C.dtype == torch.bfloat16
+        and A_scale is None
+        and B_scale is None
+        and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+        and mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API
+    ):
+        mctlass_ops.cutlass_moe_mm_bf16(
+            A.size(0),  # batch_size
+            B.size(1),  # N
+            A.size(1),  # K
+            B.size(0),  # num_experts
+            EM,  # EM
+            top_k,  # topk
+            A,  # a
+            B,  # b
+            C,  # c
+            A_scale,  # scale_a
+            B_scale,  # scale_b
+            B_bias,  # bias
+            topk_weights,  # topk_weights
+            sorted_token_ids,  # token_ids
+            expert_ids,  # expert_ids
+            num_tokens_post_padded,  # num_tokens_post_padded
+            mul_routed_weight,  # mul_routed_weight
+        )
     else:
         config = config.copy()
         if HAS_BIAS and config.get("SPLIT_K", 1) != 1:
@@ -1853,11 +1881,10 @@ def _prepare_expert_assignment(
             and block_shape[1] > 0
         )
         # -----------------------------------------------------------------
-        # Metax Modification: for int8_w8a8 & int4_w4a8
-        and not (
-            (use_int8_w8a8 or use_int4_w4a8)
-            and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
-        )
+        # Metax Modification:
+        # mctlass moe not support `sorted_token_ids is None`
+        # for all W4A8 WAA16 W8A8 and BF16
+        and not mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
     )
 
     if naive_block_assignment:
@@ -2236,6 +2263,7 @@ def fused_experts_impl(
 
         use_mctlass_moe_mm_on_stage2 = (
             mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+            and not mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API
             and use_int4_w4a8 is False
             and use_int8_w8a8 is False
             and hidden_states.dtype == torch.bfloat16
