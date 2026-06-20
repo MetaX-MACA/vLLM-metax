@@ -745,7 +745,7 @@ class Indexer(nn.Module):
         return self.indexer_op(hidden_states, q_input, k, weights)
 
 
-def _try_load_fp8_indexer_wk(
+def _try_load_fp8_int8_indexer_wk(
     name, tensor, buf, params_dict, loaded_params, pp_missing_layer_names
 ):
     """
@@ -757,8 +757,8 @@ def _try_load_fp8_indexer_wk(
     """
     if "indexer.wk." not in name or "wk_weights" in name:
         return False  # Weight is not an isolated WK weight for the indexer, ignore.
-    is_weight = name.endswith(".weight") and tensor.dtype == torch.float8_e4m3fn
-    is_scale = "weight_scale_inv" in name
+    is_weight = name.endswith(".weight") and (tensor.dtype == torch.float8_e4m3fn or tensor.dtype == torch.int8)
+    is_scale = "weight_scale_inv" in name or "weight_scale" in name
     if not is_weight and not is_scale:
         return False  # WK is not in FP8 format, ignore.
     # Buffer this tensor (weight or scale) until both have arrived.
@@ -778,10 +778,14 @@ def _try_load_fp8_indexer_wk(
     weight_fp8, scale_inv = entry["weight"], entry["scale"]
     del buf[layer_prefix]
     block_size = weight_fp8.shape[1] // scale_inv.shape[1]
+    if weight_fp8.dtype == torch.int8:
+        group_shape = GroupShape(1, block_size)
+    else:
+        group_shape = GroupShape(block_size, block_size)
     weight_bf16 = scaled_dequantize(
         weight_fp8,
         scale_inv,
-        group_shape=GroupShape(block_size, block_size),
+        group_shape=group_shape,
         out_dtype=torch.bfloat16,
     )
 
@@ -790,17 +794,6 @@ def _try_load_fp8_indexer_wk(
     param.weight_loader(param, weight_bf16, 0)
     loaded_params.add(fused_name)
     return True
-
-
-def _should_skip_bf16_indexer_wk_scale(name: str) -> bool:
-    return (
-        not mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER
-        and ".indexer.wk." in name
-        and (
-            name.endswith(".weight_scale")
-            or name.endswith(".weight_scale_inv")
-        )
-    )
 
 
 def _min_latency_fused_qkv_a_proj_impl(
@@ -1428,10 +1421,7 @@ class DeepseekV2Model(nn.Module):
                 rocm_aiter_moe_shared_expert_enabled and ("mlp.shared_experts" in name)
             )
 
-            if _should_skip_bf16_indexer_wk_scale(name):
-                continue
-
-            if _try_load_fp8_indexer_wk(
+            if _try_load_fp8_int8_indexer_wk(
                  name,
                 loaded_weight,
                 _pending_wk_fp8,

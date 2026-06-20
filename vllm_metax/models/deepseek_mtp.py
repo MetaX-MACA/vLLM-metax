@@ -33,7 +33,7 @@ from .deepseek_v2 import (
     DeepseekV2DecoderLayer,
     DeepseekV2MixtureOfExperts,
     DeepseekV2MoE,
-    _try_load_fp8_indexer_wk,
+    _try_load_fp8_int8_indexer_wk,
     get_spec_layer_idx_from_weight_name,
 )
 from vllm.model_executor.models.utils import get_pp_missing_layer_names, maybe_prefix
@@ -305,7 +305,7 @@ class DeepSeekMTP(nn.Module, DeepseekV2MixtureOfExperts):
             )
             name = self._rewrite_spec_layer_name(spec_layer, name)
 
-            if _try_load_fp8_indexer_wk(
+            if _try_load_fp8_int8_indexer_wk(
                 name,
                 loaded_weight,
                 _pending_wk_fp8,
