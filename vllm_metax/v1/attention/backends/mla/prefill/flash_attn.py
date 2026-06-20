@@ -83,6 +83,8 @@ class MacaFlashAttnPrefillBackend(MLAPrefillBackend):
                 and device_capability[0] == 9
             )
             or self.vllm_flash_attn_version == 4
+            or (v_head_dim == qk_head_dim)
+            or (v_head_dim == 128 and qk_head_dim == 192)
         )
 
         # Track whether we're using vllm's FA or upstream (for ROCm)
