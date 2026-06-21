@@ -4,6 +4,7 @@
 import hashlib
 import importlib
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -69,6 +70,46 @@ def _auto_init_hash_fn(request):
     else:
         hash_fn = sha256
     init_none_hash(hash_fn)
+
+
+def _make_model_config(
+    max_model_len: int,
+    original_max_model_len: int | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        max_model_len=max_model_len,
+        original_max_model_len=original_max_model_len,
+        is_encoder_decoder=False,
+    )
+
+
+def _make_vllm_config(
+    model_config: SimpleNamespace | None = None,
+    *,
+    max_model_len: int = 16,
+    num_gpu_blocks_override: int | None = None,
+    disable_hybrid_kv_cache_manager: bool = False,
+    kv_events_config: KVEventsConfig | None = None,
+) -> SimpleNamespace:
+    if model_config is None:
+        model_config = _make_model_config(max_model_len)
+    max_num_batched_tokens = model_config.max_model_len
+    return SimpleNamespace(
+        model_config=model_config,
+        cache_config=SimpleNamespace(
+            num_gpu_blocks_override=num_gpu_blocks_override,
+            mamba_cache_mode="none",
+        ),
+        parallel_config=SimpleNamespace(
+            decode_context_parallel_size=1,
+            prefill_context_parallel_size=1,
+        ),
+        scheduler_config=SimpleNamespace(
+            disable_hybrid_kv_cache_manager=disable_hybrid_kv_cache_manager,
+            max_num_batched_tokens=max_num_batched_tokens,
+        ),
+        kv_events_config=kv_events_config,
+    )
 
 
 def make_request(
@@ -802,8 +843,7 @@ def test_metrics_empty_stats():
 
 
 def test_get_kv_cache_configs_multiple_workers():
-    model_config = ModelConfig(max_model_len=16)
-    vllm_config = VllmConfig(model_config=model_config)
+    vllm_config = _make_vllm_config(max_model_len=16)
 
     ref_kv_cache_spec = new_kv_cache_spec()
     same_kv_cache_specs = [
@@ -1159,8 +1199,8 @@ def test_get_kv_cache_configs_multiple_workers():
     ids=["symmetric", "asymmetric"],
 )
 def test_get_kv_cache_configs_pp_sharding(asymmetric_memory):
-    model_config = ModelConfig(max_model_len=512)
-    vllm_config = VllmConfig(model_config=model_config)
+    model_config = _make_model_config(max_model_len=512)
+    vllm_config = _make_vllm_config(model_config)
 
     ref_kv_cache_spec = new_kv_cache_spec()
     pp_kv_cache_specs = [
@@ -1530,8 +1570,7 @@ def test_allocate_with_lookahead():
 
 def test_get_kv_cache_config_one_worker():
     # pass max_model_len to pass check_enough_kv_cache_memory
-    model_config = ModelConfig(max_model_len=16)
-    vllm_config = VllmConfig(model_config=model_config)
+    vllm_config = _make_vllm_config(max_model_len=16)
 
     mem_per_block_per_layer = 16 * 2 * 64 * 4 * 2
     # all layers are full attention -> single group
@@ -1822,7 +1861,7 @@ def test_get_kv_cache_config_one_worker():
 
 def test_get_kv_cache_configs_attention_free():
     kv_cache_specs: dict[str, KVCacheSpec] = {}
-    vllm_config = VllmConfig(model_config=ModelConfig(max_model_len=16))
+    vllm_config = _make_vllm_config(max_model_len=16)
     kv_cache_configs = get_kv_cache_configs(vllm_config, [kv_cache_specs], [0])
     assert kv_cache_configs == [
         KVCacheConfig(
@@ -2193,10 +2232,10 @@ def test_request_with_prompt_embeds_and_mm_inputs(hash_fn: Callable[[Any], bytes
 def test_auto_fit_max_model_len():
     """Test that max_model_len=-1 auto-fits to available GPU memory."""
     # Create config with original_max_model_len=-1 to trigger auto-fit
-    model_config = ModelConfig(max_model_len=1024)
+    model_config = _make_model_config(max_model_len=1024)
     # Simulate the user passing -1 by setting original_max_model_len
     model_config.original_max_model_len = -1
-    vllm_config = VllmConfig(model_config=model_config)
+    vllm_config = _make_vllm_config(model_config)
 
     mem_per_block_per_layer = 16 * 2 * 64 * 4 * 2  # 16KB per block per layer
     kv_cache_specs = {
@@ -2212,9 +2251,9 @@ def test_auto_fit_max_model_len():
     assert vllm_config.model_config.max_model_len == 1024
 
     # Reset for next test
-    model_config = ModelConfig(max_model_len=1024)
+    model_config = _make_model_config(max_model_len=1024)
     model_config.original_max_model_len = -1
-    vllm_config = VllmConfig(model_config=model_config)
+    vllm_config = _make_vllm_config(model_config)
 
     # With limited memory, max_model_len should be reduced
     # Need memory for at least max_model_len tokens
@@ -2231,10 +2270,10 @@ def test_auto_fit_max_model_len():
 def test_auto_fit_max_model_len_with_hybrid():
     """Test that auto-fit works with hybrid KV cache specs."""
     # Create config with original_max_model_len=-1 to trigger auto-fit
-    model_config = ModelConfig(max_model_len=8192)
+    model_config = _make_model_config(max_model_len=8192)
     # Simulate the user passing -1 by setting original_max_model_len
     model_config.original_max_model_len = -1
-    vllm_config = VllmConfig(model_config=model_config)
+    vllm_config = _make_vllm_config(model_config)
 
     mem_per_block_per_layer = 16 * 2 * 64 * 4 * 2  # 16KB per block per layer
     gamma = 2
@@ -2252,9 +2291,9 @@ def test_auto_fit_max_model_len_with_hybrid():
 
 def test_auto_fit_max_model_len_not_triggered():
     """Test that auto-fit is not triggered when original_max_model_len is not -1."""
-    model_config = ModelConfig(max_model_len=16)
+    model_config = _make_model_config(max_model_len=16)
     # original_max_model_len should be None by default, not -1
-    vllm_config = VllmConfig(model_config=model_config)
+    vllm_config = _make_vllm_config(model_config)
 
     mem_per_block_per_layer = 16 * 2 * 64 * 4 * 2
     kv_cache_specs = {
@@ -2274,12 +2313,10 @@ def test_auto_fit_max_model_len_respects_num_gpu_blocks_override():
     the raw `available_memory`. Without this, auto-fit could pick a
     max_model_len that no longer fits once `num_gpu_blocks_override` is applied.
     """
-    model_config = ModelConfig(max_model_len=16384)
+    model_config = _make_model_config(max_model_len=16384)
     model_config.original_max_model_len = -1  # request auto-fit
-    vllm_config = VllmConfig(model_config=model_config)
+    vllm_config = _make_vllm_config(model_config, num_gpu_blocks_override=32)
     # Cap the cache to 32 blocks regardless of available memory.
-    vllm_config.cache_config.num_gpu_blocks_override = 32
-
     mem_per_block_per_layer = 16 * 2 * 64 * 4 * 2
     kv_cache_specs = {
         "layer_1": new_kv_cache_spec(),  # block_size=16
@@ -2300,11 +2337,11 @@ def test_check_enough_kv_cache_memory_respects_num_gpu_blocks_override():
     `available_memory`. Without this, startup could accept a max_model_len
     that does not actually fit in `num_gpu_blocks_override` blocks.
     """
-    model_config = ModelConfig(max_model_len=16384)
-    vllm_config = VllmConfig(model_config=model_config)
+    vllm_config = _make_vllm_config(
+        max_model_len=16384,
+        num_gpu_blocks_override=32,
+    )
     # 32 blocks is far too small for max_model_len=16384 (would need 1024).
-    vllm_config.cache_config.num_gpu_blocks_override = 32
-
     mem_per_block_per_layer = 16 * 2 * 64 * 4 * 2
     kv_cache_specs = {
         "layer_1": new_kv_cache_spec(),
@@ -2393,7 +2430,6 @@ def test_hma_not_disabled_when_kv_events_enabled():
     to False (i.e. HMA remains enabled) when no other condition requires it
     to be disabled.
     """
-    model_config = ModelConfig(max_model_len=16)
     kv_events_config = KVEventsConfig(
         enable_kv_cache_events=True,
         publisher="null",
@@ -2401,8 +2437,8 @@ def test_hma_not_disabled_when_kv_events_enabled():
 
     # Leave disable_hybrid_kv_cache_manager as None (the default) so that
     # VllmConfig.__post_init__ resolves it automatically.
-    vllm_config = VllmConfig(
-        model_config=model_config,
+    vllm_config = _make_vllm_config(
+        max_model_len=16,
         kv_events_config=kv_events_config,
     )
 
