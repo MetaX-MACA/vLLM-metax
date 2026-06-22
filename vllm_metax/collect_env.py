@@ -546,7 +546,7 @@ def get_pip_packages(run_lambda, patterns=None):
         if pip_available:
             cmd = [sys.executable, "-mpip", "list", "--format=freeze"]
         elif os.environ.get("UV") is not None:
-            print("uv is set")
+            print("uv is set", file=sys.stderr)
             cmd = ["uv", "pip", "list", "--format=freeze"]
         else:
             raise RuntimeError(
@@ -590,7 +590,7 @@ def get_env_vars():
     try:
         from vllm.envs import environment_variables as vllm_envs
     except Exception as e:
-        print(e)
+        print(e, file=sys.stderr)
         vllm_envs = {}
 
     # 尝试导入插件环境变量
