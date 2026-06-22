@@ -16,3 +16,16 @@ def test_custom_op_schemas_allow_act_quant_fusion_import():
     import vllm.compilation.passes.fusion.act_quant_fusion as act_quant_fusion
 
     assert act_quant_fusion.SILU_MUL_OP is not None
+
+
+def test_compat_import_tolerates_missing_torch_cuda(monkeypatch):
+    import importlib
+    import torch
+
+    import vllm_metax.compat as compat
+
+    with monkeypatch.context() as context:
+        context.delattr(torch, "cuda", raising=False)
+        importlib.reload(compat)
+
+    importlib.reload(compat)
