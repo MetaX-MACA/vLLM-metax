@@ -5,6 +5,7 @@
 #
 # Affected versions: v0.21.0
 # -----------------------------------------------
+from . import custom_op_schemas
 from . import kda
 from . import lora
 from . import chunk_delta_h
