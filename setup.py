@@ -280,7 +280,9 @@ def get_maca_version() -> Version:
     """
     maca_path = os.getenv("MACA_PATH")
     if not maca_path:
-        raise RuntimeError("MACA_PATH must be set to the MACA SDK root.")
+        if USE_MACA:
+            raise RuntimeError("MACA_PATH must be set to the MACA SDK root.")
+        return None
 
     file_full_path = os.path.join(maca_path, "Version.txt")
     if not os.path.isfile(file_full_path):

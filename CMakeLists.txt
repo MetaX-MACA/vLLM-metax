@@ -28,7 +28,7 @@ option(USE_PRECOMPILED_KERNEL "Build custom op" OFF)
 
 set(MACA_PATH "$ENV{MACA_PATH}")
 
-if ("${MACA_PATH}" STREQUAL "" OR NOT EXISTS "${MACA_PATH}")
+if (USE_MACA AND ("${MACA_PATH}" STREQUAL "" OR NOT EXISTS "${MACA_PATH}"))
   message(FATAL_ERROR "MACA not found or invalid path, please check your MACA_PATH")
 endif()
 
