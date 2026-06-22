@@ -229,10 +229,12 @@ def get_cuda_compiler_version_commands():
 
     cucc_path = os.environ.get("CUCC_PATH")
     if cucc_path:
+        cucc_path = os.path.expanduser(os.path.expandvars(cucc_path))
         add_command([os.path.join(cucc_path, "bin", "cucc"), "--version"])
 
     maca_path = os.environ.get("MACA_PATH")
     if maca_path:
+        maca_path = os.path.expanduser(os.path.expandvars(maca_path))
         add_command(
             [
                 os.path.join(maca_path, "tools", "cu-bridge", "bin", "cucc"),

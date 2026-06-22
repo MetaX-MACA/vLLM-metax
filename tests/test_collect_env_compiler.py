@@ -32,6 +32,31 @@ class TestCollectEnvCompilerVersion(unittest.TestCase):
         self.assertLess(commands.index(["cucc", "--version"]), commands.index(["nvcc", "--version"]))
         self.assertEqual(commands[-1], ["nvcc", "--version"])
 
+    def test_expands_compiler_paths_from_env(self):
+        with patch.dict(
+            os.environ,
+            {
+                "HOME": "/workspace/user",
+                "USERPROFILE": "/workspace/user",
+                "CUCC_PATH": "$HOME/cu-bridge",
+                "MACA_PATH": "~/maca-sdk",
+            },
+            clear=True,
+        ):
+            commands = get_cuda_compiler_version_commands()
+
+        self.assertEqual(
+            commands[0],
+            [os.path.join("/workspace/user/cu-bridge", "bin", "cucc"), "--version"],
+        )
+        self.assertEqual(
+            commands[1],
+            [
+                os.path.join("/workspace/user/maca-sdk", "tools", "cu-bridge", "bin", "cucc"),
+                "--version",
+            ],
+        )
+
     def test_reads_first_available_compiler_version(self):
         calls = []
 
