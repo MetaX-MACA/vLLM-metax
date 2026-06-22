@@ -18,9 +18,11 @@ def _first_existing(paths: list[Path]) -> Path | None:
 
 def _run_version(command: list[str]) -> str | None:
     try:
-        return subprocess.check_output(
+        output = subprocess.check_output(
             command, stderr=subprocess.STDOUT, text=True, timeout=10
-        ).splitlines()[0]
+        )
+        lines = output.splitlines()
+        return lines[0] if lines else None
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return None
 
@@ -43,11 +45,13 @@ def collect_preflight() -> dict[str, object]:
         "mxcc": shutil.which("mxcc"),
         "cucc": _first_existing(
             [
-                Path(cucc_path or "") / "bin" / "cucc",
-                Path(cucc_path or "") / "tools" / "cucc",
+                Path(cucc_path) / "bin" / "cucc",
+                Path(cucc_path) / "tools" / "cucc",
             ]
-        ),
-        "nvcc": _first_existing([Path(cuda_path or "") / "bin" / "nvcc"]),
+        )
+        if cucc_path
+        else None,
+        "nvcc": _first_existing([Path(cuda_path) / "bin" / "nvcc"]) if cuda_path else None,
     }
     normalized_commands = {
         name: str(value) if value else None for name, value in commands.items()
@@ -58,14 +62,19 @@ def collect_preflight() -> dict[str, object]:
         if normalized_commands.get(name) is None
     ]
 
+    maca_version = None
+    if version_file and version_file.is_file():
+        try:
+            maca_version = version_file.read_text(encoding="utf-8").strip()
+        except OSError:
+            maca_version = None
+
     info: dict[str, object] = {
         "python": sys.version.replace("\n", " "),
         "maca_path": maca_path,
         "cucc_path": cucc_path,
         "cuda_path": cuda_path,
-        "maca_version": version_file.read_text(encoding="utf-8").strip()
-        if version_file and version_file.is_file()
-        else None,
+        "maca_version": maca_version,
         "commands": normalized_commands,
         "command_versions": {
             name: _run_version([path, "--version"])

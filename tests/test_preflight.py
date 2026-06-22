@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from vllm_metax.preflight import collect_preflight
+from vllm_metax.preflight import _run_version, collect_preflight
 
 
 def _make_executable(path: Path) -> None:
@@ -36,6 +36,19 @@ def test_preflight_finds_sdk_local_tools(tmp_path):
     assert info["commands"]["mxcc"].endswith("mxcc")
     assert info["commands"]["cucc"].endswith("cucc")
     assert info["commands"]["nvcc"].endswith("nvcc")
+
+
+def test_run_version_returns_none_for_empty_output():
+    with patch("subprocess.check_output", return_value=""):
+        assert _run_version(["cucc", "--version"]) is None
+
+
+def test_preflight_does_not_probe_current_directory_when_paths_are_missing():
+    with patch.dict(os.environ, {}, clear=True):
+        info = collect_preflight()
+
+    assert info["commands"]["cucc"] is None
+    assert info["commands"]["nvcc"] is None
 
 
 if __name__ == "__main__":
