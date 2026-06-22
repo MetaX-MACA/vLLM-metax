@@ -317,8 +317,11 @@ def get_plugin_version() -> str:
     sep = "+" if "+" not in version else "."  # dev versions might contain +
 
     if _is_maca():
-        maca_version = get_maca_version()
-        maca_version_str = str(maca_version) if maca_version != parse("0") else "unknown"
+        try:
+            maca_version = get_maca_version()
+            maca_version_str = str(maca_version) if maca_version != parse("0") else "unknown"
+        except Exception:
+            maca_version_str = "unknown"
         torch_version = torch.__version__
         major_minor_version = ".".join(torch_version.split(".")[:2])
         version += f"{sep}maca{maca_version_str}.torch{major_minor_version}"
