@@ -228,7 +228,7 @@ def get_maca_home():
     if TORCH_AVAILABLE:
         try:
             from torch.utils.cpp_extension import MACA_HOME
-        except ImportError:
+        except Exception:
             return None
         return MACA_HOME
     return None
@@ -239,9 +239,16 @@ def get_maca_sdk_version(run_lambda):
     if not maca_home:
         return None
     version_file = os.path.join(maca_home, "Version.txt")
-    return run_and_parse_first_match(
-        run_lambda, ["cat", version_file], r"Version:(.*)"
-    )
+    try:
+        with open(version_file, encoding="utf-8") as file:
+            content = file.read()
+    except Exception:
+        return None
+
+    match = re.search(r"Version:(.*)", content)
+    if match:
+        return match.group(1).strip()
+    return None
 
 
 def get_bios_version(run_lambda):
