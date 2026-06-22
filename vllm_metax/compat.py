@@ -42,24 +42,26 @@ if not _has_op_overload("silu_and_mul_per_block_quant"):
     )
 
 if hasattr(torch, "accelerator"):
-    for _name in (
-        "current_device",
-        "device_count",
-        "empty_cache",
-        "is_available",
-        "max_memory_allocated",
-        "mem_get_info",
-        "memory_allocated",
-        "memory_reserved",
-        "memory_stats",
-        "reset_peak_memory_stats",
-        "set_device",
-        "synchronize",
-    ):
-        if not hasattr(torch.accelerator, _name) and hasattr(torch.cuda, _name):
-            setattr(torch.accelerator, _name, getattr(torch.cuda, _name))
-    if (
-        not hasattr(torch.accelerator, "current_device_index")
-        and hasattr(torch.cuda, "current_device")
-    ):
-        torch.accelerator.current_device_index = torch.cuda.current_device
+    cuda_module = getattr(torch, "cuda", None)
+    if cuda_module is not None:
+        for _name in (
+            "current_device",
+            "device_count",
+            "empty_cache",
+            "is_available",
+            "max_memory_allocated",
+            "mem_get_info",
+            "memory_allocated",
+            "memory_reserved",
+            "memory_stats",
+            "reset_peak_memory_stats",
+            "set_device",
+            "synchronize",
+        ):
+            if not hasattr(torch.accelerator, _name) and hasattr(cuda_module, _name):
+                setattr(torch.accelerator, _name, getattr(cuda_module, _name))
+        if (
+            not hasattr(torch.accelerator, "current_device_index")
+            and hasattr(cuda_module, "current_device")
+        ):
+            torch.accelerator.current_device_index = cuda_module.current_device
