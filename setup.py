@@ -85,12 +85,12 @@ def is_url_available(url: str) -> bool:
 
 def get_maca_cuda_compiler() -> str:
     candidates = []
-    if CUDA_HOME:
-        candidates.append(Path(CUDA_HOME) / "bin" / "nvcc")
     if os.getenv("CUCC_PATH"):
         candidates.append(Path(os.environ["CUCC_PATH"]) / "bin" / "cucc")
     if os.getenv("MACA_PATH"):
         candidates.append(Path(os.environ["MACA_PATH"]) / "tools" / "cu-bridge" / "bin" / "cucc")
+    if CUDA_HOME:
+        candidates.append(Path(CUDA_HOME) / "bin" / "nvcc")
 
     for compiler in candidates:
         if compiler.is_file() and os.access(compiler, os.X_OK):
