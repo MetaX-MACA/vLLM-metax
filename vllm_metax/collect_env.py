@@ -601,7 +601,7 @@ def get_env_vars():
 
     env_vars = []
     reported = set()
-    secret_terms = ("secret", "token", "api_key", "apikey", "access", "password")
+    secret_terms = ("secret", "token", "api", "access", "password")
     report_prefix = (
         "TORCH",
         "NCCL",
@@ -627,7 +627,7 @@ def get_env_vars():
         env_vars.append("{}={}".format(name, value))
 
     for k, v in os.environ.items():
-        if any(term in k.lower() for term in secret_terms):
+        if any(term in k.lower() for term in secret_terms) and not k.endswith("_PYTHON_API"):
             continue
         if k in all_envs:
             add_env_var(k, v)
