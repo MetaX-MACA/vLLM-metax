@@ -4,7 +4,7 @@ export MACA_PATH="${1:-${MACA_PATH:-$DEFAULT_DIR}}"
 
 # cu-bridge
 export CUCC_PATH="${CUCC_PATH:-${MACA_PATH}/tools/cu-bridge}"
-export CUDA_PATH="${CUDA_PATH:-${CUCC_PATH}}"
+export CUDA_PATH="${CUCC_PATH}"
 export CUCC_CMAKE_ENTRY=2
 
 # update PATH
