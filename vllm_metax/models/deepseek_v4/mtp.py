@@ -19,13 +19,16 @@ import regex as re
 import torch
 import torch.nn as nn
 
-from vllm.compilation.decorators import support_torch_compile
 from vllm.config import VllmConfig
 from vllm.distributed import (
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
 )
 from vllm.logger import init_logger
+from vllm.model_executor.kernels.mhc.tilelang import (
+    hc_head_fused_kernel_tilelang,
+    mhc_post_tilelang,
+)
 from vllm.model_executor.layers.fused_moe import FusedMoE
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.linear import ReplicatedLinear
@@ -34,17 +37,21 @@ from vllm.model_executor.layers.vocab_parallel_embedding import (
     VocabParallelEmbedding,
 )
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
-from vllm.platforms import current_platform
+from vllm.model_executor.models.deepseek_mtp import SharedHead
+from vllm.model_executor.models.deepseek_v2 import get_spec_layer_idx_from_weight_name
+from vllm.model_executor.models.utils import maybe_prefix
+from vllm.models.deepseek_v4.common.ops import (
+    fused_mtp_input_rmsnorm,
+    mtp_shared_head_rmsnorm,
+)
 from vllm.sequence import IntermediateTensors
+from vllm.platforms import current_platform
 
-from .deepseek_mtp import SharedHead
-from .deepseek_v2 import get_spec_layer_idx_from_weight_name
-from .deepseek_v4 import (
+
+from .model import (
     DeepseekV4DecoderLayer,
-    hc_head,
     make_deepseek_v4_expert_params_mapping,
 )
-from vllm.model_executor.models.utils import maybe_prefix
 
 logger = init_logger(__name__)
 
@@ -69,6 +76,7 @@ class DeepSeekV4MultiTokenPredictorLayer(nn.Module):
     ) -> None:
         super().__init__()
 
+        assert vllm_config.speculative_config is not None
         config = vllm_config.speculative_config.draft_model_config.hf_config
         self.config = config
         quant_config = vllm_config.quant_config
@@ -131,22 +139,29 @@ class DeepSeekV4MultiTokenPredictorLayer(nn.Module):
         spec_step_index: int = 0,
     ) -> torch.Tensor:
         assert inputs_embeds is not None
-        # masking inputs at position 0, as not needed by MTP
-        inputs_embeds = torch.where(positions.unsqueeze(-1) == 0, 0, inputs_embeds)
-        inputs_embeds = self.enorm(inputs_embeds)
-
         # Target stashes pre-hc_head residual as flat (T, hc_mult * D);
-        # reshape to (T, hc_mult, D) — the training-time layout.
+        # reshape to (T, hc_mult, D) — the training-time layout — before
+        # the fused norm pass so both inputs are 3D-friendly.
         previous_hidden_states = previous_hidden_states.view(
             -1, self.hc_mult, self.config.hidden_size
         )
-        previous_hidden_states = self.hnorm(previous_hidden_states)
+        # Fused: mask inputs at position 0 (not needed by MTP), enorm, hnorm.
+        inputs_embeds, previous_hidden_states = fused_mtp_input_rmsnorm(
+            inputs_embeds,
+            positions,
+            previous_hidden_states,
+            self.enorm.weight.data,
+            self.hnorm.weight.data,
+            self.enorm.variance_epsilon,
+            self.hc_mult,
+        )
         hidden_states = self.h_proj(previous_hidden_states) + self.e_proj(
             inputs_embeds
         ).unsqueeze(-2)
-        hidden_states = self.mtp_block(
+        hidden_states, residual, post_mix, res_mix = self.mtp_block(
             positions=positions, x=hidden_states, input_ids=None
         )
+        hidden_states = mhc_post_tilelang(hidden_states, residual, post_mix, res_mix)
         # Return the flat pre-hc_head residual so it can be re-fed as the
         # next spec step's `previous_hidden_states` when
         # num_speculative_tokens > 1. hc_head is deferred to compute_logits.
@@ -159,18 +174,17 @@ class DeepSeekV4MultiTokenPredictor(nn.Module):
         config = vllm_config.model_config.hf_config
         self.mtp_start_layer_idx = config.num_hidden_layers
         self.num_mtp_layers = config.num_nextn_predict_layers
-        self.device = current_platform.device_type
 
         topk_tokens = config.index_topk
         self.topk_indices_buffer = torch.empty(
             vllm_config.scheduler_config.max_num_batched_tokens,
             topk_tokens,
             dtype=torch.int32,
-            device=self.device,
         )
 
-        # Three aux streams shared across all MTP layers, mirroring
-        # DeepseekV4Model. ROCm runs the same work serially for now.
+        # Three aux streams shared across all MTP layers, mirroring DeepseekV4Model.
+        # ------------------------------------------------
+        # Note: Metax disable multi stream for performance
         aux_stream_list = (
             None
             if current_platform.is_out_of_tree()
@@ -233,7 +247,7 @@ class DeepSeekV4MultiTokenPredictor(nn.Module):
         hidden_states = hidden_states.view(
             -1, mtp_layer.hc_mult, mtp_layer.config.hidden_size
         )
-        hidden_states = hc_head(
+        hidden_states = hc_head_fused_kernel_tilelang(
             hidden_states,
             mtp_layer.hc_head_fn,
             mtp_layer.hc_head_scale,
@@ -241,13 +255,15 @@ class DeepSeekV4MultiTokenPredictor(nn.Module):
             mtp_layer.rms_norm_eps,
             mtp_layer.hc_eps,
         )
-        logits = self.logits_processor(
-            mtp_layer.shared_head.head, mtp_layer.shared_head(hidden_states)
+        hidden_states = mtp_shared_head_rmsnorm(
+            hidden_states,
+            mtp_layer.shared_head.norm.weight.data,
+            mtp_layer.shared_head.norm.variance_epsilon,
         )
+        logits = self.logits_processor(mtp_layer.shared_head.head, hidden_states)
         return logits
 
 
-@support_torch_compile
 class DeepSeekV4MTP(nn.Module):
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
         super().__init__()
@@ -401,7 +417,7 @@ class DeepSeekV4MTP(nn.Module):
                     ):
                         loaded_weight = loaded_weight.view(torch.uint8)
                     for mapping in expert_mapping:
-                        param_name, weight_name, expert_id, shard_id = mapping
+                        param_name, weight_name, expert_id, expert_shard_id = mapping
                         if weight_name not in name:
                             continue
                         name_mapped = name.replace(weight_name, param_name)
@@ -416,7 +432,7 @@ class DeepSeekV4MTP(nn.Module):
                             param,
                             loaded_weight,
                             name_mapped,
-                            shard_id=shard_id,
+                            shard_id=expert_shard_id,
                             expert_id=expert_id,
                             return_success=True,
                         )
@@ -437,7 +453,12 @@ class DeepSeekV4MTP(nn.Module):
                             ".shared_experts.w2", ".shared_experts.down_proj"
                         )
                     if name.endswith(".ffn.gate.bias"):
-                        name = name.replace(".bias", ".e_score_correction_bias")
+                        # ``e_score_correction_bias`` lives on the gate
+                        # under a different attribute name.
+                        name = name.replace(
+                            ".ffn.gate.bias",
+                            ".ffn.gate.e_score_correction_bias",
+                        )
                     param = params_dict[name]
                     weight_loader = getattr(
                         param, "weight_loader", default_weight_loader

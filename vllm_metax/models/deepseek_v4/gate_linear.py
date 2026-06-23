@@ -6,7 +6,6 @@ import torch
 from vllm.model_executor.layers.fused_moe.router.gate_linear import GateLinear
 
 
-@GateLinear.register_oot
 class MacaGateLinear(GateLinear):
     """MoE gate linear layer with three-tier GEMM dispatch:
 

@@ -205,7 +205,13 @@ def int8_mqa_logits(
     if _int8_mqa_logits_impl is None:
         return _missing()
     return _int8_mqa_logits_impl(
-        q, kv, weights, cu_seqlen_ks, cu_seqlen_ke, clean_logits
+        q,
+        kv,
+        weights,
+        cu_seqlen_ks,
+        cu_seqlen_ke,
+        clean_logits,
+        backend="tilelang",
     )
 
 
@@ -251,7 +257,7 @@ def int8_paged_mqa_logits(
         block_tables,
         schedule_metadata,
         max_model_len,
-        clean_logits=True,
+        clean_logits,
     )
 
 

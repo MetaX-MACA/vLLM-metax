@@ -180,7 +180,7 @@ def sparse_attn_indexer_int8(
                 chunk.token_start : chunk.token_end, :topk_tokens
             ]
 
-            torch.ops.top_k_per_row_prefill(
+            ops.top_k_per_row_prefill(
                 logits,
                 chunk.cu_seqlen_ks,
                 chunk.cu_seqlen_ke,
@@ -242,7 +242,7 @@ def sparse_attn_indexer_int8(
             (topk_workspace,) = workspace_manager.get_simultaneous(
                 ((RADIX_TOPK_WORKSPACE_SIZE,), torch.uint8),
             )
-            torch.ops._C.persistent_topk(
+            ops.persistent_topk(
                 logits,
                 seq_lens,
                 topk_indices,

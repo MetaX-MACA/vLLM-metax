@@ -276,7 +276,9 @@ class DeepseekV32IndexerMetadataBuilder(AttentionMetadataBuilder):
         # smxx_fp8_fp4_paged_mqa_logits.hpp:233), so flatten there too.
         self.use_flattening = (
             self.use_fp4_indexer_cache
-            or not current_platform.is_device_capability_family(100)
+            # --------------------------
+            # Note: Metax support next_n > 2
+            # or not current_platform.is_device_capability_family(100)
         ) and next_n not in self.natively_supported_next_n_fp4
 
         sm_count = num_compute_units(self.device.index)

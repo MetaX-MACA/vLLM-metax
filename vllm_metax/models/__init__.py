@@ -31,7 +31,7 @@ def register_model():
     )
 
     ModelRegistry.register_model(
-        "DeepSeekV4MTPModel", "vllm_metax.models.deepseek_v4_mtp:DeepSeekV4MTP"
+        "DeepSeekV4MTPModel", "vllm_metax.models.deepseek_v4:DeepSeekV4MTP"
     )
 
     ModelRegistry.register_model(
