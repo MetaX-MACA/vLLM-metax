@@ -787,10 +787,8 @@ MacaPlatform.log_warnings()
 
 # --------------------------------------------------
 # Note: Put all env Override here for Maca platform
-mx_envs.override_vllm_env(
-    "VLLM_USE_FLASHINFER_SAMPLER", False, "flashinfer sampler are not supported on maca"
-)
-
+# Keep VLLM_USE_FLASHINFER_SAMPLER under upstream control.
+# MetaX can use the upstream default or opt out with VLLM_USE_FLASHINFER_SAMPLER=0.
 mx_envs.override_vllm_env(
     "VLLM_ENGINE_READY_TIMEOUT_S", 7200, "set timeout to 7200s for model loading"
 )
