@@ -6,6 +6,7 @@
 # code borrowed from https://github.com/pytorch/pytorch/blob/main/torch/utils/collect_env.py
 
 import argparse
+import contextlib
 import datetime
 import json
 import locale
@@ -850,9 +851,12 @@ def main():
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     args = parser.parse_args()
 
-    if not args.json:
+    if args.json:
+        with contextlib.redirect_stdout(sys.stderr):
+            output = get_json_env_info()
+    else:
         print("Collecting environment information...")
-    output = get_json_env_info() if args.json else get_pretty_env_info()
+        output = get_pretty_env_info()
     print(output)
 
     if (
