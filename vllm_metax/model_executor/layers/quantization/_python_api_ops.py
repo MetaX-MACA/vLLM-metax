@@ -14,11 +14,15 @@ from vllm.logger import logger
 # support W4A8 Per-Channel start
 # Init FusedMoeGEMM instance
 mctlass_moe_gemm = None
+mctlass_scaled_gemm = None
 with contextlib.suppress(ImportError):
     if mctlass_moe_gemm is None:
         from mctlassEx import FusedMoeGEMM
-
         mctlass_moe_gemm = FusedMoeGEMM()
+
+    if mctlass_scaled_gemm is None:
+        from mctlassEx import ScaledGEMM
+        mctlass_scaled_gemm = ScaledGEMM()
 
 
 # GEMM
@@ -208,25 +212,6 @@ direct_register_custom_op(
 )
 
 
-mctlass_op = None
-mctlass_scaled_gemm = None
-with contextlib.suppress(ImportError):
-    if mctlass_op is None:
-        import mctlassEx
-
-        mctlass_op = mctlassEx.mctlassExHandleWrapper()
-
-        try:
-            from mctlassEx import ScaledGEMM
-
-            mctlass_scaled_gemm = ScaledGEMM()
-        except ImportError:
-            logger.warning(
-                "Failed to import ScaledGEMM from mctlass. "
-                "scaled_mm_azp not support for now"
-            )
-
-
 # w8a8 scaled mm
 def mctlassEx_w8a8_scaled_mm_azp(
     out: torch.Tensor,
@@ -241,21 +226,12 @@ def mctlassEx_w8a8_scaled_mm_azp(
     if bias is not None and bias.dim() == 1:
         bias = bias.unsqueeze(0)
 
-    if azp is not None or azp_adj is not None or bias is not None:
-        assert mctlass_scaled_gemm is not None, (
-            "scaled_mm with azp and bias is not supported for current mctlass version"
-        )
-        _, K = a.shape
-        M, N = out.shape
-        mctlass_scaled_gemm(
-            [M, N, K], a, b, out, scale_a, scale_b.T, bias, azp_adj=azp_adj, azp=azp
-        )
-    else:
-        assert mctlass_op is not None, "mctlassOp is not imported correctly"
-        stream = torch.cuda.current_stream().cuda_stream
-        mctlass_op.mctlass_w8a8_scaled_mm_azp(
-            a, b, out, scale_a, scale_b.T, bias, azp_adj, azp, stream
-        )
+    assert mctlass_scaled_gemm is not None, "mctlass scale op is not imported correctly"
+    _, K = a.shape
+    M, N = out.shape
+    mctlass_scaled_gemm(
+        [M, N, K], a, b, out, scale_a, scale_b.T, bias, azp_adj=azp_adj, azp=azp
+    )
     return out
 
 
@@ -292,6 +268,7 @@ def mctlassEx_fused_moe_gemm(
     c: torch.Tensor,
     a_scales: torch.Tensor,
     b_scales: torch.Tensor,
+    bias: torch.Tensor | None,
     topk_weights: torch.Tensor,
     token_ids: torch.Tensor,
     expert_ids: torch.Tensor,
@@ -300,24 +277,27 @@ def mctlassEx_fused_moe_gemm(
     topk: int,
     mul_routed_weight: bool,
 ) -> torch.Tensor:
-    # TODO: need mctlass to fix it
-    stream = torch.cuda.current_stream().cuda_stream
+    assert mctlass_moe_gemm is not None, "mctlass op is not imported correctly"
     c1 = c.view(-1, c.size(-1)).contiguous()
-    assert mctlass_op is not None, "mctlassOp is not imported correctly"
-    mctlass_op.mctlass_fuse_moe_gemm(
+
+    mctlass_moe_gemm(
+        a.size(0),
+        b.size(1),
+        a.size(1),
+        b.size(0),
+        EM,
+        topk,
         a,
         b,
         c1,
         a_scales,
         b_scales,
+        bias,
         topk_weights,
         token_ids,
         expert_ids,
         num_tokens_post_padded,
-        EM,
-        topk,
         mul_routed_weight,
-        stream,
     )
     return c1.reshape(c.shape)
 
@@ -328,6 +308,7 @@ def mctlassEx_fused_moe_gemm_fake(
     c: torch.Tensor,
     a_scales: torch.Tensor,
     b_scales: torch.Tensor,
+    bias: torch.Tensor | None,
     topk_weights: torch.Tensor,
     token_ids: torch.Tensor,
     expert_ids: torch.Tensor,
@@ -574,11 +555,15 @@ def cutlass_scaled_mm_azp(
 def cutlass_moe_mm_w8a8_get_kernel_m(
     a: torch.Tensor, b: torch.Tensor, c: torch.Tensor, topk: int
 ) -> int:
-    assert mctlass_op is not None, "mctlassOp is not imported correctly"
+    assert mctlass_moe_gemm is not None, "mctlass op is not imported correctly"
     qa = a.to(torch.int8)
     qb = b.to(torch.int8)
     c1 = c.view(-1, c.size(-1)).contiguous()
-    return mctlass_op.mctlass_fuse_moe_get_kernel_m(qa, qb, c1, topk)
+    batch_size = qa.size(0)
+    K = qa.size(1)
+    num_experts = qb.size(0)
+    N = qb.size(1)
+    return mctlass_moe_gemm.get_kernel_m(a, b, c, num_experts, batch_size, N, K, topk)
 
 
 # -------------------------------------------------
@@ -593,6 +578,7 @@ def cutlass_moe_mm_w8a8(
     c: torch.Tensor,
     a_scales: torch.Tensor,
     b_scales: torch.Tensor,
+    bias: torch.Tensor | None,
     moe_weight: torch.Tensor,
     token_ids: torch.Tensor,
     expert_ids: torch.Tensor,
@@ -601,12 +587,14 @@ def cutlass_moe_mm_w8a8(
     topk: int,
     mul_routed_weight: bool,
 ) -> torch.Tensor:
+    assert bias is None, "mctlass api not support w8a8 with bias currently."
     torch.ops.vllm.mctlassEx_fused_moe_gemm(
         a,
         b,
         c,
         a_scales,
         b_scales,
+        bias,
         moe_weight,
         token_ids,
         expert_ids,

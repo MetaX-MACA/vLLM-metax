@@ -903,6 +903,7 @@ def invoke_fused_moe_triton_kernel(
             C,
             A_scale,
             B_scale,
+            B_bias,
             topk_weights,
             sorted_token_ids,
             expert_ids,
