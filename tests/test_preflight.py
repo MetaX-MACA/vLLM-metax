@@ -29,7 +29,14 @@ def test_preflight_finds_sdk_local_tools(tmp_path):
     _make_executable(cu_bridge / "CUDA_DIR" / "bin" / "nvcc")
 
     path = os.pathsep.join([str(maca / "bin"), os.environ.get("PATH", "")])
-    with patch.dict(os.environ, {"MACA_PATH": str(maca), "PATH": path}, clear=True):
+    env_patch = {
+        "MACA_PATH": str(maca),
+        "PATH": path,
+        "MACA_HOME": "",
+        "CUCC_PATH": "",
+        "CUDA_PATH": "",
+    }
+    with patch.dict(os.environ, env_patch):
         info = collect_preflight()
 
     assert info["maca_version"] == "MACA Version: 2.33.1"
@@ -44,7 +51,10 @@ def test_run_version_returns_none_for_empty_output():
 
 
 def test_preflight_does_not_probe_current_directory_when_paths_are_missing():
-    with patch.dict(os.environ, {}, clear=True):
+    with patch.dict(
+        os.environ,
+        {"MACA_PATH": "", "MACA_HOME": "", "CUCC_PATH": "", "CUDA_PATH": ""},
+    ):
         info = collect_preflight()
 
     assert info["commands"]["cucc"] is None
