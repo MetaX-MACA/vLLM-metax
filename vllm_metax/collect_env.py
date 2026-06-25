@@ -5,7 +5,10 @@
 # ruff: noqa
 # code borrowed from https://github.com/pytorch/pytorch/blob/main/torch/utils/collect_env.py
 
+import argparse
+import contextlib
 import datetime
+import json
 import locale
 import os
 import subprocess
@@ -544,7 +547,7 @@ def get_pip_packages(run_lambda, patterns=None):
         if pip_available:
             cmd = [sys.executable, "-mpip", "list", "--format=freeze"]
         elif os.environ.get("UV") is not None:
-            print("uv is set")
+            print("uv is set", file=sys.stderr)
             cmd = ["uv", "pip", "list", "--format=freeze"]
         else:
             raise RuntimeError(
@@ -588,7 +591,7 @@ def get_env_vars():
     try:
         from vllm.envs import environment_variables as vllm_envs
     except Exception as e:
-        print(e)
+        print(e, file=sys.stderr)
         vllm_envs = {}
 
     # 尝试导入插件环境变量
@@ -839,9 +842,21 @@ def get_pretty_env_info():
     return pretty_str(get_env_info())
 
 
+def get_json_env_info():
+    return json.dumps(get_env_info()._asdict(), indent=2, sort_keys=True)
+
+
 def main():
-    print("Collecting environment information...")
-    output = get_pretty_env_info()
+    parser = argparse.ArgumentParser(description="Collect vLLM-MetaX environment information.")
+    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    args = parser.parse_args()
+
+    if args.json:
+        with contextlib.redirect_stdout(sys.stderr):
+            output = get_json_env_info()
+    else:
+        print("Collecting environment information...")
+        output = get_pretty_env_info()
     print(output)
 
     if (
