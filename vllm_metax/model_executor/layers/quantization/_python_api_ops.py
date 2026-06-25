@@ -117,6 +117,105 @@ def mctlassEx_fused_moe_w4a8_get_kernel_m_per_channel(
 
 # end
 
+def mctlassEx_fused_moe_w4a16_get_kernel_m(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    c: torch.Tensor,
+    num_experts: int,
+    batch_size: int,
+    N: int,
+    K: int,
+    topk: int,
+    group_size: int,
+) -> int:
+    assert mctlass_moe_gemm is not None, "mctlass op is not imported correctly"
+    return mctlass_moe_gemm.get_kernel_m(
+        a, b, c, num_experts, batch_size, N, K, topk, is_blockwise=True, group_size=group_size
+    )
+
+
+def mctlassEx_fused_moe_w4a16_gemm(
+    batch_size: int,
+    N: int,
+    K: int,
+    num_experts: int,
+    EM: int,
+    topk: int,
+    a: torch.Tensor,
+    b: torch.Tensor,
+    c: torch.Tensor,
+    a_scales: torch.Tensor | None,
+    b_scales: torch.Tensor,
+    b_bias: torch.Tensor | None,
+    topk_weights: torch.Tensor,
+    token_ids: torch.Tensor,
+    expert_ids: torch.Tensor,
+    num_tokens_post_padded: torch.Tensor,
+    mul_routed_weight: bool,    
+    group_size: int,
+    b_zp: torch.Tensor | None,
+) -> torch.Tensor:
+    assert mctlass_moe_gemm is not None, "mctlass op is not imported correctly"
+    mctlass_moe_gemm(
+        batch_size,
+        N,
+        K,
+        num_experts,
+        EM,
+        topk,
+        a,
+        b,
+        c,
+        a_scales,
+        b_scales,
+        b_bias,
+        topk_weights,
+        token_ids,
+        expert_ids,
+        num_tokens_post_padded,
+        mul_routed_weight,
+        is_blockwise=True,
+        group_size=group_size,
+        zp_b=b_zp,
+    )
+    return c
+
+def mctlassEx_fused_moe_w4a16_gemm_fake(
+    batch_size: int,
+    N: int,
+    K: int,
+    num_experts: int,
+    EM: int,
+    topk: int,
+    a: torch.Tensor,
+    b: torch.Tensor,
+    c: torch.Tensor,
+    a_scales: torch.Tensor | None,
+    b_scales: torch.Tensor,
+    b_bias: torch.Tensor | None,
+    topk_weights: torch.Tensor,
+    token_ids: torch.Tensor,
+    expert_ids: torch.Tensor,
+    num_tokens_post_padded: torch.Tensor,
+    mul_routed_weight: bool,    
+    group_size: int,
+    b_zp: torch.Tensor | None,
+) -> torch.Tensor:
+    return c
+
+
+direct_register_custom_op(
+    op_name="mctlassEx_fused_moe_w4a16_gemm",
+    op_func=mctlassEx_fused_moe_w4a16_gemm,
+    mutates_args=["c"],
+    fake_impl=mctlassEx_fused_moe_w4a16_gemm_fake,
+    tags=(
+        ()
+        if is_torch_equal_or_newer("2.7.0")
+        else (torch.Tag.needs_fixed_stride_order,)
+    ),
+)
+
 
 def mctlassEx_fused_moe_bf16_get_kernel_m(
     A: torch.Tensor,
@@ -718,4 +817,69 @@ def cutlass_moe_mm_bf16(
         expert_ids,
         num_tokens_post_padded,
         mul_routed_weight,
+    )
+
+def cutlass_moe_mm_w4a16_get_kernel_m(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    c: torch.Tensor,
+    K: int,
+    num_valid_tokens: int,
+    topk: int,
+    group_size: int,
+) -> int:
+    batch_size = a.size(0)
+    num_experts, N, _ = b.size()
+
+    return mctlassEx_fused_moe_w4a16_get_kernel_m(
+        a=a,
+        b=b.view(dtype=torch.quint4x2),
+        c=c,
+        num_experts=num_experts,
+        batch_size=batch_size,
+        N=N,
+        K=K,
+        topk=topk,
+        group_size=group_size,
+    )
+
+def cutlass_moe_mm_w4a16(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    c: torch.Tensor,
+    b_scales: torch.Tensor,
+    b_zp: torch.Tensor,
+    topk_weights: torch.Tensor,
+    token_ids: torch.Tensor,
+    expert_ids: torch.Tensor,
+    num_tokens_post_padded: torch.Tensor,
+    topk: int,
+    mul_routed_weight: bool,
+    group_size: int,
+) -> torch.Tensor:
+    batch_size = a.size(0)
+    K = a.size(1)
+    num_experts, N, _ = b.size()
+    EM = token_ids.size(0)
+
+    return torch.ops.vllm.mctlassEx_fused_moe_w4a16_gemm(
+        batch_size=batch_size,
+        N=N,
+        K=K,
+        num_experts=num_experts,
+        EM=EM,
+        topk=topk,
+        a=a,
+        b=b.view(dtype=torch.quint4x2),
+        c=c,
+        a_scales=None,
+        b_scales=b_scales,
+        b_bias=None,
+        topk_weights=topk_weights,
+        token_ids=token_ids,
+        expert_ids=expert_ids,
+        num_tokens_post_padded=num_tokens_post_padded,
+        mul_routed_weight=mul_routed_weight,
+        group_size=group_size,
+        b_zp=b_zp,
     )
