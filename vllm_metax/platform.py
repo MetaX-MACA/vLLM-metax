@@ -7,12 +7,14 @@ pynvml. However, it should not initialize cuda context.
 import importlib
 import math
 import os
+import random
 from collections.abc import Callable
 from datetime import timedelta
 from functools import cache, wraps
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
 
+import numpy as np
 import torch
 from torch.distributed import PrefixStore, ProcessGroup
 from torch.distributed.distributed_c10d import is_nccl_available
@@ -174,6 +176,14 @@ class MacaPlatformBase(Platform):
     @classmethod
     def manual_seed_all(cls, seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
+
+    @classmethod
+    def seed_everything(cls, seed: int | None = None) -> None:
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
 
     @classmethod
     def get_device_capability(cls, device_id: int = 0) -> DeviceCapability | None:
