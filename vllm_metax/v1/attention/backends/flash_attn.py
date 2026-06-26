@@ -640,10 +640,10 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
                 - common_attn_metadata.query_start_loc[num_decodes]
             )
             prefill_seq_lens = common_attn_metadata.seq_lens[num_decodes:num_reqs]
-            prefill_seq_lens_cpu = common_attn_metadata.seq_lens_cpu[
-                num_decodes:num_reqs
-            ]
-            prefill_max_seq_len = int(prefill_seq_lens_cpu.max().item())
+            # max_seq_len already bounds the prefill rows and is all that
+            # max_seqlen_k needs, so reuse it instead of slicing the deprecated
+            # seq_lens_cpu just to take its max.
+            prefill_max_seq_len = max_seq_len
             prefill_block_table_tensor = common_attn_metadata.block_table_tensor[
                 num_decodes:num_reqs
             ]
