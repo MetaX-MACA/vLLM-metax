@@ -214,7 +214,7 @@ direct_register_custom_op(
 
 # w8a8 scaled mm
 def mctlassEx_w8a8_scaled_mm_azp(
-    out: torch.Tensor,
+    out_dtype: torch.dtype,
     a: torch.Tensor,
     b: torch.Tensor,
     scale_a: torch.Tensor,
@@ -223,6 +223,8 @@ def mctlassEx_w8a8_scaled_mm_azp(
     azp_adj: torch.Tensor | None = None,
     azp: torch.Tensor | None = None,
 ) -> torch.Tensor:
+    out = torch.empty((a.shape[0], b.shape[1]), dtype=out_dtype, device=a.device)
+
     if bias is not None and bias.dim() == 1:
         bias = bias.unsqueeze(0)
 
@@ -236,7 +238,7 @@ def mctlassEx_w8a8_scaled_mm_azp(
 
 
 def mctlassEx_w8a8_scaled_mm_azp_fake(
-    out: torch.Tensor,
+    out_dtype: torch.dtype,
     a: torch.Tensor,
     b: torch.Tensor,
     scale_a: torch.Tensor,
@@ -245,13 +247,15 @@ def mctlassEx_w8a8_scaled_mm_azp_fake(
     azp_adj: torch.Tensor | None = None,
     azp: torch.Tensor | None = None,
 ) -> torch.Tensor:
+    out = torch.empty((a.shape[0], b.shape[1]), dtype=out_dtype, device=a.device)
+
     return out
 
 
 direct_register_custom_op(
     op_name="mctlassEx_w8a8_scaled_mm_azp",
     op_func=mctlassEx_w8a8_scaled_mm_azp,
-    mutates_args=["out"],
+    mutates_args=[],
     fake_impl=mctlassEx_w8a8_scaled_mm_azp_fake,
     tags=(
         ()
@@ -506,9 +510,7 @@ def cutlass_scaled_mm(
     target_shape = (*a.shape[:-1], b.shape[1])
     a = a.view(-1, a.shape[-1])
 
-    out = torch.empty((a.shape[0], b.shape[1]), dtype=out_dtype, device=a.device)
-
-    torch.ops.vllm.mctlassEx_w8a8_scaled_mm_azp(out, a, b, scale_a, scale_b, bias)
+    out = torch.ops.vllm.mctlassEx_w8a8_scaled_mm_azp(out_dtype, a, b, scale_a, scale_b, bias)
 
     return out.view(*target_shape)
 
@@ -538,9 +540,8 @@ def cutlass_scaled_mm_azp(
     a = a.view(-1, a.shape[-1])
     assert azp is None or azp.numel() == a.shape[0]
 
-    out = torch.empty((a.shape[0], b.shape[1]), dtype=out_dtype, device=a.device)
-    torch.ops.vllm.mctlassEx_w8a8_scaled_mm_azp(
-        out, a, b, scale_a, scale_b, bias, azp_adj, azp
+    out = torch.ops.vllm.mctlassEx_w8a8_scaled_mm_azp(
+        out_dtype, a, b, scale_a, scale_b, bias, azp_adj, azp
     )
 
     return out.view(*target_shape)
