@@ -76,10 +76,11 @@ Build the plugin:
 
     This would install a *cuda-build* vllm which carried a lot of cuda-related dependencies and kernel files together with internal vllm_flash_attn and triton_kernels, which may wrongly cause runtime errors on some checking. (E.g. Some pre-conditions that should **only** be detected on `cuda` may also passed to `maca` backend by mistake in this kind of vllm.)
 
-Clone vllm project:
+Clone the vLLM branch that matches the current vllm-metax version. The current
+master branch is aligned with vLLM v0.23.0:
 
-```bash 
-git clone  --depth 1 --branch releases/v0.22.0 https://github.com/vllm-project/vllm 
+```bash
+git clone --depth 1 --branch releases/v0.23.0 https://github.com/vllm-project/vllm
 cd vllm
 ```
 
