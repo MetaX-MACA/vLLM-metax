@@ -1,3 +1,6 @@
+import sys
+sys.path.insert(0, '/tmp')
+import patch_infer_schema
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
@@ -40,7 +43,10 @@ from vllm import LLM, SamplingParams
 from vllm.assets.audio import AudioAsset
 from vllm.assets.image import ImageAsset
 from vllm.assets.video import VideoAsset
-from vllm.config import ConvertOption, RunnerOption, _get_and_verify_dtype
+try:
+    from vllm.config import ConvertOption, RunnerOption, _get_and_verify_dtype
+except ImportError:
+    from vllm.config.model import ConvertOption, RunnerOption, _get_and_verify_dtype
 from vllm.connections import global_http_connection
 from vllm.distributed import (cleanup_dist_env_and_memory,
                               init_distributed_environment,
@@ -51,7 +57,7 @@ from vllm.logger import init_logger
 from vllm.multimodal.utils import fetch_image
 from vllm.outputs import RequestOutput
 from vllm.sampling_params import BeamSearchParams
-from vllm.sequence import Logprob
+from vllm.logprobs import Logprob
 from vllm.transformers_utils.utils import maybe_model_redirect
 
 logger = init_logger(__name__)
@@ -1386,3 +1392,15 @@ def image_urls(request, local_asset_server) -> list[str]:
     """Indirect fixture: takes a list of names, returns list of full URLs."""
     names: list[str] = request.param
     return [local_asset_server.url_for(name) for name in names]
+
+
+@pytest.fixture
+def default_vllm_config():
+    """Set a default VllmConfig for tests that directly test CustomOps or pathways
+    that use get_current_vllm_config() outside of a full engine context.
+    """
+    from vllm.config import VllmConfig, set_current_vllm_config
+    from vllm.config.device import DeviceConfig
+
+    with set_current_vllm_config(VllmConfig(device_config=DeviceConfig("cuda"))):
+        yield
