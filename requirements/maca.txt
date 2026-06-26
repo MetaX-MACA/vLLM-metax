@@ -1,7 +1,8 @@
 # Common dependencies
 -r maca_private.txt
 -r common.txt
-
+apache-tvm-ffi==0.1.9
+tilelang==0.1.9
 numba == 0.61.2
 
 torch-c-dlpack-ext
