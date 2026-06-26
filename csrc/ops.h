@@ -335,3 +335,7 @@ void selective_scan_fwd(
     const std::optional<torch::Tensor>& block_idx_first_scheduled_token,
     const std::optional<torch::Tensor>& block_idx_last_scheduled_token,
     const std::optional<torch::Tensor>& initial_state_idx);
+
+// Custom element-wise addition: out = a + b
+void custom_add(torch::Tensor& out, const torch::Tensor& a,
+                const torch::Tensor& b);

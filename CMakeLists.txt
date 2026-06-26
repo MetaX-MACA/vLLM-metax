@@ -216,6 +216,7 @@ set(VLLM_EXT_SRC
   "csrc/attention/vertical_slash_index.cu"
   "csrc/pos_encoding_kernels.cu"
   "csrc/activation_kernels.cu"
+  "csrc/custom_add_kernels.cu"
   "csrc/layernorm_kernels.cu"
   "csrc/fused_qknorm_rope_kernel.cu"
   "csrc/layernorm_quant_kernels.cu"
@@ -232,11 +233,12 @@ set(VLLM_EXT_SRC
   "csrc/torch_bindings.cpp")
 
 # support opt of gptq-marlin
-set_source_files_properties(
-  "csrc/quantization/gptq/q_gemm.cu"
-  PROPERTIES
-  COMPILE_FLAGS "-mllvm -metaxgpu-igroup=true -mllvm -metaxgpu-igroup-config=B8 -maxmregcount=128"
-)
+# NOTE(yzhang): temporarily disabled due to cu-bridge __cuda_runtime.h issue
+# set_source_files_properties(
+#   "csrc/quantization/gptq/q_gemm.cu"
+#   PROPERTIES
+#   COMPILE_FLAGS "-mllvm -metaxgpu-igroup=true -mllvm -metaxgpu-igroup-config=B8 -maxmregcount=128"
+# )
 
 if(VLLM_GPU_LANG STREQUAL "CUDA")
   SET(CUTLASS_ENABLE_HEADERS_ONLY ON CACHE BOOL "Enable only the header library")

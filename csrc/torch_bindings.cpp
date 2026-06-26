@@ -16,7 +16,7 @@
 // https://docs.google.com/document/d/1_W62p8WJOQQUzPsJYa7s701JXt0qf2OfLub2sbkHOaU/edit#heading=h.ptttacy8y1u9
 // https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/README.md#annotations
 
-TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
+TORCH_LIBRARY_FRAGMENT(TORCH_EXTENSION_NAME, ops) {
   // vLLM custom ops
   //
 
@@ -147,6 +147,10 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
   // Quick GELU implementation.
   ops.def("gelu_quick(Tensor! out, Tensor input) -> ()");
   ops.impl("gelu_quick", torch::kCUDA, &gelu_quick);
+
+  // Custom element-wise addition: out = a + b
+  ops.def("custom_add(Tensor! out, Tensor a, Tensor b) -> ()");
+  ops.impl("custom_add", torch::kCUDA, &custom_add);
 
   // Layernorm
   // Apply Root Mean Square (RMS) Normalization to the input tensor.

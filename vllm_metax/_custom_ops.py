@@ -21,7 +21,18 @@ import vllm.envs as envs
 
 from vllm.platforms import current_platform
 
-current_platform.import_kernels()
+import os
+os.environ["USE_PRECOMPILED_KERNEL"] = "0"
+
+# vllm/_custom_ops.py already called current_platform.import_kernels()
+# (which loaded mcoplib._C).  Force our source-built extension on top so
+# that custom ops added to csrc/ are also registered into torch.ops._C.
+# This must happen AFTER mcoplib._C is loaded but BEFORE any custom-op
+# function is called.
+try:
+    import vllm_metax._C  # noqa: F401
+except ImportError:
+    pass
 
 
 def awq_gemm(
@@ -136,6 +147,24 @@ def cp_gather_indexer_k_quant_cache(
         torch.ops._C_cache_ops.cp_gather_indexer_k_quant_cache(
             kv_cache, dst_k, dst_scale, block_table, cu_seq_lens
         )
+
+
+def custom_add(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """Element-wise addition optimized for MACA C500.
+
+    Same signature as :func:`torch.add` but dispatches through the
+    MACA-optimized CUDA kernel registered at ``torch.ops._C.custom_add``.
+    """
+    from vllm.logger import init_logger
+    logger = init_logger(__name__)
+    logger.info_once(
+        "[CUSTOM_ADD] _custom_ops.custom_add invoked: "
+        "a.shape=%s, a.dtype=%s, a.device=%s",
+        a.shape, a.dtype, a.device,
+    )
+    out = torch.empty_like(a)
+    torch.ops._C.custom_add(out, a, b)
+    return out
 
 
 # TODO: remove duplicates with vllm/_custom_ops.py
