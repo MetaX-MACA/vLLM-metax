@@ -27,14 +27,21 @@ def get_cpu_cores():
     return multiprocessing.cpu_count()
 
 
-def generate_presets(output_path="CMakeUserPresets.json", force_overwrite=False):
+def generate_presets(
+    output_path="CMakeUserPresets.json",
+    force_overwrite=False,
+    cuda_compiler=None,
+):
     """Generates the CMakeUserPresets.json file."""
 
     print("Attempting to detect your system configuration...")
 
     # Detect NVCC
-    nvcc_path = None
-    if CUDA_HOME:
+    nvcc_path = cuda_compiler
+    if nvcc_path:
+        print(f"Using CUDA-compatible compiler from argument: {nvcc_path}")
+
+    if not nvcc_path and CUDA_HOME:
         prospective_path = os.path.join(CUDA_HOME, "bin", "nvcc")
         if os.path.exists(prospective_path):
             nvcc_path = prospective_path
@@ -176,6 +183,23 @@ if __name__ == "__main__":
         action="store_true",
         help="Force overwrite existing CMakeUserPresets.json without prompting",
     )
+    parser.add_argument(
+        "--output",
+        default="CMakeUserPresets.json",
+        help="Output path for the generated presets file",
+    )
+    parser.add_argument(
+        "--cuda-compiler",
+        help=(
+            "Path to the CUDA-compatible compiler. Use this in non-interactive "
+            "MACA containers when the compiler is exposed as cucc/mxcc rather "
+            "than nvcc."
+        ),
+    )
 
     args = parser.parse_args()
-    generate_presets(force_overwrite=args.force_overwrite)
+    generate_presets(
+        output_path=args.output,
+        force_overwrite=args.force_overwrite,
+        cuda_compiler=args.cuda_compiler,
+    )
