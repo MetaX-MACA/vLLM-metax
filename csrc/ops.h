@@ -339,3 +339,11 @@ void selective_scan_fwd(
 // Custom element-wise addition: out = a + b
 void custom_add(torch::Tensor& out, const torch::Tensor& a,
                 const torch::Tensor& b);
+
+// Custom BF16 GEMM: out = a @ b,  optimized for MACA C500 via
+// __builtin_mxc_mma_16x16x16bf16 WMMA intrinsics.
+//   a: [M, K] bfloat16 row-major
+//   b: [K, N] bfloat16 row-major
+//   out: [M, N] float32
+void custom_gemm(torch::Tensor& out, const torch::Tensor& a,
+                 const torch::Tensor& b, int64_t M, int64_t N, int64_t K);

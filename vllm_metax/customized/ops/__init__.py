@@ -1,3 +1,3 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
-from . import activation, apply_rotary_embedding, custom_add, layernorm, rotary_embedding  # noqa: F401
+from . import activation, apply_rotary_embedding, custom_add, custom_gemm, layernorm, rotary_embedding  # noqa: F401

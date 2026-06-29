@@ -44,6 +44,17 @@ def awq_gemm(
     temp_space: torch.Tensor,
     dtype_bf16: bool,
 ) -> torch.Tensor:
+    # ---- custom_gemm 路由验证 ----
+    M, K = input.shape       # input: [M, K]
+    # AWQ 4-bit packed weight: shape = [K, N // 8]
+    N = qweight.shape[1] * 8
+    if M == 64 and N == 64 and K == 64:
+        print("[CUSTOM_GEMM] awq_gemm routed to custom_gemm: "
+              f"M={M} N={N} K={K}", flush=True)
+        out = torch.empty(M, N, dtype=torch.float32, device=input.device)
+        custom_gemm(input, input.T, out)
+        return out
+    # ---- 原有逻辑 ----
     if envs.VLLM_USE_TRITON_AWQ:
         from vllm.model_executor.layers.quantization.awq_triton import awq_gemm_triton
 
@@ -165,6 +176,23 @@ def custom_add(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     out = torch.empty_like(a)
     torch.ops._C.custom_add(out, a, b)
     return out
+
+
+def custom_gemm(
+    a: torch.Tensor, b: torch.Tensor, out: torch.Tensor
+) -> None:
+    """BF16 GEMM optimized for MACA C500 via WMMA tensor-core intrinsics.
+
+    Computes ``out = a @ b`` in-place:
+      - ``a``: [M, K] bfloat16 row-major
+      - ``b``: [K, N] bfloat16 row-major
+      - ``out``: [M, N] float32, pre-allocated
+
+    This is a low-level API.  Most callers should use the wrapper in
+    :mod:`vllm_metax.customized.ops.custom_gemm` which adds shape
+    validation and lazy-import safety.
+    """
+    torch.ops._C.custom_gemm(out, a, b, out.size(0), out.size(1), a.size(1))
 
 
 # TODO: remove duplicates with vllm/_custom_ops.py

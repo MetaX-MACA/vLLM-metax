@@ -152,6 +152,11 @@ TORCH_LIBRARY_FRAGMENT(TORCH_EXTENSION_NAME, ops) {
   ops.def("custom_add(Tensor! out, Tensor a, Tensor b) -> ()");
   ops.impl("custom_add", torch::kCUDA, &custom_add);
 
+  // Custom BF16 GEMM: out = a @ b  (MACA C500 WMMA-accelerated)
+  ops.def("custom_gemm(Tensor! out, Tensor a, Tensor b, int M, int N, int K)"
+          " -> ()");
+  ops.impl("custom_gemm", torch::kCUDA, &custom_gemm);
+
   // Layernorm
   // Apply Root Mean Square (RMS) Normalization to the input tensor.
   ops.def(
