@@ -663,7 +663,7 @@ def cutlass_moe_mm_w8a8_get_kernel_m(
     K = qa.size(1)
     num_experts = qb.size(0)
     N = qb.size(1)
-    return mctlass_moe_gemm.get_kernel_m(a, b, c, num_experts, batch_size, N, K, topk)
+    return mctlass_moe_gemm.get_kernel_m(qa, qb, c1, num_experts, batch_size, N, K, topk)
 
 
 # -------------------------------------------------
