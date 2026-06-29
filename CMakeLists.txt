@@ -32,8 +32,10 @@ if (USE_MACA AND ("${MACA_PATH}" STREQUAL "" OR NOT EXISTS "${MACA_PATH}"))
   message(FATAL_ERROR "MACA not found or invalid path, please check your MACA_PATH")
 endif()
 
-message(STATUS "MACA found at ${MACA_PATH}")
-add_compile_definitions(USE_MACA)
+if (USE_MACA)
+  message(STATUS "MACA found at ${MACA_PATH}")
+  add_compile_definitions(USE_MACA)
+endif()
 # /-----------------------------------------------------/
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/utils.cmake)

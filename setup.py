@@ -267,7 +267,7 @@ class cmake_build_ext(build_ext):
 
 def _is_maca() -> bool:
     has_cuda = torch.version.cuda is not None
-    return VLLM_TARGET_DEVICE == "cuda" and has_cuda
+    return USE_MACA and VLLM_TARGET_DEVICE == "cuda" and has_cuda
 
 
 def _build_custom_ops() -> bool:
