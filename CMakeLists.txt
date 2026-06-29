@@ -28,12 +28,14 @@ option(USE_PRECOMPILED_KERNEL "Build custom op" OFF)
 
 set(MACA_PATH "$ENV{MACA_PATH}")
 
-if (NOT EXISTS ${MACA_PATH})
+if (USE_MACA AND ("${MACA_PATH}" STREQUAL "" OR NOT EXISTS "${MACA_PATH}"))
   message(FATAL_ERROR "MACA not found or invalid path, please check your MACA_PATH")
 endif()
 
-message(STATUS "MACA found at ${MACA_PATH}")
-add_compile_definitions(USE_MACA)
+if (USE_MACA)
+  message(STATUS "MACA found at ${MACA_PATH}")
+  add_compile_definitions(USE_MACA)
+endif()
 # /-----------------------------------------------------/
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/utils.cmake)

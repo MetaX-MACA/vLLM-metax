@@ -267,7 +267,7 @@ class cmake_build_ext(build_ext):
 
 def _is_maca() -> bool:
     has_cuda = torch.version.cuda is not None
-    return VLLM_TARGET_DEVICE == "cuda" and has_cuda
+    return USE_MACA and VLLM_TARGET_DEVICE == "cuda" and has_cuda
 
 
 def _build_custom_ops() -> bool:
@@ -278,7 +278,13 @@ def get_maca_version() -> Version:
     """
     Returns the MACA SDK Version
     """
-    file_full_path = os.path.join(os.getenv("MACA_PATH"), "Version.txt")
+    maca_path = os.getenv("MACA_PATH")
+    if not maca_path:
+        if USE_MACA:
+            raise RuntimeError("MACA_PATH must be set to the MACA SDK root.")
+        return None
+
+    file_full_path = os.path.join(maca_path, "Version.txt")
     if not os.path.isfile(file_full_path):
         return None
 
