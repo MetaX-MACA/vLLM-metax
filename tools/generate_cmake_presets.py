@@ -34,7 +34,12 @@ def generate_presets(output_path="CMakeUserPresets.json", force_overwrite=False)
 
     # Detect NVCC
     nvcc_path = None
-    if CUDA_HOME:
+    cudacxx = os.environ.get("CUDACXX")
+    if cudacxx and os.path.exists(cudacxx):
+        nvcc_path = cudacxx
+        print(f"Found CUDA compiler via CUDACXX: {nvcc_path}")
+
+    if not nvcc_path and CUDA_HOME:
         prospective_path = os.path.join(CUDA_HOME, "bin", "nvcc")
         if os.path.exists(prospective_path):
             nvcc_path = prospective_path
