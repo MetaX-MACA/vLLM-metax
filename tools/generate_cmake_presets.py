@@ -27,7 +27,11 @@ def get_cpu_cores():
     return multiprocessing.cpu_count()
 
 
-def generate_presets(output_path="CMakeUserPresets.json", force_overwrite=False):
+def generate_presets(
+    output_path="CMakeUserPresets.json",
+    force_overwrite=False,
+    build_type="Release",
+):
     """Generates the CMakeUserPresets.json file."""
 
     print("Attempting to detect your system configuration...")
@@ -96,7 +100,7 @@ def generate_presets(output_path="CMakeUserPresets.json", force_overwrite=False)
 
     cache_variables = {
         "CMAKE_CUDA_COMPILER": nvcc_path,
-        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_BUILD_TYPE": build_type,
         "VLLM_PYTHON_EXECUTABLE": python_executable,
         "CMAKE_INSTALL_PREFIX": "${sourceDir}",
         "CMAKE_CUDA_FLAGS": "",
@@ -116,8 +120,8 @@ def generate_presets(output_path="CMakeUserPresets.json", force_overwrite=False)
         print("No compiler cache ('ccache' or 'sccache') found.")
 
     configure_preset = {
-        "name": "release",
-        "binaryDir": "${sourceDir}/cmake-build-release",
+        "name": build_type.lower(),
+        "binaryDir": f"${{sourceDir}}/cmake-build-{build_type.lower()}",
         "cacheVariables": cache_variables,
     }
     if which("ninja"):
@@ -134,8 +138,8 @@ def generate_presets(output_path="CMakeUserPresets.json", force_overwrite=False)
         "configurePresets": [configure_preset],
         "buildPresets": [
             {
-                "name": "release",
-                "configurePreset": "release",
+                "name": build_type.lower(),
+                "configurePreset": build_type.lower(),
                 "jobs": cmake_jobs,
             }
         ],
@@ -172,10 +176,19 @@ def generate_presets(output_path="CMakeUserPresets.json", force_overwrite=False)
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--build-type",
+        default="Release",
+        choices=("Debug", "Release", "RelWithDebInfo", "MinSizeRel"),
+        help="CMake build type to write into the generated preset",
+    )
+    parser.add_argument(
         "--force-overwrite",
         action="store_true",
         help="Force overwrite existing CMakeUserPresets.json without prompting",
     )
 
     args = parser.parse_args()
-    generate_presets(force_overwrite=args.force_overwrite)
+    generate_presets(
+        force_overwrite=args.force_overwrite,
+        build_type=args.build_type,
+    )
