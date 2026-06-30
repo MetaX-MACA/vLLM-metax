@@ -45,14 +45,10 @@ logger = logging.getLogger(__name__)
 envs = load_module_from_path("envs", os.path.join(ROOT_DIR, "vllm_metax", "envs.py"))
 
 
-VLLM_TARGET_DEVICE = envs.VLLM_TARGET_DEVICE
+VLLM_TARGET_DEVICE = "cuda"
 USE_PRECOMPILED_KERNEL = envs.USE_PRECOMPILED_KERNEL
 
-if not (
-    sys.platform.startswith("linux")
-    or torch.version.cuda is None
-    or os.getenv("VLLM_TARGET_DEVICE") != "cuda"
-):
+if not (sys.platform.startswith("linux") or torch.version.cuda is None):
     # if cuda is not available and VLLM_TARGET_DEVICE is not set, abort
     raise AssertionError("Plugin only support cuda on Linux platform. ")
 
@@ -359,8 +355,8 @@ ext_modules = []
 ext_modules.append(CMakeExtension(name="vllm_metax.cumem_allocator"))
 
 if _build_custom_ops():
-    ext_modules.append(CMakeExtension(name="vllm_metax._C"))
-    ext_modules.append(CMakeExtension(name="vllm_metax._moe_C"))
+    ext_modules.append(CMakeExtension(name="vllm_metax._C_stable_libtorch"))
+    ext_modules.append(CMakeExtension(name="vllm_metax._moe_C_stable_libtorch"))
 else:
     print("Using precompiled kernels, skipping building custom ops.")
 
@@ -393,10 +389,10 @@ setup(
     ext_modules=ext_modules,
     install_requires=get_requirements(),
     extras_require={
-        "bench": ["pandas", "datasets"],
-        "tensorizer": ["tensorizer>=2.9.0"],
-        "fastsafetensors": ["fastsafetensors >= 0.1.10"],
-        "runai": ["runai-model-streamer", "runai-model-streamer-s3", "boto3"],
+        "bench": ["pandas", "matplotlib", "seaborn", "datasets", "scipy", "plotly"],
+        "tensorizer": ["tensorizer==2.10.1"],
+        "fastsafetensors": ["fastsafetensors >= 0.3.2"],
+        "runai": ["runai-model-streamer[s3,gcs,azure] >= 0.15.7"],
         "audio": ["librosa", "soundfile"],  # Required for audio processing
         "video": [],  # Kept for backwards compatibility
     },

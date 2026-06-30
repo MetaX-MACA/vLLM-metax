@@ -22,7 +22,10 @@
 
 #include "attention_generic.cuh"
 #include "dtype_float32.cuh"
-#include "cuda_fp16.h"
+
+#ifdef USE_ROCM
+  #include <hip/hip_fp16.h>
+#endif
 
 #include <stdint.h>
 
@@ -66,10 +69,13 @@ struct FloatVec<uint4> {
 
 // Utility functions for type conversions.
 inline __device__ uint32_t h0_h0(uint16_t a) {
-  uint32_t b;
-  b = a;
-  b = b << 16 | b;
-  return b;
+  union {
+    uint32_t u32;
+    uint16_t u16[2];
+  } tmp;
+  tmp.u16[0] = a;
+  tmp.u16[1] = a;
+  return tmp.u32;
 }
 
 inline __device__ float half_to_float(uint16_t h) {
@@ -79,15 +85,15 @@ inline __device__ float half_to_float(uint16_t h) {
 }
 
 inline __device__ float2 half2_to_float2(uint32_t v) {
-  uint16_t lo, hi;
   union {
     uint32_t u32;
     uint16_t u16[2];
   } tmp;
   tmp.u32 = v;
-  lo = tmp.u16[0];
-  hi = tmp.u16[1];
-  return make_float2(half_to_float(lo), half_to_float(hi));
+  float2 ret;
+  ret.x = half_to_float(tmp.u16[0]);
+  ret.y = half_to_float(tmp.u16[1]);
+  return ret;
 }
 
 inline __device__ uint16_t float_to_half(float f) {
@@ -105,13 +111,8 @@ inline __device__ uint32_t float2_to_half2(float2 f) {
     uint32_t u32;
     uint16_t u16[2];
   } tmp;
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-  __half2 __tmp = __half2(__float2half(f.x), __float2half(f.y));
-  tmp.u32 = *(uint32_t*)&__tmp;
-#else
   tmp.u16[0] = float_to_half(f.x);
   tmp.u16[1] = float_to_half(f.y);
-#endif
   return tmp.u32;
 }
 

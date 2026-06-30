@@ -1,14 +1,46 @@
 #pragma once
 
-#include "quantization/vectorization.cuh"
-#include "quantization/utils.cuh"
+#include "libtorch_stable/quantization/vectorization.cuh"
+#include "../../utils.cuh"
 
 #include <cmath>
+
+// This header is shared between _C and _C_stable_libtorch targets.
+// torch_utils.h provides get_device_prop(). We need to pass USE_CUDA
+// to the .so to expose some of the shims used by torch_utils.h. For now
+// this is only done for _C_stable_libtorch and not for _C, so we use the
+// non stable at::cuda::getCurrentDeviceProperties for _C for now.
+#ifdef TORCH_TARGET_VERSION
+  #include "../../../libtorch_stable/torch_utils.h"
+#else
+  #ifdef USE_ROCM
+    #include <ATen/hip/HIPContext.h>
+  #endif
+#endif
+
+#ifndef USE_ROCM
+  #include "metax/quant_utils.cuh"
+#else
+  #include "amd/quant_utils.cuh"
+#endif
 
 // Determines the preferred FP8 type for the current platform.
 // Note that for CUDA this just returns true,
 // but on ROCm it will check device props.
-static bool is_fp8_ocp() { return true; }
+static bool is_fp8_ocp() {
+#ifndef USE_ROCM
+  return true;
+#else
+  #ifdef TORCH_TARGET_VERSION
+  auto* dprops = get_device_prop();
+  #else
+  auto* dprops = at::cuda::getCurrentDeviceProperties();
+  #endif
+  std::string device_arch = dprops->gcnArchName;
+  size_t substring = device_arch.find("gfx94");
+  return substring == std::string::npos;
+#endif
+}
 
 namespace vllm {
 
@@ -34,7 +66,14 @@ __device__ __forceinline__ fp8_type scaled_fp8_conversion(float const val,
 
   float r =
       fmaxf(-quant_type_max_v<fp8_type>, fminf(x, quant_type_max_v<fp8_type>));
-  return static_cast<fp8_type>(r);
+#ifndef USE_ROCM
+  // Use hardware cvt instruction for fp8 on nvidia
+  // Currently only support fp8_type = c10::Float8_e4m3fn
+  return fp8::vec_conversion<fp8_type, float>(r);
+#else
+  // Use hardware cvt instruction for fp8 on rocm
+  return fp8::cvt_c10<fp8_type>(r);
+#endif
 }
 
 }  // namespace vllm

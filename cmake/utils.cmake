@@ -290,8 +290,8 @@ endmacro()
 #   OUT_CUDA_ARCHS="8.0;8.6;9.0;9.0a"
 #
 function(cuda_archs_loose_intersection OUT_CUDA_ARCHS SRC_CUDA_ARCHS TGT_CUDA_ARCHS)
-  list(REMOVE_DUPLICATES SRC_CUDA_ARCHS)
-  set(TGT_CUDA_ARCHS_ ${TGT_CUDA_ARCHS})
+  set(_SRC_CUDA_ARCHS "${SRC_CUDA_ARCHS}")
+  set(_TGT_CUDA_ARCHS ${TGT_CUDA_ARCHS})
 
   # if x.0a is in SRC_CUDA_ARCHS and x.0 is in CUDA_ARCHS then we should
   # remove x.0a from SRC_CUDA_ARCHS and add x.0a to _CUDA_ARCHS
@@ -344,6 +344,17 @@ function(cuda_archs_loose_intersection OUT_CUDA_ARCHS SRC_CUDA_ARCHS TGT_CUDA_AR
   list(REMOVE_DUPLICATES _CUDA_ARCHS)
   set(${OUT_CUDA_ARCHS} ${_CUDA_ARCHS} PARENT_SCOPE)
 endfunction()
+
+
+function(cuda_archs_sm90plus OUT_CUDA_ARCHS TGT_CUDA_ARCHS)
+  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 13.0)
+    cuda_archs_loose_intersection(_archs "9.0a;10.0f;11.0f;12.0f" "${TGT_CUDA_ARCHS}")
+  else()
+    cuda_archs_loose_intersection(_archs "9.0a;10.0a;10.1a;10.3a;12.0a;12.1a" "${TGT_CUDA_ARCHS}")
+  endif()
+  set(${OUT_CUDA_ARCHS} ${_archs} PARENT_SCOPE)
+endfunction()
+
 
 #
 # Override the GPU architectures detected by cmake/torch and filter them by
@@ -458,7 +469,9 @@ function (define_gpu_extension_target GPU_MOD_NAME)
   target_compile_definitions(${GPU_MOD_NAME} PRIVATE
     "-DTORCH_EXTENSION_NAME=${GPU_MOD_NAME}")
 
-  target_include_directories(${GPU_MOD_NAME} PRIVATE csrc
+  target_include_directories(${GPU_MOD_NAME} PRIVATE
+    csrc
+    csrc/libtorch_stable
     ${GPU_INCLUDE_DIRECTORIES})
 
   target_link_libraries(${GPU_MOD_NAME} PRIVATE torch ${GPU_LIBRARIES})

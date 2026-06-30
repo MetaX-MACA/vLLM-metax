@@ -3,7 +3,6 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import enum
-from typing import Union
 
 from cutlass_library import *
 
@@ -23,7 +22,7 @@ class MixedInputKernelScheduleType(enum.Enum):
     TmaWarpSpecializedCooperative = enum_auto()
 
 
-VLLMDataTypeNames: dict[Union[VLLMDataType, DataType], str] = {
+VLLMDataTypeNames: dict[VLLMDataType | DataType, str] = {
     **DataTypeNames,  # type: ignore
     **{
         VLLMDataType.u4b8: "u4b8",
@@ -31,7 +30,7 @@ VLLMDataTypeNames: dict[Union[VLLMDataType, DataType], str] = {
     },
 }
 
-VLLMDataTypeTag: dict[Union[VLLMDataType, DataType], str] = {
+VLLMDataTypeTag: dict[VLLMDataType | DataType, str] = {
     **DataTypeTag,  # type: ignore
     **{
         VLLMDataType.u4b8: "cutlass::vllm_uint4b8_t",
@@ -39,7 +38,7 @@ VLLMDataTypeTag: dict[Union[VLLMDataType, DataType], str] = {
     },
 }
 
-VLLMDataTypeSize: dict[Union[VLLMDataType, DataType], int] = {
+VLLMDataTypeSize: dict[VLLMDataType | DataType, int] = {
     **DataTypeSize,  # type: ignore
     **{
         VLLMDataType.u4b8: 4,
@@ -47,7 +46,7 @@ VLLMDataTypeSize: dict[Union[VLLMDataType, DataType], int] = {
     },
 }
 
-VLLMDataTypeVLLMScalarTypeTag: dict[Union[VLLMDataType, DataType], str] = {
+VLLMDataTypeVLLMScalarTypeTag: dict[VLLMDataType | DataType, str] = {
     VLLMDataType.u4b8: "vllm::kU4B8",
     VLLMDataType.u8b128: "vllm::kU8B128",
     DataType.u4: "vllm::kU4",
@@ -58,23 +57,21 @@ VLLMDataTypeVLLMScalarTypeTag: dict[Union[VLLMDataType, DataType], str] = {
     DataType.bf16: "vllm::kBfloat16",
 }
 
-VLLMDataTypeTorchDataTypeTag: dict[Union[VLLMDataType, DataType], str] = {
-    DataType.u8: "at::ScalarType::Byte",
-    DataType.s8: "at::ScalarType::Char",
-    DataType.e4m3: "at::ScalarType::Float8_e4m3fn",
-    DataType.s32: "at::ScalarType::Int",
-    DataType.f16: "at::ScalarType::Half",
-    DataType.bf16: "at::ScalarType::BFloat16",
-    DataType.f32: "at::ScalarType::Float",
+VLLMDataTypeTorchDataTypeTag: dict[VLLMDataType | DataType, str] = {
+    DataType.u8: "torch::headeronly::ScalarType::Byte",
+    DataType.s8: "torch::headeronly::ScalarType::Char",
+    DataType.e4m3: "torch::headeronly::ScalarType::Float8_e4m3fn",
+    DataType.s32: "torch::headeronly::ScalarType::Int",
+    DataType.f16: "torch::headeronly::ScalarType::Half",
+    DataType.bf16: "torch::headeronly::ScalarType::BFloat16",
+    DataType.f32: "torch::headeronly::ScalarType::Float",
 }
 
-VLLMKernelScheduleTag: dict[
-    Union[MixedInputKernelScheduleType, KernelScheduleType], str
-] = {
+VLLMKernelScheduleTag: dict[MixedInputKernelScheduleType | KernelScheduleType, str] = {
     **KernelScheduleTag,  # type: ignore
     **{
-        MixedInputKernelScheduleType.TmaWarpSpecialized: "cutlass::gemm::KernelTmaWarpSpecialized",
-        MixedInputKernelScheduleType.TmaWarpSpecializedPingpong: "cutlass::gemm::KernelTmaWarpSpecializedPingpong",
-        MixedInputKernelScheduleType.TmaWarpSpecializedCooperative: "cutlass::gemm::KernelTmaWarpSpecializedCooperative",
+        MixedInputKernelScheduleType.TmaWarpSpecialized: "cutlass::gemm::KernelTmaWarpSpecialized",  # noqa: E501
+        MixedInputKernelScheduleType.TmaWarpSpecializedPingpong: "cutlass::gemm::KernelTmaWarpSpecializedPingpong",  # noqa: E501
+        MixedInputKernelScheduleType.TmaWarpSpecializedCooperative: "cutlass::gemm::KernelTmaWarpSpecializedCooperative",  # noqa: E501
     },
 }
