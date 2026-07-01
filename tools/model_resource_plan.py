@@ -24,7 +24,8 @@ def plan(cases: list[str]) -> list[dict[str, str]]:
 
 def self_test() -> None:
     rows = plan(CASES[:1])
-    assert rows and rows[0]["case"] == CASES[0]
+    if not rows or rows[0]["case"] != CASES[0]:
+        raise RuntimeError("self-test failed: resource plan did not include the requested case")
     print(json.dumps({"ok": True, "rows": len(rows)}, ensure_ascii=False))
 
 
