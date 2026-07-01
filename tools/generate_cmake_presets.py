@@ -27,6 +27,17 @@ def get_cpu_cores():
     return multiprocessing.cpu_count()
 
 
+def _resolve_cudacxx(value):
+    if not value:
+        return None
+    if os.path.exists(value):
+        return value
+    resolved = which(value)
+    if resolved:
+        return os.path.abspath(resolved)
+    return None
+
+
 def generate_presets(output_path="CMakeUserPresets.json", force_overwrite=False):
     """Generates the CMakeUserPresets.json file."""
 
@@ -35,8 +46,8 @@ def generate_presets(output_path="CMakeUserPresets.json", force_overwrite=False)
     # Detect NVCC
     nvcc_path = None
     cudacxx = os.environ.get("CUDACXX")
-    if cudacxx and os.path.exists(cudacxx):
-        nvcc_path = cudacxx
+    nvcc_path = _resolve_cudacxx(cudacxx)
+    if nvcc_path:
         print(f"Found CUDA compiler via CUDACXX: {nvcc_path}")
 
     if not nvcc_path and CUDA_HOME:
