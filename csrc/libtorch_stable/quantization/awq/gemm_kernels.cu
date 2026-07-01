@@ -342,9 +342,9 @@ torch::stable::Tensor awq_to_gptq_4bit(torch::stable::Tensor qweight) {
   int tile_all_num = compact_n * compact_output_k;
   int grid_size = (tile_all_num + 255) / 256;
 
-  torch::stable::Tensor out =
-      torch::stable::zeros({num_out_channels, compact_output_k},
-                           qweight.dtype(), std::nullopt, qweight.device());
+  torch::stable::Tensor out = torch::stable::zeros(
+      {num_out_channels, compact_output_k}, qweight.scalar_type(), std::nullopt,
+      qweight.device());
 
   uint32_t* out_ptr = reinterpret_cast<uint32_t*>(out.mutable_data_ptr<int>());
 
@@ -378,7 +378,7 @@ torch::stable::Tensor awq_dequantize(torch::stable::Tensor _kernel,
   int blocksize = 512;
   int num_elems = in_c * qout_c;
   int gridsize = (num_elems + blocksize - 1) / blocksize;
-  if (_scaling_factors.dtype() == torch::headeronly::Half) {
+  if (_scaling_factors.scalar_type() == torch::headeronly::ScalarType::Half) {
     auto de_kernel = reinterpret_cast<half*>(
         _de_kernel.mutable_data_ptr<torch::headeronly::Half>());
     auto scaling_factors = reinterpret_cast<half*>(
@@ -387,7 +387,8 @@ torch::stable::Tensor awq_dequantize(torch::stable::Tensor _kernel,
         <<<gridsize, blocksize, 0, stream>>>(
             kernel, scaling_factors, zeros, de_kernel, G, qout_c, blocksize,
             num_elems, vllm::awq::DivModFast(qout_c));
-  } else if (_scaling_factors.dtype() == torch::headeronly::BFloat16) {
+  } else if (_scaling_factors.scalar_type() ==
+             torch::headeronly::ScalarType::BFloat16) {
     auto de_kernel = reinterpret_cast<maca_bfloat16*>(
         _de_kernel.mutable_data_ptr<torch::headeronly::BFloat16>());
     auto scaling_factors = reinterpret_cast<maca_bfloat16*>(
@@ -421,7 +422,7 @@ torch::stable::Tensor awq_gemm(
 
   // int num_out_channels = _kernel.size(1) * 8;
   int num_out_channels = _kernel.size(0);
-  at::Tensor _out_feats =
+  auto _out_feats =
       torch::zeros({num_in_feats, num_out_channels}, _in_feats.scalar_type(),
                    std::nullopt, _in_feats.device());
 

@@ -202,7 +202,7 @@ endif()
 #
 # _C_stable_libtorch extension (ops registered via STABLE_TORCH_LIBRARY)
 #
-set(VLLM_EXT_SRC
+set(VLLM_STABLE_EXT_SRC
   "csrc/libtorch_stable/torch_bindings.cpp"
   "csrc/libtorch_stable/activation_kernels.cu"
   "csrc/libtorch_stable/quantization/activation_kernels.cu"
@@ -259,17 +259,17 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
   FetchContent_Declare(cutlass SOURCE_DIR ${VLLM_CUTLASS_SRC_DIR})
 
   list(APPEND VLLM_STABLE_EXT_SRC
-    "csrc/libtorch_stable/cuda_view.cu"
+    # "csrc/libtorch_stable/cuda_view.cu"
     "csrc/libtorch_stable/cuda_utils_kernels.cu"
     "csrc/libtorch_stable/cutlass_extensions/common.cpp"
     "csrc/libtorch_stable/quantization/w8a8/cutlass/scaled_mm_entry.cu"
-    "csrc/libtorch_stable/quantization/fp4/nvfp4_quant_entry.cu"
-    "csrc/libtorch_stable/quantization/fp4/nvfp4_scaled_mm_entry.cu"
+    # "csrc/libtorch_stable/quantization/fp4/nvfp4_quant_entry.cu"
+    # "csrc/libtorch_stable/quantization/fp4/nvfp4_scaled_mm_entry.cu"
     "csrc/libtorch_stable/quantization/awq/gemm_kernels.cu"
     "csrc/libtorch_stable/minimax_reduce_rms_kernel.cu")
 
   set_gencode_flags_for_srcs(
-    SRCS "${VLLM_EXT_SRC}"
+    SRCS "${VLLM_STABLE_EXT_SRC}"
     CUDA_ARCHS "${CUDA_ARCHS}")
 
   # support opt of gptq-marlin
@@ -338,7 +338,7 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
     
     # support opt of cutlass w8a8 scale mm
     set_source_files_properties(
-      "csrc/quantization/w8a8/cutlass/scaled_mm_c2x.cu"
+      "csrc/libtorch_stable/quantization/w8a8/cutlass/scaled_mm_c2x.cu"
       PROPERTIES
       COMPILE_FLAGS " -mllvm -metaxgpu-igroup=true -mllvm -misched-postra=true"
     )
@@ -437,7 +437,7 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
   #   set_gencode_flags_for_srcs(
   #     SRCS "${SRCS}"
   #     CUDA_ARCHS "${MLA_ARCHS}")
-  #   list(APPEND VLLM_EXT_SRC "${SRCS}")
+  #   list(APPEND VLLM_STABLE_EXT_SRC "${SRCS}")
   #   list(APPEND VLLM_GPU_FLAGS "-DENABLE_CUTLASS_MLA=1")
   #   # Add MLA-specific include directories only to MLA source files
   #   set_source_files_properties(${SRCS}
@@ -497,14 +497,14 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
 
     # Add machete generated sources
     file(GLOB MACHETE_GEN_SOURCES "csrc/quantization/machete/generated/*.cu")
-    list(APPEND VLLM_EXT_SRC ${MACHETE_GEN_SOURCES})
+    list(APPEND VLLM_STABLE_EXT_SRC ${MACHETE_GEN_SOURCES})
 
     # forward compatible
     set_gencode_flags_for_srcs(
       SRCS "${MACHETE_GEN_SOURCES}"
       CUDA_ARCHS "${MACHETE_ARCHS}")
 
-    list(APPEND VLLM_EXT_SRC
+    list(APPEND VLLM_STABLE_EXT_SRC
       csrc/quantization/machete/machete_pytorch.cu)
 
     message(STATUS "Building Machete kernels for archs: ${MACHETE_ARCHS}")
@@ -532,7 +532,7 @@ define_gpu_extension_target(
   _C_stable_libtorch
   DESTINATION vllm_metax
   LANGUAGE ${VLLM_GPU_LANG}
-  SOURCES ${VLLM_EXT_SRC}
+  SOURCES ${VLLM_STABLE_EXT_SRC}
   COMPILE_FLAGS ${VLLM_GPU_FLAGS}
   ARCHITECTURES ${VLLM_GPU_ARCHES}
   INCLUDE_DIRECTORIES ${CUTLASS_INCLUDE_DIR} ${CUTLASS_TOOLS_UTIL_INCLUDE_DIR}

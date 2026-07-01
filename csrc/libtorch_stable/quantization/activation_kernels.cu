@@ -75,7 +75,7 @@ __global__ void act_and_mul_quant_kernel(
   int2* __restrict__ out_128bit_ptr = reinterpret_cast<int2*>(out_ptr);
 
   float inverted_scale = 1 / *scale;
-#pragma unroll
+  // #pragma unroll
   for (int32_t vec_idx = vec_start_idx + threadIdx.x; vec_idx < vec_end_idx;
        vec_idx += blockDim.x) {
     const int4 x_128bit = VLLM_LDG(&x_128bit_ptr[vec_idx]);

@@ -1,8 +1,5 @@
 #pragma once
 #include <stddef.h>
-#include <torch/all.h>
-
-#include <ATen/cuda/CUDAContext.h>
 
 // clang-format will break include orders
 // clang-format off
@@ -13,5 +10,5 @@
 #include "mctlass/util/command_line.h"
 
 #include "core/math.hpp"
-#include "cutlass_extensions/common.hpp"
+#include "libtorch_stable/cutlass_extensions/common.hpp"
 // clang-format on

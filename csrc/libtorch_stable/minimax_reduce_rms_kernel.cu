@@ -115,17 +115,17 @@ __device__ __forceinline__ float4 rms_rsqrt(float4& v, float eps) {
   return v;
 }
 __device__ __forceinline__ float4 ld_global_volatile(float4* addr) {
+  volatile float* ptr = reinterpret_cast<volatile float*>(addr);
   float4 val;
-  asm volatile("ld.volatile.global.v4.f32 {%0, %1, %2, %3}, [%4];"
-               : "=f"(val.x), "=f"(val.y), "=f"(val.z), "=f"(val.w)
-               : "l"(addr));
+  val.x = ptr[0];
+  val.y = ptr[1];
+  val.z = ptr[2];
+  val.w = ptr[3];
   return val;
 }
 
 __device__ __forceinline__ float ld_global_volatile(float* addr) {
-  float val;
-  asm volatile("ld.volatile.global.f32 %0, [%1];" : "=f"(val) : "l"(addr));
-  return val;
+  return *reinterpret_cast<volatile float*>(addr);
 }
 
 // Used by the scalar (non-float4) kernel only
