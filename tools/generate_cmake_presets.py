@@ -27,7 +27,19 @@ def get_cpu_cores():
     return multiprocessing.cpu_count()
 
 
-def generate_presets(output_path="CMakeUserPresets.json", force_overwrite=False):
+def _detect_cpu_cores():
+    cpu_cores = get_cpu_cores()
+    if not cpu_cores or cpu_cores < 1:
+        return 1
+    return cpu_cores
+
+
+def generate_presets(
+    output_path="CMakeUserPresets.json",
+    force_overwrite=False,
+    cmake_jobs=None,
+    nvcc_threads=None,
+):
     """Generates the CMakeUserPresets.json file."""
 
     print("Attempting to detect your system configuration...")
@@ -73,9 +85,15 @@ def generate_presets(output_path="CMakeUserPresets.json", force_overwrite=False)
     print(f"Using Python executable: {python_executable}")
 
     # Get CPU cores
-    cpu_cores = get_cpu_cores()
-    nvcc_threads = min(4, cpu_cores)
-    cmake_jobs = max(1, cpu_cores // nvcc_threads)
+    cpu_cores = _detect_cpu_cores()
+    if nvcc_threads is None:
+        nvcc_threads = min(4, cpu_cores)
+    elif nvcc_threads < 1:
+        raise ValueError("nvcc_threads must be at least 1")
+    if cmake_jobs is None:
+        cmake_jobs = max(1, cpu_cores // nvcc_threads)
+    elif cmake_jobs < 1:
+        raise ValueError("cmake_jobs must be at least 1")
     print(
         f"Detected {cpu_cores} CPU cores. "
         f"Setting NVCC_THREADS={nvcc_threads} and CMake jobs={cmake_jobs}."
@@ -172,10 +190,24 @@ def generate_presets(output_path="CMakeUserPresets.json", force_overwrite=False)
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--cmake-jobs",
+        type=int,
+        help="Override build preset jobs instead of deriving it from CPU cores",
+    )
+    parser.add_argument(
+        "--nvcc-threads",
+        type=int,
+        help="Override NVCC_THREADS instead of deriving it from CPU cores",
+    )
+    parser.add_argument(
         "--force-overwrite",
         action="store_true",
         help="Force overwrite existing CMakeUserPresets.json without prompting",
     )
 
     args = parser.parse_args()
-    generate_presets(force_overwrite=args.force_overwrite)
+    generate_presets(
+        force_overwrite=args.force_overwrite,
+        cmake_jobs=args.cmake_jobs,
+        nvcc_threads=args.nvcc_threads,
+    )
