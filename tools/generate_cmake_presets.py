@@ -27,6 +27,13 @@ def get_cpu_cores():
     return multiprocessing.cpu_count()
 
 
+def _detect_cpu_cores():
+    cpu_cores = get_cpu_cores()
+    if not cpu_cores or cpu_cores < 1:
+        return 1
+    return cpu_cores
+
+
 def generate_presets(
     output_path="CMakeUserPresets.json",
     force_overwrite=False,
@@ -78,7 +85,7 @@ def generate_presets(
     print(f"Using Python executable: {python_executable}")
 
     # Get CPU cores
-    cpu_cores = get_cpu_cores()
+    cpu_cores = _detect_cpu_cores()
     if nvcc_threads is None:
         nvcc_threads = min(4, cpu_cores)
     elif nvcc_threads < 1:
