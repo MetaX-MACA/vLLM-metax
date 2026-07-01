@@ -51,6 +51,8 @@ def generate_presets(output_path="CMakeUserPresets.json", force_overwrite=False)
             "path to nvcc (e.g., /usr/local/cuda/bin/nvcc): "
         )
         nvcc_path = nvcc_path_input.strip()
+    if not nvcc_path or not os.path.isfile(nvcc_path):
+        raise FileNotFoundError(f"CUDA compiler not found: {nvcc_path}")
     print(f"Using NVCC path: {nvcc_path}")
 
     # Detect Python executable
