@@ -134,34 +134,6 @@ if hasattr(torch.ops._C, "gptq_gemm"):
     )
 
 
-def fused_moe_kernel(
-    A: torch.Tensor,
-    B: torch.Tensor,
-    C: torch.Tensor,
-    topk_weights: torch.Tensor,
-    topk_ids: torch.Tensor,
-    sorted_token_ids: torch.Tensor,
-    expert_ids: torch.Tensor,
-    num_tokens_post_padded: torch.Tensor,
-    mul_routed_weight: bool,
-    top_k: int,
-    tileConfig: int,
-) -> None:
-    torch.ops._moe_C.fused_moe_kernel(
-        A,
-        B,
-        C,
-        topk_weights,
-        topk_ids,
-        sorted_token_ids,
-        expert_ids,
-        num_tokens_post_padded,
-        mul_routed_weight,
-        top_k,
-        tileConfig,
-    )
-
-
 def indexer_k_quant_and_cache(
     k: torch.Tensor,
     kv_cache: torch.Tensor,

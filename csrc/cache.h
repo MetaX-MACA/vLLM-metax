@@ -1,6 +1,7 @@
 #pragma once
 
 #include <torch/all.h>
+#include <c10/util/Optional.h>
 
 #include <map>
 #include <vector>
@@ -8,6 +9,11 @@
 void swap_blocks(torch::Tensor& src, torch::Tensor& dst,
                  int64_t block_size_in_bytes,
                  const torch::Tensor& block_mapping);
+
+void swap_blocks_batch(const torch::Tensor& src_ptrs,
+                       const torch::Tensor& dst_ptrs,
+                       const torch::Tensor& sizes,
+                       bool is_src_access_order_any);
 
 void reshape_and_cache(torch::Tensor& key, torch::Tensor& value,
                        torch::Tensor& key_cache, torch::Tensor& value_cache,
@@ -56,12 +62,14 @@ void cp_gather_cache(
     torch::Tensor const& cu_seq_lens,  // [BATCH+1]
     int64_t batch_size, std::optional<torch::Tensor> seq_starts = std::nullopt);
 
-// Indexer K quantization and cache function
-void indexer_k_cache(
-    torch::Tensor& k,            // [num_tokens, head_dim]
-    torch::Tensor& kv_cache,     // [num_blocks, block_size, cache_stride]
-    torch::Tensor& slot_mapping  // [num_tokens]
-);
+// Gather and upconvert FP8 KV cache to BF16 workspace
+void cp_gather_and_upconvert_fp8_kv_cache(
+    torch::Tensor const& src_cache,         // [NUM_BLOCKS, BLOCK_SIZE, 656]
+    torch::Tensor const& dst,               // [TOT_TOKENS, 576]
+    torch::Tensor const& block_table,       // [BATCH, BLOCK_INDICES]
+    torch::Tensor const& seq_lens,          // [BATCH]
+    torch::Tensor const& workspace_starts,  // [BATCH]
+    int64_t batch_size);
 
 // Indexer K quantization and cache function
 void indexer_k_quant_and_cache(
@@ -76,13 +84,6 @@ void concat_mla_q(
     torch::Tensor& ql_nope,  // [num_tokens, num_heads, nope_dim]
     torch::Tensor& q_pe,     // [num_tokens, num_heads, rope_dim]
     torch::Tensor& q_out);   // [num_tokens, num_heads, nope_dim + rope_dim]
-
-// Extract function to gather quantized K cache
-void cp_gather_indexer_k_cache(
-    const torch::Tensor& kv_cache,     // [num_blocks, block_size, cache_stride]
-    torch::Tensor& dst_k,              // [num_tokens, head_dim]
-    const torch::Tensor& block_table,  // [batch_size, num_blocks]
-    const torch::Tensor& cu_seq_lens);  // [batch_size + 1]
 
 // Extract function to gather quantized K cache
 void cp_gather_indexer_k_quant_cache(
