@@ -27,7 +27,11 @@ def get_cpu_cores():
     return multiprocessing.cpu_count()
 
 
-def generate_presets(output_path="CMakeUserPresets.json", force_overwrite=False):
+def generate_presets(
+    output_path="CMakeUserPresets.json",
+    force_overwrite=False,
+    no_prompt=False,
+):
     """Generates the CMakeUserPresets.json file."""
 
     print("Attempting to detect your system configuration...")
@@ -46,6 +50,11 @@ def generate_presets(output_path="CMakeUserPresets.json", force_overwrite=False)
             print(f"Found nvcc in PATH: {nvcc_path}")
 
     if not nvcc_path:
+        if no_prompt:
+            raise RuntimeError(
+                "Could not automatically find 'nvcc'. Set CUDA_HOME, add nvcc "
+                "to PATH, or run without --no-prompt to enter it interactively."
+            )
         nvcc_path_input = input(
             "Could not automatically find 'nvcc'. Please provide the full "
             "path to nvcc (e.g., /usr/local/cuda/bin/nvcc): "
@@ -146,6 +155,11 @@ def generate_presets(output_path="CMakeUserPresets.json", force_overwrite=False)
     if os.path.exists(output_file_path):
         if force_overwrite:
             print(f"Overwriting existing file '{output_file_path}'")
+        elif no_prompt:
+            raise RuntimeError(
+                f"'{output_file_path}' already exists. Use --force-overwrite "
+                "with --no-prompt to replace it non-interactively."
+            )
         else:
             overwrite = (
                 input(f"'{output_file_path}' already exists. Overwrite? (y/N): ")
@@ -176,6 +190,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Force overwrite existing CMakeUserPresets.json without prompting",
     )
+    parser.add_argument(
+        "--no-prompt",
+        action="store_true",
+        help="Fail instead of prompting when required tools cannot be detected",
+    )
 
     args = parser.parse_args()
-    generate_presets(force_overwrite=args.force_overwrite)
+    generate_presets(force_overwrite=args.force_overwrite, no_prompt=args.no_prompt)
