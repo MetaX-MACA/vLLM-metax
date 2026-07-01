@@ -27,6 +27,17 @@ def get_cpu_cores():
     return multiprocessing.cpu_count()
 
 
+def _resolve_compiler_path(compiler):
+    if not compiler:
+        return compiler
+    if os.path.isabs(compiler):
+        return compiler
+    resolved = which(compiler)
+    if resolved:
+        return os.path.abspath(resolved)
+    return os.path.abspath(compiler)
+
+
 def generate_presets(
     output_path="CMakeUserPresets.json",
     force_overwrite=False,
@@ -37,7 +48,7 @@ def generate_presets(
     print("Attempting to detect your system configuration...")
 
     # Detect NVCC
-    nvcc_path = cuda_compiler
+    nvcc_path = _resolve_compiler_path(cuda_compiler)
     if nvcc_path:
         print(f"Using CUDA-compatible compiler from argument: {nvcc_path}")
 
