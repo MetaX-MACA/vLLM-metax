@@ -37,19 +37,22 @@ def load(path: Path) -> dict[str, Any]:
 
 def self_test() -> None:
     data = diff({"env": {"MACA_HOME": "/a"}}, {"env": {"MACA_HOME": "/b"}})
-    assert data["changed_count"] == 1
+    if data["changed_count"] != 1:
+        raise RuntimeError("self-test failed: expected one changed key")
     print(json.dumps({"ok": True, "changed_count": data["changed_count"]}, ensure_ascii=False))
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("before")
-    parser.add_argument("after")
+    parser.add_argument("before", nargs="?")
+    parser.add_argument("after", nargs="?")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
         self_test()
         return 0
+    if not args.before or not args.after:
+        parser.error("before and after are required unless --self-test is used")
     print(json.dumps(diff(load(Path(args.before)), load(Path(args.after))), ensure_ascii=False, indent=2))
     return 0
 
