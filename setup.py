@@ -274,17 +274,27 @@ def _build_custom_ops() -> bool:
     return _is_maca() and not envs.USE_PRECOMPILED_KERNEL
 
 
-def get_maca_version() -> Version:
+def get_maca_version() -> tuple[Version, str] | None:
     """
-    Returns the MACA SDK Version
-    """
-    file_full_path = os.path.join(os.getenv("MACA_PATH"), "Version.txt")
-    if not os.path.isfile(file_full_path):
-        return None
+    1. We first try to get the version from MACA_AI_VERSION environment variable.
+    2. If not found, we try to get the version from Version.txt file in the MACA_PATH directory.
 
-    with open(file_full_path, encoding="utf-8") as file:
-        first_line = file.readline().strip()
-    return parse(first_line.split(":")[-1])
+    Note: the version extracted from MACA_AI_VERSION or Version.txt file may not be a standard
+          version string. E.g. may be '3.8.0.3-c600u'. We need to parse it to a tuple with
+          (Version, str) format.
+    """
+    release_version_str = os.getenv("MACA_AI_VERSION")
+    if release_version_str is None:
+        file_full_path = os.path.join(os.getenv("MACA_PATH"), "Version.txt")
+        if not os.path.isfile(file_full_path):
+            return None
+
+        with open(file_full_path, encoding="utf-8") as file:
+            release_version_str = file.readline().strip().split(":")[-1]
+
+    maca_version = release_version_str.split("-")[0]
+    tag = release_version_str.split("-")[-1] if "-" in release_version_str else None
+    return parse(maca_version), tag
 
 
 def fixed_version_scheme(version: ScmVersion) -> str:
@@ -305,22 +315,33 @@ def always_hash(version: ScmVersion) -> str:
 
 
 def get_plugin_version() -> str:
-    version = get_version(
+    base_version = get_version(
         version_scheme=fixed_version_scheme,
         local_scheme=always_hash,
         write_to="vllm_metax/_version.py",
     )
-    sep = "+" if "+" not in version else "."  # dev versions might contain +
 
-    if _is_maca():
-        maca_version_str = str(get_maca_version())
-        torch_version = torch.__version__
-        major_minor_version = ".".join(torch_version.split(".")[:2])
-        version += f"{sep}maca{maca_version_str}.torch{major_minor_version}"
-    else:
+    if not _is_maca():
         raise RuntimeError("Unknown runtime environment")
 
-    return version
+    maca_version, maca_tag = get_maca_version()
+    torch_version = torch.__version__.partition("+")[0]
+
+    public_version, has_local, existing_local = base_version.partition("+")
+
+    local_parts = []
+
+    if has_local:
+        local_parts.append(existing_local)
+
+    local_parts.append(f"maca{maca_version}")
+
+    if maca_tag:
+        local_parts.append(str(maca_tag))
+
+    local_parts.append(f"torch{torch_version}")
+
+    return f"{public_version}+{'.'.join(local_parts)}"
 
 
 def get_requirements() -> list[str]:
