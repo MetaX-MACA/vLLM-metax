@@ -155,6 +155,11 @@ def generate_presets(
     if os.path.exists(output_file_path):
         if force_overwrite:
             print(f"Overwriting existing file '{output_file_path}'")
+        elif no_prompt:
+            raise RuntimeError(
+                f"'{output_file_path}' already exists. Use --force-overwrite "
+                "with --no-prompt to replace it non-interactively."
+            )
         else:
             overwrite = (
                 input(f"'{output_file_path}' already exists. Overwrite? (y/N): ")
