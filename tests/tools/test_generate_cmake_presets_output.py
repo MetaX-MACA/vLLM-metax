@@ -5,9 +5,11 @@ import tools.generate_cmake_presets as presets
 
 def test_generate_presets_accepts_custom_output(monkeypatch, tmp_path):
     output_path = tmp_path / "presets.json"
+    nvcc_path = tmp_path / "bin" / "nvcc"
+    nvcc_path.parent.mkdir()
+    nvcc_path.write_text("", encoding="utf-8")
 
     monkeypatch.setattr(presets, "CUDA_HOME", str(tmp_path))
-    monkeypatch.setattr(presets.os.path, "exists", lambda path: True)
     monkeypatch.setattr(presets, "which", lambda name: None)
     monkeypatch.setattr(presets, "get_cpu_cores", lambda: 8)
 
