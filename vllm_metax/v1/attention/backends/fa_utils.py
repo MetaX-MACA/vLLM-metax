@@ -35,13 +35,6 @@ def is_fa_version_supported(fa_version: int) -> bool:
     return fa_version == 2
 
 
-def flash_attn_supports_fp8() -> bool:
-    logger.info_once(
-        "Using Maca version of flash attention, which does not support FP8"
-    )
-    return False
-
-
 def flash_attn_supports_quant_query_input() -> bool:
     return False
 
