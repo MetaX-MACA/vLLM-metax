@@ -17,16 +17,10 @@ from vllm_metax.customized.layers.unquantized_fused_moe_method import (
     UnquantizedFusedMoEMethod,
 )
 
-from .compressed_tensors_moe_w8a8_int8 import (
-    CompressedTensorsW8A8Int8MoEMethod,
-)
-
 
 from vllm.model_executor.layers.quantization.compressed_tensors.schemes.compressed_tensors_wNa16 import (  # noqa
     WNA16_SUPPORTED_BITS,
 )
-
-from .compressed_tensors_moe_w4a8_int4 import CompressedTensorsW4A8Int4MoEMethod
 
 
 # -----------------------------------------------------------
@@ -86,10 +80,6 @@ class CompressedTensorsMoEMethod(vllm_ct_moe_method):
                     f" and bits: {weight_quant.num_bits}",
                 )
 
-            from .compressed_tensors_moe_wna16 import (
-                CompressedTensorsWNA16MoEMethod,
-            )
-
             if (
                 weight_quant.strategy == QuantizationStrategy.GROUP
                 and weight_quant.actorder
@@ -98,12 +88,19 @@ class CompressedTensorsMoEMethod(vllm_ct_moe_method):
                 raise ValueError(
                     "WNA16MoE is not supported with actorder=group/dynamic."
                 )
+            from .compressed_tensors_moe_wna16 import (
+                CompressedTensorsWNA16MoEMethod,
+            )
+
             logger.info_once("Using CompressedTensorsWNA16MoEMethod")
             return CompressedTensorsWNA16MoEMethod(
                 weight_quant, input_quant, layer.moe_config
             )
-
         if quant_config._is_dynamic_token_w8a8(weight_quant, input_quant):
+            from .compressed_tensors_moe_w8a8_int8 import (
+                CompressedTensorsW8A8Int8MoEMethod,
+            )
+
             return CompressedTensorsW8A8Int8MoEMethod(
                 weight_quant, input_quant, layer.moe_config
             )
@@ -114,6 +111,14 @@ class CompressedTensorsMoEMethod(vllm_ct_moe_method):
             #       is selected by `quant_config._is_dynamic_token_w4a8_int`. So we
             #       just need to re-implement and map with Int4MoEMethod here.
             # --------------------------------------------------------------------
+            from .compressed_tensors_moe_w4a8_int4 import (
+                CompressedTensorsW4A8Int4MoEMethod,
+            )
+
             return CompressedTensorsW4A8Int4MoEMethod(
                 weight_quant, input_quant, layer.moe_config
             )
+
+        raise RuntimeError(
+            f"Unsupported FusedMoe scheme: {weight_quant}, {input_quant}"
+        )
