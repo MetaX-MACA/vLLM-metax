@@ -1146,11 +1146,20 @@ class DeepseekV2DecoderLayer(nn.Module):
             topk_indices_buffer=topk_indices_buffer,
         )
 
+        # /------------------------ metax modified ------------------------\ #
+        # is_dense_mtp -> only used in JoyAI_LLM_Flash mtp
+        # This modification is copied from:
+        # https://www.modelscope.cn/models/jd-opensource/JoyAI-LLM-Flash
+        # docker: jdopensource/joyai-llm-vllm:v0.15.1-joyai_llm_flash 
+        is_dense_mtp = (
+            config.num_hidden_layers == 40 and layer_idx == 40) # JoyAI_LLM_Flash
         if (
             config.n_routed_experts is not None
             and layer_idx >= config.first_k_dense_replace
             and layer_idx % moe_layer_freq == 0
+            and not is_dense_mtp # JoyAI_LLM_Flash
         ):
+        # \----------------------------------------------------------------/ #
             self.mlp = DeepseekV2MoE(
                 config=config,
                 parallel_config=parallel_config,
