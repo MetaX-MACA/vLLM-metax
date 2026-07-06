@@ -15,8 +15,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vllm_metax"
 authors = [{name = "Metax Team"}]
-license = "Apache-2.0"
-license-files = ["LICENSE"]
+license = {text = "Apache-2.0"}
 readme = "README.md"
 description = "vLLM Metax backend plugin"
 classifiers = [

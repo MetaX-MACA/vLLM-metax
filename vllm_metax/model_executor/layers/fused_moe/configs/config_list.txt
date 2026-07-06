@@ -19,3 +19,8 @@ glm4.5-air w8a8 ：  /pde_ai/models/llm/ChatGLM/GLM-4.5-Air.w8a8/     tp4  H=409
 /pde_ai/models/llm/Qwen/Qwen3-30B-A3B-AWQ/  tp1   H=2048,E=128,N=384,device_name=Device_4000,dtype=int4_w4a16-1.json
 
 /pde_ai/models/llm/Mistral/Mixtral-8x7B-v0.1  tp4  H=4096,E=8,N=3584,device_name=Device_4000.json
+
+# MXC500 tuned configs added by LindseyMei
+Qwen/Qwen1.5-MoE-A2.7B            H=2048,E=60,N=1408,device_name=MXC500.json
+deepseek-ai/DeepSeek-V2-Lite      H=2048,E=64,N=1408,device_name=MXC500.json
+Qwen/Qwen3-30B-A3B                H=2048,E=128,N=768,device_name=MXC500.json
