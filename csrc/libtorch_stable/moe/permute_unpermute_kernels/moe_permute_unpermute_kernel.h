@@ -9,7 +9,7 @@
 #include <cub/util_type.cuh>
 
 #include "mctlass/array.h"
-#include "mctlass/numeric_size.h"
+// #include "mctlass/numeric_size.h"
 #include "libtorch_stable/moe/permute_unpermute_kernels/dispatch.h"
 
 template <typename T>

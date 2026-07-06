@@ -342,7 +342,7 @@ torch::stable::Tensor awq_to_gptq_4bit(torch::stable::Tensor qweight) {
   int tile_all_num = compact_n * compact_output_k;
   int grid_size = (tile_all_num + 255) / 256;
 
-  torch::stable::Tensor out = torch::stable::zeros(
+  torch::stable::Tensor out = torch::stable::empty(
       {num_out_channels, compact_output_k}, qweight.scalar_type(), std::nullopt,
       qweight.device());
 
@@ -422,9 +422,9 @@ torch::stable::Tensor awq_gemm(
 
   // int num_out_channels = _kernel.size(1) * 8;
   int num_out_channels = _kernel.size(0);
-  auto _out_feats =
-      torch::zeros({num_in_feats, num_out_channels}, _in_feats.scalar_type(),
-                   std::nullopt, _in_feats.device());
+  auto _out_feats = torch::stable::empty({num_in_feats, num_out_channels},
+                                         _in_feats.scalar_type(), std::nullopt,
+                                         _in_feats.device());
 
   // auto in_feats = reinterpret_cast<half*>(_in_feats.data_ptr<at::Half>());
   auto kernel = reinterpret_cast<int*>(_kernel.mutable_data_ptr<int>());

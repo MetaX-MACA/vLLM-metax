@@ -96,9 +96,9 @@ STABLE_TORCH_LIBRARY_FRAGMENT(_moe_C, m) {
       "int");
 
   // Row shuffle for MoE
-  m.def(
-      "shuffle_rows(Tensor input_tensor, Tensor dst2src_map, Tensor! "
-      "output_tensor) -> ()");
+  //   m.def(
+  //       "shuffle_rows(Tensor input_tensor, Tensor dst2src_map, Tensor! "
+  //       "output_tensor) -> ()");
 
   // Apply grouped topk routing to select experts.
   m.def(
@@ -123,7 +123,7 @@ STABLE_TORCH_LIBRARY_IMPL(_moe_C, CUDA, m) {
   m.impl("moe_lora_align_block_size", TORCH_BOX(&moe_lora_align_block_size));
 #ifndef USE_ROCM
   //   m.impl("moe_wna16_gemm", TORCH_BOX(&moe_wna16_gemm));
-  m.impl("shuffle_rows", TORCH_BOX(&shuffle_rows));
+  //   m.impl("shuffle_rows", TORCH_BOX(&shuffle_rows));
   m.impl("grouped_topk", TORCH_BOX(&grouped_topk));
 #endif
 }

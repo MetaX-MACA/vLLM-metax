@@ -14,7 +14,6 @@
 
 // moe_permute kernels require at least CUDA 12.0
 #if defined(CUDA_VERSION) && (CUDA_VERSION >= 12000)
-
 namespace {
 
 int64_t product_integers(torch::headeronly::IntHeaderOnlyArrayRef sizes) {

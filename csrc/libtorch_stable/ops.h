@@ -107,67 +107,67 @@ void get_cutlass_batched_moe_mm_data(
 // FP4/NVFP4 ops
 bool cutlass_scaled_mm_supports_fp4(int64_t cuda_device_capability);
 
-void cutlass_scaled_fp4_mm(torch::stable::Tensor& D,
-                           torch::stable::Tensor const& A,
-                           torch::stable::Tensor const& B,
-                           torch::stable::Tensor const& A_sf,
-                           torch::stable::Tensor const& B_sf,
-                           torch::stable::Tensor const& alpha);
+// void cutlass_scaled_fp4_mm(torch::stable::Tensor& D,
+//                            torch::stable::Tensor const& A,
+//                            torch::stable::Tensor const& B,
+//                            torch::stable::Tensor const& A_sf,
+//                            torch::stable::Tensor const& B_sf,
+//                            torch::stable::Tensor const& alpha);
 
-void cutlass_fp4_group_mm(torch::stable::Tensor& output,
-                          const torch::stable::Tensor& a,
-                          const torch::stable::Tensor& b,
-                          const torch::stable::Tensor& a_blockscale,
-                          const torch::stable::Tensor& b_blockscales,
-                          const torch::stable::Tensor& alphas,
-                          const torch::stable::Tensor& problem_sizes,
-                          const torch::stable::Tensor& expert_offsets,
-                          const torch::stable::Tensor& sf_offsets);
+// void cutlass_fp4_group_mm(torch::stable::Tensor& output,
+//                           const torch::stable::Tensor& a,
+//                           const torch::stable::Tensor& b,
+//                           const torch::stable::Tensor& a_blockscale,
+//                           const torch::stable::Tensor& b_blockscales,
+//                           const torch::stable::Tensor& alphas,
+//                           const torch::stable::Tensor& problem_sizes,
+//                           const torch::stable::Tensor& expert_offsets,
+//                           const torch::stable::Tensor& sf_offsets);
 
-std::tuple<torch::stable::Tensor, torch::stable::Tensor> scaled_fp4_quant_func(
-    torch::stable::Tensor const& input,
-    torch::stable::Tensor const& input_scale, bool is_sf_swizzled_layout);
+// std::tuple<torch::stable::Tensor, torch::stable::Tensor>
+// scaled_fp4_quant_func(
+//     torch::stable::Tensor const& input,
+//     torch::stable::Tensor const& input_scale, bool is_sf_swizzled_layout);
 
-void scaled_fp4_quant_out(torch::stable::Tensor const& input,
-                          torch::stable::Tensor const& input_scale,
-                          bool is_sf_swizzled_layout,
-                          torch::stable::Tensor& output,
-                          torch::stable::Tensor& output_scale);
+// void scaled_fp4_quant_out(torch::stable::Tensor const& input,
+//                           torch::stable::Tensor const& input_scale,
+//                           bool is_sf_swizzled_layout,
+//                           torch::stable::Tensor& output,
+//                           torch::stable::Tensor& output_scale);
 
-void scaled_fp4_experts_quant(
-    torch::stable::Tensor& output, torch::stable::Tensor& output_scale,
-    torch::stable::Tensor const& input,
-    torch::stable::Tensor const& input_global_scale,
-    torch::stable::Tensor const& input_offset_by_experts,
-    torch::stable::Tensor const& output_scale_offset_by_experts);
+// void scaled_fp4_experts_quant(
+//     torch::stable::Tensor& output, torch::stable::Tensor& output_scale,
+//     torch::stable::Tensor const& input,
+//     torch::stable::Tensor const& input_global_scale,
+//     torch::stable::Tensor const& input_offset_by_experts,
+//     torch::stable::Tensor const& output_scale_offset_by_experts);
 
-void silu_and_mul_scaled_fp4_experts_quant(
-    torch::stable::Tensor& output, torch::stable::Tensor& output_scale,
-    torch::stable::Tensor const& input,
-    torch::stable::Tensor const& input_global_scale,
-    torch::stable::Tensor const& input_offset_by_experts,
-    torch::stable::Tensor const& output_scale_offset_by_experts);
+// void silu_and_mul_scaled_fp4_experts_quant(
+//     torch::stable::Tensor& output, torch::stable::Tensor& output_scale,
+//     torch::stable::Tensor const& input,
+//     torch::stable::Tensor const& input_global_scale,
+//     torch::stable::Tensor const& input_offset_by_experts,
+//     torch::stable::Tensor const& output_scale_offset_by_experts);
 
-void silu_and_mul_nvfp4_quant(torch::stable::Tensor& out,
-                              torch::stable::Tensor& output_block_scale,
-                              torch::stable::Tensor& input,
-                              torch::stable::Tensor& input_global_scale);
+// void silu_and_mul_nvfp4_quant(torch::stable::Tensor& out,
+//                               torch::stable::Tensor& output_block_scale,
+//                               torch::stable::Tensor& input,
+//                               torch::stable::Tensor& input_global_scale);
 
-void cutlass_mxfp4_group_mm(torch::stable::Tensor& output,
-                            const torch::stable::Tensor& a,
-                            const torch::stable::Tensor& b,
-                            const torch::stable::Tensor& a_blockscale,
-                            const torch::stable::Tensor& b_blockscales,
-                            const torch::stable::Tensor& problem_sizes,
-                            const torch::stable::Tensor& expert_offsets,
-                            const torch::stable::Tensor& sf_offsets);
+// void cutlass_mxfp4_group_mm(torch::stable::Tensor& output,
+//                             const torch::stable::Tensor& a,
+//                             const torch::stable::Tensor& b,
+//                             const torch::stable::Tensor& a_blockscale,
+//                             const torch::stable::Tensor& b_blockscales,
+//                             const torch::stable::Tensor& problem_sizes,
+//                             const torch::stable::Tensor& expert_offsets,
+//                             const torch::stable::Tensor& sf_offsets);
 
 // AWQ ops
-torch::stable::Tensor awq_gemm(torch::stable::Tensor _in_feats,
-                               torch::stable::Tensor _kernel,
-                               torch::stable::Tensor _scaling_factors,
-                               torch::stable::Tensor _zeros,
-                               int64_t split_k_iters);
+torch::stable::Tensor awq_gemm(
+    torch::stable::Tensor _in_feats, torch::stable::Tensor _kernel,
+    torch::stable::Tensor _scaling_factors, torch::stable::Tensor _zeros,
+    int64_t split_k_iters, torch::stable::Tensor _temp_space, bool dtype_bf16);
 
 torch::stable::Tensor awq_dequantize(torch::stable::Tensor _kernel,
                                      torch::stable::Tensor _scaling_factors,
@@ -183,8 +183,8 @@ torch::stable::Tensor awq_dequantize(torch::stable::Tensor _kernel,
 
 // TODO: Move this out once ROCm upgrade their torch to 2.11.
 // CPU tensor -> CUDA UVA view (shared CUDA)
-torch::stable::Tensor get_cuda_view_from_cpu_tensor(
-    torch::stable::Tensor& cpu_tensor);
+// torch::stable::Tensor get_cuda_view_from_cpu_tensor(
+//     torch::stable::Tensor& cpu_tensor);
 
 #endif
 
@@ -447,12 +447,12 @@ void dynamic_per_token_scaled_fp8_quant(
     std::optional<torch::stable::Tensor> const& scale_ub);
 
 // GPTQ kernels (shared CUDA/ROCm)
-torch::stable::Tensor gptq_gemm(torch::stable::Tensor a,
-                                torch::stable::Tensor b_q_weight,
-                                torch::stable::Tensor b_gptq_qzeros,
-                                torch::stable::Tensor b_gptq_scales,
-                                torch::stable::Tensor b_g_idx, bool use_exllama,
-                                bool use_v2_format, int64_t bit);
+torch::stable::Tensor gptq_gemm(
+    torch::stable::Tensor a, torch::stable::Tensor b_q_weight,
+    torch::stable::Tensor b_gptq_qzeros, torch::stable::Tensor b_gptq_scales,
+    torch::stable::Tensor b_g_idx, bool use_exllama, int64_t bit,
+    int64_t group_size, torch::stable::Tensor perm_space,
+    torch::stable::Tensor temp_space, bool dtype_bf16);
 
 void gptq_shuffle(torch::stable::Tensor q_weight, torch::stable::Tensor q_perm,
                   int64_t bit);

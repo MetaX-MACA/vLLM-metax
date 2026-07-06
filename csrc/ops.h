@@ -73,5 +73,5 @@ void qr_all_reduce(fptr_t _fa, torch::Tensor& inp, torch::Tensor& out,
 int64_t qr_max_size();
 
 // TODO: Remove this once ROCm upgrade to torch 2.11.
-torch::Tensor get_cuda_view_from_cpu_tensor(torch::Tensor& cpu_tensor);
+// torch::Tensor get_cuda_view_from_cpu_tensor(torch::Tensor& cpu_tensor);
 #endif

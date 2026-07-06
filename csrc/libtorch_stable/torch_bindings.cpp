@@ -185,28 +185,30 @@ STABLE_TORCH_LIBRARY_FRAGMENT(_C, ops) {
       "bool");
 
   // CUTLASS nvfp4 block scaled GEMM
-  ops.def(
-      "cutlass_scaled_fp4_mm(Tensor! out, Tensor a, Tensor b,"
-      "                      Tensor block_scale_a, Tensor block_scale_b,"
-      "                      Tensor alpha) -> ()");
+  //   ops.def(
+  //       "cutlass_scaled_fp4_mm(Tensor! out, Tensor a, Tensor b,"
+  //       "                      Tensor block_scale_a, Tensor block_scale_b,"
+  //       "                      Tensor alpha) -> ()");
 
-  // cutlass nvfp4 block scaled group GEMM
-  ops.def(
-      "cutlass_fp4_group_mm(Tensor! out, Tensor a, Tensor b,"
-      " Tensor a_blockscale, Tensor b_blockscales, Tensor alphas,"
-      " Tensor problem_sizes, Tensor expert_offsets, Tensor sf_offsets) -> ()");
+  //   // cutlass nvfp4 block scaled group GEMM
+  //   ops.def(
+  //       "cutlass_fp4_group_mm(Tensor! out, Tensor a, Tensor b,"
+  //       " Tensor a_blockscale, Tensor b_blockscales, Tensor alphas,"
+  //       " Tensor problem_sizes, Tensor expert_offsets, Tensor sf_offsets) ->
+  //       ()");
 
-  // cutlass mxfp4 block scaled group GEMM (MXFP4 x MXFP4 MoE)
-  ops.def(
-      "cutlass_mxfp4_group_mm(Tensor! out, Tensor a, Tensor b,"
-      " Tensor a_blockscale, Tensor b_blockscales,"
-      " Tensor problem_sizes, Tensor expert_offsets, Tensor sf_offsets) -> ()");
+  //   // cutlass mxfp4 block scaled group GEMM (MXFP4 x MXFP4 MoE)
+  //   ops.def(
+  //       "cutlass_mxfp4_group_mm(Tensor! out, Tensor a, Tensor b,"
+  //       " Tensor a_blockscale, Tensor b_blockscales,"
+  //       " Tensor problem_sizes, Tensor expert_offsets, Tensor sf_offsets) ->
+  //       ()");
 
-  // Compute NVFP4 block quantized tensor.
-  ops.def(
-      "scaled_fp4_quant(Tensor input,"
-      "                 Tensor input_scale, bool "
-      "is_sf_swizzled_layout) -> (Tensor, Tensor)");
+  //   // Compute NVFP4 block quantized tensor.
+  //   ops.def(
+  //       "scaled_fp4_quant(Tensor input,"
+  //       "                 Tensor input_scale, bool "
+  //       "is_sf_swizzled_layout) -> (Tensor, Tensor)");
 
   // Out variant
   // TODO: Add out_variant tag once PyTorch supports it (added in 2.11)
@@ -216,42 +218,45 @@ STABLE_TORCH_LIBRARY_FRAGMENT(_C, ops) {
   // via torch.library.Library.define(..., tags=(torch.Tag.out_variant,))
   // with the .impl remaining in C++.
   // See pytorch/pytorch#176117.
-  ops.def(
-      "scaled_fp4_quant.out(Tensor input,"
-      "                     Tensor input_scale, bool "
-      "is_sf_swizzled_layout, *, Tensor(a!) output, Tensor(b!) output_scale) "
-      "-> ()");
+  //   ops.def(
+  //       "scaled_fp4_quant.out(Tensor input,"
+  //       "                     Tensor input_scale, bool "
+  //       "is_sf_swizzled_layout, *, Tensor(a!) output, Tensor(b!)
+  //       output_scale) "
+  //       "-> ()");
 
-  // Compute NVFP4 experts quantization.
-  ops.def(
-      "scaled_fp4_experts_quant(Tensor! output, Tensor! output_scale,"
-      "Tensor input, Tensor input_global_scale, Tensor input_offset_by_experts,"
-      "Tensor output_scale_offset_by_experts) -> ()");
+  //   // Compute NVFP4 experts quantization.
+  //   ops.def(
+  //       "scaled_fp4_experts_quant(Tensor! output, Tensor! output_scale,"
+  //       "Tensor input, Tensor input_global_scale, Tensor
+  //       input_offset_by_experts," "Tensor output_scale_offset_by_experts) ->
+  //       ()");
 
-  // Fused SiLU+Mul+NVFP4 experts quantization.
-  ops.def(
-      "silu_and_mul_scaled_fp4_experts_quant(Tensor! output, Tensor! "
-      "output_scale,"
-      "Tensor input, Tensor input_global_scale, Tensor input_offset_by_experts,"
-      "Tensor output_scale_offset_by_experts) -> ()");
+  //   // Fused SiLU+Mul+NVFP4 experts quantization.
+  //   ops.def(
+  //       "silu_and_mul_scaled_fp4_experts_quant(Tensor! output, Tensor! "
+  //       "output_scale,"
+  //       "Tensor input, Tensor input_global_scale, Tensor
+  //       input_offset_by_experts," "Tensor output_scale_offset_by_experts) ->
+  //       ()");
 
-  // Compute MXFP4 experts quantization (32-element blocks, E8M0 SFs).
-  ops.def(
-      "mxfp4_experts_quant(Tensor! output, Tensor! output_scale,"
-      "Tensor input, Tensor input_offset_by_experts,"
-      "Tensor output_scale_offset_by_experts, int n_experts) -> ()");
+  //   // Compute MXFP4 experts quantization (32-element blocks, E8M0 SFs).
+  //   ops.def(
+  //       "mxfp4_experts_quant(Tensor! output, Tensor! output_scale,"
+  //       "Tensor input, Tensor input_offset_by_experts,"
+  //       "Tensor output_scale_offset_by_experts, int n_experts) -> ()");
 
-  // Fused SiLU+Mul+MXFP4 experts quantization.
-  ops.def(
-      "silu_and_mul_mxfp4_experts_quant(Tensor! output, Tensor! "
-      "output_scale,"
-      "Tensor input, Tensor input_offset_by_experts,"
-      "Tensor output_scale_offset_by_experts, int n_experts) -> ()");
+  //   // Fused SiLU+Mul+MXFP4 experts quantization.
+  //   ops.def(
+  //       "silu_and_mul_mxfp4_experts_quant(Tensor! output, Tensor! "
+  //       "output_scale,"
+  //       "Tensor input, Tensor input_offset_by_experts,"
+  //       "Tensor output_scale_offset_by_experts, int n_experts) -> ()");
 
-  // Fused SiLU+Mul+NVFP4 quantization.
-  ops.def(
-      "silu_and_mul_nvfp4_quant(Tensor! result, Tensor! result_block_scale, "
-      "Tensor input, Tensor input_global_scale) -> ()");
+  //   // Fused SiLU+Mul+NVFP4 quantization.
+  //   ops.def(
+  //       "silu_and_mul_nvfp4_quant(Tensor! result, Tensor! result_block_scale,
+  //       " "Tensor input, Tensor input_global_scale) -> ()");
 
   // Check if cutlass_scaled_mm_fp4 is supported for CUDA devices
   // of the given capability
@@ -315,7 +320,8 @@ STABLE_TORCH_LIBRARY_FRAGMENT(_C, ops) {
   // Quantized GEMM for AWQ.
   ops.def(
       "awq_gemm(Tensor _in_feats, Tensor _kernel, Tensor _scaling_factors, "
-      "Tensor _zeros, SymInt split_k_iters) -> Tensor");
+      "Tensor _zeros, SymInt split_k_iters, Tensor _temp_space, bool "
+      "dtype_bf16) -> Tensor");
 
   // Dequantization for AWQ.
   ops.def(
@@ -579,9 +585,9 @@ STABLE_TORCH_LIBRARY_FRAGMENT(_C, ops) {
   // to prevent the meta function registry.
   ops.def(
       "gptq_gemm(Tensor a, Tensor b_q_weight, Tensor b_gptq_qzeros, "
-      "Tensor b_gptq_scales, Tensor b_g_idx, bool use_exllama, bool "
-      "use_v2_format, int bit) "
-      "-> Tensor");
+      "Tensor b_gptq_scales, Tensor b_g_idx, bool use_exllama, int bit, int "
+      "group_size, Tensor perm_space, "
+      "Tensor temp_space, bool dtype_bf16)-> Tensor");
 
   // Post processing for GPTQ.
   ops.def("gptq_shuffle(Tensor! q_weight, Tensor q_perm, int bit) -> ()");
@@ -654,13 +660,15 @@ STABLE_TORCH_LIBRARY_IMPL(_C, CUDA, ops) {
            TORCH_BOX(&get_cutlass_batched_moe_mm_data));
 
   // FP4/NVFP4 ops
-  ops.impl("cutlass_scaled_fp4_mm", TORCH_BOX(&cutlass_scaled_fp4_mm));
-  ops.impl("scaled_fp4_quant", TORCH_BOX(&scaled_fp4_quant_func));
-  ops.impl("scaled_fp4_quant.out", TORCH_BOX(&scaled_fp4_quant_out));
-  ops.impl("scaled_fp4_experts_quant", TORCH_BOX(&scaled_fp4_experts_quant));
-  ops.impl("silu_and_mul_scaled_fp4_experts_quant",
-           TORCH_BOX(&silu_and_mul_scaled_fp4_experts_quant));
-  ops.impl("silu_and_mul_nvfp4_quant", TORCH_BOX(&silu_and_mul_nvfp4_quant));
+  //   ops.impl("cutlass_scaled_fp4_mm", TORCH_BOX(&cutlass_scaled_fp4_mm));
+  //   ops.impl("scaled_fp4_quant", TORCH_BOX(&scaled_fp4_quant_func));
+  //   ops.impl("scaled_fp4_quant.out", TORCH_BOX(&scaled_fp4_quant_out));
+  //   ops.impl("scaled_fp4_experts_quant",
+  //   TORCH_BOX(&scaled_fp4_experts_quant));
+  //   ops.impl("silu_and_mul_scaled_fp4_experts_quant",
+  //            TORCH_BOX(&silu_and_mul_scaled_fp4_experts_quant));
+  //   ops.impl("silu_and_mul_nvfp4_quant",
+  //   TORCH_BOX(&silu_and_mul_nvfp4_quant));
   // mxfp4_experts_quant: registered in mxfp4_experts_quant.cu (SM100 only).
   // W4A8 ops: registered in w4a8_mm_entry.cu / w4a8_grouped_mm_entry.cu.
 
@@ -760,10 +768,10 @@ STABLE_TORCH_LIBRARY_IMPL(_C, CUDA, ops) {
 
 // TODO: Remove this once ROCm upgrade to torch 2.11.
 #ifndef USE_ROCM
-STABLE_TORCH_LIBRARY_IMPL(_C, CPU, ops) {
-  ops.impl("get_cuda_view_from_cpu_tensor",
-           TORCH_BOX(&get_cuda_view_from_cpu_tensor));
-}
+// STABLE_TORCH_LIBRARY_IMPL(_C, CPU, ops) {
+//   ops.impl("get_cuda_view_from_cpu_tensor",
+//            TORCH_BOX(&get_cuda_view_from_cpu_tensor));
+// }
 
 STABLE_TORCH_LIBRARY_FRAGMENT(_C_cuda_utils, cuda_utils) {
   cuda_utils.def("get_device_attribute(int attribute, int device_id) -> int");

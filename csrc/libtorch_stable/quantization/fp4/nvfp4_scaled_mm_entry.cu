@@ -14,16 +14,19 @@
  * limitations under the License.
  */
 
-#include <torch/all.h>
+#include <torch/csrc/stable/tensor.h>
 
-void cutlass_scaled_fp4_mm(torch::Tensor& D, torch::Tensor const& A,
-                           torch::Tensor const& B, torch::Tensor const& A_sf,
-                           torch::Tensor const& B_sf,
-                           torch::Tensor const& alpha) {
-  TORCH_CHECK_NOT_IMPLEMENTED(false,
-                              "No compiled nvfp4 mm kernel, vLLM should "
-                              "be compiled using CUDA 12.8 and target "
-                              "compute capability 100 or above.");
+#include "libtorch_stable/torch_utils.h"
+void cutlass_scaled_fp4_mm(torch::stable::Tensor& D,
+                           const torch::stable::Tensor& A,
+                           const torch::stable::Tensor& B,
+                           const torch::stable::Tensor& A_sf,
+                           const torch::stable::Tensor& B_sf,
+                           const torch::stable::Tensor& alpha) {
+  STD_TORCH_CHECK_NOT_IMPLEMENTED(false,
+                                  "No compiled nvfp4 mm kernel, vLLM should "
+                                  "be compiled using CUDA 12.8 and target "
+                                  "compute capability 100 or above.");
 }
 
 bool cutlass_scaled_mm_supports_fp4(int64_t cuda_device_capability) {

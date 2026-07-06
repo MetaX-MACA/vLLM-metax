@@ -264,7 +264,7 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
     "csrc/libtorch_stable/cutlass_extensions/common.cpp"
     "csrc/libtorch_stable/quantization/w8a8/cutlass/scaled_mm_entry.cu"
     # "csrc/libtorch_stable/quantization/fp4/nvfp4_quant_entry.cu"
-    # "csrc/libtorch_stable/quantization/fp4/nvfp4_scaled_mm_entry.cu"
+    "csrc/libtorch_stable/quantization/fp4/nvfp4_scaled_mm_entry.cu"
     "csrc/libtorch_stable/quantization/awq/gemm_kernels.cu"
     "csrc/libtorch_stable/minimax_reduce_rms_kernel.cu")
 
@@ -600,8 +600,8 @@ endif()
 
 if(VLLM_GPU_LANG STREQUAL "CUDA")
   set(MOE_PERMUTE_SRC
-      # "csrc/libtorch_stable/moe/permute_unpermute_kernels/moe_permute_unpermute_kernel.cu"
-      # "csrc/libtorch_stable/moe/moe_permute_unpermute_op.cu"
+      "csrc/libtorch_stable/moe/permute_unpermute_kernels/moe_permute_unpermute_kernel.cu"
+      "csrc/libtorch_stable/moe/moe_permute_unpermute_op.cu"
     )
 
   list(APPEND VLLM_MOE_EXT_SRC "${MOE_PERMUTE_SRC}")

@@ -29,8 +29,8 @@ __global__ void expandInputRowsKernel(
 
   if (!CHECK_SKIPPED || blockIdx.x < *num_dest_rows) {
     // Load 128-bits per thread
-    constexpr int64_t ELEM_PER_THREAD = 128 / cutlass::sizeof_bits<T>::value;
-    using DataElem = cutlass::Array<T, ELEM_PER_THREAD>;
+    constexpr int64_t ELEM_PER_THREAD = 128 / mctlass::sizeof_bits<T>::value;
+    using DataElem = mctlass::Array<T, ELEM_PER_THREAD>;
 
     // Duplicate and permute rows
     int64_t const source_row = expanded_source_row / k;
@@ -102,16 +102,16 @@ __global__ void finalizeMoeRoutingKernel(
 
   // Load 128-bits per thread, according to the smallest data type we read/write
   constexpr int64_t FINALIZE_ELEM_PER_THREAD =
-      128 / std::min(cutlass::sizeof_bits<OutputType>::value,
-                     cutlass::sizeof_bits<T>::value);
+      128 / std::min(mctlass::sizeof_bits<OutputType>::value,
+                     mctlass::sizeof_bits<T>::value);
 
   int64_t const start_offset = threadIdx.x;
   int64_t const stride = blockDim.x;
   int64_t const num_elems_in_col = orig_cols / FINALIZE_ELEM_PER_THREAD;
 
-  using InputElem = cutlass::Array<T, FINALIZE_ELEM_PER_THREAD>;
-  using OutputElem = cutlass::Array<OutputType, FINALIZE_ELEM_PER_THREAD>;
-  using ComputeElem = cutlass::Array<float, FINALIZE_ELEM_PER_THREAD>;
+  using InputElem = mctlass::Array<T, FINALIZE_ELEM_PER_THREAD>;
+  using OutputElem = mctlass::Array<OutputType, FINALIZE_ELEM_PER_THREAD>;
+  using ComputeElem = mctlass::Array<float, FINALIZE_ELEM_PER_THREAD>;
   auto const* expanded_permuted_rows_v =
       reinterpret_cast<InputElem const*>(expanded_permuted_rows);
   auto* reduced_row_ptr_v = reinterpret_cast<OutputElem*>(reduced_row_ptr);
