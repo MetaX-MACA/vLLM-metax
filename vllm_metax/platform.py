@@ -1,15 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
-"""Code inside this file can safely assume cuda platform, e.g. importing
-pynvml. However, it should not initialize cuda context.
-"""
 
 import importlib
-import math
 import os
 from collections.abc import Callable
 from datetime import timedelta
-from functools import cache, wraps
+from functools import cache, lru_cache, wraps
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
 
@@ -48,6 +44,32 @@ pymxsml = import_pymxsml()
 # see https://github.com/huggingface/diffusers/issues/9704 for details
 # torch.backends.cuda.enable_cudnn_sdp(False)
 torch.backends.cuda.enable_cudnn_sdp(False)
+
+
+@lru_cache(maxsize=8)
+def _cuda_device_count_stateless(cuda_visible_devices: str | None = None) -> int:
+    """Get number of CUDA devices, caching based on the value of CUDA_VISIBLE_DEVICES
+    at the time of call.
+
+    This should be used instead of torch.accelerator.device_count() unless
+    CUDA_VISIBLE_DEVICES has already been set to the desired value.
+
+    # This can be removed and simply replaced with torch.cuda.get_device_count
+    # after https://github.com/pytorch/pytorch/pull/122815 is released."""
+    # Note: cuda_visible_devices is not used, but we keep it as an argument for
+    # LRU Cache purposes.
+
+    # Code below is based on
+    # https://github.com/pytorch/pytorch/blob/
+    # c1cd946818442aca8c7f812b16d187ce1586c3bc/
+    # torch/cuda/__init__.py#L831C1-L831C17
+    import torch.cuda
+
+    if not torch.cuda._is_compiled():
+        return 0
+    raw_count = torch.cuda._device_count_nvml()
+    r = torch._C._cuda_getDeviceCount() if raw_count < 0 else raw_count
+    return r
 
 
 @cache
@@ -204,6 +226,10 @@ class MacaPlatformBase(Platform):
         pass
 
     @classmethod
+    def is_pin_memory_available(cls) -> bool:
+        return True
+
+    @classmethod
     def is_device_capability_family(
         cls,
         capability: int,
@@ -265,7 +291,6 @@ class MacaPlatformBase(Platform):
             parallel_config.worker_cls = "vllm.v1.worker.gpu_worker.Worker"
 
         scheduler_config = vllm_config.scheduler_config
-
         # Note: model_config may be None during testing
         if (
             model_config is not None
@@ -296,6 +321,8 @@ class MacaPlatformBase(Platform):
         if vllm_config.model_config is not None:
             vllm_config.model_config.disable_cascade_attn = True
 
+        # -------------------------------------------------------
+        # Force MLAPrefill to FLASH_ATTN
         if attention_config := vllm_config.attention_config:
             attention_config.mla_prefill_backend = MLAPrefillBackendEnum.FLASH_ATTN
 
@@ -562,6 +589,10 @@ class MacaPlatformBase(Platform):
         return pg
 
     @classmethod
+    def device_count(cls) -> int:
+        return _cuda_device_count_stateless(envs.CUDA_VISIBLE_DEVICES)
+
+    @classmethod
     def check_if_supports_dtype(cls, torch_dtype: torch.dtype):
         if torch_dtype == torch.float8_e4m3fn or torch_dtype == torch.float8_e5m2:  # noqa
             raise ValueError("FP8 is not supported on GPUs ")
@@ -601,6 +632,10 @@ class MacaPlatformBase(Platform):
     @classmethod
     def support_deep_gemm(cls) -> bool:
         return False
+
+    @classmethod
+    def is_integrated_gpu(cls, device_id: int = 0) -> bool:
+        return bool(torch.cuda.get_device_properties(device_id).is_integrated)
 
     @classmethod
     def num_compute_units(cls, device_id=0) -> int:
@@ -726,6 +761,149 @@ class MxsmlMacaPlatform(MacaPlatformBase):
 
     @classmethod
     @with_mxsml_context
+    def get_device_numa_node(cls, device_id: int = 0) -> int | None:
+        """Get the NUMA node ID for a GPU device."""
+        physical_device_id = cls.device_id_to_physical_device_id(device_id)
+        handle = pymxsml.nvmlDeviceGetHandleByIndex(physical_device_id)
+
+        try:
+            numa_node = pymxsml.nvmlDeviceGetNumaNodeId(handle)
+            if cls._numa_node_has_cpus(numa_node):
+                return numa_node
+            # On non-CDMM Grace-Blackwell systems (e.g. GB200), each GPU's HBM
+            # is a separate NUMA node with no CPUs.  Fall through to
+            # CPU-affinity-based detection to find the nearest CPU node.
+            logger.debug(
+                "NUMA node %d for GPU %d has no CPUs (non-CDMM topology), "
+                "falling back to CPU-affinity-based detection",
+                numa_node,
+                device_id,
+            )
+        except Exception:
+            pass
+
+        try:
+            cpu_ids = cls._get_device_cpu_affinity(handle)
+            if cpu_ids:
+                numa_node = cls._get_numa_node_for_cpu(cpu_ids[0])
+                if numa_node is not None:
+                    logger.debug(
+                        "Determined NUMA node %d for GPU %d via CPU affinity",
+                        numa_node,
+                        device_id,
+                    )
+                    return numa_node
+        except Exception as e:
+            logger.warning("Failed to get NUMA node for GPU %d: %s", device_id, e)
+
+        return None
+
+    @classmethod
+    def _numa_node_has_cpus(cls, node_id: int) -> bool:
+        """Check whether a NUMA node has any CPUs assigned to it."""
+        from pathlib import Path
+
+        cpulist_file = Path(f"/sys/devices/system/node/node{node_id}/cpulist")
+        try:
+            return cpulist_file.read_text().strip() != ""
+        except (OSError, ValueError):
+            return False
+
+    @classmethod
+    def _get_device_cpu_affinity(cls, handle) -> list[int]:
+        """Get the list of CPU IDs associated with a GPU via NVML."""
+        cpu_count = os.cpu_count()
+        if cpu_count is None:
+            return []
+
+        cpu_set_size = (cpu_count + 63) // 64
+        cpu_affinity_mask = pymxsml.nvmlDeviceGetCpuAffinity(handle, cpu_set_size)
+
+        cpu_ids = []
+        for i, mask in enumerate(cpu_affinity_mask):
+            for bit in range(64):
+                cpu_id = i * 64 + bit
+                if cpu_id >= cpu_count:
+                    break
+                if mask & (1 << bit):
+                    cpu_ids.append(cpu_id)
+        return cpu_ids
+
+    @classmethod
+    def _get_numa_node_for_cpu(cls, cpu_id: int) -> int | None:
+        """Determine which NUMA node a CPU belongs to."""
+        from pathlib import Path
+
+        node_path = Path("/sys/devices/system/node")
+        if not node_path.exists():
+            return None
+
+        for node_dir in node_path.iterdir():
+            if not node_dir.name.startswith("node"):
+                continue
+            try:
+                node_id = int(node_dir.name[4:])
+                cpulist_file = node_dir / "cpulist"
+                if cpulist_file.exists():
+                    cpulist = cpulist_file.read_text().strip()
+                    if cls._cpu_in_cpulist(cpu_id, cpulist):
+                        return node_id
+            except (ValueError, OSError):
+                continue
+        return None
+
+    @classmethod
+    def _cpu_in_cpulist(cls, cpu_id: int, cpulist: str) -> bool:
+        """Check if a CPU ID is in a cpulist string such as '0-3,8-11'."""
+        for part in cpulist.split(","):
+            part = part.strip()
+            if "-" in part:
+                start, end = part.split("-", 1)
+                if int(start) <= cpu_id <= int(end):
+                    return True
+            elif part.isdigit() and int(part) == cpu_id:
+                return True
+        return False
+
+    @classmethod
+    @with_mxsml_context
+    def get_all_device_numa_nodes(cls) -> list[int] | None:
+        """Get NUMA nodes for all visible GPU devices."""
+        try:
+            numa_nodes = []
+            for device_id in range(cls.device_count()):
+                numa_node = cls.get_device_numa_node(device_id)
+                if numa_node is None:
+                    logger.warning(
+                        "Could not detect NUMA node for GPU %d, "
+                        "disabling automatic NUMA binding",
+                        device_id,
+                    )
+                    return None
+                numa_nodes.append(numa_node)
+            return numa_nodes
+        except Exception as e:
+            logger.warning("Failed to get NUMA nodes for GPUs: %s", e)
+            return None
+
+    @classmethod
+    @with_mxsml_context
+    def get_all_gpu_pci_bus_ids(cls) -> dict[int, str]:
+        """Query NVML for GPU index -> PCI bus ID mapping."""
+        out: dict[int, str] = {}
+        for idx in range(pymxsml.nvmlDeviceGetCount()):
+            handle = pymxsml.nvmlDeviceGetHandleByIndex(idx)
+            pci_info = pymxsml.nvmlDeviceGetPciInfo(handle)
+            bus_id = pci_info.busId
+            if isinstance(bus_id, bytes):
+                bus_id = bus_id.decode("utf-8")
+            out[idx] = bus_id.rstrip("\x00")
+        if not out:
+            raise RuntimeError("NVML returned no GPU PCI bus ID rows")
+        return out
+
+    @classmethod
+    @with_mxsml_context
     def log_warnings(cls):
         device_ids: int = pymxsml.nvmlDeviceGetCount()
         if device_ids > 1:
@@ -766,6 +944,14 @@ class NonMxsmlMacaPlatform(MacaPlatformBase):
         )
         return False
 
+    @classmethod
+    def get_device_numa_node(cls, device_id: int = 0) -> int | None:
+        return None
+
+    @classmethod
+    def get_all_device_numa_nodes(cls) -> list[int] | None:
+        return None
+
 
 # Autodetect either NVML-enabled or non-NVML platform
 # based on whether NVML is available.
@@ -788,9 +974,10 @@ MacaPlatform.log_warnings()
 # --------------------------------------------------
 # Note: Put all env Override here for Maca platform
 mx_envs.override_vllm_env(
-    "VLLM_USE_FLASHINFER_SAMPLER", False, "flashinfer sampler are not supported on maca"
+    "VLLM_USE_FLASHINFER_SAMPLER",
+    mx_envs.VLLM_METAX_USE_FLASHINFER_SAMPLER,
+    "controlled by VLLM_METAX_USE_FLASHINFER_SAMPLER; disabled by default",
 )
-
 mx_envs.override_vllm_env(
     "VLLM_ENGINE_READY_TIMEOUT_S", 7200, "set timeout to 7200s for model loading"
 )

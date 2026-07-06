@@ -4,13 +4,32 @@
 # Metax PyPI source
 --extra-index-url https://repos.metax-tech.com/r/maca-pypi/simple
 
+apex==0.1+metax3.8.0.7
+block_sparse_attn==0.0.2+metax3.8.0.7
+torch==2.10.0+metax3.8.0.7
+torchaudio==2.4.1+metax3.8.0.7
+torchcodec==0.6.0+metax3.8.0.7
+torchvision==0.25.0+metax3.8.0.7
+triton==3.6.0+metax3.8.0.7
 
+causal_conv1d==1.5.4+metax3.8.0.7torch2.10
+dropout_layer_norm==0.1+metax3.8.0.7torch2.10
 
 # attention
+flash_attn==2.6.3+metax3.8.0.7torch2.10
+flash-linear-attention==0.5.0+metax3.8.0.7torch2.10
+flash_mla==1.0.1+metax3.8.0.7torch2.10
+flashinfer==0.2.6+metax3.8.0.7torch2.10
+fused_dense_lib==2.6.3+metax3.8.0.7torch2.10
+mamba_ssm==2.2.4+metax3.8.0.7torch2.10
+mctlassEx==0.1.1+metax3.8.0.7torch2.10
 
+rotary_emb==0.1+metax3.8.0.7torch2.10
+xentropy_cuda_lib==0.1+metax3.8.0.7torch2.10
 
 
 # deep_gemm==0.0.1
 
+# mcoplib==0.4.2+maca3.5.3.20.torch2.10
 
 # uv pip install -r requirements/maca.txt -c requirements/constraints.txt  --index-strategy unsafe-best-match --extra-index-url https://repos.metax-tech.com/r/maca-pypi/simple --trusted-host repos.metax-tech.com --dry-run

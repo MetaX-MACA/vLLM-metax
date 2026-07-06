@@ -24,7 +24,6 @@ from vllm.v1.attention.backend import (
     MultipleOf,
 )
 from vllm_metax.v1.attention.backends.fa_utils import (
-    flash_attn_supports_fp8,
     flash_attn_supports_quant_query_input,
     get_flash_attn_version,
     is_fa_version_supported,
@@ -229,10 +228,20 @@ class MacaFlashAttentionBackend(AttentionBackend):
         use_mla: bool,
         has_sink: bool,
         use_sparse: bool,
+        use_mm_prefix: bool,
         device_capability: DeviceCapability,
     ) -> str | None:
         if has_sink and device_capability < DeviceCapability(9, 0):
             return "sink not supported on compute capability < 9.0"
+        if (
+            use_mm_prefix
+            and get_flash_attn_version(head_size=head_size, has_sinks=has_sink) != 4
+        ):
+            return (
+                "mm_prefix (PrefixLM bidirectional attention) requires "
+                "FlashAttention v4, which does not resolve for this "
+                "head_size"
+            )
         return None
 
 
@@ -291,7 +300,11 @@ class FlashAttentionMetadata:
     prefix_scheduler_metadata: torch.Tensor | None = None
     max_num_splits: int = 0
 
-    causal: bool = True
+    causal: bool | torch.Tensor = True
+
+    # PrefixLM bidirectional ranges for multimodal tokens.
+    # Shape: (num_seqs, max_ranges, 2) int32, [start, end] per range.
+    mm_prefix_range_tensor: torch.Tensor | None = None
 
 
 def _get_sliding_window_configs(
@@ -668,9 +681,7 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         ):
             cache_dtype = self.cache_config.cache_dtype
             if is_quantized_kv_cache(cache_dtype):
-                qkv_dtype = MacaFlashAttentionBackend.get_fp8_dtype_for_flashattn(
-                    cache_dtype
-                )
+                qkv_dtype = current_platform.fp8_dtype()
             else:
                 qkv_dtype = self.kv_cache_dtype
             if aot_schedule:
@@ -790,6 +801,9 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
             self.scheduler_metadata[n:] = 0
             scheduler_metadata = self.scheduler_metadata[:n]
 
+        if isinstance(causal, torch.Tensor) and causal.dtype != torch.int32:
+            causal = causal.to(torch.int32)
+
         attn_metadata = FlashAttentionMetadata(
             num_actual_tokens=num_actual_tokens,
             max_query_len=max_query_len,
@@ -828,6 +842,19 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
             max_num_splits=max_num_splits,
             causal=causal,
         )
+
+        # Compute mm_prefix range tensor if the batch contains
+        # multimodal tokens with bidirectional ranges.
+        mm_ranges = common_attn_metadata.mm_req_doc_ranges
+        if mm_ranges is not None:
+            from vllm.v1.attention.backends.utils import (
+                compute_mm_prefix_range_tensor,
+            )
+
+            attn_metadata.mm_prefix_range_tensor = compute_mm_prefix_range_tensor(
+                mm_ranges, num_reqs, seq_lens.device
+            )
+
         return attn_metadata
 
     def update_block_table(
@@ -1109,6 +1136,46 @@ class FlashAttentionImpl(AttentionImpl):
                     if self.sliding_window is not None
                     else None
                 )
+
+                causal = attn_metadata.causal
+                is_dynamic_causal = isinstance(causal, torch.Tensor)
+
+                # For non-causal (bidirectional) attention, make the
+                # sliding window symmetric so queries attend in both
+                # directions.
+                if (
+                    sliding_window_size is not None
+                    and sliding_window_size[1] == 0
+                    and (is_dynamic_causal or causal is False)
+                ):
+                    sliding_window_size = [
+                        sliding_window_size[0],
+                        sliding_window_size[0],
+                    ]
+
+                mm_prefix_ranges = attn_metadata.mm_prefix_range_tensor
+                mm_mask_mod = None
+                mm_aux = None
+                if (
+                    mm_prefix_ranges is not None
+                    and not is_dynamic_causal
+                    and causal is True
+                    and self.vllm_flash_attn_version == 4
+                ):
+                    max_ranges = mm_prefix_ranges.shape[1]
+                    mm_mask_mod = _make_mm_prefix_mask_mod(max_ranges)
+                    mm_aux = [mm_prefix_ranges]
+
+                dynamic_causal = None
+                if isinstance(causal, torch.Tensor):
+                    if self.vllm_flash_attn_version != 4:
+                        raise NotImplementedError(
+                            "Per-sequence causal requires FA4. Current version: "
+                            f"FA{self.vllm_flash_attn_version}"
+                        )
+                    dynamic_causal = causal
+                    causal = False
+
                 if mx_envs.VLLM_METAX_ENABLE_FA_SPLIT_FORWARD:
                     # ┌------------------------  Metax Modification -------------------------┐
                     # For handling prefill decode split
@@ -1425,6 +1492,47 @@ class FlashAttentionImpl(AttentionImpl):
         )
 
         return output
+
+
+def _make_mm_prefix_mask_mod(max_ranges: int):
+    """Build a CuTE-DSL mask_mod implementing (causal OR mm_prefix).
+
+    Returns a @cute.jit callable that evaluates:
+      keep = (kv_idx <= q_idx) OR
+             (q_idx in [r_start,r_end] AND kv_idx in [r_start,r_end])
+    for each mm_prefix range stored in aux_tensors[0].
+    """
+    import cutlass
+    import cutlass.cute as cute
+    from cutlass import Int32  # type: ignore[attr-defined]
+
+    from vllm.vllm_flash_attn.cute.utils import (  # type: ignore[import-untyped]
+        scalar_to_ssa,
+    )
+
+    @cute.jit
+    def mm_prefix_mask_mod(
+        batch_idx: cute.TensorSSA,
+        head_idx: cute.TensorSSA,
+        q_idx: cute.TensorSSA,
+        kv_idx: cute.TensorSSA,
+        seqlen_info,
+        aux_tensors,
+    ):
+        keep = kv_idx <= q_idx
+        ranges = aux_tensors[0]
+        b = batch_idx[0]
+        for i in cutlass.range_constexpr(max_ranges):  # type: ignore[attr-defined]
+            r_start = scalar_to_ssa(ranges[b, i, 0], Int32)
+            r_end = scalar_to_ssa(ranges[b, i, 1], Int32)
+            valid = r_start < r_end
+            q_in = (q_idx >= r_start) & (q_idx <= r_end) & valid
+            k_in = (kv_idx >= r_start) & (kv_idx <= r_end) & valid
+            keep = keep | (q_in & k_in)
+        return keep
+
+    mm_prefix_mask_mod.use_fast_sampling = True
+    return mm_prefix_mask_mod
 
 
 def use_cascade_attention(

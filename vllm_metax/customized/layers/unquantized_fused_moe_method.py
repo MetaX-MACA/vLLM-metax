@@ -3,7 +3,7 @@
 import torch
 from typing import TYPE_CHECKING
 
-from vllm.model_executor.layers.fused_moe.layer import (
+from vllm.model_executor.layers.fused_moe import (
     UnquantizedFusedMoEMethod as vllm_UnquantizedFusedMoEMethod,
 )
 

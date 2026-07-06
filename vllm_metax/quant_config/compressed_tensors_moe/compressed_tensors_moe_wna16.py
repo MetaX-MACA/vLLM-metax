@@ -59,7 +59,7 @@ class CompressedTensorsWNA16MoEMethod(vllm_ctm_wna16):
         topk_ids: torch.Tensor,
         shared_experts: SharedExperts | None,
         shared_experts_input: torch.Tensor | None,
-    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+    ) -> torch.Tensor:
         # here we use Metax's `fused_experts`
         from vllm_metax.utils.fused_moe import get_fused_experts_fn
 
