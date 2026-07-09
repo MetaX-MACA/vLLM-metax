@@ -286,6 +286,54 @@ direct_register_custom_op(
 )
 
 
+# fp8 scaled mm
+def mctlass_fp8_block_scaled_mm(
+    A: torch.Tensor,
+    B: torch.Tensor,
+    As: torch.Tensor,
+    Bs: torch.Tensor,
+    out_dtype: torch.dtype,
+) -> torch.Tensor:
+    M = A.shape[0]
+    N = B.shape[0]
+    K = B.shape[1]
+    C = torch.zeros((M, N), dtype=out_dtype, device=A.device)
+    scale_a_trans = As.T.contiguous()
+    scale_b_trans = Bs.T.contiguous()
+    mctlass_scaled_gemm([M, N, K],
+        A,
+        B,
+        C,
+        scale_a_trans,
+        scale_b_trans,
+        None,
+        is_blockwise=True,
+        use_fp8=True,
+        is_scale_a_1d=True,
+        is_scale_b_1d=False,
+        scale_a_layout="m-major",
+        scale_b_layout="n-major")
+    return C
+
+
+def mctlass_fp8_block_scaled_mm_fake(
+    A: torch.Tensor,
+    B: torch.Tensor,
+    As: torch.Tensor,
+    Bs: torch.Tensor,
+    out_dtype: torch.dtype,
+) -> torch.Tensor:
+    M = A.shape[0]
+    N = B.shape[0]
+    return torch.empty((M, N), dtype=out_dtype, device=A.device)
+
+
+direct_register_custom_op(
+    op_name="mctlass_fp8_block_scaled_mm",
+    op_func=mctlass_fp8_block_scaled_mm,
+    fake_impl=mctlass_fp8_block_scaled_mm_fake,
+)
+
 # w8a8 fused moe
 def mctlassEx_fused_moe_gemm(
     a: torch.Tensor,
@@ -566,6 +614,24 @@ def cutlass_scaled_mm_azp(
     )
 
     return out.view(*target_shape)
+
+
+# -------------------------------------------------
+# Note:
+#
+# This is only supported in `_python_api_ops.py`.
+# It invokes mctlassEx python API directly.
+# -------------------------------------------------
+def mctlass_fp8_block_scaled_mm(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    scale_a: torch.Tensor,
+    scale_b: torch.Tensor,
+    out_dtype: torch.dtype,
+) -> torch.Tensor:
+    return torch.ops.vllm.mctlass_fp8_block_scaled_mm(
+        a, b, scale_a, scale_b, out_dtype
+    )
 
 
 # -------------------------------------------------

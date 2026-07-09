@@ -3,6 +3,10 @@
 import torch
 from vllm.triton_utils import tl, triton
 from typing import Any
+from vllm.models.deepseek_v4.common.ops.fused_compress_quant_cache import (
+    _fused_kv_compress_norm_rope_insert_sparse_attn,
+    _fused_kv_compress_norm_rope_insert_indexer_attn,
+)
 
 def compress_norm_rope_store_triton(
     state_cache: torch.Tensor,
@@ -27,6 +31,8 @@ def compress_norm_rope_store_triton(
     quant_block: int,
     token_stride: int,
     scale_dim: int,
+    use_fp8_indexer: bool,
+    use_fp8_kvcache: bool,
 ) -> None:
     """Shared triton launcher for the fused compress+norm+RoPE+insert path.
 
@@ -34,10 +40,20 @@ def compress_norm_rope_store_triton(
     ``use_fp4_cache``. Identical launch signature for all three.
     """
     if head_dim == 512:
-        kernel = _fused_kv_compress_norm_rope_insert_sparse_attn_bf16
+        if use_fp8_kvcache:
+            kernel = _fused_kv_compress_norm_rope_insert_sparse_attn
+            scale_kargs = {"FP8_MAX":448.0}
+        else:
+            kernel = _fused_kv_compress_norm_rope_insert_sparse_attn_bf16
+            scale_kargs = {"INT8_MAX":127.0}
         num_warps = 4
     else: # head_dim == 128
-        kernel = _fused_kv_compress_norm_rope_insert_indexer_attn_int8
+        if use_fp8_indexer:
+            kernel = _fused_kv_compress_norm_rope_insert_indexer_attn
+            scale_kargs = {"FP8_MAX":448.0}
+        else:
+            kernel = _fused_kv_compress_norm_rope_insert_indexer_attn_int8
+            scale_kargs = {"INT8_MAX":127.0}
         num_warps = 1
 
     kernel[(num_actual,)](
@@ -69,12 +85,12 @@ def compress_norm_rope_store_triton(
         COMPRESS_RATIO=compress_ratio,
         OVERLAP=overlap,
         ROPE_HEAD_DIM=rope_head_dim,
-        INT8_MAX=127.0,
         QUANT_BLOCK=quant_block,
         TOKEN_STRIDE=token_stride,
         SCALE_DIM=scale_dim,
         KV_BLOCK_STRIDE=kv_cache.stride(0),
         num_warps=num_warps,
+        **scale_kargs,
         **pdl_kwargs,
     )
 

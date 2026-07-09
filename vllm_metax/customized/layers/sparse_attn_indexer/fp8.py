@@ -26,38 +26,13 @@ from vllm_metax.v1.attention.backends.mla.indexer import (
 )
 from vllm.v1.attention.ops.common import pack_seq_triton, unpack_seq_triton
 from vllm.v1.worker.workspace import current_workspace_manager
-from vllm.model_executor.layers.sparse_attn_indexer import kv_cache_as_quant_view
+from vllm.model_executor.layers.sparse_attn_indexer import _gather_workspace_shapes, kv_cache_as_quant_view
 
 from vllm_metax import _custom_ops as mx_ops
 
 logger = init_logger(__name__)
 
 RADIX_TOPK_WORKSPACE_SIZE = 1024 * 1024
-
-# MXFP4 layout: 2 values packed per byte, ue8m0 (1-byte) scale per block of 32.
-MXFP4_BLOCK_SIZE = 32
-
-
-def _gather_workspace_shapes(
-    total_seq_lens: int,
-    head_dim: int,
-    fp8_dtype: torch.dtype,
-    use_fp4_cache: bool,
-) -> tuple[tuple[tuple[int, int], torch.dtype], tuple[tuple[int, int], torch.dtype]]:
-    """Return ((values_shape, values_dtype), (scales_shape, scales_dtype)) for
-    the K-gather workspace. FP8 path: (T, head_dim) fp8 + (T, 4) uint8 fp32
-    scales. MXFP4 path: (T, head_dim // 2) uint8 packed mxfp4 +
-    (T, head_dim // MXFP4_BLOCK_SIZE) uint8 ue8m0 scales."""
-    if use_fp4_cache:
-        return (
-            ((total_seq_lens, head_dim // 2), torch.uint8),
-            ((total_seq_lens, head_dim // MXFP4_BLOCK_SIZE), torch.uint8),
-        )
-    return (
-        ((total_seq_lens, head_dim), fp8_dtype),
-        ((total_seq_lens, 4), torch.uint8),
-    )
-
 
 @eager_break_during_capture
 def sparse_attn_indexer(
@@ -199,8 +174,11 @@ def sparse_attn_indexer(
                 q_slice_cast = q_slice
                 k_quant_cast = k_quant
                 k_scale_cast = k_scale.view(torch.float32).squeeze(-1)
+            
             logits = fp8_mqa_logits(
-                (q_slice_cast, q_scale_slice),
+                # --------------------------------------
+                # Note(Metax): fp8_mqa_logits only support fp8
+                q_slice_cast,
                 (k_quant_cast, k_scale_cast),
                 weights[chunk.token_start : chunk.token_end],
                 chunk.cu_seqlen_ks,
@@ -275,7 +253,9 @@ def sparse_attn_indexer(
             else padded_q_quant_decode_tokens
         )
         logits = fp8_paged_mqa_logits(
-            (padded_q_quant_cast, padded_q_scale),
+            # --------------------------------------
+            # Note(Metax): fp8_paged_mqa_logits only support fp8
+            padded_q_quant_cast,
             kv_cache,
             weights[:num_padded_tokens],
             seq_lens,
