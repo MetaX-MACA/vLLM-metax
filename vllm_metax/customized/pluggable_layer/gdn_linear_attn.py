@@ -85,6 +85,7 @@ class MacaGatedDeltaNetAttention(GatedDeltaNetAttention):
             b,
             a,
             core_attn_out,
+            False,
             self.prefix,
         )
 

@@ -8,3 +8,4 @@
 from . import bugfix  # noqa: F401
 from . import plugin_enhancement  # noqa: F401
 from . import performance  # noqa: F401
+from . import transformers_utils  # noqa: F401

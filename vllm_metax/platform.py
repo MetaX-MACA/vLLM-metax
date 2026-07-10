@@ -75,6 +75,7 @@ def _get_backend_priorities(
             AttentionBackendEnum.FLASHINFER,
             AttentionBackendEnum.TRITON_ATTN,
             AttentionBackendEnum.FLEX_ATTENTION,
+            AttentionBackendEnum.TURBOQUANT,
         ]
 
 
@@ -116,6 +117,10 @@ def register_attention_backends() -> None:
         backend=MLAPrefillBackendEnum.FLASH_ATTN,
         class_path="vllm_metax.v1.attention.backends.mla.prefill.flash_attn.MacaFlashAttnPrefillBackend",
     )
+    register_backend(
+        backend=AttentionBackendEnum.TURBOQUANT,
+        class_path="vllm_metax.v1.attention.backends.turboquant_attn.MacaTurboQuantAttentionBackend",
+    )
 
 
 def with_mxsml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
@@ -150,7 +155,7 @@ class MacaPlatformBase(Platform):
         "moe_wna16",
         "gguf",
     ]
-    if mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER:
+    if mx_envs.VLLM_METAX_ENABLE_FP8_WEIGHT:
         supported_quantization.append("fp8")
         supported_quantization.append("deepseek_v4_fp8")
 
@@ -513,7 +518,7 @@ class MacaPlatformBase(Platform):
 
     @classmethod
     def supports_fp8(cls) -> bool:
-        return mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER
+        return mx_envs.VLLM_METAX_ENABLE_FP8_WEIGHT
 
     @classmethod
     def use_custom_allreduce(cls) -> bool:
@@ -786,9 +791,18 @@ mx_envs.override_vllm_env(
     "VLLM_USE_FLASHINFER_SAMPLER", False, "flashinfer sampler are not supported on maca"
 )
 
-mx_envs.override_vllm_env(
-    "VLLM_ENGINE_READY_TIMEOUT_S", 3600, "set timeout to 3600s for model loading"
-)
+_engine_timeout = os.environ.get("VLLM_ENGINE_READY_TIMEOUT_S")
+
+if _engine_timeout is not None:
+    mx_envs.override_vllm_env(
+        "VLLM_ENGINE_READY_TIMEOUT_S",
+        int(_engine_timeout),
+        f"use user-defined timeout: {_engine_timeout}s",
+    )
+else:
+    mx_envs.override_vllm_env(
+        "VLLM_ENGINE_READY_TIMEOUT_S", 3600, "set timeout to 3600s for model loading"
+    )
 
 mx_envs.override_vllm_env(
     "VLLM_FLOAT32_MATMUL_PRECISION",

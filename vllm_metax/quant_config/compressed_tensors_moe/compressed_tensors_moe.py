@@ -2,11 +2,17 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 import torch
 from vllm.model_executor.layers.fused_moe import FusedMoEMethodBase
-from vllm.model_executor.layers.quantization.compressed_tensors import (
-    compressed_tensors_moe as vllm_ctm,
+from vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors_moe.compressed_tensors_moe import (
+    CompressedTensorsMoEMethod as vllm_ct_moe_method,
+    logger,
 )
 
+from compressed_tensors.quantization import (
+    ActivationOrdering,
+    QuantizationStrategy,
+)
 
+from compressed_tensors import CompressionFormat
 from vllm_metax.customized.layers.unquantized_fused_moe_method import (
     UnquantizedFusedMoEMethod,
 )
@@ -15,10 +21,9 @@ from .compressed_tensors_moe_w8a8_int8 import (
     CompressedTensorsW8A8Int8MoEMethod,
 )
 
-from .compressed_tensors_moe_wna16 import (
-    vllm_ctm_wna16,
-    vllm_ctm_wna16_marlin,
-    CompressedTensorsWNA16MoEMethod,
+
+from vllm.model_executor.layers.quantization.compressed_tensors.schemes.compressed_tensors_wNa16 import (  # noqa
+    WNA16_SUPPORTED_BITS,
 )
 
 from .compressed_tensors_moe_w4a8_int4 import CompressedTensorsW4A8Int4MoEMethod
@@ -27,29 +32,27 @@ from .compressed_tensors_moe_w4a8_int4 import CompressedTensorsW4A8Int4MoEMethod
 # -----------------------------------------------------------
 # Note: We need to keep the method name **the same** as vLLM's
 # -----------------------------------------------------------
-class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
+class CompressedTensorsMoEMethod(vllm_ct_moe_method):
     @staticmethod
     def get_moe_method(
         quant_config: "CompressedTensorsConfig",  # type: ignore # noqa E501
         layer: torch.nn.Module,
         layer_name: str,
     ) -> FusedMoEMethodBase:
-        # -------------------------------------------
-        # Note: all these are copied from vllm's logic
-        #       we just need the
-        #           - `weight_quant`
-        #           - `input_quant`
-        #       to construct the corresponding class.
-        # -------------------------------------------
+        # FusedMoE was made by combining multiple Linears so need to
+        # make sure quantization config for Linear can target it
         quant_config._add_fused_moe_to_target_scheme_map()
         unfused_names = [
             layer_name + proj_name
             for proj_name in [".0.gate_proj", ".0.up_proj", ".0.down_proj"]
         ]
+        # TODO: refactor this to use expert_mapping and check all layer numbers
         all_scheme_dicts = [
             quant_config.get_scheme_dict(layer, name) for name in unfused_names
         ]
         scheme_dict = all_scheme_dicts.pop()
+
+        # multiple schemes found
         if not all([cur_dict == scheme_dict for cur_dict in all_scheme_dicts]):
             raise ValueError(
                 "All MoE projections need to have same "
@@ -59,14 +62,47 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
         if scheme_dict is None:  # ignored layer
             return UnquantizedFusedMoEMethod(layer.moe_config)
 
+        # TODO: @dsikka: refactor this to use schemes as other kernels
+        # are supported + check if the layer is being ignored.
         weight_quant = scheme_dict.get("weights")
         input_quant = scheme_dict.get("input_activations")
+        format = scheme_dict.get("format")
 
-        # -------------------------------------------
-        # Replace with Metax's MoE quantization methods by:
-        #  - `weights_quant`
-        #  - `input_quant`
-        # -------------------------------------------
+        if quant_config._is_wNa16_group_channel(weight_quant, input_quant):
+            # group_size=None means channelwise
+            group_size = weight_quant.group_size or -1  # noqa: F841
+
+            valid_format_and_bits = (
+                weight_quant.num_bits in WNA16_SUPPORTED_BITS
+                and format == CompressionFormat.pack_quantized.value
+            )
+
+            if not valid_format_and_bits:
+                raise ValueError(
+                    "For Fused MoE layers, only format: ",
+                    f"{CompressionFormat.pack_quantized.value} ",
+                    f" and bits: {WNA16_SUPPORTED_BITS} is supported ",
+                    f"but got format: {CompressionFormat.pack_quantized.value} "
+                    f" and bits: {weight_quant.num_bits}",
+                )
+
+            from .compressed_tensors_moe_wna16 import (
+                CompressedTensorsWNA16MoEMethod,
+            )
+
+            if (
+                weight_quant.strategy == QuantizationStrategy.GROUP
+                and weight_quant.actorder
+                in (ActivationOrdering.GROUP, ActivationOrdering.DYNAMIC)
+            ):
+                raise ValueError(
+                    "WNA16MoE is not supported with actorder=group/dynamic."
+                )
+            logger.info_once("Using CompressedTensorsWNA16MoEMethod")
+            return CompressedTensorsWNA16MoEMethod(
+                weight_quant, input_quant, layer.moe_config
+            )
+
         if quant_config._is_dynamic_token_w8a8(weight_quant, input_quant):
             return CompressedTensorsW8A8Int8MoEMethod(
                 weight_quant, input_quant, layer.moe_config
@@ -81,35 +117,3 @@ class CompressedTensorsMoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
             return CompressedTensorsW4A8Int4MoEMethod(
                 weight_quant, input_quant, layer.moe_config
             )
-
-        origin_moe_method = None
-        try:
-            origin_moe_method = vllm_ctm.CompressedTensorsMoEMethod.get_moe_method(
-                quant_config, layer, layer_name
-            )
-        except ValueError:
-            # only handle CompressedTensorsW4A8Int4MoEMethod
-            if not quant_config._is_dynamic_token_w4a8_int(weight_quant, input_quant):
-                raise
-        except Exception:
-            raise
-
-        if isinstance(
-            origin_moe_method,
-            (
-                vllm_ctm_wna16,
-                vllm_ctm_wna16_marlin,
-            ),
-        ):
-            # -----------------------------------------------------------
-            # We do not support CompressedTensors-MarlinMoEMethod currently
-            # Fallback to non-Marlin methods
-            # -----------------------------------------------------------
-            vllm_ctm.logger.info_once(
-                "Fallback to non-marlin CompressedTensorsWNA16MoEMethod"
-            )
-            return CompressedTensorsWNA16MoEMethod(
-                weight_quant, input_quant, layer.moe_config
-            )
-
-        return origin_moe_method
