@@ -23,6 +23,8 @@ vLLM MetaX Plugin
 ---
 
 *Latest News* 🔥
+- [2026/6] Released vllm-metax **v0.21.0** 🥳 — aligned with vLLM *v0.21.0*. 
+- [2026/6] Released vllm-metax **v0.20.0** 🚀 — aligned with vLLM *v0.20.0*. 
 - [2026/5] Released vllm-metax **v0.19.0** 🎉 — aligned with vLLM *v0.19.0*, but fully supported Gemma4!
 - [2026/4] Released vllm-metax **v0.18.0** 😎 — aligned with vLLM *v0.18.0*, same as usual.
 - [2026/3] Released vllm-metax **v0.17.0** 🎉 — aligned with vLLM *v0.17.0*, supported more models and improved performance.
@@ -80,7 +82,8 @@ Below are the maintained branches:
 | Branch      | Status       | Note                                 |
 |-------------|--------------|--------------------------------------|
 | master      | N/A | Tracks vLLM main; functionality is not guaranteed |
-| v0.20.0 | Under testing | WIP |
+| releases/v0.21.0 | Released | Corresponds to vLLM release v0.21.0 
+| releases/v0.20.0 | Released | Corresponds to vLLM release v0.20.0 |
 | releases/v0.19.0 | Released | Corresponds to vLLM release v0.19.0 |
 | releases/v0.18.0 | Released | Corresponds to vLLM release v0.18.0 |
 | releases/v0.17.0 | Released | Corresponds to vLLM release v0.17.0 |
