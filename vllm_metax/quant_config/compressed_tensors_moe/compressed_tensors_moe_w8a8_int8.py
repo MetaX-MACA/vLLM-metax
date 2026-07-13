@@ -82,6 +82,9 @@ def make_int8_moe_quant_config(
     w1_bias: torch.Tensor | None = None,
     w2_bias: torch.Tensor | None = None,
     per_act_token_quant: bool = False,
+    gemm1_alpha: float | None = None,
+    gemm1_beta: float | None = None,
+    gemm1_clamp_limit: float | None = None,
 ) -> FusedMoEQuantConfig:
     # assert (a1_scale is None and a2_scale is None) or (
     #     a1_scale is not None and a2_scale is not None
@@ -105,6 +108,17 @@ def make_int8_moe_quant_config(
         w1_bias=w1_bias,
         w2_bias=w2_bias,
         per_act_token_quant=per_act_token_quant,
+        # ┌------------------------  Metax Modification -------------------------┐
+        # Note: forwarded through so MiniMax-M3-style clamped SwiGLU reaches the
+        #       Triton kernel. int8_w8a8_moe_quant_config() only accepts these
+        #       because of the patch in
+        #       vllm_metax/patch/bugfix/int8_moe_gemm1_params/, which mirrors
+        #       https://github.com/vllm-project/vllm/pull/47552 (not yet
+        #       merged into this vLLM release).
+        gemm1_alpha=gemm1_alpha,
+        gemm1_beta=gemm1_beta,
+        gemm1_clamp_limit=gemm1_clamp_limit,
+        # └------------------------- Metax Modification -------------------------┘
     )
 
 
@@ -155,6 +169,9 @@ class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm_w8a8_int8):
             a1_scale=layer.w13_input_scale,
             a2_scale=layer.w2_input_scale,
             per_act_token_quant=True,
+            gemm1_alpha=getattr(layer, "swiglu_alpha", None),
+            gemm1_beta=getattr(layer, "swiglu_beta", None),
+            gemm1_clamp_limit=getattr(layer, "swiglu_limit", None),
         )
 
     def apply(
