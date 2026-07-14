@@ -23,6 +23,7 @@ from vllm.model_executor.layers.quantization.auto_awq import is_layer_skipped
 from vllm.model_executor.layers.quantization.base_config import QuantizeMethodBase
 from vllm.utils.torch_utils import direct_register_custom_op
 
+from vllm import _custom_ops as ops
 from vllm_metax import _custom_ops as mx_ops
 from vllm.model_executor.layers.quantization import register_quantization_config
 
@@ -137,7 +138,7 @@ def _apply_awq(
     # if (FP16_MATMUL_HEURISTIC_CONDITION and reshaped_x.dtype == torch.half) or self.quant_config.group_size != 128:
     if group_size % 32:
         out_shape = x.shape[:-1] + (qweight.shape[-1] * pack_factor,)
-        out = mx_ops.awq_dequantize(qweight, scales, qzeros, 0, 0, 0)
+        out = ops.awq_dequantize(qweight, scales, qzeros, 0, 0, 0)
         out = torch.matmul(reshaped_x, out)
     else:
         num_out_channel = qweight.shape[0]
