@@ -17,6 +17,7 @@ def _gather_k_cache_kernel(
     # constexpr
     max_blocks_per_seq: tl.constexpr,
     cache_block_size: tl.constexpr,
+    block_stride: tl.constexpr,  # total bytes per block (padded) int32
     head_size: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
@@ -51,7 +52,7 @@ def _gather_k_cache_kernel(
         # [num_blocks, cache_block_size, head_size]
         k_ptr = (
             k_cache_ptr
-            + physical_block_idx.to(tl.int64) * cache_block_size * head_size
+            + physical_block_idx.to(tl.int64) * block_stride
             + pos_in_block * head_size
             + dim_offsets
         )
@@ -104,6 +105,7 @@ def gather_k_cache(
         gather_lens,
         max_blocks_per_seq=block_table.shape[-1],
         cache_block_size=block_size,
+        block_stride=k_cache.stride(0),
         head_size=head_size,
         BLOCK_D=BLOCK_D,
     )
