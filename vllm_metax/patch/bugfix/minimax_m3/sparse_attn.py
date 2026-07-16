@@ -42,7 +42,7 @@
 #       `_gqa_sparse_fwd_kernel_orig` / `_gqa_sparse_decode_kernel_orig` for
 #       reference/bisection only -- they are not wired up to the wrappers.
 #
-# Affected versions: v0.21.0
+# Affected versions: v0.24.0
 # -----------------------------------------------
 
 import torch
@@ -975,34 +975,70 @@ def _gqa_sparse_decode_kernel_orig(
 
 
 # ---------------------------------------------------------------------------
-# Monkeypatch. Overwrite the attribute on every module that already did
-# `from vllm.models.minimax_m3.common.ops.sparse_attn import ...` (each such
-# statement copies the name into its OWN module namespace at import time, so
-# the origin module's attribute alone is not enough -- see the same lesson in
-# `index_topk.py`'s tail for `indexer.py`). `sparse_attention.py` and
-# `nvidia/sparse_attention_msa.py` both do this for these two wrappers.
+# Monkeypatch, applied lazily. Overwrite the attribute on every module that
+# does `from vllm.models.minimax_m3.common.ops.sparse_attn import ...` (each
+# such statement copies the name into its OWN module namespace at import
+# time, so the origin module's attribute alone is not enough -- see the same
+# lesson in `index_topk.py`'s tail for `indexer.py`). `sparse_attention.py`
+# and `nvidia/sparse_attention_msa.py` both do this for these two wrappers.
+#
+# This whole block runs via `on_first_import` rather than as a plain eager
+# `import vllm.models.minimax_m3.common.ops.sparse_attn` here, because that
+# import forces Python to first execute `vllm/models/minimax_m3/__init__.py`
+# (and everything it eagerly pulls in -- flashinfer, fla, and fla's
+# `TileLangBackend` registration, which dlopens `tilelang`'s bundled
+# libraries). Doing that *now*, during general-plugin registration, races
+# against `vllm_metax/patch/model_executor/layers/lamport_workspace.py`'s
+# own one-shot, unconditional, permanently-cached `CudaRTLibrary()` lookup
+# (also run during general-plugin registration): if `tilelang`'s bundled
+# `libcudart_stub.so` loads before that lookup runs, its naive
+# `/proc/self/maps` substring search for "libcudart" matches the stub
+# instead of MetaX's real `libmcruntime.so`, and the process crashes with
+# `AttributeError: ... undefined symbol: mcSetDevice`. Deferring this import
+# to whenever `sparse_attn` is naturally first imported by real code
+# (typically much later, during actual model loading -- well after general
+# plugins have already run) avoids the race entirely. See `_import_hooks.py`
+# for the mechanism.
 # ---------------------------------------------------------------------------
-import vllm.models.minimax_m3.common.ops as _ops
-import vllm.models.minimax_m3.common.ops.sparse_attn as _sparse_attn
-import vllm.models.minimax_m3.common.sparse_attention as _sparse_attention
-import vllm.models.minimax_m3.nvidia.sparse_attention_msa as _sparse_attention_msa
+import sys
 
-_sparse_attn._gqa_sparse_fwd_kernel = _gqa_sparse_fwd_kernel
-_sparse_attn._gqa_sparse_decode_kernel = _gqa_sparse_decode_kernel
-_sparse_attn._merge_topk_attn_out_kernel = _merge_topk_attn_out_kernel
-_sparse_attn.minimax_m3_sparse_attn = minimax_m3_sparse_attn
-_sparse_attn.minimax_m3_sparse_attn_decode = minimax_m3_sparse_attn_decode
+from ._import_hooks import on_first_import
 
-# `ops/__init__.py` re-exports both wrappers under its own name at import
-# time, before this patch runs -- keep that binding in sync too.
-_ops.minimax_m3_sparse_attn = minimax_m3_sparse_attn
-_ops.minimax_m3_sparse_attn_decode = minimax_m3_sparse_attn_decode
 
-# `sparse_attention.py` (main attend path) and `nvidia/sparse_attention_msa.py`
-# (SM100/MSA decode path) each did their own `from ... import` -- patch their
-# copies of the names directly, safe regardless of import order (see note
-# above).
-_sparse_attention.minimax_m3_sparse_attn = minimax_m3_sparse_attn
-_sparse_attention.minimax_m3_sparse_attn_decode = minimax_m3_sparse_attn_decode
-_sparse_attention_msa.minimax_m3_sparse_attn_decode = minimax_m3_sparse_attn_decode
+def _apply_patch(sparse_attn_mod):
+    sparse_attn_mod._gqa_sparse_fwd_kernel = _gqa_sparse_fwd_kernel
+    sparse_attn_mod._gqa_sparse_decode_kernel = _gqa_sparse_decode_kernel
+    sparse_attn_mod._merge_topk_attn_out_kernel = _merge_topk_attn_out_kernel
+    sparse_attn_mod.minimax_m3_sparse_attn = minimax_m3_sparse_attn
+    sparse_attn_mod.minimax_m3_sparse_attn_decode = minimax_m3_sparse_attn_decode
 
+    # `ops/__init__.py` re-exports both wrappers under its own name -- this
+    # callback runs before control returns to whatever import statement
+    # pulled in `sparse_attn_mod` (see `_import_hooks.py`), so that
+    # re-export (if it hasn't happened yet) already sees the patched
+    # attributes; this is just a belt-and-suspenders backstop for the case
+    # where `ops` was already fully imported earlier.
+    import vllm.models.minimax_m3.common.ops as _ops
+
+    _ops.minimax_m3_sparse_attn = minimax_m3_sparse_attn
+    _ops.minimax_m3_sparse_attn_decode = minimax_m3_sparse_attn_decode
+
+    # `sparse_attention.py` (main attend path) and
+    # `nvidia/sparse_attention_msa.py` (SM100/MSA decode path) each do their
+    # own `from ... import`. If either is *already* imported (i.e. this
+    # callback is firing on a `sparse_attn` that was imported before this
+    # bugfix even loaded), their copy of the name is already stale and must
+    # be patched directly -- same reasoning as `_ops` above. If neither is
+    # imported yet, there is nothing to do: whichever imports `sparse_attn`
+    # later will see these already-patched attributes.
+    for _mod_name in (
+        "vllm.models.minimax_m3.common.sparse_attention",
+        "vllm.models.minimax_m3.nvidia.sparse_attention_msa",
+    ):
+        _mod = sys.modules.get(_mod_name)
+        if _mod is not None:
+            _mod.minimax_m3_sparse_attn = minimax_m3_sparse_attn
+            _mod.minimax_m3_sparse_attn_decode = minimax_m3_sparse_attn_decode
+
+
+on_first_import("vllm.models.minimax_m3.common.ops.sparse_attn", _apply_patch)

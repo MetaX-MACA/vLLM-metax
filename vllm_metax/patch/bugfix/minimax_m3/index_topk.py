@@ -22,9 +22,9 @@
 #       the name into its OWN module namespace at import time. Overwriting
 #       the attribute on the `index_topk`/`ops` modules alone does not
 #       affect that already-bound copy, so `indexer.py`'s binding must be
-#       patched directly too -- this is safe regardless of import order
-#       because `Indexer.forward()` re-reads the name from `indexer`'s
-#       globals on every call, not just once at def time.
+#       patched directly too -- see `_import_hooks.on_first_import`'s
+#       docstring/module note for why this is done lazily rather than via a
+#       plain eager `import` here.
 #
 #       `_decode_index_score_kernel` has the same MetaX MMA-encoder problem
 #       as `sparse_attn.py`'s kernels (see that patch's notes): its
@@ -40,21 +40,31 @@
 #       kernel itself is reused unchanged -- only the wrapper's launch
 #       config differs.
 #
-# Affected versions: v0.21.0
+# Affected versions: v0.24.0
 # -----------------------------------------------
+
+import sys
 
 import torch
 
-from vllm.models.minimax_m3.common.ops.index_topk import (
-    SPARSE_BLOCK_SIZE,
-    _decode_index_score_kernel,
-    _index_block_score_kernel,
-    _topk_index_merge_kernel,
-    _topk_index_partial_kernel,
-)
 from vllm.platforms import current_platform
 from vllm.triton_utils import triton
 from vllm.utils.math_utils import round_up
+
+from ._import_hooks import on_first_import
+
+# Populated by `_apply_patch` once the real `index_topk` module has been
+# imported (see the bottom of this file). `minimax_m3_index_score` /
+# `minimax_m3_index_decode` below read these as plain module globals, which
+# Python resolves at CALL time, not at def time -- so as long as
+# `_apply_patch` has run before either function is ever actually invoked
+# (guaranteed: nothing can call them before importing this module, and that
+# import is exactly what triggers `_apply_patch`), this is safe.
+SPARSE_BLOCK_SIZE = None
+_index_block_score_kernel = None
+_decode_index_score_kernel = None
+_topk_index_partial_kernel = None
+_topk_index_merge_kernel = None
 
 
 @torch.no_grad()
@@ -162,10 +172,9 @@ def minimax_m3_index_decode(
     score_kwargs = pdl_kwargs.copy()
     if num_idx_heads > 1 and max_decode_query_len > 1:
         score_kwargs.update({"num_warps": 4, "num_stages": 2})
-    
     # ┌------------------------  Metax Modification -------------------------┐
     # Same MACA 64-KB shared-memory ceiling as `_index_block_score_kernel`.
-    # The BLOCK_SIZE_Q floor above widens the q/k/v tiles enough that
+    # The BLOCK_SIZE_Q floor below widens the q/k/v tiles enough that
     # Triton's default multi-stage pipelining (double buffering) overflows it
     # ("Required: 69888, Hardware limit: 65536"); force single-buffered.
     # Set last so it always wins over the num_stages=2 branch above.
@@ -311,22 +320,44 @@ def minimax_m3_index_decode(
     return topk_idx
 
 
-import vllm.models.minimax_m3.common.indexer as _indexer
-import vllm.models.minimax_m3.common.ops as _ops
-import vllm.models.minimax_m3.common.ops.index_topk as _index_topk
-import vllm.models.minimax_m3.nvidia.indexer_msa as _indexer_msa
+def _apply_patch(index_topk_mod):
+    global SPARSE_BLOCK_SIZE, _index_block_score_kernel
+    global _decode_index_score_kernel, _topk_index_partial_kernel, _topk_index_merge_kernel
+    SPARSE_BLOCK_SIZE = index_topk_mod.SPARSE_BLOCK_SIZE
+    _index_block_score_kernel = index_topk_mod._index_block_score_kernel
+    _decode_index_score_kernel = index_topk_mod._decode_index_score_kernel
+    _topk_index_partial_kernel = index_topk_mod._topk_index_partial_kernel
+    _topk_index_merge_kernel = index_topk_mod._topk_index_merge_kernel
 
-_index_topk.minimax_m3_index_score = minimax_m3_index_score
-_index_topk.minimax_m3_index_decode = minimax_m3_index_decode
-# `ops/__init__.py` re-exports the original function under its own name at
-# import time, before this patch runs -- keep that binding in sync too.
-_ops.minimax_m3_index_score = minimax_m3_index_score
-_ops.minimax_m3_index_decode = minimax_m3_index_decode
-# `indexer.py` and `nvidia/indexer_msa.py` also do their own
-# `from ...index_topk import ...` at import time -- patch their copies of
-# the names directly since the two lines above cannot reach them (see note
-# above).
-_indexer.minimax_m3_index_score = minimax_m3_index_score
-_indexer.minimax_m3_index_decode = minimax_m3_index_decode
-_indexer_msa.minimax_m3_index_decode = minimax_m3_index_decode
+    index_topk_mod.minimax_m3_index_score = minimax_m3_index_score
+    index_topk_mod.minimax_m3_index_decode = minimax_m3_index_decode
 
+    # `ops/__init__.py` re-exports the original functions under its own name
+    # -- since this callback runs before control returns to whatever import
+    # statement pulled in `index_topk_mod` (see `_import_hooks.py`), that
+    # re-export (if it hasn't happened yet) will already see the patched
+    # attributes; this direct assignment is just a belt-and-suspenders
+    # backstop for the case where `ops` was already fully imported earlier.
+    import vllm.models.minimax_m3.common.ops as _ops
+
+    _ops.minimax_m3_index_score = minimax_m3_index_score
+    _ops.minimax_m3_index_decode = minimax_m3_index_decode
+
+    # `indexer.py` and `nvidia/indexer_msa.py` also do their own
+    # `from ...index_topk import ...`. If either is *already* imported (i.e.
+    # this callback is firing on an `index_topk` that was imported before
+    # this bugfix even loaded), their copy of the name is already stale and
+    # must be patched directly -- same reasoning as `_ops` above. If neither
+    # is imported yet, there is nothing to do: whichever imports
+    # `index_topk` later will see these already-patched attributes.
+    for _mod_name in (
+        "vllm.models.minimax_m3.common.indexer",
+        "vllm.models.minimax_m3.nvidia.indexer_msa",
+    ):
+        _mod = sys.modules.get(_mod_name)
+        if _mod is not None:
+            _mod.minimax_m3_index_score = minimax_m3_index_score
+            _mod.minimax_m3_index_decode = minimax_m3_index_decode
+
+
+on_first_import("vllm.models.minimax_m3.common.ops.index_topk", _apply_patch)
