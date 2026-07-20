@@ -1,0 +1,27 @@
+# Auto detect text files and force LF line endings in repo
+* text=auto eol=lf
+
+# Windows batch scripts need CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary files - never modify line endings
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.so binary
+*.a binary
+*.o binary
+*.dll binary
+*.pyd binary
+*.whl binary
+*.bin binary
+*.pt binary
+*.safetensors binary
+*.pdf binary
+*.zip binary
+*.tar.gz binary
+*.tgz binary
