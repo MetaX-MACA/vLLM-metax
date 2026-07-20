@@ -553,6 +553,152 @@ def cutlass_moe_w4a8_gemm(
     )
 
 
+# w8a8 fp8 fused moe
+def mctlassEx_fused_moe_w8a8_fp8_get_kernel_m(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    c: torch.Tensor,
+    topk: int,
+    block_shape: list[int] | None = None,
+) -> int:
+    assert mctlass_moe_gemm is not None, "mctlassMoeGEMM is not imported correctly"
+    kernel_m_kwargs = {"use_fp8": True}
+    if block_shape is not None:
+        kernel_m_kwargs.update(
+            is_blockwise=True,
+            group_size=block_shape[0],
+        )
+    return mctlass_moe_gemm.get_kernel_m(
+        a,
+        b,
+        c,
+        b.shape[0], # num_experts
+        a.shape[0], # batch_size
+        b.shape[1], # N
+        a.shape[1], # k
+        topk,
+        **kernel_m_kwargs,
+    )
+
+
+def mctlassEx_fused_moe_w8a8_fp8_gemm(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    c: torch.Tensor,
+    a_scales: torch.Tensor,
+    b_scales: torch.Tensor,
+    topk_weights: torch.Tensor,
+    token_ids: torch.Tensor,
+    expert_ids: torch.Tensor,
+    num_tokens_post_padded: torch.Tensor,
+    EM: int,
+    topk: int,
+    mul_routed_weight: bool,
+    block_shape: list[int] | None = None,
+) -> None:
+    assert mctlass_moe_gemm is not None, "mctlassMoeGEMM is not imported correctly"
+    c1 = c.view(-1, c.size(-1))
+    assert c1.is_contiguous(), "fused moe output buffer is not contiguous"
+    fp8_kwargs = {
+        "use_fp8": True,
+    }
+    if block_shape is not None:
+        a_scales = a_scales.T.contiguous()
+        b_scales = b_scales.transpose(1, 2).contiguous()
+        fp8_kwargs.update(
+            is_blockwise=True,
+            group_size=block_shape[0],
+            is_scale_a_1d=True,
+            is_scale_b_1d=False,
+            scale_a_layout="m-major",
+            scale_b_layout="n-major",
+        )
+    mctlass_moe_gemm(
+        a.shape[0], # m
+        b.shape[1], # n
+        a.shape[1], # k
+        b.shape[0], # num_expert
+        EM,
+        topk,
+        a,
+        b,
+        c1,
+        a_scales,
+        b_scales,
+        None, # bias
+        topk_weights,
+        token_ids,
+        expert_ids,
+        num_tokens_post_padded,
+        mul_routed_weight,
+        **fp8_kwargs,
+    )
+
+def mctlassEx_fused_moe_w8a8_fp8_gemm_fake(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    c: torch.Tensor,
+    a_scales: torch.Tensor,
+    b_scales: torch.Tensor,
+    topk_weights: torch.Tensor,
+    token_ids: torch.Tensor,
+    expert_ids: torch.Tensor,
+    num_tokens_post_padded: torch.Tensor,
+    EM: int,
+    topk: int,
+    mul_routed_weight: bool,
+    block_shape: list[int] | None = None,
+) -> None:
+    return
+
+
+direct_register_custom_op(
+    op_name="mctlassEx_fused_moe_w8a8_fp8",
+    op_func=mctlassEx_fused_moe_w8a8_fp8_gemm,
+    mutates_args=["c"],
+    fake_impl=mctlassEx_fused_moe_w8a8_fp8_gemm_fake,
+    tags=(
+        ()
+        if is_torch_equal_or_newer("2.7.0")
+        else (torch.Tag.needs_fixed_stride_order,)
+    ),
+)
+
+
+def cutlass_moe_w8a8_fp8(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    c: torch.Tensor,
+    a_scales: torch.Tensor,
+    b_scales: torch.Tensor,
+    topk_weights: torch.Tensor,
+    token_ids: torch.Tensor,
+    expert_ids: torch.Tensor,
+    num_tokens_post_padded: torch.Tensor,
+    EM: int,
+    topk: int,
+    mul_routed_weight: bool,
+    block_shape: list[int] | None = None,
+) -> torch.Tensor:
+    torch.ops.vllm.mctlassEx_fused_moe_w8a8_fp8(
+        a,
+        b,
+        c,
+        a_scales,
+        b_scales,
+        topk_weights,
+        token_ids,
+        expert_ids,
+        num_tokens_post_padded,
+        EM,
+        topk,
+        mul_routed_weight,
+        block_shape,
+    )
+
+    return c
+
+
 # -------------------------------------------------
 # Note:
 #
