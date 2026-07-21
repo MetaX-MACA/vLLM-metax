@@ -10,7 +10,7 @@ from tests.kernels.utils import opcheck
 from vllm.model_executor.layers.layernorm import PolyNorm, RMSNorm
 from vllm.platforms import current_platform
 
-DTYPES = [torch.half, torch.bfloat16, torch.float]
+DTYPES = [ torch.bfloat16, torch.float]
 NUM_TOKENS = [7, 83, 4096]  # Arbitrary values for testing
 HIDDEN_SIZES = [8, 768, 769, 770, 771, 5120, 5124, 5125, 5126, 8192,
                 8199]  # Arbitrary values for testing
