@@ -15,6 +15,9 @@ from vllm._aiter_ops import rocm_aiter_ops
 from vllm.model_executor.layers.fused_moe.experts.rocm_aiter_moe import (
     rocm_aiter_grouped_topk,
 )
+from vllm.model_executor.layers.fused_moe.router import (
+    grouped_topk_router as vllm_grouped_topk_router,
+)
 from vllm.model_executor.layers.fused_moe.router.fused_topk_bias_router import (
     fused_topk_bias,
 )
@@ -286,3 +289,5 @@ class MacaGroupedTopKRouter(GroupedTopKRouter):
 
 
 GroupedTopKRouter._compute_routing = MacaGroupedTopKRouter._compute_routing
+vllm_grouped_topk_router.grouped_topk = maca_grouped_topk
+vllm_grouped_topk_router.fused_grouped_topk = maca_fused_grouped_topk
