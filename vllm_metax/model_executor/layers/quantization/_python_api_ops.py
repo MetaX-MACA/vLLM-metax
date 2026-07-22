@@ -675,11 +675,13 @@ def mctlassEx_fused_moe_w8a8_fp8_gemm(
     topk: int,
     mul_routed_weight: bool,
     block_shape: list[int] | None = None,
+    filter_expert: bool = True,
 ) -> None:
     assert mctlass_moe_gemm is not None, "mctlassMoeGEMM is not imported correctly"
     c1 = c.view(-1, c.size(-1))
     assert c1.is_contiguous(), "fused moe output buffer is not contiguous"
     fp8_kwargs = {
+        "filter_expert": filter_expert,
         "use_fp8": True,
     }
     if block_shape is not None:
@@ -728,6 +730,7 @@ def mctlassEx_fused_moe_w8a8_fp8_gemm_fake(
     topk: int,
     mul_routed_weight: bool,
     block_shape: list[int] | None = None,
+    filter_expert: bool = True,
 ) -> None:
     return
 
