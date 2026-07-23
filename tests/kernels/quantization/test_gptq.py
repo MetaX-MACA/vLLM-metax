@@ -5,7 +5,9 @@
 import torch
 
 from tests.kernels.utils import opcheck
-from vllm import _custom_ops as ops  # noqa: F401
+# from vllm import _custom_ops as ops  # noqa: F401
+
+from vllm_metax import _custom_ops as ops
 
 
 def test_gptq_shuffle_opcheck():
@@ -27,7 +29,35 @@ def test_gptq_gemm_opcheck():
     zeros = torch.zeros((32, 768), device='cuda', dtype=torch.int32)
     scales = torch.rand((32, 6144), device='cuda', dtype=torch.float16)
     idx = torch.empty((0, ), device='cuda', dtype=torch.int32)
+
     use_exllama = True
     bit = 4
-    opcheck(torch.ops._C.gptq_gemm,
-            (a, weight, zeros, scales, idx, use_exllama, bit))
+    group_size = 128
+
+    # FP16 且不启用 desc_act，两个 workspace 都可以为空。
+    perm_space = torch.empty((0,), device="cuda", dtype=torch.float16)
+    temp_space = torch.empty((0,), device="cuda", dtype=torch.float16)
+
+    dtype_bf16 = False
+
+    opcheck(
+        torch.ops._C.gptq_gemm,
+        (
+            a,
+            weight,
+            zeros,
+            scales,
+            idx,
+            use_exllama,
+            bit,
+            group_size,
+            perm_space,
+            temp_space,
+            dtype_bf16,
+        ),
+        test_utils=(
+            "test_schema",
+            "test_autograd_registration",
+            "test_faketensor",
+        ),
+    )
