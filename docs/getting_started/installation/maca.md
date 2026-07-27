@@ -92,6 +92,8 @@ Build with *empty device*:
 
 ### Post build (Significant)
 
+Note: **mcoplib** currently has some conflicts with vllm-metax's requirements. So you need to manually install mcoplib after building vllm-metax.
+
 === "PIP"
     --8<-- "docs/getting_started/installation/pip.inc.md:post-build"
 === "UV"

@@ -113,6 +113,100 @@ def mctlassEx_fused_moe_w4a8_get_kernel_m_per_channel(
 
 # end
 
+
+def mctlassEx_fused_moe_bf16_get_kernel_m(
+    A: torch.Tensor,
+    B: torch.Tensor,
+    C: torch.Tensor,
+    num_experts: int,
+    batch_size: int,
+    N: int,
+    K: int,
+    topk: int,
+) -> int:
+    assert mctlass_moe_gemm is not None, "mctlass op is not imported correctly"
+    kernel_m = mctlass_moe_gemm.get_kernel_m(
+        A, B, C, num_experts, batch_size, N, K, topk
+    )
+    return kernel_m
+
+
+def mctlassEx_fused_moe_bf16_gemm(
+    batch_size: int,
+    N: int,
+    K: int,
+    num_experts: int,
+    EM: int,
+    topk: int,
+    A: torch.Tensor,
+    B: torch.Tensor,
+    C: torch.Tensor,
+    scale_a: torch.Tensor,
+    scale_b: torch.Tensor,
+    bias: torch.Tensor,
+    topk_weights: torch.Tensor,
+    token_ids: torch.Tensor,
+    expert_ids: torch.Tensor,
+    num_tokens_post_padded: torch.Tensor,
+    mul_routed_weight: bool,
+) -> torch.Tensor:
+    assert mctlass_moe_gemm is not None, "mctlass op is not imported correctly"
+    mctlass_moe_gemm(
+        batch_size,
+        N,
+        K,
+        num_experts,
+        EM,
+        topk,
+        A,
+        B,
+        C,
+        scale_a,
+        scale_b,
+        bias,
+        topk_weights,
+        token_ids,
+        expert_ids,
+        num_tokens_post_padded,
+        mul_routed_weight,
+    )
+    return C
+
+
+def mctlassEx_fused_moe_bf16_gemm_fake(
+    batch_size: int,
+    N: int,
+    K: int,
+    num_experts: int,
+    EM: int,
+    topk: int,
+    A: torch.Tensor,
+    B: torch.Tensor,
+    C: torch.Tensor,
+    scale_a: torch.Tensor,
+    scale_b: torch.Tensor,
+    bias: torch.Tensor,
+    topk_weights: torch.Tensor,
+    token_ids: torch.Tensor,
+    expert_ids: torch.Tensor,
+    num_tokens_post_padded: torch.Tensor,
+    mul_routed_weight: bool,
+) -> torch.Tensor:
+    return C
+
+
+direct_register_custom_op(
+    op_name="mctlassEx_fused_moe_bf16_gemm",
+    op_func=mctlassEx_fused_moe_bf16_gemm,
+    mutates_args=["C"],
+    fake_impl=mctlassEx_fused_moe_bf16_gemm_fake,
+    tags=(
+        ()
+        if is_torch_equal_or_newer("2.7.0")
+        else (torch.Tag.needs_fixed_stride_order,)
+    ),
+)
+
 mctlass_op = None
 mctlass_scaled_gemm = None
 with contextlib.suppress(ImportError):
@@ -134,7 +228,7 @@ with contextlib.suppress(ImportError):
 
 # w8a8 scaled mm
 def mctlassEx_w8a8_scaled_mm_azp(
-    out: torch.Tensor,
+    out_dtype: torch.dtype,
     a: torch.Tensor,
     b: torch.Tensor,
     scale_a: torch.Tensor,
@@ -143,6 +237,8 @@ def mctlassEx_w8a8_scaled_mm_azp(
     azp_adj: torch.Tensor | None = None,
     azp: torch.Tensor | None = None,
 ) -> torch.Tensor:
+    out = torch.empty((a.shape[0], b.shape[1]), dtype=out_dtype, device=a.device)
+
     if bias is not None and bias.dim() == 1:
         bias = bias.unsqueeze(0)
 
@@ -165,7 +261,7 @@ def mctlassEx_w8a8_scaled_mm_azp(
 
 
 def mctlassEx_w8a8_scaled_mm_azp_fake(
-    out: torch.Tensor,
+    out_dtype: torch.dtype,
     a: torch.Tensor,
     b: torch.Tensor,
     scale_a: torch.Tensor,
@@ -174,13 +270,15 @@ def mctlassEx_w8a8_scaled_mm_azp_fake(
     azp_adj: torch.Tensor | None = None,
     azp: torch.Tensor | None = None,
 ) -> torch.Tensor:
+    out = torch.empty((a.shape[0], b.shape[1]), dtype=out_dtype, device=a.device)
+
     return out
 
 
 direct_register_custom_op(
     op_name="mctlassEx_w8a8_scaled_mm_azp",
     op_func=mctlassEx_w8a8_scaled_mm_azp,
-    mutates_args=["out"],
+    mutates_args=[],
     fake_impl=mctlassEx_w8a8_scaled_mm_azp_fake,
     tags=(
         ()
@@ -430,9 +528,9 @@ def cutlass_scaled_mm(
     target_shape = (*a.shape[:-1], b.shape[1])
     a = a.view(-1, a.shape[-1])
 
-    out = torch.empty((a.shape[0], b.shape[1]), dtype=out_dtype, device=a.device)
-
-    torch.ops.vllm.mctlassEx_w8a8_scaled_mm_azp(out, a, b, scale_a, scale_b, bias)
+    out = torch.ops.vllm.mctlassEx_w8a8_scaled_mm_azp(
+        out_dtype, a, b, scale_a, scale_b, bias
+    )
 
     return out.view(*target_shape)
 
@@ -462,9 +560,8 @@ def cutlass_scaled_mm_azp(
     a = a.view(-1, a.shape[-1])
     assert azp is None or azp.numel() == a.shape[0]
 
-    out = torch.empty((a.shape[0], b.shape[1]), dtype=out_dtype, device=a.device)
-    torch.ops.vllm.mctlassEx_w8a8_scaled_mm_azp(
-        out, a, b, scale_a, scale_b, bias, azp_adj, azp
+    out = torch.ops.vllm.mctlassEx_w8a8_scaled_mm_azp(
+        out_dtype, a, b, scale_a, scale_b, bias, azp_adj, azp
     )
 
     return out.view(*target_shape)
@@ -595,3 +692,43 @@ def cutlass_moe_mm_w4a8_per_channel(
 
 
 # end
+
+
+def cutlass_moe_mm_bf16(
+    batch_size: int,
+    N: int,
+    K: int,
+    num_experts: int,
+    EM: int,
+    topk: int,
+    A: torch.Tensor,
+    B: torch.Tensor,
+    C: torch.Tensor,
+    scale_a: torch.Tensor,
+    scale_b: torch.Tensor,
+    bias: torch.Tensor,
+    topk_weights: torch.Tensor,
+    token_ids: torch.Tensor,
+    expert_ids: torch.Tensor,
+    num_tokens_post_padded: torch.Tensor,
+    mul_routed_weight: bool,
+) -> torch.Tensor:
+    return mctlassEx_fused_moe_bf16_gemm(
+        batch_size,
+        N,
+        K,
+        num_experts,
+        EM,
+        topk,
+        A,
+        B,
+        C,
+        scale_a,
+        scale_b,
+        bias,
+        topk_weights,
+        token_ids,
+        expert_ids,
+        num_tokens_post_padded,
+        mul_routed_weight,
+    )

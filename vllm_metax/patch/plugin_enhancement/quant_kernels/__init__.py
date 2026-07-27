@@ -8,3 +8,4 @@
 from . import scaled_mm
 from . import fp8
 from . import int8
+from . import quant_utils

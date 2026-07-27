@@ -41,5 +41,8 @@
 
 # --8<-- [start:post-build]
 !!! note
-    None
+    ```bash 
+    pip install mcoplib==0.4.7+maca3.8.0.23.torch2.10
+    pip install 'numpy>2'
+    ```
 # --8<-- [end:post-build]

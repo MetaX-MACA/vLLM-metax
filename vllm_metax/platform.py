@@ -75,6 +75,7 @@ def _get_backend_priorities(
             AttentionBackendEnum.FLASHINFER,
             AttentionBackendEnum.TRITON_ATTN,
             AttentionBackendEnum.FLEX_ATTENTION,
+            AttentionBackendEnum.TURBOQUANT,
         ]
 
 
@@ -116,6 +117,10 @@ def register_attention_backends() -> None:
         backend=MLAPrefillBackendEnum.FLASH_ATTN,
         class_path="vllm_metax.v1.attention.backends.mla.prefill.flash_attn.MacaFlashAttnPrefillBackend",
     )
+    register_backend(
+        backend=AttentionBackendEnum.TURBOQUANT,
+        class_path="vllm_metax.v1.attention.backends.turboquant_attn.MacaTurboQuantAttentionBackend",
+    )
 
 
 def with_mxsml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
@@ -151,7 +156,7 @@ class MacaPlatformBase(Platform):
         "moe_wna16",
         "gguf",
     ]
-    if mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER:
+    if mx_envs.VLLM_METAX_ENABLE_FP8_WEIGHT:
         supported_quantization.append("fp8")
         supported_quantization.append("deepseek_v4_fp8")
 
@@ -292,10 +297,8 @@ class MacaPlatformBase(Platform):
             vllm_config.model_config.disable_cascade_attn = True
 
         if attention_config := vllm_config.attention_config:
-            attention_config.use_cudnn_prefill = False
-            attention_config.use_trtllm_ragged_deepseek_prefill = False
-            attention_config.use_trtllm_attention = False
-            attention_config.disable_flashinfer_prefill = True
+            # Adjust modifications in reference to vLLM v0.21 instructions.
+            attention_config.mla_prefill_backend = MLAPrefillBackendEnum.FLASH_ATTN
 
         # -------------------------------------------------------
         # Append H=hidden_size at runtime (once model config is available)
@@ -514,7 +517,7 @@ class MacaPlatformBase(Platform):
 
     @classmethod
     def supports_fp8(cls) -> bool:
-        return mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER
+        return mx_envs.VLLM_METAX_ENABLE_FP8_WEIGHT
 
     @classmethod
     def use_custom_allreduce(cls) -> bool:

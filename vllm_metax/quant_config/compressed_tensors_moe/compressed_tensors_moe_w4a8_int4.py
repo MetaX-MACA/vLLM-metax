@@ -196,7 +196,7 @@ class CompressedTensorsW4A8Int4MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
         shared_experts: SharedExperts | None,
         shared_experts_input: torch.Tensor | None,
     ) -> torch.Tensor:
-        assert not layer.enable_eplb, "EPLB not supported for W4A8-int MoE yet."
+        assert layer.eplb_state is None, "EPLB not supported for W4A8-int MoE yet."
         assert layer.activation in (
             MoEActivation.SILU,
             MoEActivation.SWIGLUOAI,
@@ -214,7 +214,7 @@ for CPU dyn-4bit MoE."""
             w2=layer.w2_weight_packed,
             topk_weights=topk_weights,
             topk_ids=topk_ids,
-            inplace=True,
+            inplace=not self.moe.disable_inplace,
             activation=layer.activation,
             apply_router_weight_on_input=layer.apply_router_weight_on_input,
             global_num_experts=layer.global_num_experts,

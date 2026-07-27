@@ -15,10 +15,11 @@ if TYPE_CHECKING:
     USE_PRECOMPILED_KERNEL: bool = True
     VLLM_METAX_OPTIMIZED_DP_ALL2ALL: bool = False
     MACA_VLLM_ENABLE_MCTLASS_PYTHON_API: bool = True
-    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: bool = False
+    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: bool = True
     USE_VLLM_TRITON_EXPERT: bool = False
     VLLM_METAX_ENABLE_FA_SPLIT_FORWARD: bool = True
     VLLM_FUSED_MOE_CHUNK_SIZE: int = 16 * 1024
+    VLLM_METAX_ENABLE_FP8_WEIGHT: bool = False
     VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER: bool = False
     VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK: bool = False
 
@@ -62,7 +63,7 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # if set, enable bf16 cutlass moe on stage2
     # or w8a8 cutlass moe on both stage1 and stage2
     "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE": lambda: bool(
-        int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE", "0"))
+        int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE", "1"))
     ),
     # if set, enable combine allreduce all2all
     "VLLM_METAX_OPTIMIZED_DP_ALL2ALL": lambda: bool(
@@ -76,6 +77,10 @@ environment_variables: dict[str, Callable[[], Any]] = {
     ),
     "VLLM_FUSED_MOE_CHUNK_SIZE": lambda: int(
         os.getenv("VLLM_FUSED_MOE_CHUNK_SIZE", str(16 * 1024))
+    ),
+    # if set, support fp8 weight
+    "VLLM_METAX_ENABLE_FP8_WEIGHT": lambda: bool(
+        int(os.environ.get("VLLM_METAX_ENABLE_FP8_WEIGHT", "0"))
     ),
     # if set, use fp8 deep gemm kernel for DSA
     "VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER": lambda: bool(
@@ -113,7 +118,7 @@ def override_vllm_env(env_name: str, value: Any, reason: str | None) -> None:
     if env_name not in envs.environment_variables:
         raise KeyError(f"{env_name} is not a recognized vLLM environment variable")
 
-    logger.info_once(
+    logger.info(
         "Plugin sets %s to %s. Reason: %s",
         env_name,
         value,
