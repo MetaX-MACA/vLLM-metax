@@ -119,8 +119,6 @@ class ModelConfigManager:
             "--trust-remote-code",
             "--gpu-memory-utilization",
             str(serve_config.get("gpu_memory_utilization", 0.8)),
-            "--swap-space",
-            str(serve_config.get("swap_space", 16)),
             "--max-model-len",
             str(serve_config.get("max_model_len", 4096)),
             "--distributed-executor-backend",

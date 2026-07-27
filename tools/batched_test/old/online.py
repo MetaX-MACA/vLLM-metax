@@ -90,8 +90,6 @@ def start_server(args, log_file):
         "--trust-remote-code",
         "--dtype",
         "bfloat16",
-        "--swap-space",
-        "16",
         "--max-model-len",
         "4096",
         "--gpu-memory-utilization",
