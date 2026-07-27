@@ -7,56 +7,27 @@ from vllm.model_executor.layers.fused_moe import (
     UnquantizedFusedMoEMethod as vllm_UnquantizedFusedMoEMethod,
 )
 
-import vllm.model_executor.layers.fused_moe.modular_kernel as mk
 from vllm.model_executor.layers.fused_moe.config import (
     FusedMoEConfig,
 )
 
 from vllm.model_executor.layers.fused_moe.oracle.unquantized import (
-    UnquantizedMoeBackend,
+    convert_to_unquantized_kernel_format,
 )
+
+from vllm_metax.model_executor.layers.fused_moe.oracle.unquantized import (
+    make_unquantized_moe_kernel,
+    select_unquantized_moe_backend,
+)
+
 from vllm.model_executor.layers.fused_moe.runner.shared_experts import (
     SharedExperts,
 )
+from vllm.model_executor.utils import replace_parameter
 
-from vllm_metax.utils.fused_moe import get_triton_experts_cls
 
 if TYPE_CHECKING:
-    from vllm.model_executor.layers.fused_moe import RoutedExperts
-
-
-def backend_to_kernel_cls(
-    backend: UnquantizedMoeBackend,
-) -> type[mk.FusedMoEExperts]:
-    if backend == UnquantizedMoeBackend.TRITON:
-        TritonExperts = get_triton_experts_cls()
-        return TritonExperts
-
-    elif backend == UnquantizedMoeBackend.BATCHED_TRITON:
-        from vllm.model_executor.layers.fused_moe.experts.fused_batched_moe import (
-            BatchedTritonExperts,
-        )
-
-        return BatchedTritonExperts
-
-
-def select_unquantized_moe_backend(
-    moe_config: FusedMoEConfig,
-) -> tuple[UnquantizedMoeBackend, type[mk.FusedMoEExperts] | None]:
-    activation_format = (
-        mk.FusedMoEActivationFormat.BatchedExperts
-        if moe_config.moe_parallel_config.use_batched_activation_format
-        else mk.FusedMoEActivationFormat.Standard
-    )
-    requested_backend = UnquantizedMoeBackend.TRITON
-    if (
-        activation_format == mk.FusedMoEActivationFormat.BatchedExperts
-        and requested_backend == UnquantizedMoeBackend.TRITON
-    ):
-        requested_backend = UnquantizedMoeBackend.BATCHED_TRITON
-
-    kernel_cls = backend_to_kernel_cls(requested_backend)
-    return requested_backend, kernel_cls
+    from vllm.model_executor.layers.fused_moe.routed_experts import RoutedExperts
 
 
 # -----------------------------------------------------------
@@ -68,10 +39,50 @@ class UnquantizedFusedMoEMethod(vllm_UnquantizedFusedMoEMethod):
         super(vllm_UnquantizedFusedMoEMethod, self).__init__(moe)
         # -------------------------------------------------
         # Here in maca we use Triton for Modular MoE kernel
-        moe.moe_backend = "triton"
         self.unquantized_backend, self.experts_cls = select_unquantized_moe_backend(
             moe_config=self.moe,
         )
+
+    def _setup_kernel(
+        self,
+        layer: "RoutedExperts",
+        w13: torch.Tensor,
+        w2: torch.Tensor,
+    ) -> None:
+        # Shuffle weights to runtime format.
+        w13_new, w2_new = convert_to_unquantized_kernel_format(
+            self.unquantized_backend,
+            layer=layer,
+            w13_weight=w13,
+            w2_weight=w2,
+        )
+        # `moe_kernel` is initialized to None in FusedMoEMethodBase.__init__;
+        # On the first call we replace the parameter normally. On subsequent
+        # calls (e.g. RL weight updates that re-trigger
+        # process_weights_after_loading) the moe kernel has already been set
+        # up and CUDA graphs may have captured the parameter addresses, so
+        # we copy the shuffled data into the existing storage instead of
+        # re-registering a new Parameter.
+        is_weight_update = self.moe_kernel is not None  # type: ignore[has-type]
+        replace_parameter(layer, "w13_weight", w13_new, prefer_copy=is_weight_update)
+        replace_parameter(layer, "w2_weight", w2_new, prefer_copy=is_weight_update)
+
+        if not is_weight_update:
+            # Setup moe kernel only on the first call. For the unquantized
+            # method, moe_quant_config carries no quantized scales -- only
+            # optional w{13,2}_bias references and SwiGLU gate params. Since
+            # weight updates mutate those bias tensors in place, the kernel
+            # does not need to be re-built.
+            self.moe_quant_config = self.get_fused_moe_quant_config(layer)
+            assert self.moe_quant_config is not None
+            assert self.experts_cls is not None
+            self.moe_kernel = make_unquantized_moe_kernel(
+                quant_config=self.moe_quant_config,
+                moe_config=self.moe,
+                backend=self.unquantized_backend,
+                experts_cls=self.experts_cls,
+                routing_tables=layer._expert_routing_tables(),
+            )
 
     def forward_oot(
         self,
@@ -82,17 +93,11 @@ class UnquantizedFusedMoEMethod(vllm_UnquantizedFusedMoEMethod):
         shared_experts: SharedExperts | None,
         shared_experts_input: torch.Tensor | None,
     ) -> torch.Tensor:
-        assert self.moe_kernel is not None
-        return self.moe_kernel.apply(
-            hidden_states=x,
-            w1=layer.w13_weight,
-            w2=layer.w2_weight,
-            topk_weights=topk_weights,
-            topk_ids=topk_ids,
-            activation=layer.activation,
-            apply_router_weight_on_input=layer.apply_router_weight_on_input,
-            global_num_experts=layer.global_num_experts,
-            expert_map=layer.expert_map,
-            shared_experts=shared_experts,
-            shared_experts_input=shared_experts_input,
+        return self.forward_native(
+            layer,
+            x,
+            topk_weights,
+            topk_ids,
+            shared_experts,
+            shared_experts_input,
         )

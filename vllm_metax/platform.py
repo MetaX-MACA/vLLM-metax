@@ -644,7 +644,7 @@ class MacaPlatformBase(Platform):
 
     @classmethod
     def support_deep_gemm(cls) -> bool:
-        return False
+        return True
 
     @classmethod
     def is_integrated_gpu(cls, device_id: int = 0) -> bool:
