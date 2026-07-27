@@ -11,8 +11,11 @@ from vllm.logger import init_logger
 from vllm.model_executor.layers.sparse_attn_indexer import SparseAttnIndexer
 from . import bf16, int8  # noqa: F401
 
-if mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER:
+from vllm.platforms import current_platform
+
+if current_platform.supports_fp8():
     from . import fp8  # noqa: F401
+
 
 from vllm.utils.torch_utils import (
     _encode_layer_name,

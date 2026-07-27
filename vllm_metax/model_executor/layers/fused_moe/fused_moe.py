@@ -909,6 +909,7 @@ def invoke_fused_moe_triton_kernel(
             C,
             A_scale,
             B_scale,
+            B_bias,
             topk_weights,
             sorted_token_ids,
             expert_ids,
@@ -957,6 +958,22 @@ def invoke_fused_moe_triton_kernel(
                 mul_routed_weight,
                 group_size=block_shape[1],
             )
+    elif use_fp8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+        mctlass_ops.cutlass_moe_w8a8_fp8(
+            A,
+            B,
+            C,
+            A_scale,
+            B_scale,
+            topk_weights,
+            sorted_token_ids,
+            expert_ids,
+            num_tokens_post_padded,
+            EM,
+            top_k,
+            mul_routed_weight,
+            block_shape,
+        )
     elif (
         A.dtype == torch.bfloat16
         and B.dtype == torch.bfloat16
@@ -1154,6 +1171,27 @@ def dispatch_fused_moe_kernel(
         #         block_shape,
         #     )
         #     return
+        if (
+            use_int4_w4a16
+            and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+            and A.dtype == torch.bfloat16
+        ):  # mctlass only support w4a16+bf16 (MC3-9935)
+            mctlass_ops.cutlass_moe_mm_w4a16(
+                a=A,
+                b=B,
+                c=C,
+                b_scales=B_scale,
+                topk_weights=topk_weights,
+                token_ids=sorted_token_ids,
+                expert_ids=expert_ids,
+                num_tokens_post_padded=num_tokens_post_padded,
+                mul_routed_weight=mul_routed_weight,
+                topk=top_k,
+                group_size=block_shape[1],
+                b_zp=B_zp,
+            )
+            return
+
         invoke_fused_moe_wna16_triton_kernel(
             A,
             B,
@@ -2168,7 +2206,7 @@ def fused_experts_impl(
             # -----------------------------------------------------------------
             # Metax Modification: for int8_w8a8
             and not (
-                (use_int8_w8a8 or use_int4_w4a8)
+                (use_int8_w8a8 or use_int4_w4a8 or use_int4_w4a16)
                 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
             )
         )
@@ -2212,6 +2250,44 @@ def fused_experts_impl(
                     )
                 assert kernel_m > 0, (
                     "cutlass_fused_moe_w4a8 BLOCK_SIZE_M must greater than zero."
+                )
+                # override kernel_m to config["BLOCK_SIZE_M"]
+                stage1_config["BLOCK_SIZE_M"] = kernel_m
+                stage2_config["BLOCK_SIZE_M"] = kernel_m
+            if use_fp8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+                kernel_m = mctlass_ops.mctlassEx_fused_moe_w8a8_fp8_get_kernel_m(
+                    qcurr_hidden_states,
+                    w1,
+                    intermediate_cache1,
+                    top_k_num,
+                    block_shape,
+                )
+                assert kernel_m > 0, (
+                    "fp8_w8a8 FusedMoeGEMM.get_kernel_m kernel_m must greater than zero."
+                )
+                # override kernel_m to config["BLOCK_SIZE_M"]
+                stage1_config["BLOCK_SIZE_M"] = kernel_m
+                stage2_config["BLOCK_SIZE_M"] = kernel_m
+            if (
+                use_int4_w4a16
+                and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+                and qcurr_hidden_states.dtype == torch.bfloat16
+            ):
+                # mctlass only support w4a16+bf16 (MC3-9935)
+                # Qwen3-30B-A3B-AWQ <-> float16 unsupported
+                # DeepSeek-R1-awq <-> bfloat16 support
+                assert block_shape is not None, "block_shape must be provided for w4a16"
+                kernel_m = mctlass_ops.cutlass_moe_mm_w4a16_get_kernel_m(
+                    a=qcurr_hidden_states,
+                    b=w1,
+                    c=intermediate_cache1,
+                    K=K,
+                    num_valid_tokens=curr_hidden_states.size(0) * top_k_num,
+                    topk=top_k_num,
+                    group_size=block_shape[1],
+                )
+                assert kernel_m > 0, (
+                    "cutlass_fused_moe_w4a16 BLOCK_SIZE_M must greater than zero."
                 )
                 # override kernel_m to config["BLOCK_SIZE_M"]
                 stage1_config["BLOCK_SIZE_M"] = kernel_m

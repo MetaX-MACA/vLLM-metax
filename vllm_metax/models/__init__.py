@@ -53,7 +53,3 @@ def register_model():
     ModelRegistry.register_model(
         "MiMoV2OmniMTPModel", "vllm_metax.models.mimo_v2_mtp:MiMoV2OmniMTP"
     )
-
-    ModelRegistry.register_model(
-        "Qwen3OmniMoeForConditionalGeneration", "vllm_metax.models.qwen3_omni_moe_thinker:Qwen3OmniMoeThinkerForConditionalGeneration"
-    )

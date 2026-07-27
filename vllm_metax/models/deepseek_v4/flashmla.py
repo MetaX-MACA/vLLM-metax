@@ -11,9 +11,11 @@ from .attention import MacaDeepseekV4Attention
 from vllm.models.deepseek_v4.common.ops import (
     combine_topk_swa_indices,
     compute_global_topk_indices_and_lens,
+    dequantize_and_gather_k_cache
 )
 from .ops.o_proj import (
     deep_gemm_bf16_o_proj,
+    deep_gemm_fp8_o_proj,
 )
 from .ops import gather_k_cache
 from .sparse_mla import (
@@ -30,24 +32,40 @@ from vllm.v1.worker.workspace import current_workspace_manager
 
 if TYPE_CHECKING:
     from vllm.v1.attention.backends.mla.sparse_swa import DeepseekSparseSWAMetadata
-
+import vllm_metax.envs as mx_envs
 
 class MacaDeepseekV4FlashMLAAttention(MacaDeepseekV4Attention):
     backend_cls = MacaDeepseekV4FlashMLABackend
 
     def _o_proj(self, o: torch.Tensor, positions: torch.Tensor) -> torch.Tensor:
-        return deep_gemm_bf16_o_proj(
-            o,
-            positions,
-            self.rotary_emb.cos_sin_cache,
-            self.wo_a,
-            self.wo_b,
-            n_groups=self.n_local_groups,
-            heads_per_group=self.n_local_heads // self.n_local_groups,
-            nope_dim=self.nope_head_dim,
-            rope_dim=self.rope_head_dim,
-            o_lora_rank=self.o_lora_rank,
-        )
+        if self.wo_a.weight.dtype == torch.bfloat16:
+            return deep_gemm_bf16_o_proj(
+                o,
+                positions,
+                self.rotary_emb.cos_sin_cache,
+                self.wo_a,
+                self.wo_b,
+                n_groups=self.n_local_groups,
+                heads_per_group=self.n_local_heads // self.n_local_groups,
+                nope_dim=self.nope_head_dim,
+                rope_dim=self.rope_head_dim,
+                o_lora_rank=self.o_lora_rank,
+            )
+        else:
+            return deep_gemm_fp8_o_proj(
+                o,
+                positions,
+                self.rotary_emb.cos_sin_cache,
+                self.wo_a,
+                self.wo_b,
+                n_groups=self.n_local_groups,
+                heads_per_group=self.n_local_heads // self.n_local_groups,
+                nope_dim=self.nope_head_dim,
+                rope_dim=self.rope_head_dim,
+                o_lora_rank=self.o_lora_rank,
+                einsum_recipe=self._einsum_recipe,
+                tma_aligned_scales=self._tma_aligned_scales,
+            )
 
     @classmethod
     def get_padded_num_q_heads(cls, num_heads: int) -> int:
@@ -217,7 +235,7 @@ class MacaDeepseekV4FlashMLAAttention(MacaDeepseekV4Attention):
             head_dim_v=512,
             tile_scheduler_metadata=tile_metadata,
             cache_seqlens=None,
-            is_fp8_kvcache=False,
+            is_fp8_kvcache= self.kv_cache_dtype == "fp8_ds_mla",
             indices=swa_indices,
             topk_length=swa_lens,
             softmax_scale=self.scale,
@@ -268,34 +286,31 @@ class MacaDeepseekV4FlashMLAAttention(MacaDeepseekV4Attention):
                 assert attn_metadata is not None
                 topk_indices = attn_metadata.c128a_prefill_topk_indices
             top_k = topk_indices.shape[-1]
-            # Compressed region must fit the full compressed pool (seq_len //
-            # compress_ratio), not just top_k. top_k bounds how many indices
-            # the indexer selects, not the pool size it indexes into.
-            N = (self.max_model_len + self.compress_ratio - 1) // self.compress_ratio
         else:
             # NOTE(woosuk): topk_indices will not be used for SWA-only layers.
             assert self.topk_indices_buffer is not None
             topk_indices = self.topk_indices_buffer[num_decode_tokens:]
             top_k = 0
-            N = 0
-
-        M = N + self.window_size + self.max_num_batched_tokens
-        chunk_size_const = self.PREFILL_CHUNK_SIZE
-        num_chunks = (num_prefills + chunk_size_const - 1) // chunk_size_const
-
+           
+        chunk_plan = swa_metadata.get_prefill_chunk_plan(
+            compress_ratio=self.compress_ratio,
+            prefill_chunk_size=self.PREFILL_CHUNK_SIZE,
+        )
+        assert chunk_plan, "prefill chunk plan must be non-empty when num_prefills > 0"
         workspace_manager = current_workspace_manager()
-        kv = workspace_manager.get_simultaneous(
-            ((chunk_size_const, M, q.shape[-1]), torch.bfloat16),
-        )[0]
-        for chunk_idx in range(num_chunks):
-            chunk_start = chunk_idx * chunk_size_const
-            chunk_end = min(chunk_start + chunk_size_const, num_prefills)
+
+        gather_kernel = dequantize_and_gather_k_cache if self.kv_cache_dtype == "fp8_ds_mla" else gather_k_cache
+
+        for chunk_start, chunk_end, chunk_N, chunk_M in chunk_plan:
             chunk_size = chunk_end - chunk_start
+            kv = workspace_manager.get_simultaneous(
+                ((chunk_size, chunk_M, q.shape[-1]), torch.bfloat16),
+            )[0]
             if not swa_only:
                 # Gather compressed KV
                 assert attn_metadata is not None
                 block_table = attn_metadata.block_table[num_decodes:]
-                gather_k_cache(
+                gather_kernel(
                     kv[:chunk_size],
                     compressed_k_cache,
                     seq_lens=seq_lens[chunk_start:chunk_end] // self.compress_ratio,
@@ -307,14 +322,14 @@ class MacaDeepseekV4FlashMLAAttention(MacaDeepseekV4Attention):
 
             # Gather SWA KV
             swa_block_table = swa_metadata.block_table[num_decodes:]
-            gather_k_cache(
+            gather_kernel(
                 kv[:chunk_size],
                 swa_k_cache,
                 seq_lens=seq_lens[chunk_start:chunk_end],
                 gather_lens=gather_lens[chunk_start:chunk_end],
                 block_table=swa_block_table[chunk_start:chunk_end],
                 block_size=swa_metadata.block_size,
-                offset=N,
+                offset=chunk_N,
             )
 
             # Combine the topk indices and SWA indices for gathered KV cache
@@ -335,8 +350,8 @@ class MacaDeepseekV4FlashMLAAttention(MacaDeepseekV4Attention):
                 self.window_size,
                 self.compress_ratio,
                 top_k,
-                M,
-                N,
+                chunk_M,
+                chunk_N,
             )
             flash_mla_sparse_fwd(
                 q=q[query_start:query_end],

@@ -13,13 +13,15 @@ import torch
 
 from vllm.model_executor.kernels.linear.scaled_mm.cutlass import (
     CutlassInt8ScaledMMLinearKernel,
-    Int8ScaledMMLinearLayerConfig,
+    CutlassFp8BlockScaledMMKernel,
 )
 
 from vllm.platforms import PlatformEnum
 
 from vllm import _custom_ops as ops
 import vllm_metax.envs as mx_envs
+
+from vllm.model_executor.kernels.linear import register_linear_kernel
 
 _mctlass_modname = (
     "vllm_metax.model_executor.layers.quantization._python_api_ops"
@@ -34,10 +36,6 @@ class MctlassScaledMMLinearKernel(CutlassInt8ScaledMMLinearKernel):
     def is_supported(
         cls, compute_capability: int | None = None
     ) -> tuple[bool, str | None]:
-        return True, None
-
-    @classmethod
-    def can_implement(cls, c: Int8ScaledMMLinearLayerConfig) -> tuple[bool, str | None]:
         return True, None
 
     def apply_weights(
@@ -75,8 +73,31 @@ class MctlassScaledMMLinearKernel(CutlassInt8ScaledMMLinearKernel):
         )
 
 
-import vllm.model_executor.kernels.linear
+register_linear_kernel(
+    kernel_class=MctlassScaledMMLinearKernel,
+    platform=PlatformEnum.OOT,
+    kernel_type="int8",
+)
 
-vllm.model_executor.kernels.linear._POSSIBLE_INT8_KERNELS = {
-    PlatformEnum.OOT: [MctlassScaledMMLinearKernel]
-}
+
+class MctlassFp8BlockScaledMMKernel(CutlassFp8BlockScaledMMKernel):
+    @classmethod
+    def is_supported(cls, compute_capability=None):
+        return True, None
+
+    def apply_block_scaled_mm(
+        self,
+        A: torch.Tensor,
+        B: torch.Tensor,
+        As: torch.Tensor,
+        Bs: torch.Tensor,
+    ) -> torch.Tensor:
+        out_dtype = self.config.out_dtype
+        return mctlass_ops.cutlass_fp8_block_scaled_mm(A, B, As, Bs, out_dtype)
+
+
+# register_linear_kernel(
+#     kernel_class=MctlassFp8BlockScaledMMKernel,
+#     platform=PlatformEnum.OOT,
+#     kernel_type="fp8_block"
+# )

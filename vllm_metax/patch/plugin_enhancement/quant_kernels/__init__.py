@@ -5,6 +5,4 @@
 #
 # Affected versions: v0.21.0
 # -----------------------------------------------
-from . import scaled_mm
-from . import fp8
-from . import int8
+from . import fp8_block_kernel

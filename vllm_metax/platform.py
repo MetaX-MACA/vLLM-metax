@@ -180,7 +180,7 @@ class MacaPlatformBase(Platform):
         "moe_wna16",
         "gguf",
     ]
-    if mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER:
+    if mx_envs.VLLM_METAX_SUPPORTS_FP8:
         supported_quantization.append("fp8")
         supported_quantization.append("deepseek_v4_fp8")
 
@@ -557,7 +557,7 @@ class MacaPlatformBase(Platform):
 
     @classmethod
     def supports_fp8(cls) -> bool:
-        return mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER
+        return mx_envs.VLLM_METAX_SUPPORTS_FP8
 
     @classmethod
     def use_custom_allreduce(cls) -> bool:

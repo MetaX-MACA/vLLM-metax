@@ -655,7 +655,7 @@ class Indexer(nn.Module):
         #       where we store value in fp8 and scale in fp32
         #       per self.quant_block_size element
 
-        if mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER:
+        if vllm_config.attention_config.indexer_kv_dtype == "fp8":
             self.k_cache = DeepseekV32IndexerCache(
                 head_dim=self.head_dim + self.head_dim // self.quant_block_size * 4,
                 dtype=torch.uint8,
@@ -718,7 +718,7 @@ class Indexer(nn.Module):
         # `k_pe` is [num_tokens, 1, rope_dim] (MQA).
         k = torch.cat([k_pe.squeeze(-2), k_nope], dim=-1)
 
-        if mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER:
+        if self.vllm_config.attention_config.indexer_kv_dtype == "fp8":
             # we only quant q here since k quant is fused with cache insertion
             q = q.view(-1, self.head_dim)
             q_fp8, q_scale = per_token_group_quant_fp8(

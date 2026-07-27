@@ -141,7 +141,7 @@ def indexer_k_quant_and_cache(
     quant_block_size: int,
     kv_cache_dtype: str,
 ) -> None:
-    if k.dtype in (torch.bfloat16, torch.float16):
+    if kv_cache.dtype in (torch.bfloat16, torch.float16):
         torch.ops._C_cache_ops.indexer_k_cache(k, kv_cache, slot_mapping)
     else:
         torch.ops._C_cache_ops.indexer_k_quant_and_cache(
