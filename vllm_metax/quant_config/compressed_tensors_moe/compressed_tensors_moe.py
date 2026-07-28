@@ -26,6 +26,27 @@ from vllm.model_executor.layers.quantization.compressed_tensors.schemes.compress
 # -----------------------------------------------------------
 # Note: We need to keep the method name **the same** as vLLM's
 # -----------------------------------------------------------
+def _add_fused_moe_to_target_scheme_map(self):
+    """
+    Helper function to update target_scheme_map
+    since linear layers get fused into FusedMoE
+    targeting 'Linear' needs to also match
+    RoutedExperts modules.
+    """
+    if (
+        "Linear" not in self.target_scheme_map
+        or "RoutedExperts" in self.target_scheme_map
+    ):
+        return
+    
+    # ------------------ Metax edit ---------------- #
+    if "FusedMoE" in self.target_scheme_map:
+        self.target_scheme_map["RoutedExperts"] = self.target_scheme_map["FusedMoE"]
+        return
+    # ---------------------------------------------- #
+
+    self.target_scheme_map["RoutedExperts"] = self.target_scheme_map["Linear"]
+
 class CompressedTensorsMoEMethod(vllm_ct_moe_method):
     @staticmethod
     def get_moe_method(
@@ -33,9 +54,9 @@ class CompressedTensorsMoEMethod(vllm_ct_moe_method):
         layer: torch.nn.Module,
         layer_name: str,
     ) -> FusedMoEMethodBase:
-        # FusedMoE was made by combining multiple Linears so need to
+        # RoutedExperts was made by combining multiple Linears so need to
         # make sure quantization config for Linear can target it
-        quant_config._add_fused_moe_to_target_scheme_map()
+        _add_fused_moe_to_target_scheme_map(quant_config)
         unfused_names = [
             layer_name + proj_name
             for proj_name in [".0.gate_proj", ".0.up_proj", ".0.down_proj"]
