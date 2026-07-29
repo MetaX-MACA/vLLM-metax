@@ -13,7 +13,6 @@ import torch
 
 from vllm.model_executor.kernels.linear.scaled_mm.cutlass import (
     CutlassInt8ScaledMMLinearKernel,
-    CutlassFp8BlockScaledMMKernel,
 )
 
 from vllm.platforms import PlatformEnum
@@ -78,26 +77,3 @@ register_linear_kernel(
     platform=PlatformEnum.OOT,
     kernel_type="int8",
 )
-
-
-class MctlassFp8BlockScaledMMKernel(CutlassFp8BlockScaledMMKernel):
-    @classmethod
-    def is_supported(cls, compute_capability=None):
-        return True, None
-
-    def apply_block_scaled_mm(
-        self,
-        A: torch.Tensor,
-        B: torch.Tensor,
-        As: torch.Tensor,
-        Bs: torch.Tensor,
-    ) -> torch.Tensor:
-        out_dtype = self.config.out_dtype
-        return mctlass_ops.cutlass_fp8_block_scaled_mm(A, B, As, Bs, out_dtype)
-
-
-# register_linear_kernel(
-#     kernel_class=MctlassFp8BlockScaledMMKernel,
-#     platform=PlatformEnum.OOT,
-#     kernel_type="fp8_block"
-# )

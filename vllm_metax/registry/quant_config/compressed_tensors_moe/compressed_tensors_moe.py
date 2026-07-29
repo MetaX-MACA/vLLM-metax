@@ -13,7 +13,7 @@ from compressed_tensors.quantization import (
 )
 
 from compressed_tensors import CompressionFormat
-from vllm_metax.customized.layers.unquantized_fused_moe_method import (
+from vllm_metax.registry.custom_ops.layers.fused_moe.unquantized_fused_moe_method import (
     UnquantizedFusedMoEMethod,
 )
 

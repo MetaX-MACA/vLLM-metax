@@ -213,4 +213,6 @@ class MacaExllamaLinearKernel(vllm_ExllamaLinearKernel):
         )
 
 
-register_linear_kernel(MacaExllamaLinearKernel, PlatformEnum.OOT)
+register_linear_kernel(
+    kernel_class=MacaExllamaLinearKernel, platform=PlatformEnum.OOT, kernel_type="mp"
+)

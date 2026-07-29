@@ -69,7 +69,7 @@ class MacaSparseAttnIndexer(SparseAttnIndexer):
             sparse_attn_indexer_impl = torch.ops.vllm.mx_sparse_attn_indexer_bf16
         elif q_values.dtype is torch.int8:
             sparse_attn_indexer_impl = torch.ops.vllm.mx_sparse_attn_indexer_int8
-        elif mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER:
+        elif mx_envs.VLLM_METAX_SUPPORTS_FP8:
             sparse_attn_indexer_impl = torch.ops.vllm.mx_sparse_attn_indexer
         else:
             raise NotImplementedError(

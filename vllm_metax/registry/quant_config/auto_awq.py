@@ -12,7 +12,7 @@ from vllm.model_executor.layers.linear import (
 from vllm.model_executor.layers.fused_moe import (
     RoutedExperts,
 )
-from vllm_metax.customized.layers.unquantized_fused_moe_method import (
+from vllm_metax.registry.custom_ops.layers.fused_moe.unquantized_fused_moe_method import (
     UnquantizedFusedMoEMethod,
 )
 from vllm.model_executor.layers.quantization.auto_awq import AutoAWQConfig
@@ -53,7 +53,7 @@ class MacaAutoAWQConfig(AutoAWQConfig):
             ):
                 return UnquantizedFusedMoEMethod(layer.moe_config)
             # Lazy import to avoid circular import.
-            from vllm_metax.quant_config.moe_wna16 import MacaMoeWNA16Config
+            from vllm_metax.registry.quant_config.moe_wna16 import MacaMoeWNA16Config
 
             return MacaMoeWNA16Config.from_config(self.full_config).get_quant_method(
                 layer, prefix
