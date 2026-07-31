@@ -6,56 +6,22 @@
 import torch
 
 import vllm.model_executor.layers.fused_moe.modular_kernel as mk
-from vllm.forward_context import get_forward_context, is_forward_context_available
-from vllm.logger import init_logger
 from vllm.model_executor.layers.fused_moe.activation import MoEActivation
-from vllm.model_executor.layers.fused_moe.config import (
-    FusedMoEConfig,
-    FusedMoEParallelConfig,
-    FusedMoEQuantConfig,
-)
-from vllm.model_executor.layers.fused_moe.topk_weight_and_reduce import (
-    TopKWeightAndReduceDelegate,
-)
 from vllm.model_executor.layers.fused_moe.utils import _resize_cache
 from vllm.model_executor.layers.quantization.utils.quant_utils import (
-    QuantKey,
     get_fp8_min_max,
-    kFp8Dynamic128Sym,
-    kFp8Static128BlockSym,
 )
 from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
 from vllm.utils.deep_gemm import (
     DeepGemmQuantScaleFMT,
     fp8_m_grouped_gemm_nt_masked,
-    get_mk_alignment_for_contiguous_layout,
-    is_deep_gemm_e8m0_used,
-    is_deep_gemm_supported,
 )
-from vllm.utils.math_utils import cdiv, round_up
 from vllm.model_executor.layers.fused_moe.experts.batched_deep_gemm_moe import (
+    scales_shape_stride_dtype,
     persistent_masked_m_silu_mul_quant,
+    BatchedDeepGemmExperts as vllm_BatchedDeepGemmExperts,
 )
-
-logger = init_logger(__name__)
-
-
-def scales_shape_stride_dtype(
-    E: int, T: int, G: int, quant_scale_fmt: DeepGemmQuantScaleFMT
-) -> tuple[tuple[int, ...], tuple[int, ...], torch.dtype]:
-    shape = (E, T, G)
-    strides = (T * G, 1, T)
-    if quant_scale_fmt in [
-        DeepGemmQuantScaleFMT.FLOAT32,
-        DeepGemmQuantScaleFMT.FLOAT32_CEIL_UE8M0,
-    ]:
-        return shape, strides, torch.float32
-
-    assert quant_scale_fmt == DeepGemmQuantScaleFMT.UE8M0
-    shape = (E, T, cdiv(G, 4))
-    strides = (T * cdiv(G, 4), 1, T)
-    return shape, strides, torch.int32
 
 
 @triton.jit
@@ -279,122 +245,14 @@ def persistent_masked_m_swiglustep_mul_quant(
     return y_q, y_s
 
 
-class BatchedDeepGemmExperts(mk.FusedMoEExpertsModular):
-    def __init__(
-        self,
-        moe_config: FusedMoEConfig,
-        quant_config: FusedMoEQuantConfig,
-        max_num_tokens: int,
-        num_dispatchers: int,
-    ):
-        """
-        max_num_tokens: Maximum number of tokens from a DP Rank
-        num_dispatchers: The number of DP dispatchers.
-        quant_config: Quantization configuration
-        """
-        super().__init__(
-            moe_config=moe_config,
-            quant_config=quant_config,
-            max_num_tokens=max_num_tokens,
-            num_dispatchers=num_dispatchers,
-        )
-        self.gemm1_clamp_limit = quant_config.gemm1_clamp_limit
-
-        assert self.block_shape == get_mk_alignment_for_contiguous_layout()
-        assert self.quant_config.use_fp8_w8a8
-
-    @staticmethod
-    def activation_format() -> mk.FusedMoEActivationFormat:
-        return mk.FusedMoEActivationFormat.BatchedExperts
-
-    @staticmethod
-    def _supports_current_device() -> bool:
-        return is_deep_gemm_supported()
-
+class BatchedDeepGemmExperts(vllm_BatchedDeepGemmExperts):
     @staticmethod
     def _supports_no_act_and_mul() -> bool:
         return False
 
     @staticmethod
-    def _supports_quant_scheme(
-        weight_key: QuantKey | None,
-        activation_key: QuantKey | None,
-    ) -> bool:
-        SUPPORTED_W_A = [(kFp8Static128BlockSym, kFp8Dynamic128Sym)]
-        return (weight_key, activation_key) in SUPPORTED_W_A
-
-    @staticmethod
     def _supports_activation(activation: MoEActivation) -> bool:
         return activation in [MoEActivation.SILU, MoEActivation.SWIGLUSTEP]
-
-    @staticmethod
-    def _supports_parallel_config(moe_parallel_config: FusedMoEParallelConfig) -> bool:
-        return True
-
-    def supports_packed_ue8m0_act_scales(self) -> bool:
-        """
-        DeepGemm supports packed ue8m0 activation scales on Blackwell-family
-        GPUs (SM100 datacenter and SM120 consumer).
-        """
-        return is_deep_gemm_e8m0_used() and (
-            current_platform.is_device_capability_family(100)
-            or current_platform.is_device_capability_family(120)
-        )
-
-    def finalize_weight_and_reduce_impl(self) -> mk.TopKWeightAndReduce:
-        # Let PrepareAndFinalize::finalize() decide the impl.
-        return TopKWeightAndReduceDelegate()
-
-    def workspace_shapes(
-        self,
-        M: int,
-        N: int,
-        K: int,
-        topk: int,
-        global_num_experts: int,
-        local_num_experts: int,
-        expert_tokens_meta: mk.ExpertTokensMetadata | None,
-        activation: MoEActivation,
-    ) -> tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]:
-        # FIXME (varun): We should be able to dispatch only from the leader
-        # DP ranks in the case of TP > 1. At the moment, all the Ranks
-        # end up sending their tokens. This needs to be fixed.
-        assert self.num_dispatchers is not None
-        assert self.max_num_tokens is not None
-        num_dispatchers = self.num_dispatchers
-        num_experts = local_num_experts
-        max_num_tokens = M if self.max_num_tokens is None else self.max_num_tokens
-        activation_out_dim = self.adjust_N_for_activation(N, activation)
-        workspace13 = (num_experts, max_num_tokens * num_dispatchers, max(K, N))
-        workspace2 = (num_experts, max_num_tokens * num_dispatchers, activation_out_dim)
-        output = (num_experts, max_num_tokens * num_dispatchers, K)
-        return (workspace13, workspace2, output)
-
-    def estimate_expected_m(
-        self, global_num_experts: int, max_tokens_per_expert: int, topk: int
-    ) -> int:
-        dp_meta = (
-            get_forward_context().dp_metadata
-            if is_forward_context_available()
-            else None
-        )
-        if dp_meta is None:
-            logger.warning_once(
-                "DPMetadata unavailable. Defaulting expected_m to "
-                f"{max_tokens_per_expert}.",
-            )
-            return max_tokens_per_expert
-
-        total_num_tokens = dp_meta.num_tokens_across_dp_cpu.sum().item()
-        total_num_tokens_replicated = total_num_tokens * topk
-
-        # Assume even load balancing
-        assert global_num_experts != 0
-        estimate = round_up(int(total_num_tokens_replicated // global_num_experts), 16)
-        # clamp estimate
-        estimate = max(estimate, 16)
-        estimate = min(max_tokens_per_expert, estimate)
-        return estimate
 
     def apply(
         self,

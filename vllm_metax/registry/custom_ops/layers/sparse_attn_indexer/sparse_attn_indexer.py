@@ -6,6 +6,8 @@
 import torch
 
 import vllm_metax.envs as mx_envs
+from vllm.config import get_current_vllm_config
+from vllm.distributed import get_dcp_group
 from vllm.logger import init_logger
 
 from vllm.model_executor.layers.sparse_attn_indexer import SparseAttnIndexer
@@ -50,6 +52,14 @@ class MacaSparseAttnIndexer(SparseAttnIndexer):
         self.topk_indices_buffer = topk_indices_buffer
         self.skip_k_cache_insert = skip_k_cache_insert
         self.use_fp4_cache = use_fp4_cache
+        # DCP scalars are constant for the run; resolve them here (config is set
+        # during model construction) and pass them into the custom op, rather
+        # than threading them through per-step metadata.
+        parallel_config = get_current_vllm_config().parallel_config
+        self.dcp_world_size = parallel_config.decode_context_parallel_size
+        self.dcp_rank = get_dcp_group().rank_in_group if self.dcp_world_size > 1 else 0
+        self.cp_kv_cache_interleave_size = parallel_config.cp_kv_cache_interleave_size
+        self.use_pcp = parallel_config.prefill_context_parallel_size > 1
 
     def forward_oot(
         self,
@@ -92,14 +102,9 @@ class MacaSparseAttnIndexer(SparseAttnIndexer):
             self.max_total_seq_len,
             self.topk_indices_buffer,
             self.skip_k_cache_insert,
+            self.use_pcp,
             self.use_fp4_cache,
+            self.dcp_rank,
+            self.dcp_world_size,
+            self.cp_kv_cache_interleave_size,
         )
-
-    def forward_native(
-        self,
-        hidden_states: torch.Tensor,
-        q_quant: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
-        k: torch.Tensor,
-        weights: torch.Tensor,
-    ):
-        return self.forward_oot(hidden_states, q_quant, k, weights)

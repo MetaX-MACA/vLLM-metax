@@ -36,6 +36,7 @@ class MacaMiniMaxText01RMSNormTP(MiniMaxText01RMSNormTP):
         self.weight_shard_rank = (
             self.tp_rank if weight_shard_rank is None else weight_shard_rank
         )
+
         self.weight = nn.Parameter(torch.ones(hidden_size // self.weight_shard_world))
         self.weight.weight_loader = partial(
             self.weight_loader,
@@ -43,6 +44,7 @@ class MacaMiniMaxText01RMSNormTP(MiniMaxText01RMSNormTP):
             shard_rank=self.weight_shard_rank,
         )
         self.variance_epsilon = eps
+
         self.workspace = None
         if _MINIMAX_FUSED_AR_RMS_QK is not None and self.tp_world > 1:
             # /-----  Metax Modification ---------\

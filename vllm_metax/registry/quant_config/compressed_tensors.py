@@ -15,7 +15,7 @@ from compressed_tensors.quantization import (
     QuantizationArgs,
     QuantizationType,
 )
-from vllm_metax.quant_config.compressed_tensors_moe.compressed_tensors_moe import (
+from vllm_metax.registry.quant_config.compressed_tensors_moe.compressed_tensors_moe import (
     CompressedTensorsMoEMethod,
 )
 

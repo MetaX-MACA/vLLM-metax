@@ -7,8 +7,10 @@ import torch
 import vllm.envs as envs
 from vllm import _custom_ops as ops
 from vllm.compilation.breakable_cudagraph import eager_break_during_capture
+from vllm.distributed import get_pcp_group
 from vllm.forward_context import get_forward_context
 from vllm.logger import init_logger
+from vllm.model_executor.layers.attention.pcp import maybe_gather_indexer_k
 from vllm.platforms import current_platform
 from vllm_metax.utils.deep_gemm import (
     bf16_mqa_logits,
@@ -24,7 +26,10 @@ from vllm_metax.v1.attention.backends.mla.indexer import (
 )
 from vllm.v1.attention.ops.common import pack_seq_triton, unpack_seq_triton
 from vllm.v1.worker.workspace import current_workspace_manager
-from vllm.model_executor.layers.sparse_attn_indexer import kv_cache_as_quant_view
+from vllm.model_executor.layers.sparse_attn_indexer import (
+    kv_cache_as_quant_view,
+    _merge_dcp_topk_global,
+)
 
 from vllm_metax import _custom_ops as mx_ops
 
@@ -60,7 +65,12 @@ def sparse_attn_indexer_bf16(
     total_seq_lens: int,
     topk_indices_buffer: torch.Tensor,
     skip_k_cache_insert: bool,
+    use_pcp: bool,
     use_fp4_cache: bool = False,
+    dcp_rank: int = 0,
+    dcp_world_size: int = 1,
+    cp_kv_cache_interleave_size: int = 1,
+    skip_topk_buffer_clear: bool = False,
 ) -> torch.Tensor:
     # careful! this will be None in dummy run
     attn_metadata = get_forward_context().attn_metadata
@@ -103,6 +113,7 @@ def sparse_attn_indexer_bf16(
             total_seq_lens,
             topk_indices_buffer,
             skip_k_cache_insert,
+            use_pcp,
             use_fp4_cache,
         )
     attn_metadata_narrowed = attn_metadata[k_cache_prefix]
@@ -116,19 +127,39 @@ def sparse_attn_indexer_bf16(
     # During speculative decoding, k may be padded to the CUDA graph batch
     # size while slot_mapping only covers actual tokens. Truncate k to avoid
     # out-of-bounds reads in the kernel.
+    # Keep PCP padding so every rank contributes the same all-gather shape.
     num_tokens = slot_mapping.shape[0]
+    if use_pcp:
+        num_tokens //= get_pcp_group().world_size
     if k_bf16 is not None:
         k_bf16 = k_bf16[:num_tokens]
 
-    mx_ops.indexer_k_quant_and_cache(
-        k_bf16,
-        kv_cache,
-        slot_mapping,
-        quant_block_size,
-        scale_fmt,
-    )
+    if not skip_k_cache_insert:
+        assert k_bf16 is not None
+        k_bf16, slot_mapping_for_cache = maybe_gather_indexer_k(
+            k_bf16,
+            slot_mapping,
+            num_decode_tokens,
+            use_pcp,
+        )
+        # scale_fmt can be None, but the function expects str
+        assert scale_fmt is not None
+        assert not use_fp4_cache, "Unfused FP4 Insert is not supported yet"
+        mx_ops.indexer_k_quant_and_cache(
+            k_bf16,
+            kv_cache,
+            slot_mapping_for_cache,
+            quant_block_size,
+            scale_fmt,
+        )
 
-    topk_indices_buffer[: hidden_states.shape[0]] = -1
+    # The buffer must be pre-filled with -1 (the "no token" sentinel) before the
+    # top-k kernels scatter valid indices into it. On the fused deepseek_v32
+    # nvidia path, _fused_norm_rope_kernel already cleared the same
+    # [:num_tokens, :topk] region earlier in this forward, so skip the redundant
+    # fill.
+    if not skip_topk_buffer_clear:
+        topk_indices_buffer[: hidden_states.shape[0]] = -1
     if has_prefill:
         prefill_metadata = attn_metadata_narrowed.prefill
         assert prefill_metadata is not None
@@ -146,47 +177,70 @@ def sparse_attn_indexer_bf16(
             ((total_seq_lens, head_dim), torch.bfloat16),
         )[0]
         for chunk in prefill_metadata.chunks:
-            k_bf16 = k_bf16_full[: chunk.total_seq_lens]
+            cu_seqlen_ks = chunk.cu_seqlen_ks
+            cu_seqlen_ke = chunk.cu_seqlen_ke
+            assert chunk.local_cu_seq_lens is not None
+            k_bf16 = k_bf16_full[: chunk.max_local_total_seq_lens]
 
             # -----------------------------------------------
             # Metax Note: we use bf16 instead of fp8 here, so k_scale is
             # not needed and set to None
-            k_scale = None  # k_scale_full[: chunk.total_seq_lens]
-            mx_ops.cp_gather_indexer_k_quant_cache(
-                kv_cache,
-                k_bf16,
-                k_scale,
-                chunk.block_table,
-                chunk.cu_seq_lens,
-            )
+            k_scale = None  # k_scale_full[: chunk.max_local_total_seq_lens]
+            if not chunk.skip_kv_gather and chunk.local_total_seq_lens > 0:
+                mx_ops.cp_gather_indexer_k_quant_cache(
+                    kv_cache,
+                    k_bf16,
+                    k_scale,
+                    chunk.block_table,
+                    chunk.local_cu_seq_lens,
+                )
 
-            # -----------------------------------------------
-            # Metax Note: since we use bf16 so the args for
-            # kv tuple is changed:
-            #   - for fp8_mqa_logits it is a tuple of (k_fp8, k_scale),
-            #   - and bf16_mqa_logits it is just k_bf16 (no scale)
-            logits = bf16_mqa_logits(
-                q_bf16[chunk.token_start : chunk.token_end],
-                (k_bf16),  # without k_scale.view(torch.float32).flatten(),
-                weights[chunk.token_start : chunk.token_end],
-                chunk.cu_seqlen_ks,
-                chunk.cu_seqlen_ke,
-            )
-            num_rows = logits.shape[0]
+            q_slice = q_bf16[chunk.token_start : chunk.token_end]
+            q_scale_slice = None  # noqa: F841
 
             topk_indices = topk_indices_buffer[
                 chunk.token_start : chunk.token_end, :topk_tokens
             ]
 
-            ops.top_k_per_row_prefill(
+            if chunk.local_total_seq_lens == 0:
+                logits = q_slice.new_empty((q_slice.shape[0], 0), dtype=torch.float32)
+                topk_indices.fill_(-1)
+            else:
+                q_slice_cast = q_slice
+                k_quant_cast = k_bf16
+                k_scale_cast = None  # noqa: F841
+                # -----------------------------------------------
+                # Metax Note: since we use bf16 so the args for
+                # kv tuple is changed:
+                #   - for fp8_mqa_logits it is a tuple of (k_fp8, k_scale),
+                #   - and bf16_mqa_logits it is just k_bf16 (no scale)
+                logits = bf16_mqa_logits(
+                    q_slice_cast,
+                    k_quant_cast,
+                    weights[chunk.token_start : chunk.token_end],
+                    cu_seqlen_ks,
+                    cu_seqlen_ke,
+                )
+                num_rows = logits.shape[0]
+                ops.top_k_per_row_prefill(
+                    logits,
+                    cu_seqlen_ks,
+                    cu_seqlen_ke,
+                    topk_indices,
+                    num_rows,
+                    logits.stride(0),
+                    logits.stride(1),
+                    topk_tokens,
+                )
+
+            _merge_dcp_topk_global(
                 logits,
-                chunk.cu_seqlen_ks,
-                chunk.cu_seqlen_ke,
                 topk_indices,
-                num_rows,
-                logits.stride(0),
-                logits.stride(1),
                 topk_tokens,
+                dcp_rank,
+                dcp_world_size,
+                cp_kv_cache_interleave_size,
+                row_starts=chunk.cu_seqlen_ks,
             )
 
     if has_decode:
@@ -196,7 +250,9 @@ def sparse_attn_indexer_bf16(
         # we only have [num_block, block_size, head_dim],
         kv_cache = kv_cache_as_quant_view(kv_cache, head_dim, False)
         decode_lens = decode_metadata.decode_lens
-        if decode_metadata.requires_padding:
+        if num_decode_tokens == 0:
+            padded_q_bf16_decode_tokens = q_bf16[:1].reshape(1, 1, *q_bf16.shape[1:])
+        elif decode_metadata.requires_padding:
             # pad in edge case where we have short chunked prefill length <
             # decode_threshold since we unstrictly split
             # prefill and decode by decode_threshold
@@ -227,7 +283,31 @@ def sparse_attn_indexer_bf16(
         num_rows = logits.shape[0]
         topk_indices = topk_indices_buffer[:num_padded_tokens, :topk_tokens]
 
-        if current_platform.is_cuda() and topk_tokens in (512, 1024, 2048):
+        use_cooperative_topk = (
+            current_platform.is_cuda_alike()
+            and topk_tokens in (512, 1024, 2048)
+            and num_rows <= 32
+            and logits.stride(0) % 4 == 0  # TMA 16-byte alignment
+        )
+        use_persistent_topk = current_platform.is_cuda_alike() and topk_tokens in (
+            512,
+            1024,
+            2048,
+        )
+        if use_cooperative_topk:
+            workspace_manager = current_workspace_manager()
+            (topk_workspace,) = workspace_manager.get_simultaneous(
+                ((RADIX_TOPK_WORKSPACE_SIZE,), torch.uint8),
+            )
+            torch.ops._C.cooperative_topk(
+                logits,
+                seq_lens,
+                topk_indices,
+                topk_workspace,
+                topk_tokens,
+                attn_metadata_narrowed.max_seq_len,
+            )
+        elif use_persistent_topk:
             workspace_manager = current_workspace_manager()
             (topk_workspace,) = workspace_manager.get_simultaneous(
                 ((RADIX_TOPK_WORKSPACE_SIZE,), torch.uint8),
@@ -238,7 +318,7 @@ def sparse_attn_indexer_bf16(
                 topk_indices,
                 topk_workspace,
                 topk_tokens,
-                attn_metadata_narrowed.max_seq_len,
+                logits.shape[1],
             )
         else:
             ops.top_k_per_row_decode(
@@ -250,6 +330,16 @@ def sparse_attn_indexer_bf16(
                 logits.stride(0),
                 logits.stride(1),
                 topk_tokens,
+            )
+
+        if decode_metadata.global_seq_lens is not None:
+            _merge_dcp_topk_global(
+                logits,
+                topk_indices,
+                topk_tokens,
+                dcp_rank,
+                dcp_world_size,
+                cp_kv_cache_interleave_size,
             )
 
         if decode_metadata.requires_padding:
@@ -282,7 +372,12 @@ def sparse_attn_indexer_bf16_fake(
     total_seq_lens: int,
     topk_indices_buffer: torch.Tensor | None,
     skip_k_cache_insert: bool,
+    use_pcp: bool,
     use_fp4_cache: bool = False,
+    dcp_rank: int = 0,
+    dcp_world_size: int = 1,
+    cp_kv_cache_interleave_size: int = 1,
+    skip_topk_buffer_clear: bool = False,
 ) -> torch.Tensor:
     return topk_indices_buffer
 

@@ -13,7 +13,7 @@ from vllm.model_executor.layers.quantization.utils.gptq_utils import (
     get_linear_quant_method,
 )
 
-from vllm_metax.customized.kernels import (
+from vllm_metax.registry.linear_kernels.mp import (
     mp_linear_kernel,  # noqa: F401
 )
 
@@ -29,7 +29,7 @@ class MacaAutoGPTQConfig(AutoGPTQConfig):
     ) -> "QuantizeMethodBase| None":
         if isinstance(layer, RoutedExperts):
             # GPTQ MoE support: fall back to MoeWNA16 for broad compatibility
-            from vllm_metax.quant_config.moe_wna16 import MacaMoeWNA16Config
+            from vllm_metax.registry.quant_config.moe_wna16 import MacaMoeWNA16Config
 
             return MacaMoeWNA16Config.from_config(self.full_config).get_quant_method(
                 layer, prefix

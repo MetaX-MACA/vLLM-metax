@@ -5,3 +5,4 @@ from . import fused_moe  # noqa: F401
 from . import sparse_attn_indexer  # noqa: F401
 from . import minimax_rms_norm  # noqa: F401
 from . import rotary_embedding  # noqa: F401
+from . import mamba  # noqa: F401

@@ -7,7 +7,7 @@
 # Affected versions: v0.24.0
 # -----------------------------------------------
 
-from vllm_metax.customized.kernels.scaled_mm import (
+from vllm_metax.registry.linear_kernels.fp8 import (
     MctlassFp8BlockScaledMMKernel,
 )
 from vllm.platforms import PlatformEnum

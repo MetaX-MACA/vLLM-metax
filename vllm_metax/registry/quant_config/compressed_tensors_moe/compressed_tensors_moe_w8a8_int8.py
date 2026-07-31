@@ -4,7 +4,6 @@ import torch
 from vllm.model_executor.layers.fused_moe.config import (
     FusedMoEConfig,
     FusedMoEQuantConfig,
-    int8_w8a8_moe_quant_config,
 )
 
 from compressed_tensors.quantization import (
@@ -21,91 +20,21 @@ from vllm.model_executor.layers.quantization.compressed_tensors.compressed_tenso
 )
 
 from vllm.model_executor.layers.quantization.utils.quant_utils import (
-    QuantKey,
     kInt8DynamicTokenSym,
     kInt8StaticChannelSym,
 )
 
-import vllm.model_executor.layers.fused_moe.modular_kernel as mk
+from vllm.model_executor.utils import replace_parameter
 
 from vllm.model_executor.layers.fused_moe.oracle.int8 import (
-    Int8MoeBackend,
+    convert_to_int8_moe_kernel_format,
 )
 
-
-def backend_to_kernel_cls(
-    backend: Int8MoeBackend,
-) -> type[mk.FusedMoEExperts]:
-    if backend == Int8MoeBackend.TRITON:
-        from vllm_metax.model_executor.layers.fused_moe.experts.triton_moe import (
-            TritonExperts,
-        )
-
-        return TritonExperts
-
-    else:
-        raise ValueError(f"Unknown Int8 MoE backend: {backend.value}")
-
-
-def select_int8_moe_backend(
-    config: FusedMoEConfig,
-    weight_key: QuantKey | None = kInt8StaticChannelSym,
-    activation_key: QuantKey | None = kInt8DynamicTokenSym,
-) -> tuple[Int8MoeBackend, type[mk.FusedMoEExperts]]:
-    if config.is_lora_enabled:
-        return Int8MoeBackend.TRITON, backend_to_kernel_cls(Int8MoeBackend.TRITON)
-
-    requested_backend = Int8MoeBackend.TRITON
-    activation_format = (
-        mk.FusedMoEActivationFormat.BatchedExperts
-        if config.moe_parallel_config.use_batched_activation_format
-        else mk.FusedMoEActivationFormat.Standard
-    )
-
-    k_cls = backend_to_kernel_cls(requested_backend)
-    supported, reason = k_cls.is_supported_config(
-        k_cls, config, weight_key, activation_key, activation_format
-    )
-
-    assert supported, (
-        f"Requested Int8 MoE backend {requested_backend.value} does not support the given config. Reason: {reason}"
-    )
-
-    return requested_backend, k_cls
-
-
-def make_int8_moe_quant_config(
-    w1_scale: torch.Tensor,
-    w2_scale: torch.Tensor,
-    a1_scale: torch.Tensor | None = None,
-    a2_scale: torch.Tensor | None = None,
-    w1_bias: torch.Tensor | None = None,
-    w2_bias: torch.Tensor | None = None,
-    per_act_token_quant: bool = False,
-) -> FusedMoEQuantConfig:
-    # assert (a1_scale is None and a2_scale is None) or (
-    #     a1_scale is not None and a2_scale is not None
-    # ), "a1_scale and a2_scale must both be provided or both be None"
-
-    # if a1_scale is None or a2_scale is None:
-    #     return int8_w8a16_moe_quant_config(
-    #         w1_scale=w1_scale,
-    #         w2_scale=w2_scale,
-    #         w1_zp=None,
-    #         w2_zp=None,
-    #     )
-
-    # remove the int8_w8a16 logic since dynamic per token int8_w8a8
-    # has no a1/a2 scale, and we want to avoid confusion
-    return int8_w8a8_moe_quant_config(
-        w1_scale=w1_scale,
-        w2_scale=w2_scale,
-        a1_scale=a1_scale,
-        a2_scale=a2_scale,
-        w1_bias=w1_bias,
-        w2_bias=w2_bias,
-        per_act_token_quant=per_act_token_quant,
-    )
+from vllm_metax.model_executor.layers.fused_moe.oracle.int8 import (
+    make_int8_moe_kernel,
+    make_int8_moe_quant_config,
+    select_int8_moe_backend,
+)
 
 
 # -----------------------------------------------------------
@@ -155,6 +84,28 @@ class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm_w8a8_int8):
             a1_scale=layer.w13_input_scale,
             a2_scale=layer.w2_input_scale,
             per_act_token_quant=True,
+        )
+
+    def process_weights_after_loading(self, layer: RoutedExperts) -> None:
+        w13, w2 = convert_to_int8_moe_kernel_format(
+            int8_backend=self.int8_backend,
+            w13=layer.w13_weight,
+            w2=layer.w2_weight,
+            layer=layer,
+            w13_scale=layer.w13_weight_scale,
+        )
+        replace_parameter(layer, "w13_weight", w13)
+        replace_parameter(layer, "w2_weight", w2)
+
+        self.moe_quant_config = self.get_fused_moe_quant_config(layer)
+        assert self.experts_cls is not None
+        self.moe_kernel = make_int8_moe_kernel(
+            int8_backend=self.int8_backend,
+            moe_quant_config=self.moe_quant_config,
+            moe_config=self.moe,
+            experts_cls=self.experts_cls,
+            routing_tables=layer._expert_routing_tables(),
+            layer=layer,
         )
 
     def apply(

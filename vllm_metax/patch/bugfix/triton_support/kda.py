@@ -6,7 +6,7 @@
 # Affected versions: v0.21.0
 # -----------------------------------------------
 from vllm.triton_utils import tl, triton
-from vllm.model_executor.layers.fla.ops.op import log
+from vllm.third_party.flash_linear_attention.ops.op import log
 
 BT_LIST_AUTOTUNE = [32, 64, 128]
 
@@ -88,6 +88,8 @@ def kda_gate_fwd_kernel(
     tl.store(y_ptr, b_y.to(y.dtype.element_ty), boundary_check=(0, 1))
 
 
-import vllm.model_executor.layers.fla.ops.kda
+import vllm.third_party.flash_linear_attention.ops.kda
 
-vllm.model_executor.layers.fla.ops.kda.kda_gate_fwd_kernel = kda_gate_fwd_kernel
+vllm.third_party.flash_linear_attention.ops.kda.kda_gate_fwd_kernel = (
+    kda_gate_fwd_kernel
+)
