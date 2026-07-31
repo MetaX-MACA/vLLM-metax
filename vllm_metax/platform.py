@@ -126,7 +126,7 @@ def register_attention_backends() -> None:
     )
     register_backend(
         backend=AttentionBackendEnum.FLASH_ATTN_DIFFKV,
-        class_path="vllm_metax.v1.attention.backends.flash_attn_diffkv.FlashAttentionDiffKVBackend.",
+        class_path="vllm_metax.v1.attention.backends.flash_attn_diffkv.FlashAttentionDiffKVBackend",
     )
     register_backend(
         backend=AttentionBackendEnum.FLASHINFER,

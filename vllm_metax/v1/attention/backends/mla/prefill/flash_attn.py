@@ -3,7 +3,6 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """FlashAttention backend for MLA prefill."""
 
-import functools
 from typing import TYPE_CHECKING
 
 import torch
@@ -17,7 +16,10 @@ from vllm_metax.v1.attention.backends.fa_utils import (
     get_flash_attn_version,
     is_flash_attn_varlen_func_available,
 )
-from vllm.v1.attention.backends.mla.prefill.base import MLAPrefillBackend
+from vllm.v1.attention.backends.mla.prefill.base import (
+    MLADimensions,
+    MLAPrefillBackend,
+)
 
 if TYPE_CHECKING:
     from vllm.config import VllmConfig
@@ -39,6 +41,25 @@ class MacaFlashAttnPrefillBackend(MLAPrefillBackend):
     @classmethod
     def is_available(cls) -> bool:
         return is_flash_attn_varlen_func_available()
+
+    @classmethod
+    def supports_mla_dimensions(cls, mla_dimensions: MLADimensions) -> bool:
+        dims_deepseek = MLADimensions(
+            qk_nope_head_dim=128,
+            qk_rope_head_dim=64,
+            v_head_dim=128,
+        )
+        dims_glm = MLADimensions(
+            qk_nope_head_dim=192,
+            qk_rope_head_dim=64,
+            v_head_dim=256,
+        )
+        dims_mistral_s4 = MLADimensions(
+            qk_nope_head_dim=64,
+            qk_rope_head_dim=64,
+            v_head_dim=128,
+        )
+        return mla_dimensions in [dims_deepseek, dims_glm, dims_mistral_s4]
 
     def __init__(
         self,
@@ -145,10 +166,6 @@ class MacaFlashAttnPrefillBackend(MLAPrefillBackend):
         lse = None
         if isinstance(attn_out, tuple):
             attn_out, lse = attn_out[0], attn_out[1]
-
-        # Unpad output back to v_head_dim if we padded V
-        if self.requires_v_padding:
-            attn_out = attn_out[..., : v.shape[-1]]
 
         # Remain consistent with old `flash_attn_varlen_func` where there
         # is only one output tensor if `return_softmax_lse` is False.

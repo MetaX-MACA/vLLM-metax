@@ -59,7 +59,11 @@ class FlashAttentionDiffKVBackend(FlashAttentionBackend):
         head_size_v: int,
         has_sinks: bool,
     ) -> bool:
-        return True
+        if not is_flash_attn_varlen_func_available():
+            return False
+        rounded_head_size = ((head_size + 31) // 32) * 32
+        rounded_head_size_v = ((head_size_v + 31) // 32) * 32
+        return (rounded_head_size, rounded_head_size_v) == (192, 128)
 
     @staticmethod
     def get_name() -> str:
@@ -79,10 +83,12 @@ class FlashAttentionDiffKVBackend(FlashAttentionBackend):
     ) -> tuple[int, ...]:
         if block_size % 16 != 0:
             raise ValueError("Block size must be a multiple of 16.")
+        # Logical (blocks-first, head-major) layout: K and V (with their
+        # different head sizes) packed in the content dim.
         return (
             num_blocks,
-            block_size,
             num_kv_heads,
+            block_size,
             head_size + FlashAttentionDiffKVBackend.head_size_v,
         )
 
@@ -90,21 +96,22 @@ class FlashAttentionDiffKVBackend(FlashAttentionBackend):
     def get_kv_cache_stride_order(
         include_num_layers_dimension: bool = False,
     ) -> tuple[int, ...]:
-        # `stride_order` indicates the permutation that gets
-        # us from `get_kv_cache_shape` to the actual memory layout we want.
+        # `stride_order` indicates the permutation that gets us from
+        # `get_kv_cache_shape` (logical (B, H, N, C_k+C_v)) to the actual
+        # memory layout we want.
         cache_layout = get_kv_cache_layout()
         if cache_layout == "NHD" and include_num_layers_dimension:
-            # (num_blocks, num_layers, block_size,
-            # num_kv_heads, head_size + head_size_v)
-            return (1, 0, 2, 3, 4)
+            # (num_blocks, num_layers, block_size, num_kv_heads, C_k+C_v)
+            return (1, 0, 3, 2, 4)
         elif cache_layout == "NHD":
-            stride_order = (0, 1, 2, 3)
-        elif cache_layout == "HND" and include_num_layers_dimension:
-            # (num_blocks, num_kv_heads, num_layers,
-            # block_size, head_size + head_size_v)
-            return (1, 3, 0, 2, 4)
-        elif cache_layout == "HND":
+            # (num_blocks, block_size, num_kv_heads, C_k+C_v)
             stride_order = (0, 2, 1, 3)
+        elif cache_layout == "HND" and include_num_layers_dimension:
+            # (num_blocks, num_kv_heads, num_layers, block_size, C_k+C_v)
+            return (1, 2, 0, 3, 4)
+        elif cache_layout == "HND":
+            # (num_blocks, num_kv_heads, block_size, C_k+C_v)
+            stride_order = (0, 1, 2, 3)
         else:
             raise ValueError(f"Unknown cache layout format {cache_layout}.")
         return stride_order
@@ -138,21 +145,14 @@ class FlashAttentionDiffKVImpl(FlashAttentionImpl):
             # we use direct Q, K, V tensors without caching
             return
 
-        # Unlike standard FlashAttn which splits kv_cache via unbind(0),
         # DiffKV packs K and V into a single tensor along the last dim:
-        #   kv_cache shape: [num_blocks, block_size, num_kv_heads,
+        #   logical kv_cache shape: [num_blocks, num_kv_heads, block_size,
         #                    head_size_k + head_size_v]
-        # The triton kernel handles this combined layout directly.
-        #
-        # NOTE(woosuk): key and value are padded while slot_mapping is
-        # not padded. However, we don't need to do key[:num_actual_tokens]
-        # and value[:num_actual_tokens] because the reshape_and_cache_flash
-        # op uses the slot_mapping's shape to determine the number of
-        # actual tokens.
+        # (B, H, N, C) -> (B, N, H, C) for kernel compatibility.
         triton_reshape_and_cache_flash_diffkv(
             key,
             value,
-            kv_cache,
+            kv_cache.transpose(1, 2),
             slot_mapping,
             self.kv_cache_dtype,
             layer._k_scale,
@@ -178,7 +178,7 @@ class FlashAttentionDiffKVImpl(FlashAttentionImpl):
             key: shape = [num_tokens, num_kv_heads, head_size]
             value: shape = [num_tokens, num_kv_heads, head_size_v]
             kv_cache: shape =
-                [num_blocks, block_size, num_kv_heads, head_size + head_size_v]
+                [num_blocks, num_kv_heads, block_size, head_size + head_size_v]
             attn_metadata: Metadata for attention.
         Returns:
             shape = [num_tokens, num_heads * head_size_v]
@@ -225,10 +225,10 @@ class FlashAttentionDiffKVImpl(FlashAttentionImpl):
                 layer,
             )
 
-        # For decoder and cross-attention, use KV cache as before
-        # Different head_size for K and V
-        key_cache = kv_cache[..., : self.head_size]
-        value_cache = kv_cache[..., self.head_size :]
+        # (B, H, N, C_k+C_v) -> ((B, N, H, C_k), (B, N, H, C_v))
+        key_cache, value_cache = kv_cache.transpose(1, 2).split(
+            (self.head_size, FlashAttentionDiffKVBackend.head_size_v), dim=-1
+        )
         # Fix degenerate strides on size-1 dims (e.g. num_kv_heads=1 with TP).
         # FA3/4 on H100+ uses TMA, which requires ≥16-byte stride alignment.
         # See vllm.utils.torch_utils.canonicalize_singleton_dim_strides.
@@ -254,7 +254,6 @@ class FlashAttentionDiffKVImpl(FlashAttentionImpl):
 
         if not attn_metadata.use_cascade:
             cu_seqlens_q = attn_metadata.query_start_loc
-            seqused_k = attn_metadata.seq_lens
             max_seqlen_q = attn_metadata.max_query_len
             max_seqlen_k = attn_metadata.max_seq_len
             block_table = attn_metadata.block_table
@@ -277,38 +276,41 @@ class FlashAttentionDiffKVImpl(FlashAttentionImpl):
                 )
                 return output
             else:
-                sliding_window_size = (
-                    list(self.sliding_window)
-                    if self.sliding_window is not None
-                    else None
+                window = (
+                    attn_metadata.sliding_window
+                    if attn_metadata.sliding_window is not None
+                    else self.sliding_window
                 )
+                sliding_window_size = list(window) if window is not None else None
                 if mx_envs.VLLM_METAX_ENABLE_FA_SPLIT_FORWARD:
                     # ┌------------------------  Metax Modification -------------------------┐
                     # For handling prefill decode split
-                    num_decode_tokens = attn_metadata.num_decode_tokens
-                    if attn_metadata.num_prefills > 0:
-                        output[num_decode_tokens:num_actual_tokens] = (
+                    split_decode_num_tokens = attn_metadata.split_decode_num_tokens
+                    if attn_metadata.split_prefill_num_reqs > 0:
+                        output[split_decode_num_tokens:num_actual_tokens] = (
                             flash_attn_varlen_func(
-                                q=query[num_decode_tokens:num_actual_tokens],
+                                q=query[split_decode_num_tokens:num_actual_tokens],
                                 k=key_cache,
                                 v=value_cache,
-                                cu_seqlens_q=attn_metadata.prefill_query_start_loc,
-                                cu_seqlens_k=attn_metadata.cu_prefix_kv_lens,
+                                cu_seqlens_q=(
+                                    attn_metadata.split_prefill_query_start_loc
+                                ),
+                                cu_seqlens_k=attn_metadata.split_prefill_cu_seqlens_k,
                                 max_seqlen_q=attn_metadata.max_query_len,
-                                max_seqlen_k=attn_metadata.prefill_max_seq_len,
+                                max_seqlen_k=attn_metadata.split_prefill_max_seq_len,
                                 softmax_scale=self.scale,
                                 causal=attn_metadata.causal,
                                 alibi_slopes=self.alibi_slopes,
                                 window_size=sliding_window_size,
-                                block_table=attn_metadata.prefill_block_table,
+                                block_table=attn_metadata.split_prefill_block_table,
                                 softcap=self.logits_soft_cap,
                                 s_aux=self.sinks,
                             )
                         )
-                    if attn_metadata.num_decodes > 0:
-                        decode_query = query[:num_decode_tokens]
+                    if attn_metadata.split_decode_num_reqs > 0:
+                        decode_query = query[:split_decode_num_tokens]
                         # Use flash_attn_with_kvcache for normal decoding.
-                        if attn_metadata.decode_bucket_req_bounds is not None:
+                        if attn_metadata.split_decode_bucket_req_bounds is not None:
                             self._forward_decode_with_query_len_bucketing(
                                 decode_query,
                                 key_cache,
@@ -318,29 +320,29 @@ class FlashAttentionDiffKVImpl(FlashAttentionImpl):
                             )
                         else:
                             decode_query = reshape_query_for_spec_decode(
-                                decode_query, attn_metadata.num_decodes
+                                decode_query,
+                                attn_metadata.split_decode_num_reqs,
                             )
                             output_unreshape = flash_attn_with_kvcache(
                                 q=decode_query,
                                 k_cache=key_cache,
                                 v_cache=value_cache,
-                                block_table=attn_metadata.decode_block_table,
-                                cache_seqlens=attn_metadata.decode_seq_lens,
+                                block_table=attn_metadata.split_decode_block_table,
+                                cache_seqlens=attn_metadata.split_decode_seq_lens,
                                 softmax_scale=self.scale,
-                                causal=True,
+                                causal=attn_metadata.causal,
                                 window_size=sliding_window_size,
                                 alibi_slopes=self.alibi_slopes,
                                 softcap=self.logits_soft_cap,
                                 s_aux=self.sinks,
+                                num_splits=1 if self.batch_invariant_enabled else 0,
                             )
-                            output[:num_decode_tokens] = (
+                            output[:split_decode_num_tokens] = (
                                 reshape_attn_output_for_spec_decode(output_unreshape)
                             )
                     return output
                 # └------------------------- Metax Modification -------------------------┘
                 else:
-                    # cu_seqlens_k = attn_metadata.cu_seqlens_k
-                    # if cu_seqlens_k is None:
                     # Fallback for legacy metadata paths: keep it GPU-only.
                     # TODO(hank): Currently we manually process it on forward. Move it to attention_metadata
                     cu_seqlens_k = F.pad(
@@ -358,11 +360,12 @@ class FlashAttentionDiffKVImpl(FlashAttentionImpl):
                         cu_seqlens_k=cu_seqlens_k,
                         max_seqlen_k=max_seqlen_k,
                         softmax_scale=self.scale,
-                        causal=True,
+                        causal=attn_metadata.causal,
                         alibi_slopes=self.alibi_slopes,
                         window_size=sliding_window_size,
                         block_table=block_table,
                         softcap=self.logits_soft_cap,
+                        s_aux=self.sinks,
                     )
                     return output
 
