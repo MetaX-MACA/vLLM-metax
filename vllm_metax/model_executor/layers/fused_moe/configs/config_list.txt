@@ -19,3 +19,7 @@ glm4.5-air w8a8 ：  /pde_ai/models/llm/ChatGLM/GLM-4.5-Air.w8a8/     tp4  H=409
 /pde_ai/models/llm/Qwen/Qwen3-30B-A3B-AWQ/  tp1   H=2048,E=128,N=384,device_name=Device_4000,dtype=int4_w4a16-1.json
 
 /pde_ai/models/llm/Mistral/Mixtral-8x7B-v0.1  tp4  H=4096,E=8,N=3584,device_name=Device_4000.json
+
+DeepSeek-V2：H=5120,E=64,N=1536,device_name=MXC500.json
+Mixtral-8x22B TP8：H=6144,E=8,N=2048,device_name=MXC500.json
+DeepSeek-V3 / DeepSeek-R1 TP8：H=7168,E=256,N=256,device_name=MXC500.json
