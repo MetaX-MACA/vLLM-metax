@@ -1,0 +1,262 @@
+{
+  "1": {
+    "stage1": {
+      "BLOCK_SIZE_M": 16,
+      "BLOCK_SIZE_N": 64,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    },
+    "stage2": {
+      "BLOCK_SIZE_M": 16,
+      "BLOCK_SIZE_N": 64,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    }
+  },
+  "8": {
+    "stage1": {
+      "BLOCK_SIZE_M": 16,
+      "BLOCK_SIZE_N": 64,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    },
+    "stage2": {
+      "BLOCK_SIZE_M": 16,
+      "BLOCK_SIZE_N": 64,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    }
+  },
+  "16": {
+    "stage1": {
+      "BLOCK_SIZE_M": 16,
+      "BLOCK_SIZE_N": 64,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    },
+    "stage2": {
+      "BLOCK_SIZE_M": 16,
+      "BLOCK_SIZE_N": 64,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    }
+  },
+  "32": {
+    "stage1": {
+      "BLOCK_SIZE_M": 16,
+      "BLOCK_SIZE_N": 64,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    },
+    "stage2": {
+      "BLOCK_SIZE_M": 16,
+      "BLOCK_SIZE_N": 64,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    }
+  },
+  "64": {
+    "stage1": {
+      "BLOCK_SIZE_M": 16,
+      "BLOCK_SIZE_N": 64,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    },
+    "stage2": {
+      "BLOCK_SIZE_M": 16,
+      "BLOCK_SIZE_N": 64,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    }
+  },
+  "128": {
+    "stage1": {
+      "BLOCK_SIZE_M": 32,
+      "BLOCK_SIZE_N": 64,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    },
+    "stage2": {
+      "BLOCK_SIZE_M": 32,
+      "BLOCK_SIZE_N": 64,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    }
+  },
+  "256": {
+    "stage1": {
+      "BLOCK_SIZE_M": 32,
+      "BLOCK_SIZE_N": 64,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    },
+    "stage2": {
+      "BLOCK_SIZE_M": 32,
+      "BLOCK_SIZE_N": 64,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    }
+  },
+  "512": {
+    "stage1": {
+      "BLOCK_SIZE_M": 64,
+      "BLOCK_SIZE_N": 128,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    },
+    "stage2": {
+      "BLOCK_SIZE_M": 64,
+      "BLOCK_SIZE_N": 128,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    }
+  },
+  "1024": {
+    "stage1": {
+      "BLOCK_SIZE_M": 128,
+      "BLOCK_SIZE_N": 128,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    },
+    "stage2": {
+      "BLOCK_SIZE_M": 128,
+      "BLOCK_SIZE_N": 128,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    }
+  },
+  "2048": {
+    "stage1": {
+      "BLOCK_SIZE_M": 128,
+      "BLOCK_SIZE_N": 128,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    },
+    "stage2": {
+      "BLOCK_SIZE_M": 128,
+      "BLOCK_SIZE_N": 128,
+      "BLOCK_SIZE_K": 64,
+      "GROUP_SIZE_M": 1,
+      "num_warps": 8,
+      "num_stages": 3,
+      "SPLIT_K": 1,
+      "pipeline": "basic",
+      "scenario": "",
+      "ACCF32": false
+    }
+  }
+}
