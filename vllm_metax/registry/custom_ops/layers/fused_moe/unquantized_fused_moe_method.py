@@ -52,7 +52,7 @@ class UnquantizedFusedMoEMethod(vllm_UnquantizedFusedMoEMethod):
         # Shuffle weights to runtime format.
         w13_new, w2_new = convert_to_unquantized_kernel_format(
             self.unquantized_backend,
-            layer=layer,
+            moe_config=layer.moe_config,
             w13_weight=w13,
             w2_weight=w2,
         )
