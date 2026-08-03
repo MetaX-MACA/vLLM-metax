@@ -17,22 +17,17 @@ def register():
 
 
 ########### general plugins ###########
-def register_patch():
+def _patch():
     import vllm_metax.patch  # noqa: F401
 
 
-def register_custom_op():
-    import vllm_metax.customized  # noqa: F401
+def _out_of_tree():
+    import vllm_metax.registry  # noqa: F401
 
 
-def register_quant_configs():
-    import vllm_metax.quant_config  # noqa: F401
-
-
-def register_customized():
-    register_patch()
-    register_custom_op()
-    register_quant_configs()
+def register_out_of_tree():
+    _patch()
+    _out_of_tree()
 
 
 def register_model():

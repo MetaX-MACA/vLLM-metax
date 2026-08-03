@@ -6,6 +6,5 @@
 # Affected versions: v0.21.0
 # -----------------------------------------------
 from . import bugfix  # noqa: F401
-from . import plugin_enhancement  # noqa: F401
+from . import enhancement  # noqa: F401
 from . import performance  # noqa: F401
-from . import model_executor  # noqa: F401

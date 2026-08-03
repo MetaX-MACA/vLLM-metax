@@ -17,7 +17,7 @@
 # -----------------------------------------------
 
 from vllm.triton_utils import tl, triton
-from vllm.third_party.flash_linear_attention.ops import exp, exp2
+from vllm.third_party.flash_linear_attention.ops.op import exp, exp2
 from vllm.third_party.flash_linear_attention.ops.utils import use_cuda_graph
 
 

@@ -13,10 +13,6 @@ from vllm.model_executor.layers.quantization.utils.gptq_utils import (
     get_linear_quant_method,
 )
 
-from vllm_metax.registry.linear_kernels.mp import (
-    mp_linear_kernel,  # noqa: F401
-)
-
 
 @register_quantization_config("auto_gptq")
 @register_quantization_config("gptq")

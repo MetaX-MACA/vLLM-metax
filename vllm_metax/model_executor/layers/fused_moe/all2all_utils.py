@@ -11,7 +11,7 @@ from vllm.model_executor.layers.fused_moe.modular_kernel import (
 )
 
 from vllm.model_executor.layers.fused_moe.all2all_utils import (
-    _get_ep_all2all_manager,
+    get_ep_all2all_manager,
 )
 from vllm.model_executor.layers.fused_moe.prepare_finalize import (
     make_moe_prepare_and_finalize_naive_dp_ep,
@@ -63,7 +63,7 @@ def maybe_make_prepare_finalize(
                 "Detected DP deployment with no --enable-expert-parallel. "
                 "Falling back to AllGather+ReduceScatter dispatch/combine."
             )
-            all2all_manager = _get_ep_all2all_manager(eep_stage)
+            all2all_manager = get_ep_all2all_manager(eep_stage)
             return make_moe_prepare_and_finalize_naive_dp_ep(
                 is_sequence_parallel=moe.moe_parallel_config.is_sequence_parallel,
                 num_dispatchers=all2all_manager.world_size,
@@ -72,7 +72,7 @@ def maybe_make_prepare_finalize(
         else:
             return make_moe_prepare_and_finalize_no_dp_ep(use_monolithic)
 
-    all2all_manager = _get_ep_all2all_manager(eep_stage)
+    all2all_manager = get_ep_all2all_manager(eep_stage)
 
     prepare_finalize: FusedMoEPrepareAndFinalize | None = None
 
