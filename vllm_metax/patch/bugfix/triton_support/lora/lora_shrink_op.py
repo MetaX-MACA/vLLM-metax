@@ -24,8 +24,10 @@ from vllm_metax.patch.bugfix.triton_support.lora.kernel_utils import (
     do_shrink_kernel as mx_do_shrink_kernel,
 )
 from vllm.triton_utils import tl, triton
+from vllm_metax.patch.utils import patch
 
 
+@patch("vllm.lora.ops.triton_ops.lora_shrink_op", "_lora_shrink_kernel")
 @triton.jit
 def _lora_shrink_kernel(
     input_ptr,
@@ -132,8 +134,3 @@ def _lora_shrink_kernel(
         SLICE_NUM,
         USE_GDC,
     )
-
-
-import vllm.lora.ops.triton_ops.lora_shrink_op
-
-vllm.lora.ops.triton_ops.lora_shrink_op._lora_shrink_kernel = _lora_shrink_kernel

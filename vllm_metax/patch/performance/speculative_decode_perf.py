@@ -13,6 +13,7 @@ import numpy as np
 from vllm.v1.worker.gpu_model_runner import GPUModelRunner
 from vllm.v1.attention.backends.utils import reorder_batch_to_split_decodes_and_prefills
 from typing import TYPE_CHECKING
+from vllm_metax.patch.utils import patch
 
 if TYPE_CHECKING:
     from vllm.v1.core.sched.output import SchedulerOutput
@@ -113,6 +114,10 @@ def _metax_reorder_batch_to_split_decodes_and_prefills(
 
 
 class MacaGPUModelRunner(GPUModelRunner):
+    @patch(
+        "vllm.v1.worker.gpu_model_runner",
+        "GPUModelRunner._may_reorder_batch",
+    )
     def _may_reorder_batch(self, scheduler_output: "SchedulerOutput") -> None:
         if (
             len(self.kv_cache_config.kv_cache_groups) == 0
@@ -150,6 +155,3 @@ class MacaGPUModelRunner(GPUModelRunner):
                 scheduler_output,
                 decode_threshold=self.reorder_batch_threshold,
             )
-
-
-GPUModelRunner._may_reorder_batch = MacaGPUModelRunner._may_reorder_batch

@@ -23,6 +23,7 @@ import vllm.envs as envs
 from vllm.distributed.device_communicators.cuda_wrapper import logger
 from vllm.platforms import current_platform
 from vllm.utils.system_utils import find_loaded_library
+from vllm_metax.patch.utils import patch
 
 # === export types and functions from cudart to Python ===
 # for the original cudart definition, please check
@@ -43,6 +44,10 @@ class Function:
     argtypes: list[Any]
 
 
+@patch(
+    "vllm.distributed.device_communicators.cuda_wrapper",
+    "CudaRTLibrary",
+)
 class CudaRTLibrary:
     exported_functions = [
         # ​cudaError_t cudaSetDevice ( int  device )
@@ -195,8 +200,3 @@ class CudaRTLibrary:
             )
         )
         return devPtr
-
-
-import vllm.distributed.device_communicators.cuda_wrapper
-
-vllm.distributed.device_communicators.cuda_wrapper.CudaRTLibrary = CudaRTLibrary

@@ -16,8 +16,10 @@ from vllm.benchmarks.datasets import add_dataset_parser
 from vllm.benchmarks.lib.endpoint_request_func import (
     ASYNC_REQUEST_FUNCS,
 )
+from vllm_metax.patch.utils import patch
 
 
+@patch("vllm.entrypoints.cli.benchmark.serve")
 def add_cli_args(parser: argparse.ArgumentParser):
     add_dataset_parser(parser)
     parser.add_argument(
@@ -425,8 +427,3 @@ def add_cli_args(parser: argparse.ArgumentParser):
         help="Generate a matplotlib figure with dataset statistics showing "
         "prompt tokens, output tokens, and combined token distributions.",
     )
-
-
-import vllm.entrypoints.cli.benchmark.serve as cli_serve
-
-cli_serve.add_cli_args = add_cli_args

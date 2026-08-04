@@ -27,6 +27,7 @@ from vllm.model_executor.layers.fused_moe.router.grouped_topk_router import (
 )
 from vllm_metax import _custom_ops as mx_ops
 from vllm_metax import envs as mx_envs
+from vllm_metax.patch.utils import patch
 
 # --------------------------------
 # Note:
@@ -217,6 +218,10 @@ def maca_grouped_topk(
 class MacaGroupedTopKRouter(GroupedTopKRouter):
     """Router using grouped top-k routing (e.g., DeepSeekV2/V3)."""
 
+    @patch(
+        "vllm.model_executor.layers.fused_moe.router.grouped_topk_router",
+        "GroupedTopKRouter._compute_routing",
+    )
     def _compute_routing(
         self,
         hidden_states: torch.Tensor,
@@ -283,6 +288,3 @@ class MacaGroupedTopKRouter(GroupedTopKRouter):
         )
 
         return topk_weights, topk_ids
-
-
-GroupedTopKRouter._compute_routing = MacaGroupedTopKRouter._compute_routing

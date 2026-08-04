@@ -9,14 +9,11 @@
 # -----------------------------------------------
 
 from vllm.device_allocator import MemAllocator
+from vllm_metax.patch.utils import patch
 
 
+@patch("vllm.device_allocator")
 def get_mem_allocator_instance() -> MemAllocator:
     from vllm_metax.device_allocator.cumem import CuMemAllocator
 
     return CuMemAllocator.get_instance()
-
-
-import vllm.device_allocator
-
-vllm.device_allocator.get_mem_allocator_instance = get_mem_allocator_instance

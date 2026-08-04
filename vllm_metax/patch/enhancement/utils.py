@@ -16,10 +16,12 @@ from vllm import _custom_ops as ops
 from vllm.model_executor.layers.fused_moe import utils
 from dataclasses import dataclass
 from vllm.model_executor.layers.fused_moe.config import FusedMoEQuantConfig
+from vllm_metax.patch.utils import patch
 
 logger = init_logger(__name__)
 
 
+@patch("vllm.model_executor.layers.fused_moe.utils", "_int8_quantize")
 def _int8_quantize(
     A: torch.Tensor,
     A_scale: torch.Tensor | None,
@@ -60,10 +62,11 @@ def _int8_quantize(
 
 @dataclass
 class MacaFusedMoEQuantConfig(FusedMoEQuantConfig):
+    @patch(
+        "vllm.model_executor.layers.fused_moe.config",
+        "FusedMoEQuantConfig.use_int4_w4a8",
+        allow_missing=True,
+    )
     @property
     def use_int4_w4a8(self):
         return self._a1.dtype == "int8" and self._w1.dtype == "int4"
-
-
-utils._int8_quantize = _int8_quantize
-FusedMoEQuantConfig.use_int4_w4a8 = MacaFusedMoEQuantConfig.use_int4_w4a8

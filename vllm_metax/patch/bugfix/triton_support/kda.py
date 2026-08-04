@@ -7,6 +7,7 @@
 # -----------------------------------------------
 from vllm.triton_utils import tl, triton
 from vllm.third_party.flash_linear_attention.ops.op import log
+from vllm_metax.patch.utils import patch
 
 BT_LIST_AUTOTUNE = [32, 64, 128]
 
@@ -16,6 +17,7 @@ BT_LIST_AUTOTUNE = [32, 64, 128]
 NUM_WARPS_AUTOTUNE = [2, 4, 8, 16]
 
 
+@patch("vllm.third_party.flash_linear_attention.ops.kda", "kda_gate_fwd_kernel")
 @triton.autotune(
     configs=[
         triton.Config({"BT": bt}, num_warps=nw, num_stages=ns)
@@ -86,10 +88,3 @@ def kda_gate_fwd_kernel(
     b_y = b_a * sp
 
     tl.store(y_ptr, b_y.to(y.dtype.element_ty), boundary_check=(0, 1))
-
-
-import vllm.third_party.flash_linear_attention.ops.kda
-
-vllm.third_party.flash_linear_attention.ops.kda.kda_gate_fwd_kernel = (
-    kda_gate_fwd_kernel
-)

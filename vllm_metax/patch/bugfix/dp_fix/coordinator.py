@@ -18,9 +18,11 @@ from vllm.v1.serial_utils import MsgpackDecoder
 logger = init_logger(__name__)
 
 from vllm.v1.engine.coordinator import EngineState, DPCoordinatorProc
+from vllm_metax.patch.utils import patch
 
 
 class MacaDPCoordinatorProc(DPCoordinatorProc):
+    @patch("vllm.v1.engine.coordinator", "DPCoordinatorProc.run_coordinator")
     @staticmethod
     def run_coordinator(
         engine_count: int,
@@ -51,6 +53,7 @@ class MacaDPCoordinatorProc(DPCoordinatorProc):
             if zmq_addr_pipe is not None:
                 zmq_addr_pipe.close()
 
+    @patch("vllm.v1.engine.coordinator", "DPCoordinatorProc.process_input_socket")
     def process_input_socket(
         self,
         front_publish_address: str,
@@ -307,7 +310,3 @@ class MacaDPCoordinatorProc(DPCoordinatorProc):
                 if wave_state_changed:
                     message = (None, current_wave, engines_running)
                     publish_front.send(msgspec.msgpack.encode(message))
-
-
-DPCoordinatorProc.process_input_socket = MacaDPCoordinatorProc.process_input_socket
-DPCoordinatorProc.run_coordinator = MacaDPCoordinatorProc.run_coordinator

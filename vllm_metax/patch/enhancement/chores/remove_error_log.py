@@ -7,7 +7,9 @@
 # Affected versions: v0.21.0
 # -----------------------------------------------
 
-import vllm.v1.attention.backends.fa_utils
 from vllm_metax.v1.attention.backends.fa_utils import get_flash_attn_version
+from vllm_metax.patch.utils import patch
 
-vllm.v1.attention.backends.fa_utils.get_flash_attn_version = get_flash_attn_version
+get_flash_attn_version = patch("vllm.v1.attention.backends.fa_utils")(
+    get_flash_attn_version
+)

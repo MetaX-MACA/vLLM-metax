@@ -15,6 +15,7 @@ from vllm.v1.sample.rejection_sampler import (
     generate_uniform_probs,
     rejection_random_sample_kernel,
 )
+from vllm_metax.patch.utils import patch
 
 
 PLACEHOLDER_TOKEN_ID: tl.constexpr = -1
@@ -24,6 +25,7 @@ GREEDY_TEMPERATURE: tl.constexpr = 0
 MAX_SPEC_LEN = 128
 
 
+@patch("vllm.v1.sample.rejection_sampler", "rejection_sample")
 def rejection_sample(
     # [num_tokens]
     draft_token_ids: torch.Tensor,
@@ -140,6 +142,7 @@ def rejection_sample(
     return output_token_ids
 
 
+@patch("vllm.v1.sample.rejection_sampler", "sample_recovered_tokens")
 def sample_recovered_tokens(
     max_spec_len: int,
     num_draft_tokens: list[int],
@@ -192,6 +195,7 @@ def sample_recovered_tokens(
 
 
 # NOTE(woosuk): Avoid specialization to prevent unnecessary recompilation.
+@patch("vllm.v1.sample.rejection_sampler", "rejection_greedy_sample_kernel")
 @triton.jit(do_not_specialize=["max_spec_len"])
 def rejection_greedy_sample_kernel(
     output_token_ids_ptr,  # [batch_size, max_spec_len + 1]
@@ -247,6 +251,7 @@ def rejection_greedy_sample_kernel(
         )
 
 
+@patch("vllm.v1.sample.rejection_sampler", "sample_recovered_tokens_kernel")
 @triton.jit
 def sample_recovered_tokens_kernel(
     output_token_ids_ptr,  # [num_tokens]
@@ -336,13 +341,3 @@ def sample_recovered_tokens_kernel(
         )
 
     tl.store(output_token_ids_ptr + start_idx + pos, best_token_id)
-
-
-from vllm.v1.sample import rejection_sampler
-
-
-rejection_sampler.rejection_greedy_sample_kernel = rejection_greedy_sample_kernel
-rejection_sampler.rejection_sample = rejection_sample
-
-rejection_sampler.sample_recovered_tokens = sample_recovered_tokens
-rejection_sampler.sample_recovered_tokens_kernel = sample_recovered_tokens_kernel

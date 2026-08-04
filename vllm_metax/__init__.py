@@ -18,7 +18,9 @@ def register():
 
 ########### general plugins ###########
 def _patch():
-    import vllm_metax.patch  # noqa: F401
+    import vllm_metax.patch.bugfix  # noqa: F401
+    import vllm_metax.patch.enhancement  # noqa: F401
+    import vllm_metax.patch.performance  # noqa: F401
 
 
 def _out_of_tree():

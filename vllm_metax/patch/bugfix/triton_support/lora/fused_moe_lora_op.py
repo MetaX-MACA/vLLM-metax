@@ -15,8 +15,10 @@ from vllm.lora.ops.triton_ops.fused_moe_lora_op import (
     _get_token_offs,
     _get_c_ptrs,
 )
+from vllm_metax.patch.utils import patch
 
 
+@patch("vllm.lora.ops.triton_ops.fused_moe_lora_op", "_fused_moe_lora_kernel")
 @triton.jit(
     do_not_specialize=[
         "num_valid_tokens",
@@ -294,10 +296,3 @@ def _fused_moe_lora_kernel(
             tl.store(c_ptrs, accumulator, mask=c_mask)
     else:
         tl.atomic_add(c_ptrs, accumulator, mask=c_mask, sem="relaxed")
-
-
-import vllm.lora.ops.triton_ops.fused_moe_lora_op
-
-vllm.lora.ops.triton_ops.fused_moe_lora_op._fused_moe_lora_kernel = (
-    _fused_moe_lora_kernel
-)

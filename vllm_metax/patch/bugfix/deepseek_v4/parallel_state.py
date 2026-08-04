@@ -6,9 +6,10 @@
 #       temporarily disable the optimization of use all_gather in send/recv
 # ------------------------------------------------------------
 
-from vllm.distributed.parallel_state import GroupCoordinator
+from vllm_metax.patch.utils import patch
 
 
+@patch("vllm.distributed.parallel_state", "GroupCoordinator._should_use_all_gather")
 def _should_use_all_gather(
     self,
     key: str,
@@ -17,6 +18,3 @@ def _should_use_all_gather(
     all_gather_tensors: dict[str, bool] | None,
 ) -> bool:
     return False
-
-
-GroupCoordinator._should_use_all_gather = _should_use_all_gather

@@ -7,11 +7,13 @@
 # -------------------------------------------------------
 
 
-from vllm.transformers_utils.model_arch_config_convertor import (
-    ModelArchConfigConvertorBase,
+from vllm_metax.patch.utils import patch
+
+
+@patch(
+    "vllm.transformers_utils.model_arch_config_convertor",
+    "ModelArchConfigConvertorBase.is_deepseek_mla",
 )
-
-
 def is_deepseek_mla(self) -> bool:
     if not hasattr(self.hf_text_config, "model_type"):
         return False
@@ -55,6 +57,3 @@ def is_deepseek_mla(self) -> bool:
             and getattr(self.hf_text_config, "kv_lora_rank", None) is not None
         )
     return False
-
-
-ModelArchConfigConvertorBase.is_deepseek_mla = is_deepseek_mla

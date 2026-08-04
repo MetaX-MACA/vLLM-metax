@@ -48,8 +48,11 @@ from vllm.distributed.device_communicators.pynccl_wrapper import (
 
 from vllm.platforms import current_platform
 from vllm_metax.utils.mccl import find_mccl_library
+from vllm_metax.patch.utils import patch
 
 
+@patch("vllm.distributed.device_communicators.pynccl", "NCCLLibrary")
+@patch("vllm.distributed.device_communicators.pynccl_wrapper", "NCCLLibrary")
 class MCCLLibrary:
     exported_functions = [
         # const char* ncclGetErrorString(ncclResult_t result)
@@ -483,9 +486,3 @@ class MCCLLibrary:
     def ncclCommWindowDeregister(self, comm: ncclComm_t, window: ncclWindow_t) -> None:
         # self.NCCL_CHECK(self._funcs["mcclCommWindowDeregister"](comm, window))
         return
-
-
-from vllm.distributed.device_communicators import pynccl, pynccl_wrapper
-
-pynccl.NCCLLibrary = MCCLLibrary
-pynccl_wrapper.NCCLLibrary = MCCLLibrary

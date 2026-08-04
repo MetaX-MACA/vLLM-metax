@@ -7,8 +7,10 @@
 # -----------------------------------------------
 
 from vllm.triton_utils import tl, triton
+from vllm_metax.patch.utils import patch
 
 
+@patch("vllm.lora.ops.triton_ops.kernel_utils", "mm_k")
 @triton.jit
 def mm_k(
     a_ptr,
@@ -115,6 +117,7 @@ def mm_k(
     return accumulator
 
 
+@patch("vllm.lora.ops.triton_ops.kernel_utils", "do_shrink_kernel")
 @triton.jit
 def do_shrink_kernel(
     pid_n,
@@ -222,9 +225,3 @@ def do_shrink_kernel(
         tl.store(c_ptr, accumulator, mask=c_mask)
     else:
         tl.atomic_add(c_ptr, accumulator, mask=c_mask, sem="relaxed")
-
-
-import vllm.lora.ops.triton_ops.kernel_utils
-
-vllm.lora.ops.triton_ops.kernel_utils.mm_k = mm_k
-vllm.lora.ops.triton_ops.kernel_utils.do_shrink_kernel = do_shrink_kernel
