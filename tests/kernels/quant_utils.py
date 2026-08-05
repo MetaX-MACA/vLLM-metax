@@ -9,7 +9,10 @@ import torch
 from vllm.model_executor.layers.quantization.utils.quant_utils import (
     group_broadcast)
 from vllm.platforms import current_platform
-from vllm.utils import round_up
+
+
+def round_up(value: int, multiple: int) -> int:
+    return ((value + multiple - 1) // multiple) * multiple
 
 # Using the default value (240.0) from pytorch will cause accuracy
 # issue on dynamic quantization models. Here use 224.0 for rocm.
