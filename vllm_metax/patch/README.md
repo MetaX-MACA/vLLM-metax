@@ -1,102 +1,99 @@
 # Runtime patches
 
-This directory contains narrowly scoped runtime patches for behavior that cannot
-currently be implemented through a supported vLLM or vLLM-MetaX extension point.
-Typical uses are:
+Runtime patches provide temporary vLLM fixes or MetaX compatibility changes when
+an existing registry or extension point cannot be used.
 
-- working around an upstream vLLM bug;
-- providing temporary MetaX compatibility for a new vLLM feature; or
-- replacing a hot path while an equivalent upstream optimization is unavailable.
+> Patches depend on vLLM implementation details. Keep them small, tested, and
+> easy to remove after the upstream issue is fixed.
 
-Monkey patches depend on private implementation details and can silently become
-incorrect after an upgrade. Treat every patch as temporary, keep its scope small,
-and give it an explicit removal condition.
+## Quick start
 
-## Prefer an extension point
+1. Choose a template:
+   - `template/module_attr.py` for module functions, classes, or Triton kernels.
+   - `template/class_method.py` for instance methods.
+2. Copy the template into `bugfix/`, `enhancement/`, or `performance/`.
+3. Complete the header and replace every `TODO`.
+4. Import the new patch module from the nearest `__init__.py`.
+5. Add a focused regression test.
 
-Before adding a patch, check whether the change can use one of the supported
-mechanisms instead:
+Importing a patch module applies it immediately. Patching the same target twice
+raises `RuntimeError`.
 
-- custom operators and pluggable layers: `vllm_metax/registry/`;
-- attention backends: `vllm_metax/v1/attention/backends/` and
-  `MacaPlatform.register_attention_backends()`;
-- configuration or CLI adjustment:
-  `MacaPlatform.check_and_update_config()` and
-  `MacaPlatform.pre_register_and_update()`.
+## Common examples
 
-If none of these fits, explain why in the patch header.
+### Module function
 
-## Directory layout
+The target name is inferred from the replacement function name:
 
-- `bugfix/` contains temporary fixes for upstream or integration bugs.
-- `enhancement/` contains compatibility features that cannot use a registry or
-  another plugin interface yet.
-- `performance/` contains temporary performance replacements.
-- `torch_fix/` is optional and reserved for `torch+metax` fixes. A torch fix must
-  be imported explicitly from `vllm_metax/__init__.py` before other patches.
-- `template/` contains one template for class methods and one for module
-  attributes, including module functions, classes, and Triton kernels.
-- `utils.py` provides the shared `@patch` decorator. A direct attribute name
-  selects module handling, while a dotted class attribute path selects the
-  independent class-method handling path.
+```python
+from vllm_metax.patch.utils import patch
 
-Group related patches in a subpackage. Avoid adding unrelated replacements to a
-single module.
 
-## Adding a patch
+@patch("vllm.some_module")
+def target_function(arg: int) -> int:
+    # Copy the complete upstream implementation and mark the MetaX change.
+    ...
+```
 
-1. Copy the matching file from `template/` into the appropriate directory
-   and replace every `TODO`.
-2. Record the reason, affected versions, upstream issue or pull request (when
-   available), and a concrete removal condition.
-3. Copy the complete target function to module scope, preserving its name,
-   signature, unchanged structure, and return contract. This keeps later upstream
-   diffs reviewable. Use `@patch("fully.qualified.target.module")` for module
-   attributes and `@patch("module.path", "TargetClass.method")` for class
-   attributes. This resolves the target class internally without importing it in
-   the patch file.
-4. Mark only the changed portion with the `MetaX Modification` comments shown in
-   the template. The decorator retains the original callable and raises an error
-   if the same target is patched more than once.
-5. Import the module from the nearest `__init__.py`. Make sure its category is
-   loaded by `vllm_metax.__init__._patch()`; importing a patch applies it
-   process-wide.
-6. Add a focused regression test that demonstrates both the original failure and
-   the patched behavior. Run that test with every supported affected version when
-   practical.
+Specify the attribute when the names differ:
 
-Do not catch broad import or attribute errors to make a stale patch appear to
-work. A version mismatch should fail clearly during startup. If a patch is only
-valid under a specific runtime condition, guard its registration with that
-condition and test both branches.
+```python
+@patch("vllm.some_module", "target_function")
+def metax_target_function(arg: int) -> int:
+    ...
+```
 
-## Review and removal checklist
+### Class method
 
-A patch is ready for review when:
+Use a dotted class attribute path. The target class is resolved internally and
+does not need to be imported by the patch file:
 
-- the header is complete and the removal condition is actionable;
-- the replacement preserves the target's public signature and return contract;
-- duplicate patch attempts fail with a clear error;
-- a regression test covers the changed behavior; and
-- the implementation does not have a supported extension-point alternative.
+```python
+@patch("vllm.some_module", "TargetClass.forward")
+def forward(self, hidden_states):
+    ...
+```
 
-Remove the patch, its registration import, and its regression-only compatibility
-code as soon as the stated removal condition is met. Verify the upstream behavior
-with the same regression test before deleting it.
+Keep `@patch` outside method descriptors:
 
-## Supported targets
+```python
+@patch("vllm.some_module", "TargetClass.from_config")
+@classmethod
+def from_config(cls, config):
+    ...
+```
 
-- Module functions are inferred from the replacement function name.
-- Instance methods use an explicit path such as `"TargetClass.forward"`; the
-  target class is resolved inside the patch utility.
-- `staticmethod`, `classmethod`, and `property` descriptors are detected and
-  preserved. The replacement may repeat the original decorator, with `@patch` as
-  the outermost decorator, or omit it and let the class-handling path preserve the
-  target descriptor.
-- Module-level Triton kernels are replaced as callable objects. Put `@patch`
-  outside `@triton.jit` and pass the target attribute explicitly when the JIT
-  object does not expose the expected function name.
+The same form supports `staticmethod` and `property`.
 
-Targets must exist by default so misspelled paths fail during import. Use
-`allow_missing=True` only for a compatibility patch that intentionally adds a new
-module or class attribute.
+### Triton kernel
+
+`@patch` must be the outermost decorator so the final Triton object is installed:
+
+```python
+@patch("vllm.some_module", "target_kernel")
+@triton.heuristics({...})
+@triton.autotune(configs=[...], key=[...])
+@triton.jit
+def target_kernel(...):
+    ...
+```
+
+## Patch layout
+
+- `bugfix/`: upstream and integration fixes.
+- `enhancement/`: temporary compatibility features.
+- `performance/`: performance replacements.
+- `template/`: ready-to-copy patch examples.
+- `utils.py`: the shared `@patch` implementation.
+
+## Keep in mind
+
+- Prefer `vllm_metax/registry/`, attention backends, or platform configuration
+  hooks when they can implement the change.
+- Preserve the upstream name, signature, decorators, and unchanged code so future
+  version updates are easy to diff.
+- Mark only changed lines with the `MetaX Modification` comments from the
+  templates.
+- Use `allow_missing=True` only when intentionally adding a new compatibility
+  attribute; normal patches require the target to exist.
+- Record affected versions and a concrete removal condition in every patch.

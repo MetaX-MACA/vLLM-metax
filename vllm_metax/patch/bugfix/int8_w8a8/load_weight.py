@@ -21,7 +21,6 @@ from vllm.model_executor.layers.fused_moe.routed_experts import logger
 )
 def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> Iterable[str]:
     expert_mapping = self.get_expert_mapping(include_fused=True)
-    print(expert_mapping)
     unpadded_hidden = self.moe_config.hidden_dim_unpadded
     for expert_name, loaded_weight in weights:
         qual_name = f"{self.layer_name}.{expert_name}"

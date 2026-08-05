@@ -13,9 +13,6 @@ from vllm.model_executor.layers.quantization.utils.int8_utils import (
 from vllm.utils.math_utils import cdiv
 
 from vllm import _custom_ops as ops
-from vllm.model_executor.layers.fused_moe import utils
-from dataclasses import dataclass
-from vllm.model_executor.layers.fused_moe.config import FusedMoEQuantConfig
 from vllm_metax.patch.utils import patch
 
 logger = init_logger(__name__)
@@ -60,13 +57,11 @@ def _int8_quantize(
     return A, A_scale
 
 
-@dataclass
-class MacaFusedMoEQuantConfig(FusedMoEQuantConfig):
-    @patch(
-        "vllm.model_executor.layers.fused_moe.config",
-        "FusedMoEQuantConfig.use_int4_w4a8",
-        allow_missing=True,
-    )
-    @property
-    def use_int4_w4a8(self):
-        return self._a1.dtype == "int8" and self._w1.dtype == "int4"
+@patch(
+    "vllm.model_executor.layers.fused_moe.config",
+    "FusedMoEQuantConfig.use_int4_w4a8",
+    allow_missing=True,
+)
+@property
+def use_int4_w4a8(self):
+    return self._a1.dtype == "int8" and self._w1.dtype == "int4"

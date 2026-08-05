@@ -10,7 +10,6 @@
 
 import numpy as np
 
-from vllm.v1.worker.gpu_model_runner import GPUModelRunner
 from vllm.v1.attention.backends.utils import reorder_batch_to_split_decodes_and_prefills
 from typing import TYPE_CHECKING
 from vllm_metax.patch.utils import patch
@@ -113,45 +112,44 @@ def _metax_reorder_batch_to_split_decodes_and_prefills(
     return True
 
 
-class MacaGPUModelRunner(GPUModelRunner):
-    @patch(
-        "vllm.v1.worker.gpu_model_runner",
-        "GPUModelRunner._may_reorder_batch",
-    )
-    def _may_reorder_batch(self, scheduler_output: "SchedulerOutput") -> None:
-        if (
-            len(self.kv_cache_config.kv_cache_groups) == 0
-            or self.reorder_batch_threshold is None
-        ):
-            return
+@patch(
+    "vllm.v1.worker.gpu_model_runner",
+    "GPUModelRunner._may_reorder_batch",
+)
+def _may_reorder_batch(self, scheduler_output: "SchedulerOutput") -> None:
+    if (
+        len(self.kv_cache_config.kv_cache_groups) == 0
+        or self.reorder_batch_threshold is None
+    ):
+        return
 
-        # Determine if decode grouping should be enabled
-        use_decode_grouping = False
-        if (
-            self.speculative_config is not None
-            and self.speculative_config.num_speculative_tokens > 0
-        ):
-            if not hasattr(self, "_use_decode_grouping"):
-                self._use_decode_grouping = any(
-                    getattr(
-                        group.get_metadata_builder(),
-                        "group_decodes_by_query_len",
-                        False,
-                    )
-                    for group in self._attn_group_iterator()
+    # Determine if decode grouping should be enabled
+    use_decode_grouping = False
+    if (
+        self.speculative_config is not None
+        and self.speculative_config.num_speculative_tokens > 0
+    ):
+        if not hasattr(self, "_use_decode_grouping"):
+            self._use_decode_grouping = any(
+                getattr(
+                    group.get_metadata_builder(),
+                    "group_decodes_by_query_len",
+                    False,
                 )
-            use_decode_grouping = self._use_decode_grouping
+                for group in self._attn_group_iterator()
+            )
+        use_decode_grouping = self._use_decode_grouping
 
-        # Call appropriate reorder function
-        if use_decode_grouping:
-            _metax_reorder_batch_to_split_decodes_and_prefills(
-                self.input_batch,
-                scheduler_output,
-                decode_threshold=self.reorder_batch_threshold,
-            )
-        else:
-            reorder_batch_to_split_decodes_and_prefills(
-                self.input_batch,
-                scheduler_output,
-                decode_threshold=self.reorder_batch_threshold,
-            )
+    # Call appropriate reorder function
+    if use_decode_grouping:
+        _metax_reorder_batch_to_split_decodes_and_prefills(
+            self.input_batch,
+            scheduler_output,
+            decode_threshold=self.reorder_batch_threshold,
+        )
+    else:
+        reorder_batch_to_split_decodes_and_prefills(
+            self.input_batch,
+            scheduler_output,
+            decode_threshold=self.reorder_batch_threshold,
+        )

@@ -22,9 +22,6 @@ from vllm.model_executor.layers.fused_moe.router.fused_topk_router import fused_
 from vllm.model_executor.utils import maybe_disable_graph_partition
 from vllm.platforms import current_platform
 
-from vllm.model_executor.layers.fused_moe.router.grouped_topk_router import (
-    GroupedTopKRouter,
-)
 from vllm_metax import _custom_ops as mx_ops
 from vllm_metax import envs as mx_envs
 from vllm_metax.patch.utils import patch
@@ -215,76 +212,73 @@ def maca_grouped_topk(
     return topk_weights.to(torch.float32), topk_ids.to(torch.int32)
 
 
-class MacaGroupedTopKRouter(GroupedTopKRouter):
-    """Router using grouped top-k routing (e.g., DeepSeekV2/V3)."""
+@patch(
+    "vllm.model_executor.layers.fused_moe.router.grouped_topk_router",
+    "GroupedTopKRouter._compute_routing",
+)
+def _compute_routing(
+    self,
+    hidden_states: torch.Tensor,
+    router_logits: torch.Tensor,
+    indices_type: torch.dtype | None,
+    *,
+    input_ids: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Compute routing using grouped top-k."""
 
-    @patch(
-        "vllm.model_executor.layers.fused_moe.router.grouped_topk_router",
-        "GroupedTopKRouter._compute_routing",
-    )
-    def _compute_routing(
-        self,
-        hidden_states: torch.Tensor,
-        router_logits: torch.Tensor,
-        indices_type: torch.dtype | None,
-        *,
-        input_ids: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Compute routing using grouped top-k."""
+    def valid_grouping() -> bool:
+        # Check if num_experts is greater than num_expert_group
+        # and is divisible by num_expert_group
+        num_experts = router_logits.shape[-1]
+        if num_experts <= self.num_expert_group:
+            return False
+        return num_experts % self.num_expert_group == 0
 
-        def valid_grouping() -> bool:
-            # Check if num_experts is greater than num_expert_group
-            # and is divisible by num_expert_group
-            num_experts = router_logits.shape[-1]
-            if num_experts <= self.num_expert_group:
-                return False
-            return num_experts % self.num_expert_group == 0
-
-        if not valid_grouping():
-            if self.e_score_correction_bias is not None:
-                topk_weights, topk_ids = fused_topk_bias(
-                    hidden_states=hidden_states,
-                    gating_output=router_logits,
-                    scoring_func=self.scoring_func,
-                    e_score_correction_bias=self.e_score_correction_bias.data,
-                    topk=self.top_k,
-                    renormalize=self.renormalize,
-                )
-                if self.routed_scaling_factor != 1.0:
-                    topk_weights *= self.routed_scaling_factor
-            else:
-                topk_weights, topk_ids, token_expert_indices = fused_topk(
-                    hidden_states=hidden_states,
-                    gating_output=router_logits,
-                    topk=self.top_k,
-                    renormalize=self.renormalize,
-                    indices_type=indices_type,
-                )
-            return topk_weights, topk_ids
-
-        # Select grouped_topk implementation
-        if rocm_aiter_ops.is_fused_moe_enabled():
-            if not rocm_aiter_ops.is_fusion_moe_shared_experts_enabled():
-                assert self.num_fused_shared_experts == 0
-            grouped_topk_impl = partial(
-                rocm_aiter_grouped_topk,
-                num_fused_shared_experts=self.num_fused_shared_experts,
+    if not valid_grouping():
+        if self.e_score_correction_bias is not None:
+            topk_weights, topk_ids = fused_topk_bias(
+                hidden_states=hidden_states,
+                gating_output=router_logits,
+                scoring_func=self.scoring_func,
+                e_score_correction_bias=self.e_score_correction_bias.data,
+                topk=self.top_k,
+                renormalize=self.renormalize,
             )
+            if self.routed_scaling_factor != 1.0:
+                topk_weights *= self.routed_scaling_factor
         else:
-            # ┌------------------------  Metax Modification -------------------------┐
-            grouped_topk_impl = maca_grouped_topk
-        # └------------------------- Metax Modification -------------------------┘
-
-        topk_weights, topk_ids = grouped_topk_impl(
-            hidden_states=hidden_states,
-            gating_output=router_logits,
-            topk=self.top_k,
-            renormalize=self.renormalize,
-            num_expert_group=self.num_expert_group,
-            topk_group=self.topk_group,
-            scoring_func=self.scoring_func,
-            routed_scaling_factor=self.routed_scaling_factor,
-            e_score_correction_bias=self.e_score_correction_bias,
-        )
-
+            topk_weights, topk_ids, token_expert_indices = fused_topk(
+                hidden_states=hidden_states,
+                gating_output=router_logits,
+                topk=self.top_k,
+                renormalize=self.renormalize,
+                indices_type=indices_type,
+            )
         return topk_weights, topk_ids
+
+    # Select grouped_topk implementation
+    if rocm_aiter_ops.is_fused_moe_enabled():
+        if not rocm_aiter_ops.is_fusion_moe_shared_experts_enabled():
+            assert self.num_fused_shared_experts == 0
+        grouped_topk_impl = partial(
+            rocm_aiter_grouped_topk,
+            num_fused_shared_experts=self.num_fused_shared_experts,
+        )
+    else:
+        # ┌------------------------  Metax Modification -------------------------┐
+        grouped_topk_impl = maca_grouped_topk
+    # └------------------------- Metax Modification -------------------------┘
+
+    topk_weights, topk_ids = grouped_topk_impl(
+        hidden_states=hidden_states,
+        gating_output=router_logits,
+        topk=self.top_k,
+        renormalize=self.renormalize,
+        num_expert_group=self.num_expert_group,
+        topk_group=self.topk_group,
+        scoring_func=self.scoring_func,
+        routed_scaling_factor=self.routed_scaling_factor,
+        e_score_correction_bias=self.e_score_correction_bias,
+    )
+
+    return topk_weights, topk_ids
