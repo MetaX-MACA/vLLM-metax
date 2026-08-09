@@ -72,7 +72,12 @@ def _make_decode_attn_configs(block_ns):
 # Standard (non-grouped) kernel: smaller BLOCK_N is valid.
 _MACA_DECODE_ATTN_CONFIGS = _make_decode_attn_configs([8, 16])
 # Grouped kernel uses tl.dot; on MACA it requires BLOCK_N >= 16.
-_MACA_DECODE_GROUPED_ATTN_CONFIGS = _make_decode_attn_configs([16])
+# Include num_warps=4 because the original MACA default uses it and is often fastest.
+_MACA_DECODE_GROUPED_ATTN_CONFIGS = [
+    triton.Config({"BLOCK_N": 16}, num_warps=nw, num_stages=ns)
+    for nw in [1, 2, 4]
+    for ns in ([1] if nw == 4 else [1, 2])
+]
 
 
 def _decode_attn_autotune(configs, key):
