@@ -5,6 +5,7 @@
 from dataclasses import dataclass
 from typing import ClassVar
 
+import os
 import torch
 
 from vllm.attention.backends.abstract import (
@@ -39,8 +40,16 @@ logger = init_logger(__name__)
 
 
 # constants
-MIN_LAUNCH_GRID_SIZE_2D = 128  # Minimum launch grid size of 2D kernel
-NUM_PAR_SOFTMAX_SEGMENTS = 16  # Number of parallel tiled softmax segments
+# Overridable via environment for C500 tuning.
+_MIN_LAUNCH_GRID_SIZE_2D_DEFAULT = 128  # Minimum launch grid size of 2D kernel
+_NUM_PAR_SOFTMAX_SEGMENTS_DEFAULT = 16  # Number of parallel tiled softmax segments
+
+MIN_LAUNCH_GRID_SIZE_2D = int(
+    os.getenv("VLLM_MACA_MIN_LAUNCH_GRID_SIZE_2D", _MIN_LAUNCH_GRID_SIZE_2D_DEFAULT)
+)
+NUM_PAR_SOFTMAX_SEGMENTS = int(
+    os.getenv("VLLM_MACA_NUM_PAR_SOFTMAX_SEGMENTS", _NUM_PAR_SOFTMAX_SEGMENTS_DEFAULT)
+)
 
 
 @dataclass

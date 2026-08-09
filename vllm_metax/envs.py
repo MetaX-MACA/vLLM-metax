@@ -45,7 +45,9 @@ environment_variables: dict[str, Callable[[], Any]] = {
     "LD_LIBRARY_PATH": lambda: os.environ.get("LD_LIBRARY_PATH", None),
     # if set, vllm-metax kernels would be imported from mcoplib and won't compile
     # during building
-    "USE_PRECOMPILED_KERNEL": lambda: bool(os.environ.get("USE_PRECOMPILED_KERNEL", 1)),
+    "USE_PRECOMPILED_KERNEL": lambda: bool(
+        int(os.environ.get("USE_PRECOMPILED_KERNEL", "1"))
+    ),
     # ================== Runtime Env Vars ==================
     # if set, enable mctlass python api, only support scaled_mm and moe_w8a8 int8
     "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": lambda: bool(
@@ -57,7 +59,7 @@ environment_variables: dict[str, Callable[[], Any]] = {
         int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE", "0"))
     ),
     # if set, enable combine allreduce all2all
-    "MACA_DP_OPT": lambda: bool(os.environ.get("MACA_DP_OPT", 0)),
+    "MACA_DP_OPT": lambda: bool(int(os.environ.get("MACA_DP_OPT", "0"))),
 }
 
 
