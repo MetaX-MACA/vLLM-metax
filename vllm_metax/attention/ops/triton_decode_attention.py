@@ -30,6 +30,7 @@ It supports page size >= 1.
 """
 
 import logging
+import os
 
 from packaging import version
 
@@ -51,6 +52,43 @@ if version.parse(triton.__version__) < version.parse("3.2.0"):
         "can be ignored."
     )
 
+# /------------------------  Metax Modification -------------------------\
+# Autotune search space for MACA decode attention tiles.
+# Swept offline on representative models; results are cached by Triton.
+_MACA_DECODE_ATTN_AUTOTUNE = bool(
+    int(os.environ.get("VLLM_MACA_DECODE_ATTN_AUTOTUNE", "1"))
+)
+
+
+def _make_decode_attn_configs(block_ns):
+    return [
+        triton.Config({"BLOCK_N": bn}, num_warps=nw, num_stages=ns)
+        for bn in block_ns
+        for nw in [1, 2]
+        for ns in [1, 2]
+    ]
+
+
+# Standard (non-grouped) kernel: smaller BLOCK_N is valid.
+_MACA_DECODE_ATTN_CONFIGS = _make_decode_attn_configs([8, 16])
+# Grouped kernel uses tl.dot; on MACA it requires BLOCK_N >= 16.
+# Include num_warps=4 because the original MACA default uses it and is often fastest.
+_MACA_DECODE_GROUPED_ATTN_CONFIGS = [
+    triton.Config({"BLOCK_N": 16}, num_warps=nw, num_stages=ns)
+    for nw in [1, 2, 4]
+    for ns in ([1] if nw == 4 else [1, 2])
+]
+
+
+def _decode_attn_autotune(configs, key):
+    """Apply triton.autotune only when MACA decode-attn autotune is enabled."""
+    if _MACA_DECODE_ATTN_AUTOTUNE:
+        return triton.autotune(configs=configs, key=key)
+    return lambda fn: fn
+
+
+# \------------------------- Metax Modification -------------------------/
+
 
 @triton.jit
 def tanh(x):
@@ -58,6 +96,10 @@ def tanh(x):
     return 2 * tl.sigmoid(2 * x) - 1
 
 
+@_decode_attn_autotune(
+    configs=_MACA_DECODE_ATTN_CONFIGS,
+    key=["Lk", "Lv", "kv_group_num"],
+)
 @triton.jit
 def _fwd_kernel_stage1(
     Q,
@@ -78,14 +120,14 @@ def _fwd_kernel_stage1(
     stride_mid_oh,
     stride_mid_os,
     kv_group_num: tl.constexpr,
+    Lk: tl.constexpr,
+    Lv: tl.constexpr,
     BLOCK_DMODEL: tl.constexpr,
     BLOCK_DV: tl.constexpr,
     BLOCK_N: tl.constexpr,
     NUM_KV_SPLITS: tl.constexpr,
     PAGE_SIZE: tl.constexpr,
     logit_cap: tl.constexpr,
-    Lk: tl.constexpr,
-    Lv: tl.constexpr,
 ):
     cur_batch = tl.program_id(0)
     cur_head = tl.program_id(1)
@@ -199,6 +241,8 @@ def _decode_att_m_fwd(
     logit_cap,
 ):
     # /------------------------  Metax Modification -------------------------\
+    # Upstream defaults are unsafe on MACA; keep MACA-safe defaults here.
+    # @triton.autotune overrides these after offline tuning.
     BLOCK = 64 if not is_maca_ else 8
     # \------------------------- Metax Modification -------------------------/
 
@@ -241,17 +285,29 @@ def _decode_att_m_fwd(
         kv_group_num=kv_group_num,
         BLOCK_DMODEL=BLOCK_DMODEL,
         BLOCK_DV=BLOCK_DV,
-        BLOCK_N=BLOCK,
         NUM_KV_SPLITS=NUM_KV_SPLITS,
         PAGE_SIZE=page_size,
         logit_cap=logit_cap,
-        num_warps=num_warps,
-        num_stages=2,
         Lk=Lk,
         Lv=Lv,
+        # BLOCK_N / num_warps / num_stages are provided by @triton.autotune
+        # when autotune is enabled; otherwise use MACA-safe defaults.
+        **(
+            {}
+            if _MACA_DECODE_ATTN_AUTOTUNE
+            else {
+                "BLOCK_N": BLOCK,
+                "num_warps": num_warps,
+                "num_stages": 2,
+            }
+        ),
     )
 
 
+@_decode_attn_autotune(
+    configs=_MACA_DECODE_GROUPED_ATTN_CONFIGS,
+    key=["Lk", "Lv", "kv_group_num", "q_head_num"],
+)
 @triton.jit
 def _fwd_grouped_kernel_stage1(
     Q,
@@ -273,6 +329,8 @@ def _fwd_grouped_kernel_stage1(
     stride_mid_os,
     kv_group_num: tl.constexpr,
     q_head_num: tl.constexpr,
+    Lk: tl.constexpr,
+    Lv: tl.constexpr,
     BLOCK_DMODEL: tl.constexpr,
     BLOCK_DPE: tl.constexpr,
     BLOCK_DV: tl.constexpr,
@@ -281,8 +339,6 @@ def _fwd_grouped_kernel_stage1(
     NUM_KV_SPLITS: tl.constexpr,
     PAGE_SIZE: tl.constexpr,
     logit_cap: tl.constexpr,
-    Lk: tl.constexpr,
-    Lv: tl.constexpr,
 ):
     cur_batch = tl.program_id(0)
     cur_head_id = tl.program_id(1)
@@ -490,15 +546,23 @@ def _decode_grouped_att_m_fwd(
         BLOCK_DMODEL=BLOCK_DMODEL,
         BLOCK_DPE=BLOCK_DPE,
         BLOCK_DV=BLOCK_DV,
-        BLOCK_N=BLOCK,
         BLOCK_H=BLOCK_H,
         NUM_KV_SPLITS=NUM_KV_SPLITS,
         PAGE_SIZE=page_size,
         logit_cap=logit_cap,
-        num_warps=4,
-        num_stages=num_stages,
         Lk=Lk,
         Lv=Lv,
+        # BLOCK_N / num_warps / num_stages are provided by @triton.autotune
+        # when autotune is enabled; otherwise use MACA-safe defaults.
+        **(
+            {}
+            if _MACA_DECODE_ATTN_AUTOTUNE
+            else {
+                "BLOCK_N": BLOCK,
+                "num_warps": 4,
+                "num_stages": num_stages,
+            }
+        ),
         **extra_kargs,
     )
 
