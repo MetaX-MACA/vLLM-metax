@@ -374,7 +374,12 @@ def _fused_kv_compress_norm_rope_insert_sparse_attn_bf16(
 
     # Store directly as bf16 (no quantization)
     cache_block_ptr = k_cache_ptr + kv_block_idx.to(tl.int64) * KV_BLOCK_STRIDE
-    bf16_ptr = cache_block_ptr + kv_pos_in_block * TOKEN_STRIDE
+    # ── MC3-13058 ────────────────────────────────────────────────
+    # The inherited TOKEN_STRIDE=576 targets the packed-FP8 layout:
+    # 448 NoPE + 64 RoPE * 2. The MetaX BF16 cache stores HEAD_SIZE
+    # elements per row, so using TOKEN_STRIDE would misalign later rows
+    # and corrupt the decode KV cache.
+    bf16_ptr = cache_block_ptr + kv_pos_in_block * HEAD_SIZE
     bf16_ptr = bf16_ptr.to(tl.pointer_type(tl.bfloat16))
 
     NOPE_HEAD_DIM: tl.constexpr = HEAD_SIZE - ROPE_HEAD_DIM  # 448
