@@ -104,4 +104,3 @@ def int8_w8a8_moe_quant_config(
 
 vllm_fused_moe_config.int8_w8a16_moe_quant_config = int8_w8a16_moe_quant_config
 vllm_fused_moe_config.int8_w8a8_moe_quant_config = int8_w8a8_moe_quant_config
-

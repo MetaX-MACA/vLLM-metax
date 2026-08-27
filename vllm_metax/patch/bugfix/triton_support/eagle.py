@@ -37,6 +37,7 @@ from vllm.v1.worker.gpu_input_batch import CachedRequestState, InputBatch
 from vllm.v1.spec_decode.eagle import SpecDecodeBaseProposer
 from vllm.forward_context import set_forward_context
 
+
 @triton.jit
 def eagle_prepare_next_token_padded_kernel(
     sampled_token_ids_ptr,  # [num_reqs, num_sampled_tokens_per_req]
@@ -156,6 +157,7 @@ class MacaEagleProposer(SpecDecodeBaseProposer):
         )
 
         return next_token_ids, valid_sampled_tokens_count
+
 
 # Todo(hank): if this works well, remove the original
 # llm_base_proposer.prepare_next_token_ids_padded to avoid confusion.

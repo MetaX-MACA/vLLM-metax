@@ -33,6 +33,7 @@ def _apply_patch():
         # 导致 Ġ (space prefix) 被解码为 "G" 或 "G "。
         # 重新设置为标准 ByteLevel decoder。
         from tokenizers import decoders as _decoders
+
         self._tokenizer.decoder = _decoders.ByteLevel(
             add_prefix_space=False, trim_offsets=True
         )

@@ -38,7 +38,7 @@ def _add_fused_moe_to_target_scheme_map(self):
         or "RoutedExperts" in self.target_scheme_map
     ):
         return
-    
+
     # ------------------ Metax edit ---------------- #
     if "FusedMoE" in self.target_scheme_map:
         self.target_scheme_map["RoutedExperts"] = self.target_scheme_map["FusedMoE"]
@@ -46,6 +46,7 @@ def _add_fused_moe_to_target_scheme_map(self):
     # ---------------------------------------------- #
 
     self.target_scheme_map["RoutedExperts"] = self.target_scheme_map["Linear"]
+
 
 class CompressedTensorsMoEMethod(vllm_ct_moe_method):
     @staticmethod

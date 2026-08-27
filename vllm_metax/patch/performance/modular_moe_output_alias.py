@@ -99,4 +99,3 @@ class MacaFusedMoEKernelModularImpl(FusedMoEKernelModularImpl):
 
 
 FusedMoEKernelModularImpl._fused_experts = MacaFusedMoEKernelModularImpl._fused_experts
-

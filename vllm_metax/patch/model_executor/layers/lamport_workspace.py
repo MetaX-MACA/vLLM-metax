@@ -1,5 +1,5 @@
-
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 import array
 import contextlib
@@ -8,31 +8,45 @@ import sys
 import threading
 import torch
 import ctypes
-from vllm.distributed.device_communicators.cuda_wrapper import CudaRTLibrary, cudaIpcMemHandle_t
+from vllm.distributed.device_communicators.cuda_wrapper import (
+    CudaRTLibrary,
+    cudaIpcMemHandle_t,
+)
+
 _ALIGN = 1 << 21  # 2 MiB — CUDA IPC allocation alignment
-#[TODO] following cuda helper can be simplified after after maca-python-as-cuda support
+# [TODO] following cuda helper can be simplified after after maca-python-as-cuda support
 # ---------------------------------------------------------------------------
 # CUDA helpers
 # ---------------------------------------------------------------------------
 libcudart = CudaRTLibrary()
+
+
 def _cuda_malloc(size: int):
     aligned = ((size + _ALIGN - 1) >> 21) << 21
     ptr = libcudart.cudaMalloc(aligned)
     return ptr.value, aligned
+
+
 def _mc_malloc_fine_grained(size: int):
     aligned = ((size + _ALIGN - 1) >> 21) << 21
     ptr = libcudart.mcExtMallocWithFlags(aligned, 1)
     return ptr.value, aligned
+
+
 def _cuda_free(ptr: int):
     if ptr:
         libcudart.cudaFree(ptr)
+
+
 def _cuda_memset_zero(ptr: int, size: int):
     libcudart.cudaMemset(ptr, 0, size)
+
+
 def _cuda_memcpy_d2d(dst: int, src: int, size: int):
     cudaMemcpyDeviceToDevice = 3
-    libcudart.cudaMemcpy(
-        dst, src, size, cudaMemcpyDeviceToDevice
-    )
+    libcudart.cudaMemcpy(dst, src, size, cudaMemcpyDeviceToDevice)
+
+
 # ---------------------------------------------------------------------------
 # IPC buffer
 # ---------------------------------------------------------------------------
@@ -41,6 +55,7 @@ class IpcBuffer:
     Allocates CUDA device memory and exchanges IPC handles with all ranks
     so that every rank holds a valid device pointer to every other rank's buffer.
     """
+
     def __init__(self, rank: int, world_size: int, size: int, process_group=None):
         self.rank = rank
         self.world_size = world_size
@@ -65,16 +80,16 @@ class IpcBuffer:
                 handle = cudaIpcMemHandle_t()
                 # handle.internal = (ctypes.c_byte * 128).from_buffer_copy(all_handles[r])
                 ctypes.memmove(handle.internal, all_handles[r], 128)
-                ptr = libcudart.cudaIpcOpenMemHandle(
-                    handle
-                )
+                ptr = libcudart.cudaIpcOpenMemHandle(handle)
                 self.peer_ptrs[r] = ptr.value
+
     def serialize(self) -> list[int]:
         """Return peer pointers as a list of int64 values (one per rank)."""
         raw = b""
         for ptr in self.peer_ptrs:
             raw += struct.pack("P", ptr)
         return array.array("Q", raw).tolist()
+
     def cleanup(self):
         if not self._alive:
             return
@@ -86,14 +101,15 @@ class IpcBuffer:
                 _cuda_free(self.peer_ptrs[r])
             else:
                 with contextlib.suppress(RuntimeError):
-                    libcudart.cudaIpcCloseMemHandle(
-                        ctypes.c_void_p(self.peer_ptrs[r])
-                    )
+                    libcudart.cudaIpcCloseMemHandle(ctypes.c_void_p(self.peer_ptrs[r]))
             self.peer_ptrs[r] = 0
         self.local_ptr = 0
+
     def __del__(self):
         if not sys.is_finalizing():
             self.cleanup()
+
+
 # [TODO] Monkey-patch do not work due to 'import cuda' issue
 # [TODO] To be enabled after maca-python-as-cuda support
 # import vllm.model_executor.layers.mamba.lamport_workspace
@@ -117,6 +133,8 @@ def _lamport_fill_neg_zero(device_ptr: int, size_bytes: int):
     fill = torch.full((n_floats,), -0.0, dtype=torch.float32, device="cuda")
     _cuda_memcpy_d2d(device_ptr, fill.data_ptr(), size_bytes)
     del fill
+
+
 # ---------------------------------------------------------------------------
 # LamportWorkspace — the main class
 # ---------------------------------------------------------------------------
@@ -138,6 +156,7 @@ class LamportWorkspace:
         ``torch.distributed`` process group for IPC handle exchange.
         ``None`` uses the default group.
     """
+
     def __init__(self, rank: int, world_size: int, comm_size: int, process_group=None):
         assert world_size >= 2, "Lamport workspace requires at least 2 ranks"
         assert comm_size > 0, "comm_size must be positive"
@@ -168,11 +187,13 @@ class LamportWorkspace:
         ptrs.append(self._flag_buf.data_ptr())  # [3N]           flag_buffer
         ptrs.append(self._layout_buf.data_ptr())  # [3N+1]       layout_buffer
         self._workspace = torch.tensor(ptrs, dtype=torch.int64, device="cuda")
+
     @property
     def workspace(self) -> torch.Tensor:
         """Device tensor (int64) that can be passed to the kernel
         as ``void** workspace``."""
         return self._workspace
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -195,22 +216,29 @@ class LamportWorkspace:
         else:
             slot_bytes = world_size * max_tokens * 4  # 4  = sizeof(float)
         return ((slot_bytes + _ALIGN - 1) >> 21) << 21
+
     def cleanup(self):
         if hasattr(self, "_lamport"):
             self._lamport.cleanup()
+
     def __del__(self):
         if not sys.is_finalizing():
             self.cleanup()
+
     def __repr__(self):
         return (
             f"LamportWorkspace(rank={self.rank}, world_size={self.world_size}, "
             f"comm_size={self.comm_size})"
         )
+
+
 # ---------------------------------------------------------------------------
 # Cached convenience function (mirrors TRT-LLM's get_allreduce_workspace)
 # ---------------------------------------------------------------------------
 _cache_lock = threading.Lock()
 _workspace_cache: dict = {}
+
+
 def get_allreduce_workspace(
     rank: int,
     world_size: int,

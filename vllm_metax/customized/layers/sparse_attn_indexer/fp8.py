@@ -26,13 +26,17 @@ from vllm_metax.v1.attention.backends.mla.indexer import (
 )
 from vllm.v1.attention.ops.common import pack_seq_triton, unpack_seq_triton
 from vllm.v1.worker.workspace import current_workspace_manager
-from vllm.model_executor.layers.sparse_attn_indexer import _gather_workspace_shapes, kv_cache_as_quant_view
+from vllm.model_executor.layers.sparse_attn_indexer import (
+    _gather_workspace_shapes,
+    kv_cache_as_quant_view,
+)
 
 from vllm_metax import _custom_ops as mx_ops
 
 logger = init_logger(__name__)
 
 RADIX_TOPK_WORKSPACE_SIZE = 1024 * 1024
+
 
 @eager_break_during_capture
 def sparse_attn_indexer(
@@ -159,7 +163,7 @@ def sparse_attn_indexer(
                 )
 
             q_slice = q_quant[chunk.token_start : chunk.token_end]
-            q_scale_slice = (
+            q_scale_slice = (  # noqa: F841
                 q_scale[chunk.token_start : chunk.token_end]
                 if q_scale is not None
                 else None
@@ -174,7 +178,7 @@ def sparse_attn_indexer(
                 q_slice_cast = q_slice
                 k_quant_cast = k_quant
                 k_scale_cast = k_scale.view(torch.float32).squeeze(-1)
-            
+
             logits = fp8_mqa_logits(
                 # --------------------------------------
                 # Note(Metax): fp8_mqa_logits only support fp8
@@ -238,7 +242,7 @@ def sparse_attn_indexer(
                     decode_lens.shape[0], -1, *q_scale.shape[1:]
                 )
             else:
-                padded_q_scale = None
+                padded_q_scale = None  # noqa: F841
         # TODO: move and optimize below logic with triton kernels
         batch_size = padded_q_quant_decode_tokens.shape[0]
         next_n = padded_q_quant_decode_tokens.shape[1]

@@ -31,4 +31,5 @@ def bytes_to_unicode():
 
 
 import transformers.models.gpt2.tokenization_gpt2 as _gpt2_tok
+
 _gpt2_tok.bytes_to_unicode = bytes_to_unicode

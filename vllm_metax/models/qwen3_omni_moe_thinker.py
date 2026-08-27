@@ -1,5 +1,6 @@
 
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 # Copyright 2025 The Qwen team.
 # Copyright 2023 The vLLM team.
@@ -880,7 +881,7 @@ class Qwen3Omni_VisionTransformer(nn.Module):
             )
             cu_seqlens = F.pad(cu_seqlens, (1, 0), value=0)
         # /------------------- modified by metax -------------------\
-        #  This is an offcial bug for vllm0.22.0. 
+        #  This is an official bug for vllm0.22.0. 
         #  Fix it by copy to device.
         #  Remove this in next version.
         cu_seqlens = cu_seqlens.to(device=self.device, non_blocking=True)

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 from typing import TYPE_CHECKING, Any
 
 from vllm.config.speculative import SpeculativeConfig
@@ -7,6 +9,7 @@ if TYPE_CHECKING:
 else:
     PretrainedConfig = Any
 
+
 class MacaSpeculativeConfig(SpeculativeConfig):
     @staticmethod
     def hf_config_override(hf_config: PretrainedConfig) -> PretrainedConfig:
@@ -15,7 +18,7 @@ class MacaSpeculativeConfig(SpeculativeConfig):
             "deepseek_v3",
             "deepseek_v32",
             # /------------------------ metax modified ------------------------\ #
-            "joyai_llm_flash", # JoyAI_LLM_Flash
+            "joyai_llm_flash",  # JoyAI_LLM_Flash
             # \----------------------------------------------------------------/ #
             "glm_moe_dsa",
         ):

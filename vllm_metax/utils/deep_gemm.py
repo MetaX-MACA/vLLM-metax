@@ -40,6 +40,7 @@ _tf32_hc_prenorm_gemm_impl: Callable[..., Any] | None = None
 _fp8_mqa_logits_impl: Callable[..., Any] | None = None
 _fp8_paged_mqa_logits_impl: Callable[..., Any] | None = None
 
+
 # _layz_init for:
 #   - bf16_mqa_logits
 #   - bf16_paged_mqa_logits.
@@ -292,8 +293,14 @@ def tf32_hc_prenorm_gemm(
     _lazy_init()
     if _tf32_hc_prenorm_gemm_impl is None:
         return _missing()
-    return _tf32_hc_prenorm_gemm_impl(x, fn, out, sqrsum, num_split, 
-        backend="torch" if mx_envs.VLLM_METAX_SUPPORTS_FP8 else "mctlassEx")
+    return _tf32_hc_prenorm_gemm_impl(
+        x,
+        fn,
+        out,
+        sqrsum,
+        num_split,
+        backend="torch" if mx_envs.VLLM_METAX_SUPPORTS_FP8 else "mctlassEx",
+    )
 
 
 def fp8_mqa_logits(
@@ -392,6 +399,7 @@ def fp8_paged_mqa_logits(
         max_model_len,
         clean_logits=clean_logits,
     )
+
 
 __all__ = [
     "bf16_mqa_logits",

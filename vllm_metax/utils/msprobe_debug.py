@@ -78,15 +78,14 @@ def build_precision_debugger(additional_config: Any) -> Any | None:
         ) from e
 
     if isinstance(dump_config, dict):
-        tmp = tempfile.NamedTemporaryFile(
+        with tempfile.NamedTemporaryFile(
             mode="w",
             suffix=".json",
             prefix="msprobe_dump_config_",
             delete=False,
-        )
-        with tmp:
+        ) as tmp:
             json.dump(dump_config, tmp)
-        config_path = tmp.name
+            config_path = tmp.name
     else:
         config_path = dump_config
 

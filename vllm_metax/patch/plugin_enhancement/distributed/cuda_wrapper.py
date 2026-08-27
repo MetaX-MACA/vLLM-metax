@@ -180,19 +180,23 @@ class CudaRTLibrary:
         return devPtr
 
     def mcExtMallocWithFlags(self, size: int, flag: int) -> ctypes.c_void_p:
-        #define mcDeviceMallocDefault           0x0
-        #define mcDeviceMallocFinegrained       0x1 ///< Memory is allocated in fine grained region of device.
-        #define mcDeviceMallocWriteCoherence    0x3 ///< Memory represents a WriteCoherence memory.
-        #define mcDeviceMallocMapPcieDefault    0x4 ///< Uncache Memory is mapped to pcie access if metalink available.
-        #define mcDeviceMallocMapPcieCoherence  0x5 ///< WriteCoherence Memory is mapped to pcie access if metalink available.
-        #define mcDeviceMallocFixedMemDefault   0x6 ///< Uncache Memory in fixed memory region.
-        #define mcDeviceMallocFixedMemCoherence 0x7 ///< WriteCoherence Memory in fixed memory region.
+        # define mcDeviceMallocDefault           0x0
+        # define mcDeviceMallocFinegrained       0x1 ///< Memory is allocated in fine grained region of device.
+        # define mcDeviceMallocWriteCoherence    0x3 ///< Memory represents a WriteCoherence memory.
+        # define mcDeviceMallocMapPcieDefault    0x4 ///< Uncache Memory is mapped to pcie access if metalink available.
+        # define mcDeviceMallocMapPcieCoherence  0x5 ///< WriteCoherence Memory is mapped to pcie access if metalink available.
+        # define mcDeviceMallocFixedMemDefault   0x6 ///< Uncache Memory in fixed memory region.
+        # define mcDeviceMallocFixedMemCoherence 0x7 ///< WriteCoherence Memory in fixed memory region.
 
         if "mcExtMallocWithFlags" not in self.funcs:
-            raise RuntimeError(f"Function mcExtMallocWithFlags not found, wrong runtime lib?")
+            raise RuntimeError(
+                f"Function mcExtMallocWithFlags not found, wrong runtime lib?"
+            )
 
         devPtr = ctypes.c_void_p()
-        self.CUDART_CHECK(self.funcs["mcExtMallocWithFlags"](ctypes.byref(devPtr), size, flag))
+        self.CUDART_CHECK(
+            self.funcs["mcExtMallocWithFlags"](ctypes.byref(devPtr), size, flag)
+        )
         return devPtr
 
     def cudaFree(self, devPtr: ctypes.c_void_p) -> None:
@@ -202,8 +206,13 @@ class CudaRTLibrary:
         self.CUDART_CHECK(self.funcs["cudaMemset"](devPtr, value, count))
 
     cudaMemcpyDefault = 4
+
     def cudaMemcpy(
-        self, dst: ctypes.c_void_p, src: ctypes.c_void_p, count: int, kind: int = cudaMemcpyDefault
+        self,
+        dst: ctypes.c_void_p,
+        src: ctypes.c_void_p,
+        count: int,
+        kind: int = cudaMemcpyDefault,
     ) -> None:
         self.CUDART_CHECK(self.funcs["cudaMemcpy"](dst, src, count, kind))
 
@@ -228,7 +237,10 @@ class CudaRTLibrary:
     def cudaIpcCloseMemHandle(self, devPtr: ctypes.c_void_p):
         self.CUDART_CHECK(self.funcs["cudaIpcCloseMemHandle"](devPtr))
 
+
 import vllm.distributed.device_communicators.cuda_wrapper
 
 vllm.distributed.device_communicators.cuda_wrapper.CudaRTLibrary = CudaRTLibrary
-vllm.distributed.device_communicators.cuda_wrapper.cudaIpcMemHandle_t = cudaIpcMemHandle_t
+vllm.distributed.device_communicators.cuda_wrapper.cudaIpcMemHandle_t = (
+    cudaIpcMemHandle_t
+)

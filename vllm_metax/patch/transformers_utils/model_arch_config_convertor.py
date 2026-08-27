@@ -7,7 +7,9 @@
 # -------------------------------------------------------
 
 
-from vllm.transformers_utils.model_arch_config_convertor import ModelArchConfigConvertorBase 
+from vllm.transformers_utils.model_arch_config_convertor import (
+    ModelArchConfigConvertorBase,
+)
 
 
 def is_deepseek_mla(self) -> bool:
@@ -21,7 +23,7 @@ def is_deepseek_mla(self) -> bool:
         "deepseek_v4",
         "deepseek_mtp",
         # /------------------------ metax modified ------------------------\ #
-        "joyai_llm_flash", # # JoyAI_LLM_Flash
+        "joyai_llm_flash",  # # JoyAI_LLM_Flash
         # \----------------------------------------------------------------/ #
         "glm_moe_dsa",
         "glm4_moe_lite",

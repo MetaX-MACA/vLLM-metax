@@ -1,4 +1,3 @@
-
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # ------------------------------------------------------------
@@ -18,10 +17,13 @@ from vllm.model_executor.layers.minimax_rms_norm.rms_norm_tp import (
     MiniMaxText01RMSNormTP,
     _MINIMAX_FUSED_AR_RMS_QK,
 )
+
 # ┌------------------------  Metax Modification -------------------------┐
 from vllm_metax.patch.model_executor.layers.lamport_workspace import (
     get_allreduce_workspace as _metax_get_allreduce_workspace,
 )
+
+
 # └------------------------- Metax Modification -------------------------┘
 def _new_init(
     self,
@@ -55,4 +57,6 @@ def _new_init(
             process_group=get_tp_group().cpu_group,
         )
         # └------------------------- Metax Modification -------------------------┘
+
+
 MiniMaxText01RMSNormTP.__init__ = _new_init

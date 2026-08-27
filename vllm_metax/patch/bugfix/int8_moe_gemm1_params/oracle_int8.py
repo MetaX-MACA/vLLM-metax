@@ -83,4 +83,3 @@ def make_int8_moe_quant_config(
 
 
 vllm_int8.make_int8_moe_quant_config = make_int8_moe_quant_config
-

@@ -24,10 +24,12 @@ def get_cached_tokenizer(tokenizer):
             return self(*args, **kwargs)
 
         import types
+
         cached.batch_encode_plus = types.MethodType(_batch_encode_plus, cached)
 
     return cached
 
 
 import vllm.tokenizers.hf as _hf
+
 _hf.get_cached_tokenizer = get_cached_tokenizer

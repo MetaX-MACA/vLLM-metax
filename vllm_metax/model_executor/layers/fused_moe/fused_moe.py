@@ -1165,9 +1165,11 @@ def dispatch_fused_moe_kernel(
         #         block_shape,
         #     )
         #     return
-        if use_int4_w4a16 \
-            and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE \
-            and A.dtype == torch.bfloat16: # mctlass only support w4a16+bf16 (MC3-9935)
+        if (
+            use_int4_w4a16
+            and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+            and A.dtype == torch.bfloat16
+        ):  # mctlass only support w4a16+bf16 (MC3-9935)
             mctlass_ops.cutlass_moe_mm_w4a16(
                 a=A,
                 b=B,
@@ -2247,7 +2249,6 @@ def fused_experts_impl(
                 stage1_config["BLOCK_SIZE_M"] = kernel_m
                 stage2_config["BLOCK_SIZE_M"] = kernel_m
             if use_fp8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
-                
                 kernel_m = mctlass_ops.mctlassEx_fused_moe_w8a8_fp8_get_kernel_m(
                     qcurr_hidden_states,
                     w1,
@@ -2261,12 +2262,15 @@ def fused_experts_impl(
                 # override kernel_m to config["BLOCK_SIZE_M"]
                 stage1_config["BLOCK_SIZE_M"] = kernel_m
                 stage2_config["BLOCK_SIZE_M"] = kernel_m
-            if use_int4_w4a16 \
-                and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE \
-                and qcurr_hidden_states.dtype == torch.bfloat16:
+            if (
+                use_int4_w4a16
+                and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+                and qcurr_hidden_states.dtype == torch.bfloat16
+            ):
                 # mctlass only support w4a16+bf16 (MC3-9935)
-                # Qwen3-30B-A3B-AWQ <-> float16 unsupport
-                # DeepSeek-R1-awq <-> bfloat16 support 
+                # Qwen3-30B-A3B-AWQ <-> float16 unsupported
+                # DeepSeek-R1-awq <-> bfloat16 support
+                assert block_shape is not None, "block_shape must be provided for w4a16"
                 kernel_m = mctlass_ops.cutlass_moe_mm_w4a16_get_kernel_m(
                     a=qcurr_hidden_states,
                     b=w1,

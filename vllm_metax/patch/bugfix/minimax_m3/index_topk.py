@@ -33,7 +33,7 @@
 #       head (``num_idx_heads == 1``) and non-speculative decode uses
 #       ``max_decode_query_len == 1``, so HQ defaults to 1 -- far below
 #       MetaX's 16-minimum MMA operand tile, tripping the same
-#       "tm/tn and tk not meet conditon" assertion. Floor `BLOCK_SIZE_Q` (in
+#       "tm/tn and tk not meet condition" assertion. Floor `BLOCK_SIZE_Q` (in
 #       the `minimax_m3_index_decode` wrapper) so HQ >= 16; the extra padded
 #       query slots are already masked out (`q_mask`) on both the q load and
 #       the score store in the (unmodified) kernel, so this is safe. The
@@ -322,7 +322,10 @@ def minimax_m3_index_decode(
 
 def _apply_patch(index_topk_mod):
     global SPARSE_BLOCK_SIZE, _index_block_score_kernel
-    global _decode_index_score_kernel, _topk_index_partial_kernel, _topk_index_merge_kernel
+    global \
+        _decode_index_score_kernel, \
+        _topk_index_partial_kernel, \
+        _topk_index_merge_kernel
     SPARSE_BLOCK_SIZE = index_topk_mod.SPARSE_BLOCK_SIZE
     _index_block_score_kernel = index_topk_mod._index_block_score_kernel
     _decode_index_score_kernel = index_topk_mod._decode_index_score_kernel

@@ -14,7 +14,7 @@
 #       register spilling, and separately the wide (BLOCK_SIZE_QH x 128) /
 #       (BLOCK_SIZE_H x 128) `tl.dot` tiles hit an assertion inside MetaX's
 #       Triton backend (mcTriton) when composing the MMA operand's shared
-#       layout ("tn and tk not meet conditon" in
+#       layout ("tn and tk not meet condition" in
 #       `MACAMmaEncodingAttr::composeSharedLayoutForOperand`).
 #
 #       Fix (1): process each selected 128-key block in SUB_K(=16)-wide K/V
@@ -29,7 +29,7 @@
 #       GQA group into the M dimension), was still computed as
 #       `next_power_of_2(gqa_group_size)` with no floor. For small
 #       gqa_group_size (e.g. 4) that gives an M-tile of 4, again below the
-#       16-minimum and still hitting the same "tn and tk not meet conditon"
+#       16-minimum and still hitting the same "tn and tk not meet condition"
 #       assertion on MetaX even after Fix (1). The decode kernel already
 #       guarded its equivalent (`BLOCK_SIZE_H`) with `max(16, ...)`; apply the
 #       same floor to the prefill kernel's `BLOCK_SIZE_H` / `BLOCK_SIZE_QH`.
@@ -203,9 +203,7 @@ def _gqa_sparse_fwd_kernel(
             blk = tl.load(t_ptr_j + tk * stride_tk).to(tl.int32)
             c = blk * BLOCK_SIZE_K
             page = tl.load(bt_row + blk).to(tl.int64)
-            kv_base = (
-                kv_cache_ptr + page * stride_kv_blk + pid_kh * stride_kv_h
-            )
+            kv_base = kv_cache_ptr + page * stride_kv_blk + pid_kh * stride_kv_h
             for s in range(NUM_SUB):
                 n_off = s * SUB_K
                 pos = c + n_off + off_sk  # [SUB_K] kv positions of this sub-tile
