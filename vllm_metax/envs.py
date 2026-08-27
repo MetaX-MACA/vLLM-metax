@@ -19,7 +19,8 @@ if TYPE_CHECKING:
     USE_VLLM_TRITON_EXPERT: bool = False
     VLLM_METAX_ENABLE_FA_SPLIT_FORWARD: bool = True
     VLLM_FUSED_MOE_CHUNK_SIZE: int = 16 * 1024
-    VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER: bool = False
+    VLLM_METAX_SUPPORTS_FP8: bool = False
+    VLLM_METAX_USE_FP8_WO_A: bool = True
     VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK: bool = False
     VLLM_METAX_USE_FLASHINFER_SAMPLER: bool = False
 
@@ -78,9 +79,13 @@ environment_variables: dict[str, Callable[[], Any]] = {
     "VLLM_FUSED_MOE_CHUNK_SIZE": lambda: int(
         os.getenv("VLLM_FUSED_MOE_CHUNK_SIZE", str(16 * 1024))
     ),
-    # if set, use fp8 deep gemm kernel for DSA
-    "VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER": lambda: bool(
-        int(os.environ.get("VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER", "0"))
+    # if set, enable fp8 support
+    "VLLM_METAX_SUPPORTS_FP8": lambda: bool(
+        int(os.environ.get("VLLM_METAX_SUPPORTS_FP8", "0"))
+    ),
+    # if set, use fp8 wo_a
+    "VLLM_METAX_USE_FP8_WO_A": lambda: bool(
+        int(os.environ.get("VLLM_METAX_USE_FP8_WO_A", "1"))
     ),
     # if set, enable sglang fused grouped topk ops on deepseek and kimi model
     "VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK": lambda: bool(

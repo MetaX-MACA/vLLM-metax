@@ -9,3 +9,5 @@
 from . import triton_support  # noqa: F401
 from . import deepseek_v4  # noqa: F401
 from . import transformers_utils
+from . import minimax_m3
+from . import int8_moe_gemm1_params

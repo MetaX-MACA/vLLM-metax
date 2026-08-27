@@ -22,6 +22,7 @@ from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_b
 from vllm.v1.attention.backends.mla.prefill.registry import MLAPrefillBackendEnum
 from vllm_metax.utils import import_pymxsml
 
+from vllm_metax.utils.msprobe_debug import resolve_worker_cls
 
 from vllm.platforms.interface import DeviceCapability, Platform, PlatformEnum
 from vllm.utils.argparse_utils import FlexibleArgumentParser
@@ -179,7 +180,7 @@ class MacaPlatformBase(Platform):
         "moe_wna16",
         "gguf",
     ]
-    if mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER:
+    if mx_envs.VLLM_METAX_SUPPORTS_FP8:
         supported_quantization.append("fp8")
         supported_quantization.append("deepseek_v4_fp8")
 
@@ -289,7 +290,10 @@ class MacaPlatformBase(Platform):
         model_config = vllm_config.model_config
 
         if parallel_config.worker_cls == "auto":
-            parallel_config.worker_cls = "vllm.v1.worker.gpu_worker.Worker"
+            parallel_config.worker_cls = resolve_worker_cls(
+                vllm_config.additional_config,
+                model_config.enforce_eager if model_config is not None else None,
+            )
 
         scheduler_config = vllm_config.scheduler_config
         # Note: model_config may be None during testing
@@ -556,7 +560,7 @@ class MacaPlatformBase(Platform):
 
     @classmethod
     def supports_fp8(cls) -> bool:
-        return mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER
+        return mx_envs.VLLM_METAX_SUPPORTS_FP8
 
     @classmethod
     def use_custom_allreduce(cls) -> bool:

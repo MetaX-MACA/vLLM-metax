@@ -8,6 +8,22 @@
 # Remove at: after triton3.6+metax is released.
 # -----------------------------------------------
 
+# -----------------------------------------------
+# Note: Fix "ValueError: too many values to unpack (expected 2)" in
+# SpecDecodeBaseProposer.propose() when the draft model forward
+# returns more than 2 hidden states. This can happen when the
+# model is compiled/wrapped (e.g. torch.compile) and the wrapper
+# adds extra outputs to the forward return tuple.
+#
+# The fix makes the tuple unpacking defensive: when
+# model_returns_tuple() is True and ret_hidden_states has >2
+# elements, only the first two are taken instead of failing.
+#
+# Affected versions: v0.24.0, v0.25.0-dev
+# Remove at: after root cause in upstream model compilation/wrapping
+#            is identified and fixed.
+# -----------------------------------------------
+
 from vllm.triton_utils import tl, triton
 
 import numpy as np
@@ -19,6 +35,7 @@ from vllm.v1.spec_decode.utils import (
 from vllm.v1.worker.gpu_input_batch import CachedRequestState, InputBatch
 
 from vllm.v1.spec_decode.eagle import SpecDecodeBaseProposer
+from vllm.forward_context import set_forward_context
 
 
 @triton.jit

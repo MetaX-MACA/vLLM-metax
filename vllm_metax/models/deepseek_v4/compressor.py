@@ -6,6 +6,8 @@ from typing import Any, cast
 
 import torch
 
+from vllm.config import VllmConfig
+
 from vllm.forward_context import get_forward_context
 from vllm.models.deepseek_v4.common.ops.save_partial_states import (
     save_partial_states,
@@ -20,8 +22,21 @@ from vllm.models.deepseek_v4.compressor import (
 from .ops.fused_compress_quant_cache import (
    compress_norm_rope_store_triton
 )
-
 class MacaDeepseekCompressor(DeepseekCompressor):
+    def __init__(
+        self,
+        vllm_config: VllmConfig,
+        compress_ratio: int,
+        hidden_size: int,
+        head_dim: int,
+        rotate: bool = False,
+        prefix: str = "",
+        k_cache_prefix="",
+        use_fp4_cache: bool = False,
+    ):
+        super().__init__(vllm_config, compress_ratio, hidden_size, head_dim, rotate, prefix, k_cache_prefix, use_fp4_cache)
+        self.use_fp8_indexer = vllm_config.attention_config.indexer_kv_dtype == "fp8"
+        self.use_fp8_kvcache = vllm_config.cache_config.cache_dtype.startswith("fp8")
 
     def forward(
         self,
@@ -108,4 +123,6 @@ class MacaDeepseekCompressor(DeepseekCompressor):
             quant_block=self._quant_block,
             token_stride=self._token_stride,
             scale_dim=self._scale_dim,
+            use_fp8_indexer=self.use_fp8_indexer,
+            use_fp8_kvcache=self.use_fp8_kvcache,
         )
