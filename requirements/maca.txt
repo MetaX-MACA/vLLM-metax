@@ -3,6 +3,10 @@
 -r common.txt
 apache-tvm-ffi==0.1.3.dev11
 tilelang==0.1.9+maca
-numba == 0.61.2
+
+numba == 0.65.0 # Required for N-gram speculative decoding
+
+# Required for faster safetensors model loading
+fastsafetensors >= 0.3.2
 
 torch-c-dlpack-ext
