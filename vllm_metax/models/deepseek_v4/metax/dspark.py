@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """DSpark draft model for DeepSeek-V4 (semi-autoregressive speculative decoding).
 
@@ -85,10 +86,8 @@ class DSparkDeepseekV4Model(nn.Module):
         )
         self.main_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
-
-
         current_vllm_config = get_current_vllm_config()
-        # manaully convert w8a8 ignore names:
+        # manually convert w8a8 ignore names:
         #    "mtp.0.main_proj" -> "model.main_proj"
         #    "mtp.0.attn.wo_a" -> "layers.43.attn.wo_a"
         #    "mtp.0.ffn.gate" -> "layers.43.ffn.gate"
