@@ -180,66 +180,6 @@ class MacaAgRsAll2AllManager(All2AllManagerBase):
         pass
 
 
-class MacaDeepEPLLAll2AllManager(DeepEPLLAll2AllManager):
-    def _make_all2all_kwargs(
-        self,
-        max_num_tokens_per_dp_rank: int,
-        token_hidden_size: int,
-        num_ep_ranks: int,
-        num_global_experts: int,
-        num_local_experts: int,
-    ) -> dict[Any, Any]:
-        """
-        max_num_tokens_per_dp_rank : the maximum number of tokens a DP rank
-          can dispatch all the ranks must hold the same value.
-        token_hidden_size: the hidden dimension of each token.
-        num_ep_ranks: the number of EP group ranks.
-        num_global_experts: Number of experts in the model.
-        num_local_experts: Number of experts in an EP rank.
-        """
-        import os
-
-        assert os.getenv("MXSHMEM_LIB_PATH", None) is not None, (
-            "please setting MXSHMEM_LIB_PATH and add ${MXSHMEM_LIB_PATH} into LD_LIBRARY_PATH"
-        )
-
-        import deep_ep  # type: ignore[import-not-found]
-
-        # Defaults for internode and intranode are taken from DeepEP tests.
-        num_nvl_bytes = envs.VLLM_DEEPEP_BUFFER_SIZE_MB * 1024 * 1024  # noqa: F841
-        num_qps_per_rank = num_local_experts
-        num_rdma_bytes = deep_ep.Buffer.get_low_latency_rdma_size_hint(
-            num_max_dispatch_tokens_per_rank=max_num_tokens_per_dp_rank,
-            hidden=token_hidden_size,
-            num_ranks=num_ep_ranks,
-            num_experts=num_global_experts,
-        )
-
-        assert num_rdma_bytes is not None
-
-        return dict(
-            group=self.cpu_group,
-            num_nvl_bytes=num_nvl_bytes,
-            num_rdma_bytes=num_rdma_bytes,
-            low_latency_mode=True,
-            num_qps_per_rank=num_qps_per_rank,
-            # /------------------- Metax Modification -----------------------\
-            # allow_nvlink_for_low_latency_mode=True,
-            # allow_mnnvl=envs.VLLM_DEEPEP_LOW_LATENCY_USE_MNNVL,
-            # \------------------- Metax Modification -----------------------/
-        )
-
-    def destroy(self):
-        with self.handle_cache._lock:
-            # /------------------- Metax Modification -----------------------\
-            # /---Do not call Buffer.destroy because explicitly_destroy=True is not supported---\
-
-            # for _, handle in self.handle_cache._cache.items():
-            #     handle.destroy()
-            # \------------------- Metax Modification -----------------------/
-            self.handle_cache._cache.clear()
-
-
 class MacaDeepEPHTAll2AllManager(DeepEPHTAll2AllManager):
     def _make_all2all_kwargs(self) -> dict[Any, Any]:
         import os
@@ -275,6 +215,66 @@ class MacaDeepEPHTAll2AllManager(DeepEPHTAll2AllManager):
             # /------------------- Metax Modification -----------------------\
         )
         return kwargs
+
+    def destroy(self):
+        with self.handle_cache._lock:
+            # /------------------- Metax Modification -----------------------\
+            # /---Do not call Buffer.destroy because explicitly_destroy=True is not supported---\
+
+            # for _, handle in self.handle_cache._cache.items():
+            #     handle.destroy()
+            # \------------------- Metax Modification -----------------------/
+            self.handle_cache._cache.clear()
+
+
+class MacaDeepEPLLAll2AllManager(DeepEPLLAll2AllManager):
+    def _make_all2all_kwargs(
+        self,
+        max_num_tokens_per_dp_rank: int,
+        token_hidden_size: int,
+        num_ep_ranks: int,
+        num_global_experts: int,
+        num_local_experts: int,
+    ) -> dict[Any, Any]:
+        """
+        max_num_tokens_per_dp_rank : the maximum number of tokens a DP rank
+          can dispatch all the ranks must hold the same value.
+        token_hidden_size: the hidden dimension of each token.
+        num_ep_ranks: the number of EP group ranks.
+        num_global_experts: Number of experts in the model.
+        num_local_experts: Number of experts in an EP rank.
+        """
+        import os
+
+        assert os.getenv("MXSHMEM_LIB_PATH", None) is not None, (
+            "please setting MXSHMEM_LIB_PATH and add ${MXSHMEM_LIB_PATH} into LD_LIBRARY_PATH"
+        )
+
+        import deep_ep  # type: ignore[import-not-found]
+
+        # Defaults for internode and intranode are taken from DeepEP tests.
+        num_nvl_bytes = envs.VLLM_DEEPEP_BUFFER_SIZE_MB * 1024 * 1024
+        num_qps_per_rank = num_local_experts
+        num_rdma_bytes = deep_ep.Buffer.get_low_latency_rdma_size_hint(
+            num_max_dispatch_tokens_per_rank=max_num_tokens_per_dp_rank,
+            hidden=token_hidden_size,
+            num_ranks=num_ep_ranks,
+            num_experts=num_global_experts,
+        )
+
+        assert num_rdma_bytes is not None
+
+        return dict(
+            group=self.cpu_group,
+            num_nvl_bytes=num_nvl_bytes,
+            num_rdma_bytes=num_rdma_bytes,
+            low_latency_mode=True,
+            num_qps_per_rank=num_qps_per_rank,
+            # /------------------- Metax Modification -----------------------\
+            # allow_nvlink_for_low_latency_mode=True,
+            # allow_mnnvl=envs.VLLM_DEEPEP_LOW_LATENCY_USE_MNNVL,
+            # \------------------- Metax Modification -----------------------/
+        )
 
     def destroy(self):
         with self.handle_cache._lock:

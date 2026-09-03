@@ -48,13 +48,15 @@ class MacaCommunicator(CudaCommunicator):
         )
         # /------------------------  Metax Modification -------------------------\
         if self.use_all2all:
-            if (
-                mx_envs.VLLM_METAX_OPTIMIZED_DP_ALL2ALL
-                and self.all2all_backend == "allgather_reducescatter"
+            if mx_envs.VLLM_METAX_OPTIMIZED_DP_ALL2ALL and self.all2all_backend in (
+                "naive",
+                "allgather_reducescatter",
             ):
                 from .all2all import MacaAgRsAll2AllManager
 
-                self.all2all_manager = MacaAgRsAll2AllManager(self.cpu_group)
+                self.all2all_manager = MacaAgRsAll2AllManager(
+                    self.cpu_group, tcp_store_group
+                )
                 logger.info_once(
                     "Maca override AgRsAll2AllManager to %s for better performance.",
                     self.all2all_manager.__class__.__name__,
