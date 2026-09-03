@@ -4,38 +4,40 @@
 # Metax PyPI source
 --extra-index-url https://repos.metax-tech.com/r/maca-pypi/simple
 
-apex==0.1+metax3.8.0.7
-block_sparse_attn==0.0.2+metax3.8.0.7
-torch==2.10.0+metax3.8.0.7
-torchaudio==2.4.1+metax3.8.0.7
-torchcodec==0.6.0+metax3.8.0.7
-torchvision==0.25.0+metax3.8.0.7
-triton==3.6.0+metax3.8.0.7
+apex==0.1+metax3.8.2.2
+block_sparse_attn==0.0.2+metax3.8.2.2
+torch==2.10.0+metax3.8.2.2
+torchaudio==2.4.1+metax3.8.2.2
+torchcodec==0.6.0+metax3.8.2.2
+torchvision==0.25.0+metax3.8.2.2
+triton==3.6.0+metax3.8.2.2
 
-causal_conv1d==1.5.4+metax3.8.0.7torch2.10
-dropout_layer_norm==0.1+metax3.8.0.7torch2.10
+causal_conv1d==1.5.4+metax3.8.2.2torch2.10
+dropout_layer_norm==0.1+metax3.8.2.2torch2.10
 
 # attention
-flash_attn==2.6.3+metax3.8.0.7torch2.10
-flash-linear-attention==0.5.0+metax3.8.0.7torch2.10
-flash_mla==1.0.1+metax3.8.0.7torch2.10
-flashinfer==0.2.6+metax3.8.0.7torch2.10
-fused_dense_lib==2.6.3+metax3.8.0.7torch2.10
-mamba_ssm==2.2.4+metax3.8.0.7torch2.10
-mctlassEx==0.1.1+metax3.8.0.7torch2.10
+flash_attn==2.6.3+metax3.8.2.2torch2.10
+flash_attn_3==3.0.0+metax3.8.2.2torch2.10
+flash_mla==1.0.1+metax3.8.2.2torch2.10
+flashinfer==0.2.6+metax3.8.2.2torch2.10
+fused_dense_lib==2.6.3+metax3.8.2.2torch2.10
+mamba_ssm==2.2.4+metax3.8.2.2torch2.10
+mctlassEx==0.1.1+metax3.8.2.2torch2.10
 
-rotary_emb==0.1+metax3.8.0.7torch2.10
-xentropy_cuda_lib==0.1+metax3.8.0.7torch2.10
+rotary_emb==0.1+metax3.8.2.2torch2.10
+xentropy_cuda_lib==0.1+metax3.8.2.2torch2.10
 
 # mcpy==3.5.3.3
 
-deep_ep==1.0.0+metax3.8.0.8torch2.10
-deep_gemm==0.1.0+maca3.8.0.4
-lmcache==0.4.6+maca3.8.0.5
-nixl==1.0.0+maca3.8.0.5
+deep_ep==1.0.0+metax3.8.2.1torch2.10
+deep_gemm==0.2.0+maca0.4.9.2
 
-mcoplib==0.4.8+maca3.8.0.25.torch2.10
-apache-tvm-ffi==0.1.3.dev11
-tilelang==0.1.9+maca
+lmcache==0.5.1+maca3.8.2.5
+nixl==1.0.0+maca3.8.2.5
+
+mcoplib==0.4.11+g0cb4f49.maca3.8.2.6.torch2.10
+
+# tilelang==0.1.12
+
 
 # uv pip install -r requirements/maca.txt -c requirements/constraints.txt  --index-strategy unsafe-best-match --extra-index-url https://repos.metax-tech.com/r/maca-pypi/simple --trusted-host repos.metax-tech.com --dry-run
