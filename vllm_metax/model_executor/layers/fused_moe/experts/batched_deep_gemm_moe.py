@@ -237,22 +237,20 @@ def persistent_masked_m_silu_mul_quant(
         dtype=ys_dtype,
         device=y.device,
     )
+    y_s.zero_()
 
     ceil_ue8m0 = quant_scale_fmt in [
         DeepGemmQuantScaleFMT.FLOAT32_CEIL_UE8M0,
         DeepGemmQuantScaleFMT.UE8M0,
     ]
 
-    device_capability = current_platform.get_device_capability(device_id=y.device.index)
-    assert device_capability is not None
-    cuda_arch = device_capability.to_int()
-
-    if current_platform.is_cuda() and cuda_arch >= 80:
+    # The C++ kernel requires sm_80+; ROCm and XPU take the Triton path below.
+    if current_platform.is_cuda() and current_platform.has_device_capability(80):
         torch.ops._C.persistent_masked_m_silu_mul_quant(
             y, tokens_per_expert, y_q, y_s, ceil_ue8m0
         )
     else:
-        # Triton fallback for ROCm -- the C++ kernel is guarded by
+        # Triton fallback for ROCm and XPU -- the C++ kernel is guarded by
         # #ifndef USE_ROCM in activation_kernels.cu.
         # https://github.com/ROCm/aiter/issues/2420
         stride_cnt_e = tokens_per_expert.stride()[0]
@@ -633,11 +631,11 @@ class BatchedDeepGemmExperts(mk.FusedMoEExpertsModular):
         weight_key: QuantKey | None,
         activation_key: QuantKey | None,
     ) -> bool:
-        supported_w_a = [
+        SUPPORTED_W_A = [
             (kFp8Static128BlockSym, kFp8Dynamic128Sym),
             (kInt8StaticChannelSym, kInt8DynamicTokenSym),
         ]
-        return (weight_key, activation_key) in supported_w_a
+        return (weight_key, activation_key) in SUPPORTED_W_A
 
     @staticmethod
     def _supports_activation(activation: MoEActivation) -> bool:

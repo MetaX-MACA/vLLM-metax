@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
+from enum import Enum
 import torch
 
 import vllm.model_executor.layers.fused_moe.modular_kernel as mk
@@ -14,7 +15,6 @@ from vllm.model_executor.layers.quantization.utils.quant_utils import (
 )
 from vllm.model_executor.layers.fused_moe.oracle.fp8 import (
     logger,
-    Fp8MoeBackend,
 )
 
 from vllm_metax.model_executor.layers.fused_moe.all2all_utils import (
@@ -22,11 +22,25 @@ from vllm_metax.model_executor.layers.fused_moe.all2all_utils import (
 )
 
 
+class Fp8MoeBackend(Enum):
+    NONE = "NONE"
+    DEEPGEMM = "DEEPGEMM"
+    BATCHED_DEEPGEMM = "BATCHED_DEEPGEMM"
+    TRITON = "TRITON"
+    BATCHED_TRITON = "BATCHED_TRITON"
+
+
 def _get_priority_backends(
     moe_config: FusedMoEConfig,
     weight_key: QuantKey | None,
     activation_key: QuantKey | None,
 ) -> list[Fp8MoeBackend]:
+    """
+    Get available backends in priority order based on platform and config.
+
+    This function can be extended to become more complex as needed.
+    """
+
     _AVAILABLE_BACKENDS = [
         Fp8MoeBackend.DEEPGEMM,
         Fp8MoeBackend.TRITON,
@@ -91,6 +105,12 @@ def select_fp8_moe_backend(
     activation_key: QuantKey | None,
     allow_vllm_cutlass: bool = False,
 ) -> tuple[Fp8MoeBackend, type[mk.FusedMoEExperts] | None]:
+    """
+    Select the primary FP8 MoE backend
+    Note: Shape-specific fallbacks may still occur at runtime.
+    """
+
+    # NOTE: the kernels are selected in the following order.
     AVAILABLE_BACKENDS = _get_priority_backends(config, weight_key, activation_key)
 
     # NOTE(rob): We need to peak into the P/F selection to determine

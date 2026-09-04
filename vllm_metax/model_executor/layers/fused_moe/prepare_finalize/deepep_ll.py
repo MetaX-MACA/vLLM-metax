@@ -201,19 +201,3 @@ class MacaDeepEPLLPrepareAndFinalize(DeepEPLLPrepareAndFinalize):
             output.copy_(combined)
         # \------------------------ MetaX Modification -------------------------/
         return recv_hook, lambda: None
-
-    def _receiver(
-        self,
-        expert_x: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
-        expert_num_tokens: torch.Tensor,
-        a1_scale: torch.Tensor | None,
-        a1_dtype: torch.dtype,
-        quant_config: FusedMoEQuantConfig,
-    ) -> mk.PrepareResultType:
-        expert_x, expert_x_scale = self._do_quant(expert_x, a1_dtype, quant_config)
-
-        expert_tokens_meta = mk.ExpertTokensMetadata(
-            expert_num_tokens=expert_num_tokens, expert_num_tokens_cpu=None
-        )
-
-        return expert_x, expert_x_scale, expert_tokens_meta, None, None

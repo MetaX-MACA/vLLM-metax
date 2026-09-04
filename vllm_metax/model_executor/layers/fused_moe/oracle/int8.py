@@ -23,9 +23,9 @@ from vllm.model_executor.layers.quantization.utils.quant_utils import (
 )
 
 from vllm_metax.patch.bugfix.int8_w8a8.int8_moe_config import (
-    int8_w8a16_moe_quant_config,
     int8_w8a8_moe_quant_config,
 )
+from vllm.model_executor.layers.fused_moe.config import int8_w8a16_moe_quant_config
 
 from vllm.model_executor.layers.fused_moe.oracle.int8 import (
     logger,
@@ -283,7 +283,6 @@ def make_int8_moe_kernel(
     moe_config: FusedMoEConfig,
     experts_cls: type[mk.FusedMoEExperts],
     routing_tables: tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None = None,
-    layer: torch.nn.Module | None = None,
 ) -> mk.FusedMoEKernel:
     # Create Prepare/Finalize.
     prepare_finalize = maybe_make_prepare_finalize(
