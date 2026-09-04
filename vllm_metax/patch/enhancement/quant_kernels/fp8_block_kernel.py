@@ -5,6 +5,8 @@
 # Note: Add plugin-aware scaled-MM kernel dispatch for MetaX.
 #
 # Affected versions: v0.24.0
+#
+# Remove at: when upstream support register the _POSSIBLE_FP8_BLOCK_KERNELS
 # -----------------------------------------------
 
 from vllm_metax.registry.linear_kernels.fp8 import (

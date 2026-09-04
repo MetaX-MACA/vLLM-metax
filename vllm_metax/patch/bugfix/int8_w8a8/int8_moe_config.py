@@ -24,44 +24,8 @@ import torch
 
 from vllm.model_executor.layers.fused_moe.config import (
     FusedMoEQuantConfig,
-    FusedMoEQuantDesc,
 )
-from vllm.model_executor.layers.quantization.utils.quant_utils import GroupShape
 from vllm_metax.patch import patch
-
-
-@patch(target_module_path="vllm.model_executor.layers.fused_moe.config")
-def int8_w8a16_moe_quant_config(
-    w1_scale: torch.Tensor,
-    w2_scale: torch.Tensor,
-    w1_zp: torch.Tensor | None = None,
-    w2_zp: torch.Tensor | None = None,
-    w1_bias: torch.Tensor | None = None,
-    w2_bias: torch.Tensor | None = None,
-    block_shape: list[int] | None = None,
-    a1_gscale: torch.Tensor | None = None,
-    a2_gscale: torch.Tensor | None = None,
-    # ┌------------------------  Metax Modification -------------------------┐
-    gemm1_alpha: float | None = None,
-    gemm1_beta: float | None = None,
-    gemm1_clamp_limit: float | None = None,
-    # └------------------------- Metax Modification -------------------------┘
-) -> FusedMoEQuantConfig:
-    """
-    Construct a quant config for 16-bit float activations and int8 weights.
-    """
-    group_shape = GroupShape(*block_shape) if block_shape is not None else None
-    return FusedMoEQuantConfig(
-        _a1=FusedMoEQuantDesc(shape=group_shape, alpha_or_gscale=a1_gscale),
-        _a2=FusedMoEQuantDesc(shape=group_shape, alpha_or_gscale=a2_gscale),
-        _w1=FusedMoEQuantDesc(torch.int8, group_shape, w1_scale, None, w1_zp, w1_bias),
-        _w2=FusedMoEQuantDesc(torch.int8, group_shape, w2_scale, None, w2_zp, w2_bias),
-        # ┌--------------------  Metax Modification ---------------------┐
-        gemm1_alpha=gemm1_alpha,
-        gemm1_beta=gemm1_beta,
-        gemm1_clamp_limit=gemm1_clamp_limit,
-        # └-------------------------------------------------------------┘
-    )
 
 
 @patch(target_module_path="vllm.model_executor.layers.fused_moe.config")

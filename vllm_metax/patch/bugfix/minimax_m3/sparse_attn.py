@@ -2,53 +2,23 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 #
 # -----------------------------------------------------------------------------
-# Note: The upstream `_gqa_sparse_fwd_kernel` / `_gqa_sparse_decode_kernel`
-#       materialize a whole 128-key K/V tile (plus the packed accumulator /
-#       softmax working set) per loop iteration. On MetaX C550 (64-KB-per-SM
-#       shared memory) this overflows: confirmed live as
-#       `triton.runtime.errors.OutOfResources: out of resource: shared
-#       memory, Required: 139264, Hardware limit: 65536` in
-#       `_gqa_sparse_decode_kernel`, running MiniMax-M3-W8A8 @ TP=8.
+# Note: A 128-token K/V tile needs 139264 B of shared memory, exceeding the
+#       MetaX C550 limit of 65536 B. Process it as eight SUB_K=16 tiles instead:
 #
-#       Fix: process each selected 128-key block in SUB_K(=16)-wide K/V
-#       sub-tiles with a per-sub-tile flash-softmax rescale, instead of the
-#       whole 128-wide block at once. This keeps every `tl.dot` K-dimension
-#       (contraction) tile at 16 and cuts the per-iteration live shared/
-#       register footprint by roughly the same 128/16 = 8x, comfortably
-#       under the 64-KB ceiling. Ports vllm_metax's v0.24.0 fix for these
-#       two kernels onto v0.26.0's rewritten bodies, which added: KV cache
-#       repacked to `(num_blocks, num_kv_heads, 128, 2*head_dim)` (K/V
-#       concatenated on the last dim instead of a separate leading K/V
-#       axis), FP8 `k_scale`/`v_scale` dequantization (scalar or
-#       per-token/head, `KV_SCALE_MODE`), and a position-derived
-#       `real_topk` (no more topk-buffer sentinel scan). All three
-#       additions are preserved unchanged; only the K/V loop is re-tiled.
-#       `_gqa_sparse_fwd_kernel` also gets the `BLOCK_SIZE_H`/`BLOCK_SIZE_QH`
-#       floor to 16 that upstream's decode kernel already carries (its
-#       `BLOCK_SIZE_H` heuristic is `max(16, next_power_of_2(gqa_group_size))`)
-#       but prefill does not -- MetaX's MMA encoder requires the `tl.dot`
-#       M-dimension tile to be >= 16 too; the extra padded GQA rows are
-#       already handled safely by the (unmodified) `boundary_check` on the
-#       q load / o store.
+#       selected K/V block (128 tokens)
+#       +----+----+----+----+----+----+----+----+
+#       | 16 | 16 | 16 | 16 | 16 | 16 | 16 | 16 |
+#       +----+----+----+----+----+----+----+----+
+#         tile: load K -> QK -> softmax -> load V -> PV
+#               (m_i, lse_i, acc_o) ----------------> next tile
 #
-#       The wrapper functions (`minimax_m3_sparse_attn`,
-#       `minimax_m3_sparse_attn_decode`, `_merge_topk_attn_out_kernel`) are
-#       untouched and not re-exported here: they look up these two kernels
-#       by module-global name at call time, so patching the kernels alone
-#       is sufficient.
+#       Only the inner K/V loop changes; common's cache layout, FP8 scales,
+#       top-k handling, and decode split-K logic are preserved.
 #
-# Affected versions: All versions.
-#
-# Remove at: MetaX Triton backend (mcTriton) raises the per-SM shared-memory
-#       ceiling past 64 KB for these launch configs, or upstream re-tiles
-#       the kernels itself, like index_topk.py.
+# Remove at: Upstream adopts sub-tiling or the MetaX shared-memory limit permits
+#            the original 128-token tile.
 # -----------------------------------------------------------------------------
-"""MetaX shared-memory fix for the main block-sparse GQA attention kernels.
-
-Ports vllm_metax's v0.24.0 SUB_K=16 sub-tiling fix for `_gqa_sparse_fwd_kernel`
-/ `_gqa_sparse_decode_kernel` onto v0.26.0's rewritten kernel bodies (new KV
-cache layout + FP8 k_scale/v_scale support, both preserved here unchanged).
-"""
+"""MetaX SUB_K fix for MiniMax-M3 block-sparse GQA attention kernels."""
 
 from vllm.triton_utils import tl, triton
 
@@ -165,18 +135,25 @@ def _gqa_sparse_fwd_kernel(
         lse_i = tl.full((BLOCK_SIZE_QH,), float("-inf"), dtype=tl.float32)
         acc_o = tl.zeros((BLOCK_SIZE_QH, BLOCK_SIZE_D), dtype=tl.float32)
         q = tl.reshape(q, BLOCK_SIZE_QH, BLOCK_SIZE_D)
-        for tk in range(real_topk):
-            blk = tl.load(t_ptr_j + tk * stride_tk).to(tl.int32)
+
+        # MetaX: process each 128-token KV block in SUB_K-token sub-tiles so
+        # the QK/PV working set stays below the per-SM shared-memory limit.
+        # Carry the online-softmax state across both loops, making this
+        # numerically equivalent to processing the full 128-token block.
+        for _ in range(real_topk):
+            blk = tl.load(t_ptr_j).to(tl.int32)
+            t_ptr_j = t_ptr_j + stride_tk
             c = blk * BLOCK_SIZE_K
             page = tl.load(bt_row + blk).to(tl.int64)
             kv_base = kv_cache_ptr + page * stride_kv_blk + pid_kh * stride_kv_h
             for s in range(NUM_SUB):
                 n_off = s * SUB_K
-                pos = c + n_off + off_sk  # [SUB_K] kv positions of this sub-tile
+                off_sub = n_off + off_sk
+                pos = c + off_sub  # [SUB_K] kv positions of this sub-tile
                 pos_mask = pos < seq_len  # beyond seq_len -> padding
                 k = tl.load(
                     kv_base
-                    + (n_off + off_sk)[None, :] * stride_kv_pos
+                    + off_sub[None, :] * stride_kv_pos
                     + off_d[:, None] * stride_kv_d,
                     mask=d_mask[:, None] & pos_mask[None, :],
                     other=0.0,
@@ -189,15 +166,19 @@ def _gqa_sparse_fwd_kernel(
                         k_scale = tl.load(
                             k_scale_ptr
                             + pid_kh * stride_ks_h
-                            + (page * BLOCK_SIZE_K + n_off + off_sk) * stride_ks_t,
+                            + (page * BLOCK_SIZE_K + off_sub) * stride_ks_t,
                             mask=pos_mask,
                             other=1.0,
                         )
                         k = (k * k_scale[None, :]).to(q.dtype)
-                qk = tl.dot(q, k) * sm_scale_log2e  # [BLOCK_SIZE_QH, SUB_K]
-                # causal: keep iff qpos >= pos (mask where qpos < pos); padding
-                # positions (pos >= seq_len) are masked out too.
-                qk += tl.where(off_q[:, None] >= pos[None, :], 0.0, float("-inf"))
+                # Build the causal mask with the current SUB_K offsets before
+                # flattening Q and GQA-head dimensions, matching common's
+                # q_abs_pos - key_offset >= block_start condition.
+                off_q_sub = off_q[:, None] - off_sub[None, :]
+                qk = tl.zeros((BLOCK_SIZE_Q, BLOCK_SIZE_H, SUB_K), dtype=tl.float32)
+                qk += tl.where(off_q_sub[:, None, :] >= c, 0.0, float("-inf"))
+                qk = tl.reshape(qk, BLOCK_SIZE_QH, SUB_K)
+                qk += tl.dot(q, k) * sm_scale_log2e
                 qk += tl.where(pos_mask[None, :], 0.0, float("-inf"))
                 m_ij = tl.maximum(m_i, tl.max(qk, axis=1))
                 p = tl.exp2(qk - m_ij[:, None])
@@ -205,7 +186,7 @@ def _gqa_sparse_fwd_kernel(
                 acc_o = acc_o * tl.exp2(m_i - m_ij)[:, None]
                 v = tl.load(
                     kv_base
-                    + (n_off + off_sk)[:, None] * stride_kv_pos
+                    + off_sub[:, None] * stride_kv_pos
                     + (head_dim + off_d[None, :]) * stride_kv_d,
                     mask=pos_mask[:, None] & d_mask[None, :],
                     other=0.0,
@@ -218,7 +199,7 @@ def _gqa_sparse_fwd_kernel(
                         v_scale = tl.load(
                             v_scale_ptr
                             + pid_kh * stride_vs_h
-                            + (page * BLOCK_SIZE_K + n_off + off_sk) * stride_vs_t,
+                            + (page * BLOCK_SIZE_K + off_sub) * stride_vs_t,
                             mask=pos_mask,
                             other=1.0,
                         )
@@ -356,11 +337,12 @@ def _gqa_sparse_decode_kernel(
         kv_base = kv_cache_ptr + page * stride_kv_blk + pid_kh * stride_kv_h
         for s in range(NUM_SUB):
             n_off = s * SUB_K
-            pos = c + n_off + off_sk  # [SUB_K] kv positions of this sub-tile
+            off_sub = n_off + off_sk
+            pos = c + off_sub  # [SUB_K] kv positions of this sub-tile
             pos_mask = pos < kv_len  # beyond kv_len -> padding
             k = tl.load(
                 kv_base
-                + (n_off + off_sk)[None, :] * stride_kv_pos
+                + off_sub[None, :] * stride_kv_pos
                 + off_d[:, None] * stride_kv_d,
                 mask=d_mask[:, None] & pos_mask[None, :],
                 other=0.0,
@@ -373,7 +355,7 @@ def _gqa_sparse_decode_kernel(
                     k_scale = tl.load(
                         k_scale_ptr
                         + pid_kh * stride_ks_h
-                        + (page * BLOCK_SIZE_K + n_off + off_sk) * stride_ks_t,
+                        + (page * BLOCK_SIZE_K + off_sub) * stride_ks_t,
                         mask=pos_mask,
                         other=1.0,
                     )
@@ -389,7 +371,7 @@ def _gqa_sparse_decode_kernel(
             acc_o = acc_o * tl.exp2(m_i - m_ij)[:, None]
             v = tl.load(
                 kv_base
-                + (n_off + off_sk)[:, None] * stride_kv_pos
+                + off_sub[:, None] * stride_kv_pos
                 + (head_dim + off_d[None, :]) * stride_kv_d,
                 mask=pos_mask[:, None] & d_mask[None, :],
                 other=0.0,
@@ -402,7 +384,7 @@ def _gqa_sparse_decode_kernel(
                     v_scale = tl.load(
                         v_scale_ptr
                         + pid_kh * stride_vs_h
-                        + (page * BLOCK_SIZE_K + n_off + off_sk) * stride_vs_t,
+                        + (page * BLOCK_SIZE_K + off_sub) * stride_vs_t,
                         mask=pos_mask,
                         other=1.0,
                     )
