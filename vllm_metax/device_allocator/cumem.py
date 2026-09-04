@@ -20,6 +20,7 @@ import torch
 
 from vllm.device_allocator import AllocationData, HandleType
 from vllm.logger import init_logger
+from vllm.platforms import current_platform
 from vllm.utils.system_utils import find_loaded_library
 from vllm.utils.torch_utils import PIN_MEMORY
 
@@ -36,7 +37,7 @@ try:
         python_create_and_map,
         python_unmap_and_release,
     )
-    from vllm_metax.patch.enhancement.distributed.cuda_wrapper import (
+    from vllm_metax.distributed.device_communicators.cuda_wrapper import (
         CudaRTLibrary,
     )
 
@@ -208,6 +209,14 @@ class CuMemAllocator:
         data = self.pointer_to_data.pop(ptr)
         if data.cpu_backup_tensor is not None:
             data.cpu_backup_tensor = None
+        if data.is_asleep and current_platform.is_rocm():
+            # On ROCm, sleep() already unmapped and released this allocation's
+            # physical chunks and holds its virtual address as a placeholder
+            # reservation. Return a handle with an empty chunk list so the C
+            # extension skips unmap/release (avoiding a double-free) while
+            # still freeing the placeholder address.
+            device, size, d_mem, _ = data.handle
+            return (device, size, d_mem, [])
         # Drain pending kernels before the C extension's cuMemUnmap.
         # The pluggable allocator path doesn't defer reclaim like the
         # regular caching allocator, so without this, in-flight work
@@ -243,8 +252,15 @@ class CuMemAllocator:
 
         total_bytes = 0
         backup_bytes = 0
+        has_policy_conflict = False
 
         for ptr, data in self.pointer_to_data.items():
+            if data.is_asleep:
+                requests_offload = data.tag in offload_tags
+                was_offloaded = data.cpu_backup_tensor is not None
+                if requests_offload != was_offloaded:
+                    has_policy_conflict = True
+                continue
             handle = data.handle
             total_bytes += handle[1]
             if data.tag in offload_tags:
@@ -273,8 +289,45 @@ class CuMemAllocator:
             (total_bytes - backup_bytes) / 1024**3,
         )
 
+        if has_policy_conflict:
+            logger.warning(
+                "CuMemAllocator: sleep cannot change the policy of "
+                "already-asleep allocations; the existing policy was kept."
+            )
+
         gc.collect()
         torch.cuda.empty_cache()
+
+    def discard(self, tags: tuple[str, ...] | str) -> None:
+        """Discard mapped allocations with the given tags without CPU backup."""
+        if isinstance(tags, str):
+            tags = (tags,)
+
+        discarded_bytes = 0
+        has_policy_conflict = False
+        for data in self.pointer_to_data.values():
+            if data.tag not in tags:
+                continue
+            if data.is_asleep:
+                if data.cpu_backup_tensor is not None:
+                    has_policy_conflict = True
+                continue
+            torch.accelerator.synchronize(data.handle[0])
+            unmap_and_release(data.handle)
+            data.is_asleep = True
+            discarded_bytes += data.handle[1]
+
+        logger.info(
+            "CuMemAllocator: discarded %.2f GiB for tags %s.",
+            discarded_bytes / 1024**3,
+            tags,
+        )
+
+        if has_policy_conflict:
+            logger.warning(
+                "CuMemAllocator: discard cannot change the policy of "
+                "already-asleep allocations; the existing policy was kept."
+            )
 
     def wake_up(self, tags: list[str] | None = None) -> None:
         """
@@ -291,6 +344,8 @@ class CuMemAllocator:
         torch.accelerator.empty_cache()
 
         for ptr, data in self.pointer_to_data.items():
+            if not data.is_asleep:
+                continue
             if tags is None or data.tag in tags:
                 handle = data.handle
                 create_and_map(handle)
