@@ -2,7 +2,7 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, ClassVar, cast
 
 import torch
 
@@ -13,14 +13,14 @@ from vllm.models.deepseek_v4.common.ops import (
     compute_global_topk_indices_and_lens,
     dequantize_and_gather_k_cache,
 )
-from vllm_metax.models.deepseek_v4.metax.ops.o_proj import (
-    deep_gemm_bf16_o_proj,
-)
+from vllm_metax.models.deepseek_v4.common.ops import gather_k_cache
 from vllm.models.deepseek_v4.nvidia.ops.o_proj import (
     compute_fp8_einsum_recipe,
     deep_gemm_fp8_o_proj,
 )
-from vllm_metax.models.deepseek_v4.common.ops import gather_k_cache
+from vllm_metax.models.deepseek_v4.metax.ops.o_proj import (
+    deep_gemm_bf16_o_proj,
+)
 from vllm_metax.models.deepseek_v4.sparse_mla import (
     MacaDeepseekV4FlashMLABackend,
 )
@@ -28,11 +28,12 @@ from vllm.models.deepseek_v4.sparse_mla import (
     DeepseekV4FlashMLAMetadata,
 )
 from vllm.utils.math_utils import round_up
-from vllm.v1.worker.workspace import current_workspace_manager
-from vllm_metax.models.deepseek_v4.common.ops import gather_k_cache
-from vllm_metax.models.deepseek_v4.metax.ops.o_proj import (
-    deep_gemm_bf16_o_proj,
+from vllm.v1.attention.backend import AttentionCGSupport
+from vllm_metax.v1.attention.backends.mla.sparse_swa import (
+    DeepseekSparseSWABackend,
+    DeepseekSparseSWAMetadataBuilder,
 )
+from vllm_metax.models.deepseek_v4.common.ops import gather_k_cache
 from vllm_metax.v1.attention.ops.flashmla import (
     flash_mla_sparse_fwd,
     flash_mla_with_kvcache,
@@ -44,8 +45,23 @@ if TYPE_CHECKING:
 import vllm_metax.envs as mx_envs
 
 
+class DeepseekSparseSWAFlashMLAMetadataBuilder(DeepseekSparseSWAMetadataBuilder):
+    """SWA metadata for the FlashMLA decode path, which allows varlen decode."""
+
+    _cudagraph_support: ClassVar[AttentionCGSupport] = AttentionCGSupport.ALWAYS
+
+
+class MacaDeepseekSparseSWAFlashMLABackend(DeepseekSparseSWABackend):
+    @staticmethod
+    def get_builder_cls() -> type[DeepseekSparseSWAFlashMLAMetadataBuilder]:
+        return DeepseekSparseSWAFlashMLAMetadataBuilder
+
+
 class MacaDeepseekV4FlashMLAAttention(MacaDeepseekV4Attention):
+    """FlashMLA sparse MLA attention layer for DeepSeek V4 (CUDA)."""
+
     backend_cls = MacaDeepseekV4FlashMLABackend
+    swa_backend_cls = MacaDeepseekSparseSWAFlashMLABackend
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -257,7 +273,7 @@ class MacaDeepseekV4FlashMLAAttention(MacaDeepseekV4Attention):
             head_dim_v=512,
             tile_scheduler_metadata=tile_metadata,
             cache_seqlens=None,
-            is_fp8_kvcache=self.kv_cache_dtype == "fp8_ds_mla",
+            is_fp8_kvcache=self.kv_cache_dtype in ("fp8_ds_mla", "fp8"),
             indices=swa_indices,
             topk_length=swa_lens,
             softmax_scale=self.scale,
@@ -322,7 +338,7 @@ class MacaDeepseekV4FlashMLAAttention(MacaDeepseekV4Attention):
 
         gather_kernel = (
             dequantize_and_gather_k_cache
-            if self.kv_cache_dtype == "fp8_ds_mla"
+            if self.kv_cache_dtype in ("fp8_ds_mla", "fp8")
             else gather_k_cache
         )
 
