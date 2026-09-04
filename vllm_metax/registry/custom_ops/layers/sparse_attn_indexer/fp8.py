@@ -203,7 +203,7 @@ def sparse_attn_indexer(
             k_quant = k_quant_full[: chunk.max_local_total_seq_lens]
             k_scale = k_scale_full[: chunk.max_local_total_seq_lens]
             if not chunk.skip_kv_gather and chunk.local_total_seq_lens > 0:
-                mx_ops.cp_gather_indexer_k_quant_cache(
+                ops.cp_gather_indexer_k_quant_cache(
                     kv_cache,
                     k_quant,
                     k_scale,
@@ -228,9 +228,6 @@ def sparse_attn_indexer(
                 # DeepGEMM scalar-type tags (zero-copy): MXFP4 values → int8
                 # (kPackedFP4), scales → int32 squeezed to 1-D kv_sf / 2-D q_sf.
                 if use_fp4_cache:
-                    raise AssertionError(
-                        use_fp4_cache, "MetaX FP4 indexer is not supported"
-                    )
                     q_slice_cast = q_slice.view(torch.int8)
                     k_quant_cast = k_quant.view(torch.int8)
                     k_scale_cast = k_scale.view(torch.int32).squeeze(-1)

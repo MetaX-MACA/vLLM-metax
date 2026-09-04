@@ -19,7 +19,6 @@ from vllm_metax.model_executor.layers.fused_moe.oracle.unquantized import (
     make_unquantized_moe_kernel,
     select_unquantized_moe_backend,
 )
-
 from vllm.model_executor.layers.fused_moe.runner.shared_experts import (
     SharedExperts,
 )

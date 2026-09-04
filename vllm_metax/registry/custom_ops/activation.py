@@ -11,7 +11,21 @@ from vllm.model_executor.layers.activation import (
     SiluAndMulWithClamp,
     SwigluOAIAndMul,
     SwigluStepAndMul,
+    SituAndMul,
+    ReLUSquaredActivation,
 )
+
+
+@ReLUSquaredActivation.register_oot
+class MacaReLUSquaredActivation(ReLUSquaredActivation):
+    def forward_oot(self, *args, **kwargs):
+        return self.forward_cuda(*args, **kwargs)
+
+
+@SituAndMul.register_oot
+class MacaSituAndMul(SituAndMul):
+    def forward_oot(self, *args, **kwargs):
+        return self.forward_cuda(*args, **kwargs)
 
 
 @FatreluAndMul.register_oot
