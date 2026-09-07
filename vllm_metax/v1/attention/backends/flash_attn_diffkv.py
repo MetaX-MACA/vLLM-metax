@@ -59,6 +59,10 @@ class FlashAttentionDiffKVBackend(FlashAttentionBackend):
         head_size_v: int,
         has_sinks: bool,
     ) -> bool:
+        """Check whether FA3/4 with this DiffKV config is usable here.
+
+        DiffKV (hdim_qk != hdim_v) requires FA3 or FA4
+        """
         if not is_flash_attn_varlen_func_available():
             return False
         rounded_head_size = ((head_size + 31) // 32) * 32

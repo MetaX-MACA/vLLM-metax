@@ -35,7 +35,6 @@ from vllm.v1.attention.backends.mla.sparse_utils import (
 from vllm.v1.attention.backends.utils import (
     reshape_attn_output_for_spec_decode,
     reshape_query_for_spec_decode,
-    split_decodes_and_prefills,
     split_prefill_chunks,
 )
 from vllm_metax.v1.attention.ops.flashmla import (
@@ -44,7 +43,6 @@ from vllm_metax.v1.attention.ops.flashmla import (
     flash_mla_with_kvcache,
     get_mla_metadata,
 )
-
 from vllm.v1.kv_cache_interface import AttentionSpec
 from vllm.v1.worker.workspace import current_workspace_manager
 from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
@@ -525,41 +523,46 @@ class FlashMLASparseMetadataBuilder(
     def _build_bf16_separate_prefill_decode(
         self,
         common_attn_metadata: CommonAttentionMetadata,
+        metadata: FlashMLASparseMetadata,
     ) -> "FlashMLASparseMetadata.BF16SeparatePrefillDecode":
         num_tokens = common_attn_metadata.num_actual_tokens
 
         (num_decodes, num_prefills, num_decode_tokens, num_prefill_tokens) = (
-            split_decodes_and_prefills(
-                common_attn_metadata,
-                decode_threshold=self.reorder_batch_threshold or 1,
-                require_uniform=True,
-            )
+            metadata.num_decodes,
+            metadata.num_prefills,
+            metadata.num_decode_tokens,
+            num_tokens - metadata.num_decode_tokens,
         )
 
-        assert num_decode_tokens + num_prefill_tokens == num_tokens
+        # Uniform batches may include zero-length padding requests. Only the
+        # active requests contribute query tokens to the decode kernel.
+        decode_query_len = 0
+        active_num_decodes = num_decodes
+        if num_decodes > 0:
+            query_start_loc_cpu = common_attn_metadata.query_start_loc_cpu
+            decode_query_len = (query_start_loc_cpu[1] - query_start_loc_cpu[0]).item()
+            assert decode_query_len > 0
+            active_num_decodes = num_decode_tokens // decode_query_len
+            assert active_num_decodes * decode_query_len == num_decode_tokens
 
         BF16Meta = FlashMLASparseMetadata.BF16SeparatePrefillDecode
         bf16_metadata = BF16Meta(
-            num_decodes=num_decodes,
+            num_decodes=active_num_decodes,
             num_prefills=num_prefills,
             num_decode_tokens=num_decode_tokens,
             num_prefill_tokens=num_prefill_tokens,
         )
 
         if num_decodes > 0:
-            # Compute decode_query_len for spec decode (uniform due to require_uniform)
-            query_start_loc_cpu = common_attn_metadata.query_start_loc_cpu
-            decode_query_len = (query_start_loc_cpu[1] - query_start_loc_cpu[0]).item()
-
             scheduler_metadata, _ = get_mla_metadata()
 
             kernel_meta = FlashMLASparseMetadata.BF16KernelMetadata(
                 scheduler_metadata=scheduler_metadata,
-                dummy_block_table=self.dummy_block_table[:num_decodes],
-                cache_lens=self.max_model_len_tensor[:num_decodes],
+                dummy_block_table=self.dummy_block_table[:active_num_decodes],
+                cache_lens=self.max_model_len_tensor[:active_num_decodes],
             )
             bf16_metadata.decode = BF16Meta.Decode(
-                seq_lens=common_attn_metadata.seq_lens[:num_decodes],
+                seq_lens=common_attn_metadata.seq_lens[:active_num_decodes],
                 kernel_metadata=kernel_meta,
                 decode_query_len=decode_query_len,
             )
@@ -580,7 +583,7 @@ class FlashMLASparseMetadataBuilder(
         elif self.use_bf16_kv_cache:
             metadata.bf16_use_mixed_batch = False  # default use separate_prefill_decode
 
-        if self.use_fp8_kv_cache and not self.is_deepseek_v4:
+        if self.use_fp8_kv_cache:
             if fp8_use_mixed_batch:
                 metadata.fp8_extra_metadata = self._build_fp8_mixed_decode_prefill(
                     common_attn_metadata
@@ -591,7 +594,7 @@ class FlashMLASparseMetadataBuilder(
                 )
         elif self.use_bf16_kv_cache:
             metadata.bf16_extra_metadata = self._build_bf16_separate_prefill_decode(
-                common_attn_metadata
+                common_attn_metadata, metadata
             )
 
         return metadata
@@ -688,7 +691,8 @@ class FlashMLASparseImpl(SparseMLACommonImpl[FlashMLASparseMetadata]):
         attn_metadata: FlashMLASparseMetadata,
     ) -> torch.Tensor:
         # Convert per-request indices to global slots (decode) or workspace
-        # offsets (prefill).
+        # offsets (prefill). req_id_per_token covers the whole batch; slice it
+        # to the MQA tokens (q may exclude prefill tokens routed to dense MHA).
         topk_indices, topk_length = triton_convert_req_index_to_global_index(
             attn_metadata.req_id_per_token[: topk_indices.shape[0]],
             attn_metadata.block_table,
@@ -717,21 +721,22 @@ class FlashMLASparseImpl(SparseMLACommonImpl[FlashMLASparseMetadata]):
             bf16_metadata, FlashMLASparseMetadata.BF16SeparatePrefillDecode
         )
         num_decodes = bf16_metadata.num_decodes
+        num_mqa_tokens = q.shape[0]
+        num_decode_tokens = bf16_metadata.num_decode_tokens
+        num_prefill_tokens = num_mqa_tokens - num_decode_tokens
+        assert num_prefill_tokens in (0, bf16_metadata.num_prefill_tokens), (
+            "BF16 sparse MLA expects either the decode subset or the full batch"
+        )
 
-        # Convert per-request indices to global slots (decode) or workspace
-        # offsets (prefill).
+        # Both BF16 kernels use global cache slots. Prefills routed to MHA are
+        # absent from q and topk_indices, so remap only the MQA token rows.
         topk_indices, topk_length = triton_convert_req_index_to_global_index(
-            attn_metadata.req_id_per_token,
+            attn_metadata.req_id_per_token[: topk_indices.shape[0]],
             attn_metadata.block_table,
             topk_indices,
             BLOCK_SIZE=attn_metadata.block_size,
             NUM_TOPK_TOKENS=topk_indices.shape[1],
             return_valid_counts=True,
-        )
-
-        bf16_metadata = attn_metadata.bf16_extra_metadata
-        assert isinstance(
-            bf16_metadata, FlashMLASparseMetadata.BF16SeparatePrefillDecode
         )
 
         def _bf16_decode(q: torch.Tensor, topk_indices: torch.Tensor) -> torch.Tensor:
@@ -755,9 +760,6 @@ class FlashMLASparseImpl(SparseMLACommonImpl[FlashMLASparseMetadata]):
             #              -> (num_decode_tokens, num_heads, head_dim_v)
             return reshape_attn_output_for_spec_decode(attn_out)
 
-        num_decode_tokens = bf16_metadata.num_decode_tokens
-        num_prefill_tokens = bf16_metadata.num_prefill_tokens
-
         # Pure decode: direct call without allocation
         if num_decode_tokens > 0 and num_prefill_tokens == 0:
             assert bf16_metadata.decode is not None
@@ -765,7 +767,7 @@ class FlashMLASparseImpl(SparseMLACommonImpl[FlashMLASparseMetadata]):
         else:
             # Mixed or pure prefill: allocate output tensor
             attn_out = q.new_empty(
-                (attn_metadata.num_actual_tokens, self.num_heads, self.kv_lora_rank),
+                (num_mqa_tokens, self.num_heads, self.kv_lora_rank),
                 dtype=q.dtype,
                 device=q.device,
             )
@@ -775,13 +777,13 @@ class FlashMLASparseImpl(SparseMLACommonImpl[FlashMLASparseMetadata]):
                     q[:num_decode_tokens], topk_indices[:num_decode_tokens]
                 )
 
-            num_actual_tokens = attn_metadata.num_actual_tokens
-            attn_out[num_decode_tokens:num_actual_tokens] = self._bf16_flash_mla_kernel(
-                q[num_decode_tokens:num_actual_tokens],
-                kv_c_and_k_pe_cache,
-                topk_indices[num_decode_tokens:num_actual_tokens],
-                topk_length=topk_length[num_decode_tokens:num_actual_tokens],
-            )
+            if num_prefill_tokens > 0:
+                attn_out[num_decode_tokens:] = self._bf16_flash_mla_kernel(
+                    q[num_decode_tokens:],
+                    kv_c_and_k_pe_cache,
+                    topk_indices[num_decode_tokens:],
+                    topk_length=topk_length[num_decode_tokens:],
+                )
 
         return attn_out
 

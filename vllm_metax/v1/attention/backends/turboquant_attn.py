@@ -19,7 +19,7 @@ Per-head per-position slot layout:
 
 import functools
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, ClassVar
 
 import torch
@@ -66,7 +66,6 @@ _HAS_FLASH_ATTN = is_flash_attn_varlen_func_available()
 if _HAS_FLASH_ATTN:
     from vllm_metax.v1.attention.backends.fa_utils import flash_attn_varlen_func
 
-
 # Continuation prefill: for small continuation chunks (q_len ≤ threshold),
 # use the TQ decode kernel directly instead of full-dequant + flash_attn.
 # do_kv_cache_update already stored all tokens to TQ cache, so the decode
@@ -110,6 +109,21 @@ class MacaTurboQuantAttentionBackend(AttentionBackend):
         "turboquant_k3v4_nc",
         "turboquant_3bit_nc",
     ]
+
+    @classmethod
+    def customize_spec(cls, spec: AttentionSpec) -> AttentionSpec:
+        """TurboQuant packs K+V into one slot per head."""
+        if spec.state_content_bytes is not None or not spec.kv_quant_mode.is_turboquant:
+            return spec
+        from vllm.model_executor.layers.quantization.turboquant.config import (
+            TurboQuantConfig,
+        )
+
+        # KVQuantMode member names mirror the preset strings.
+        tq = TurboQuantConfig.from_cache_dtype(
+            spec.kv_quant_mode.name.lower(), spec.head_size
+        )
+        return replace(spec, state_content_bytes=tq.slot_size_aligned)
 
     @staticmethod
     def get_name() -> str:
@@ -393,6 +407,29 @@ class TurboQuantAttentionImpl(AttentionImpl["TurboQuantMetadata"]):
             c_sorted, _ = layer._tq_centroids.sort()
             layer._tq_midpoints = (c_sorted[:-1] + c_sorted[1:]) / 2
             layer._tq_cached = True
+
+    def _max_capture_batch_size(self) -> int:
+        """Largest decode batch we might see at runtime (for workspace pre-warm).
+
+        Take max(cudagraph_capture_sizes, scheduler.max_num_seqs): a forward
+        pass exceeding the largest captured graph size falls back to eager,
+        but the workspace is locked and that eager path can still hit batch
+        sizes up to max_num_seqs. Falls back to 1024 if config is unavailable.
+        """
+        try:
+            cfg = get_current_vllm_config()
+            candidates: list[int] = []
+            sizes = cfg.compilation_config.cudagraph_capture_sizes
+            if sizes:
+                candidates.append(int(max(sizes)))
+            sched = getattr(cfg, "scheduler_config", None)
+            if sched is not None and getattr(sched, "max_num_seqs", None):
+                candidates.append(int(sched.max_num_seqs))
+            if candidates:
+                return max(candidates)
+        except Exception:  # noqa: BLE001
+            pass
+        return 1024
 
     def do_kv_cache_update(
         self,

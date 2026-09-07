@@ -18,7 +18,7 @@ To use these ops, you must have a recent version of PyTorch installed (>= 2.4.0)
 
 import einops
 import torch
-
+from vllm.utils.gpu_sync_debug import gpu_sync_allowed
 from vllm.utils.torch_utils import direct_register_custom_op
 
 
@@ -43,7 +43,12 @@ def flash_attn_maxseqlen_wrapper(
         cu_seqlens = torch.arange(
             0, (batch_size + 1) * q_len, step=q_len, dtype=torch.int32, device=q.device
         )
-    max_seqlen = q_len if max_seqlen is None else max_seqlen.item()
+    if max_seqlen is None:
+        max_seqlen = q_len
+    else:
+        # `flash_attn_varlen_func` needs a Python int for kernel launch bounds.
+        with gpu_sync_allowed():
+            max_seqlen = max_seqlen.item()
 
     q, k, v = (einops.rearrange(x, "b s ... -> (b s) ...") for x in [q, k, v])
     output = flash_attn_varlen_func(

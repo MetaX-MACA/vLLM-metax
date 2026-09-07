@@ -55,8 +55,8 @@ else:
     class FlashMLASchedMeta:  # type: ignore[no-redef]
         pass
 
-    flash_mla_with_kvcache = _raise_flashmla_unavailable  # type: ignore[assignment]
     flash_mla_sparse_fwd = _raise_flashmla_unavailable  # type: ignore[assignment]
+    flash_mla_with_kvcache = _raise_flashmla_unavailable  # type: ignore[assignment]
     get_mla_metadata = _raise_flashmla_unavailable  # type: ignore[assignment]
 
 
