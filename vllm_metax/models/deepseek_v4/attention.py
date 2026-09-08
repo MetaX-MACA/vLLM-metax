@@ -680,6 +680,9 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
         block_size = swa_metadata.block_size
         swa_kv_cache_3d = swa_kv_cache.view(-1, block_size, self.head_dim)
         if cache_dtype == torch.bfloat16:
+            # Note(Hank): this fused_op output heads is not padded. (cache_dtype == torch.uint8 are padded)
+            # Since downstream bf16 flashmla need input to be padded heads, we made it at
+            # the beginning of flashmla::forward_mqa
             torch.ops._C.fused_deepseek_v4_qnorm_rope_kv_rope_full_cache_bf16_insert(
                 q,
                 kv,
@@ -938,7 +941,7 @@ class MacaDeepseekV4Indexer(nn.Module):
                         PADDED_TOP_K=triton.next_power_of_2(self.topk_tokens),
                         num_warps=8,
                     )
-                return self.topk_indices_buffer
+                return None, None, None
 
         def wq_b_and_q_quant():
             # ReplicatedLinear returns (output, bias); bias is None.

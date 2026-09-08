@@ -3,6 +3,7 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 from typing import TYPE_CHECKING, ClassVar, cast
+import torch.nn.functional as F
 
 import torch
 
@@ -114,6 +115,14 @@ class MacaDeepseekV4FlashMLAAttention(MacaDeepseekV4Attention):
         positions: torch.Tensor,
         output: torch.Tensor,
     ) -> None:
+        # Pad q to self. padding_heads. Same logic on FlashInfer sparse mla for BF16
+        if q.shape[1] < self.padded_heads:
+            q = F.pad(
+                q,
+                (0, 0, 0, self.padded_heads - q.shape[1]),
+                value=0.0,
+            )
+
         assert output.shape == q.shape, (
             f"output buffer shape {output.shape} must match q shape {q.shape}"
         )
