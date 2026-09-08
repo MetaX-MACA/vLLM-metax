@@ -293,6 +293,10 @@ class MacaPlatformBase(Platform):
             )
 
     @classmethod
+    def check_runner_kv_caches_multi_layer(cls) -> None:
+        pass
+
+    @classmethod
     def check_and_update_config(cls, vllm_config: "VllmConfig") -> None:
         # Config Override
         parallel_config = vllm_config.parallel_config
