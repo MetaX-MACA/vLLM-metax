@@ -1,0 +1,235 @@
+- name: Qwen2.5-72B-Instruct-AWQ
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen2___5-72B-Instruct-AWQ
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: float16
+      --gpu-memory-utilization: 0.95
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_common.json
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env: null
+
+- name: Qwen2.5-72B-Instruct-GPTQ-Int4
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen2___5-72B-Instruct-GPTQ-Int4
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: float16
+      --gpu-memory-utilization: 0.95
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_common.json
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env: null
+
+- name: Qwen3-30B-A3B-W8A8
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B.w8a8
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: bfloat16
+      --gpu-memory-utilization: 0.95
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_mainstream_highlight.json
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env: null
+
+- name: Qwen3-30B-A3B-EP
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B
+  serve_config:
+    tp: 2
+    dp: 2
+    pp: 1
+    extra_args: 
+      --enable-expert-parallel
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+
+- name: Qwen3-VL-Embedding-8B
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-VL-Embedding-8B
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    task: embed
+    extra_args:
+      --dtype: bfloat16
+      --gpu-memory-utilization: 0.9
+  infer_type:
+  - embedding
+  benchmark:
+    bench_param: configs/bench_params/bench_common.json
+    sweep_num_runs: 1
+  extra_env: null
+
+- name: Qwen3.5-2B
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3.5-2B
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: float16
+      --gpu-memory-utilization: 0.95
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_common.json
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env: null
+
+- name: Qwen3-Omni-30B-A3B-Instruct
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-Omni-30B-A3B-Instruct
+  serve_config:
+    tp: 2
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: bfloat16
+      --gpu-memory-utilization: 0.9
+  infer_type:
+  - single-image
+  benchmark:
+    bench_param: configs/bench_params/bench_mainstream_highlight.json
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env: null
+
+- name: Qwen3.5-27B
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3.5-27B
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: float16
+      --gpu-memory-utilization: 0.9
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_common.json
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env: null
+
+- name: Qwen3.5-35B-A3B
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3.5-35B-A3B
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: float16
+      --gpu-memory-utilization: 0.9
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_common.json
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env: null
+
+- name: DeepSeek-V4-Flash-FlexSMQ-AWQ-W8A8
+  model_path: /mxstorage/pde_ai/models/model_quant_opt/DeepSeek/DeepSeek-V4-Flash_FlexSMQ-AWQ_W8A8/vllm_quant_model
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: bfloat16
+      --gpu-memory-utilization: 0.9
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_mainstream_highlight.json
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env: null
+
+- name: MiniMax-M3-W8A8
+  model_path: /mxstorage/pde_ai/models/llm/MiniMax/MiniMax-M3-W8A8
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: bfloat16
+      --gpu-memory-utilization: 0.9
+      --block-size: 128
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_mainstream_highlight.json
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env: null
+
+- name: Step-3.5-Flash-W8A8
+  model_path: /mxstorage/pde_ai/models/llm/stepfun-ai/step3_5_W8A8_1/vllm_quant_model
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: bfloat16
+      --gpu-memory-utilization: 0.9
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env: null
+
+- name: Qwen3.8-27B
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3.8-27B
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: bfloat16
+      --gpu-memory-utilization: 0.9
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env: null
+
+- name: JoyAI-LLM-Flash
+  model_path: /mxstorage/pde_ai/models/llm/jd-opensource/JoyAI-LLM-Flash/
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: bfloat16
+      --gpu-memory-utilization: 0.9
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env: null
