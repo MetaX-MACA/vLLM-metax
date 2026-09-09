@@ -41,7 +41,7 @@ class MacaSparseAttnIndexer(SparseAttnIndexer):
         skip_k_cache_insert: bool = False,
         use_fp4_cache: bool = False,
     ):
-        super(SparseAttnIndexer, self).__init__()
+        super(SparseAttnIndexer, self).__init__(enforce_enable=True)
         self.k_cache = k_cache
         self.quant_block_size = quant_block_size
         self.scale_fmt = scale_fmt
