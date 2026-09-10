@@ -2379,6 +2379,32 @@ def fused_experts_impl(
                 # override kernel_m to config["BLOCK_SIZE_M"]
                 stage1_config["BLOCK_SIZE_M"] = kernel_m
                 stage2_config["BLOCK_SIZE_M"] = kernel_m
+
+            if (
+                hidden_states.dtype == torch.bfloat16
+                and not use_int4_w4a8
+                and not use_int4_w4a16
+                and not use_int8_w8a8
+                and not use_int8_w8a16
+                and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+            ):
+                # mctlass cutlass_moe_bf16_mm kernel-m override (stage2 path)
+                kernel_m = mctlass_ops.mctlassEx_fused_moe_bf16_get_kernel_m(
+                    hidden_states,  # A
+                    w1,  # B
+                    intermediate_cache1,  # C
+                    w1.size(0),  # num_experts
+                    hidden_states.size(0),  # batch_size
+                    N,  # N
+                    hidden_states.size(1),  # K
+                    top_k_num,  # topk
+                )
+                assert kernel_m > 0, (
+                    "cutlass_fused_moe_bf16 BLOCK_SIZE_M must greater than zero."
+                )
+                # override kernel_m to config["BLOCK_SIZE_M"]
+                stage1_config["BLOCK_SIZE_M"] = kernel_m
+                stage2_config["BLOCK_SIZE_M"] = kernel_m
             # └------------------------- Metax Modification -------------------------┘
             sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
                 curr_topk_ids,

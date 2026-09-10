@@ -7,12 +7,12 @@ from vllm.triton_utils import tl, triton
 @triton.jit
 def _gather_k_cache_kernel(
     out_ptr,
-    out_stride0: tl.constexpr,
-    out_stride1: tl.constexpr,
+    out_stride0,
+    out_stride1,
     k_cache_ptr,
     seq_lens_ptr,
     block_table_ptr,
-    offset: tl.constexpr,
+    offset,
     gather_lens_ptr,
     # constexpr
     max_blocks_per_seq: tl.constexpr,
