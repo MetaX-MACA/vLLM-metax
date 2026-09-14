@@ -16,8 +16,12 @@ from vllm.model_executor.layers.minimax_rms_norm.rms_norm_tp import (
     MINIMAX_QK_NORM_MAX_TOKEN_NUM,
     MiniMaxText01RMSNormTP,
     logger,
-    _MINIMAX_FUSED_AR_RMS_QK,
 )
+
+# ┌------------------------  Metax Modification -------------------------┐
+# do not use norm reduce fusion, if want to enable,just comment the following line, and make sure the workspace is enough.
+_MINIMAX_FUSED_AR_RMS_QK = None
+# └------------------------- Metax Modification -------------------------┘
 
 
 @MiniMaxText01RMSNormTP.register_oot
