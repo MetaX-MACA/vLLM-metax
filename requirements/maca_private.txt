@@ -33,11 +33,14 @@ deep_ep==1.0.0+metax3.8.2.1torch2.10
 deep_gemm==0.2.0+maca0.4.9.2
 
 lmcache==0.5.1+maca3.8.2.5
-nixl==1.0.0+maca3.8.2.5
+nixl==1.0.0+maca3.8.2.108
+mooncake-transfer-engine==0.3.12+geb7daa.d20260903.maca3.8.2.103
 
-mcoplib==0.4.11+g0cb4f49.maca3.8.2.6.torch2.10
+mcoplib>=0.4.11
 
-# tilelang==0.1.12
+tilelang==0.1.12+maca
+apache-tvm-ffi==0.1.11+maca
 
+maca-python==0.0.1
 
 # uv pip install -r requirements/maca.txt -c requirements/constraints.txt  --index-strategy unsafe-best-match --extra-index-url https://repos.metax-tech.com/r/maca-pypi/simple --trusted-host repos.metax-tech.com --dry-run
