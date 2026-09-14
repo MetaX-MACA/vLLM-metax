@@ -3,9 +3,7 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """Triton-based MoE expert implementations."""
 
-import importlib
 from functools import partial
-from typing import Any
 
 import torch
 
@@ -77,13 +75,6 @@ if mx_envs.USE_PRECOMPILED_KERNEL:
 else:
     fused_moe_triton_kernel = None
     fused_moe_triton_kernel_gptq_awq = None
-
-_mctlass_modname = (
-    "vllm_metax.model_executor.layers.quantization._python_api_ops"
-    if mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API
-    else "vllm_metax.model_executor.layers.quantization._cutlass_ops"
-)
-mctlass_ops: Any = importlib.import_module(_mctlass_modname)
 
 
 class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
@@ -373,7 +364,10 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
         # Ensure correctness when SPLIT_K>1 (atomic_add path).
         if staged_configs[0].get("SPLIT_K", 1) > 1:
             intermediate_cache1.zero_()
-
+        # MCTLASS_FUSED_MOE expects ignore_invalid_experts to be TRUE
+        ignore_invalid_experts = (
+            expert_map is not None and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+        )
         sorted_token_ids, expert_ids, num_tokens_post_padded = (
             _prepare_expert_assignment(
                 topk_ids,
@@ -388,6 +382,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 use_int4_w4a8=self.quant_config.use_int4_w4a8,
                 block_shape=self.block_shape,
                 block_size_m_override=block_size_m_override,
+                ignore_invalid_experts=ignore_invalid_experts,
             )
         )
 
@@ -453,6 +448,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 per_channel_quant=self.per_act_token_quant,
                 block_shape=self.block_shape,
                 B_bias=self.w1_bias,
+                ignore_invalid_experts=ignore_invalid_experts,
             )
 
         if lora_context is not None and lora_context.aux_stream is not None:
@@ -545,6 +541,10 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
             )
 
         if staged_configs[1]["BLOCK_SIZE_M"] != staged_configs[0]["BLOCK_SIZE_M"]:
+            # MCTLASS_FUSED_MOE expects ignore_invalid_experts to be TRUE
+            ignore_invalid_experts = (
+                expert_map is not None and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+            )
             sorted_token_ids, expert_ids, num_tokens_post_padded = (
                 _prepare_expert_assignment(
                     topk_ids,
@@ -558,6 +558,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                     use_int8_w8a8=self.quant_config.use_int8_w8a8,
                     use_int4_w4a8=self.quant_config.use_int4_w4a8,
                     block_shape=self.block_shape,
+                    ignore_invalid_experts=ignore_invalid_experts,
                 )
             )
 
@@ -592,6 +593,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 per_channel_quant=self.per_act_token_quant,
                 block_shape=self.block_shape,
                 B_bias=self.w2_bias,
+                ignore_invalid_experts=ignore_invalid_experts,
             )
 
         if lora_context is not None and lora_context.aux_stream is not None:

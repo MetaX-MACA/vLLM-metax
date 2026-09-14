@@ -14,7 +14,6 @@ if TYPE_CHECKING:
     VERBOSE: bool = False
     USE_PRECOMPILED_KERNEL: bool = True
     VLLM_METAX_OPTIMIZED_DP_ALL2ALL: bool = True
-    MACA_VLLM_ENABLE_MCTLASS_PYTHON_API: bool = True
     MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: bool = True
     USE_VLLM_TRITON_EXPERT: bool = False
     VLLM_METAX_ENABLE_FA_SPLIT_FORWARD: bool = True
@@ -57,12 +56,7 @@ environment_variables: dict[str, Callable[[], Any]] = {
         int(os.environ.get("USE_PRECOMPILED_KERNEL", "1"))
     ),
     # ================== Runtime Env Vars ==================
-    # if set, enable mctlass python api, only support scaled_mm and moe_w8a8 int8
-    "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": lambda: bool(
-        int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_PYTHON_API", "1"))
-    ),
-    # if set, enable bf16 cutlass moe on stage2
-    # or w8a8 cutlass moe on both stage1 and stage2
+    # Enable mctlass fused MoE kernels.
     "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE": lambda: bool(
         int(os.getenv("MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE", "1"))
     ),

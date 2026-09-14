@@ -2,10 +2,6 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 
 
-# ---------------------------------------------------
-# Note: enable with MACA_VLLM_ENABLE_MCTLASS_PYTHON_API=1
-# ---------------------------------------------------
-
 from typing import Any
 
 import torch
@@ -258,14 +254,15 @@ def mctlassEx_fused_moe_bf16_gemm(
     A: torch.Tensor,
     B: torch.Tensor,
     C: torch.Tensor,
-    scale_a: torch.Tensor,
-    scale_b: torch.Tensor,
-    bias: torch.Tensor,
+    scale_a: torch.Tensor | None,
+    scale_b: torch.Tensor | None,
+    bias: torch.Tensor | None,
     topk_weights: torch.Tensor,
     token_ids: torch.Tensor,
     expert_ids: torch.Tensor,
     num_tokens_post_padded: torch.Tensor,
     mul_routed_weight: bool,
+    ignore_invalid_experts: bool = False,
 ) -> torch.Tensor:
     assert mctlass_moe_gemm is not None, "mctlass op is not imported correctly"
     mctlass_moe_gemm(
@@ -286,6 +283,7 @@ def mctlassEx_fused_moe_bf16_gemm(
         expert_ids,
         num_tokens_post_padded,
         mul_routed_weight,
+        filter_expert=ignore_invalid_experts,
     )
     return C
 
@@ -300,14 +298,15 @@ def mctlassEx_fused_moe_bf16_gemm_fake(
     A: torch.Tensor,
     B: torch.Tensor,
     C: torch.Tensor,
-    scale_a: torch.Tensor,
-    scale_b: torch.Tensor,
-    bias: torch.Tensor,
+    scale_a: torch.Tensor | None,
+    scale_b: torch.Tensor | None,
+    bias: torch.Tensor | None,
     topk_weights: torch.Tensor,
     token_ids: torch.Tensor,
     expert_ids: torch.Tensor,
     num_tokens_post_padded: torch.Tensor,
     mul_routed_weight: bool,
+    ignore_invalid_experts: bool = False,
 ) -> torch.Tensor:
     return C
 
@@ -695,13 +694,13 @@ def mctlassEx_fused_moe_w8a8_fp8_gemm(
     topk: int,
     mul_routed_weight: bool,
     block_shape: list[int] | None = None,
-    filter_expert: bool = True,
+    ignore_invalid_experts: bool = False,
 ) -> None:
     assert mctlass_moe_gemm is not None, "mctlassMoeGEMM is not imported correctly"
     c1 = c.view(-1, c.size(-1))
     assert c1.is_contiguous(), "fused moe output buffer is not contiguous"
     fp8_kwargs: dict[str, Any] = {
-        "filter_expert": filter_expert,
+        "filter_expert": ignore_invalid_experts,
         "use_fp8": True,
     }
     if block_shape is not None:
@@ -751,7 +750,7 @@ def mctlassEx_fused_moe_w8a8_fp8_gemm_fake(
     topk: int,
     mul_routed_weight: bool,
     block_shape: list[int] | None = None,
-    filter_expert: bool = True,
+    ignore_invalid_experts: bool = False,
 ) -> None:
     return
 
@@ -783,6 +782,7 @@ def cutlass_moe_w8a8_fp8(
     topk: int,
     mul_routed_weight: bool,
     block_shape: list[int] | None = None,
+    ignore_invalid_experts: bool = False,
 ) -> torch.Tensor:
     torch.ops.vllm.mctlassEx_fused_moe_w8a8_fp8(
         a,
@@ -798,6 +798,7 @@ def cutlass_moe_w8a8_fp8(
         topk,
         mul_routed_weight,
         block_shape,
+        ignore_invalid_experts,
     )
 
     return c
@@ -806,7 +807,6 @@ def cutlass_moe_w8a8_fp8(
 # -------------------------------------------------
 # Note:
 #
-# This is different from `cutlass_scaled_mm` in `_cutlass_ops.py`.
 # It invokes mctlassEx python API directly.
 # -------------------------------------------------
 def cutlass_scaled_mm(
@@ -836,7 +836,6 @@ def cutlass_scaled_mm(
 # -------------------------------------------------
 # Note:
 #
-# This is different from `cutlass_scaled_mm_azp` in `_cutlass_ops.py`.
 # It invokes mctlassEx python API directly.
 # -------------------------------------------------
 def cutlass_scaled_mm_azp(
@@ -885,7 +884,6 @@ def cutlass_fp8_block_scaled_mm(
 # -------------------------------------------------
 # Note:
 #
-# This is different from `cutlass_moe_mm_w8a8_get_kernel_m` in `_cutlass_ops.py`.
 # It invokes mctlassEx python API directly.
 # -------------------------------------------------
 def cutlass_moe_mm_w8a8_get_kernel_m(
@@ -907,7 +905,6 @@ def cutlass_moe_mm_w8a8_get_kernel_m(
 # -------------------------------------------------
 # Note:
 #
-# This is different from `cutlass_moe_mm_w8a8` in `_cutlass_ops.py`.
 # It invokes mctlassEx python API directly.
 # -------------------------------------------------
 def cutlass_moe_mm_w8a8(
@@ -1028,16 +1025,17 @@ def cutlass_moe_mm_bf16(
     A: torch.Tensor,
     B: torch.Tensor,
     C: torch.Tensor,
-    scale_a: torch.Tensor,
-    scale_b: torch.Tensor,
-    bias: torch.Tensor,
+    scale_a: torch.Tensor | None,
+    scale_b: torch.Tensor | None,
+    bias: torch.Tensor | None,
     topk_weights: torch.Tensor,
     token_ids: torch.Tensor,
     expert_ids: torch.Tensor,
     num_tokens_post_padded: torch.Tensor,
     mul_routed_weight: bool,
+    ignore_invalid_experts: bool = False,
 ) -> torch.Tensor:
-    return mctlassEx_fused_moe_bf16_gemm(
+    return torch.ops.vllm.mctlassEx_fused_moe_bf16_gemm(
         batch_size,
         N,
         K,
@@ -1055,6 +1053,7 @@ def cutlass_moe_mm_bf16(
         expert_ids,
         num_tokens_post_padded,
         mul_routed_weight,
+        ignore_invalid_experts,
     )
 
 

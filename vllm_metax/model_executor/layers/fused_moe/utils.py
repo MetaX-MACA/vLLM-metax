@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 import torch
-import importlib
 from typing import Any
 
 import vllm_metax.envs as mx_envs
@@ -9,12 +8,9 @@ from vllm.model_executor.layers.fused_moe.config import (
     FusedMoEQuantConfig,
 )
 
-_mctlass_modname = (
-    "vllm_metax.model_executor.layers.quantization._python_api_ops"
-    if mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API
-    else "vllm_metax.model_executor.layers.quantization._cutlass_ops"
+from vllm_metax.model_executor.layers.quantization import (
+    _python_api_ops as mctlass_ops,
 )
-mctlass_ops: Any = importlib.import_module(_mctlass_modname)
 
 
 def initialize_staged_config(
@@ -101,7 +97,7 @@ def maybe_override_stage_block_size_m(
         staged_configs[0]["BLOCK_SIZE_M"] = kernel_m
         staged_configs[1]["BLOCK_SIZE_M"] = kernel_m
 
-    if quant_config.use_int4_w4a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API:
+    if quant_config.use_int4_w4a8:
         if block_shape is None:
             kernel_m = mctlass_ops.cutlass_moe_mm_w4a8_get_kernel_m_per_channel(
                 a=hidden_states,
@@ -130,6 +126,20 @@ def maybe_override_stage_block_size_m(
         staged_configs[0]["BLOCK_SIZE_M"] = kernel_m
         staged_configs[1]["BLOCK_SIZE_M"] = kernel_m
 
+    if quant_config.use_fp8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+        kernel_m = mctlass_ops.mctlassEx_fused_moe_w8a8_fp8_get_kernel_m(
+            hidden_states,
+            w1,
+            intermediate_cache13,
+            top_k_num,
+            block_shape,
+        )
+        assert kernel_m > 0, (
+            "fp8_w8a8 FusedMoeGEMM.get_kernel_m kernel_m must greater than zero."
+        )
+        staged_configs[0]["BLOCK_SIZE_M"] = kernel_m
+        staged_configs[1]["BLOCK_SIZE_M"] = kernel_m
+
     if (
         hidden_states.dtype == torch.bfloat16
         and not quant_config.use_int4_w4a8
@@ -137,7 +147,6 @@ def maybe_override_stage_block_size_m(
         and not quant_config.use_int8_w8a8
         and not quant_config.use_int8_w8a16
         and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
-        and mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API
     ):
         kernel_m = mctlass_ops.mctlassEx_fused_moe_bf16_get_kernel_m(
             hidden_states,  # A

@@ -7,23 +7,17 @@
 # Affected versions: v0.21.0
 # -----------------------------------------------
 
-import importlib
-from typing import Any
 import torch
 
 from vllm.model_executor.kernels.linear.scaled_mm.cutlass import (
     CutlassFp8BlockScaledMMKernel,
 )
-import vllm_metax.envs as mx_envs
 
 from vllm.model_executor.kernels.linear import register_linear_kernel  # noqa: F401
 
-_mctlass_modname = (
-    "vllm_metax.model_executor.layers.quantization._python_api_ops"
-    if mx_envs.MACA_VLLM_ENABLE_MCTLASS_PYTHON_API
-    else "vllm_metax.model_executor.layers.quantization._cutlass_ops"
+from vllm_metax.model_executor.layers.quantization import (
+    _python_api_ops as mctlass_ops,
 )
-mctlass_ops: Any = importlib.import_module(_mctlass_modname)
 
 
 class MctlassFp8BlockScaledMMKernel(CutlassFp8BlockScaledMMKernel):
