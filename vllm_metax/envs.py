@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: bool = True
     USE_VLLM_TRITON_EXPERT: bool = False
     VLLM_METAX_ENABLE_FA_SPLIT_FORWARD: bool = True
-    VLLM_FUSED_MOE_CHUNK_SIZE: int = 16 * 1024
     VLLM_METAX_SUPPORTS_FP8: bool = False
     VLLM_METAX_USE_FP8_WO_A: bool = True
     VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK: bool = False
@@ -69,9 +68,6 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # and memory usage during decoding
     "VLLM_METAX_ENABLE_FA_SPLIT_FORWARD": lambda: bool(
         int(os.environ.get("VLLM_METAX_ENABLE_FA_SPLIT_FORWARD", "1"))
-    ),
-    "VLLM_FUSED_MOE_CHUNK_SIZE": lambda: int(
-        os.getenv("VLLM_FUSED_MOE_CHUNK_SIZE", str(16 * 1024))
     ),
     # if set, enable fp8 support
     "VLLM_METAX_SUPPORTS_FP8": lambda: bool(

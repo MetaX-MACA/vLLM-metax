@@ -3,8 +3,6 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """Triton-based MoE expert implementations."""
 
-from functools import partial
-
 import torch
 
 import vllm.model_executor.layers.fused_moe.modular_kernel as mk
@@ -347,27 +345,28 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
             workspace13, (num_tokens * top_k_num, cache2_dim)
         )
         intermediate_cache3 = _resize_cache(workspace2, (num_tokens, top_k_num, K))
-        block_size_m_override = partial(
-            maybe_override_stage_block_size_m,
-            hidden_states,
-            w1,
-            intermediate_cache1,
-            self.quant_config,
-            staged_configs,
-            top_k_num,
-            self.block_shape,
-            num_tokens,
-            N,
-            K,
-        )
+        if mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+            maybe_override_stage_block_size_m(
+                hidden_states,
+                w1,
+                intermediate_cache1,
+                staged_configs,
+                top_k_num,
+                self.block_shape,
+                num_tokens,
+                N,
+                K,
+                use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
+                use_int8_w8a8=self.quant_config.use_int8_w8a8,
+                use_int8_w8a16=self.quant_config.use_int8_w8a16,
+                use_int4_w4a8=self.quant_config.use_int4_w4a8,
+                use_int4_w4a16=self.quant_config.use_int4_w4a16,
+            )
 
         # Ensure correctness when SPLIT_K>1 (atomic_add path).
         if staged_configs[0].get("SPLIT_K", 1) > 1:
             intermediate_cache1.zero_()
-        # MCTLASS_FUSED_MOE expects ignore_invalid_experts to be TRUE
-        ignore_invalid_experts = (
-            expert_map is not None and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
-        )
+
         sorted_token_ids, expert_ids, num_tokens_post_padded = (
             _prepare_expert_assignment(
                 topk_ids,
@@ -376,15 +375,27 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 top_k_num,
                 global_num_experts,
                 expert_map,
+                use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
                 use_int8_w8a16=self.quant_config.use_int8_w8a16,
                 use_int4_w4a16=self.quant_config.use_int4_w4a16,
                 use_int8_w8a8=self.quant_config.use_int8_w8a8,
                 use_int4_w4a8=self.quant_config.use_int4_w4a8,
                 block_shape=self.block_shape,
-                block_size_m_override=block_size_m_override,
-                ignore_invalid_experts=ignore_invalid_experts,
             )
         )
+
+        # mctlass_fused_moe set `filter_expert` to
+        #   True(default): indicate that it MIGHT contain -1 in expert_ids (handle both situations).
+        #   False        : MUST NOT exist -1 in expert_ids (expert_map is None or ignore_invalid_experts).
+        #
+        # `filter_expert` could be explicitly set to False for better performance
+        # Note: there will be kernel trap if set filter_expert=False with expert_ids contains -1.
+
+        filter_expert = True
+        if mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+            # _prepare_expert_assignment set ignore_invalid_experts to False here
+            # Only need to verify if use_ep or not.
+            filter_expert = expert_map is not None
 
         # LoRA w13: applied to intermediate_cache1 before activation. When
         # the LoRA layer requested a dual-stream schedule, we run base w13
@@ -448,7 +459,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 per_channel_quant=self.per_act_token_quant,
                 block_shape=self.block_shape,
                 B_bias=self.w1_bias,
-                ignore_invalid_experts=ignore_invalid_experts,
+                filter_expert=filter_expert,
             )
 
         if lora_context is not None and lora_context.aux_stream is not None:
@@ -541,10 +552,6 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
             )
 
         if staged_configs[1]["BLOCK_SIZE_M"] != staged_configs[0]["BLOCK_SIZE_M"]:
-            # MCTLASS_FUSED_MOE expects ignore_invalid_experts to be TRUE
-            ignore_invalid_experts = (
-                expert_map is not None and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
-            )
             sorted_token_ids, expert_ids, num_tokens_post_padded = (
                 _prepare_expert_assignment(
                     topk_ids,
@@ -553,15 +560,28 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                     top_k_num,
                     global_num_experts,
                     expert_map,
+                    use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
                     use_int8_w8a16=self.quant_config.use_int8_w8a16,
                     use_int4_w4a16=self.quant_config.use_int4_w4a16,
                     use_int8_w8a8=self.quant_config.use_int8_w8a8,
                     use_int4_w4a8=self.quant_config.use_int4_w4a8,
                     block_shape=self.block_shape,
-                    ignore_invalid_experts=ignore_invalid_experts,
                 )
             )
 
+            # mctlass_fused_moe set `filter_expert` to
+            #   True(default): indicate that it MIGHT contain -1 in expert_ids (handle both situations).
+            #   False        : MUST NOT exist -1 in expert_ids (expert_map is None or ignore_invalid_experts).
+            #
+            # `filter_expert` could be explicitly set to False for better performance
+            # Note: there will be kernel trap if set filter_expert=False with expert_ids contains -1.
+
+            if mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+                # _prepare_expert_assignment set ignore_invalid_experts to False here
+                # Only need to verify if use_ep or not.
+                filter_expert = expert_map is not None
+
+        # These requirements are independent of whether assignments were rebuilt.
         if expert_map is not None or staged_configs[1].get("SPLIT_K", 1) > 1:
             intermediate_cache3.zero_()
 
@@ -593,7 +613,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 per_channel_quant=self.per_act_token_quant,
                 block_shape=self.block_shape,
                 B_bias=self.w2_bias,
-                ignore_invalid_experts=ignore_invalid_experts,
+                filter_expert=filter_expert,
             )
 
         if lora_context is not None and lora_context.aux_stream is not None:

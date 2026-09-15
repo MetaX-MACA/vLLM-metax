@@ -4,9 +4,6 @@ import torch
 from typing import Any
 
 import vllm_metax.envs as mx_envs
-from vllm.model_executor.layers.fused_moe.config import (
-    FusedMoEQuantConfig,
-)
 
 from vllm_metax.model_executor.layers.quantization import (
     _python_api_ops as mctlass_ops,
@@ -81,15 +78,32 @@ def maybe_override_stage_block_size_m(
     hidden_states: torch.Tensor,
     w1: torch.Tensor,
     intermediate_cache13: torch.Tensor,
-    quant_config: FusedMoEQuantConfig,
     staged_configs: tuple[dict[str, Any], dict[str, Any]],
     top_k_num: int,
     block_shape: list[int] | None,
     num_tokens: int,
     N: int,
     K: int,
+    *,
+    use_fp8_w8a8: bool = False,
+    use_int8_w8a8: bool = False,
+    use_int8_w8a16: bool = False,
+    use_int4_w4a8: bool = False,
+    use_int4_w4a16: bool = False,
+    quantized_hidden_states: torch.Tensor | None = None,
 ) -> None:
-    if quant_config.use_int8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+    """Match both stages to the MCTLASS kernel's token block size.
+
+    Modular callers can supply their prepared input alone. Functional callers
+    also supply the quantized input for kernels that inspect quantized inputs.
+    """
+    if not mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+        return
+
+    if quantized_hidden_states is None:
+        quantized_hidden_states = hidden_states
+
+    if use_int8_w8a8:
         kernel_m = mctlass_ops.cutlass_moe_mm_w8a8_get_kernel_m(
             hidden_states, w1, intermediate_cache13, top_k_num
         )
@@ -97,7 +111,7 @@ def maybe_override_stage_block_size_m(
         staged_configs[0]["BLOCK_SIZE_M"] = kernel_m
         staged_configs[1]["BLOCK_SIZE_M"] = kernel_m
 
-    if quant_config.use_int4_w4a8:
+    if use_int4_w4a8:
         if block_shape is None:
             kernel_m = mctlass_ops.cutlass_moe_mm_w4a8_get_kernel_m_per_channel(
                 a=hidden_states,
@@ -109,11 +123,11 @@ def maybe_override_stage_block_size_m(
             )
         else:
             kernel_m = mctlass_ops.mctlassEx_fused_moe_w4a8_get_kernel_m(
-                hidden_states,
+                quantized_hidden_states,
                 w1.view(dtype=torch.quint4x2),
                 intermediate_cache13,
                 num_experts=w1.size(0),
-                batch_size=hidden_states.size(0),
+                batch_size=quantized_hidden_states.size(0),
                 N=N,
                 K=K,
                 num_valid_tokens=num_tokens,
@@ -126,9 +140,9 @@ def maybe_override_stage_block_size_m(
         staged_configs[0]["BLOCK_SIZE_M"] = kernel_m
         staged_configs[1]["BLOCK_SIZE_M"] = kernel_m
 
-    if quant_config.use_fp8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+    if use_fp8_w8a8:
         kernel_m = mctlass_ops.mctlassEx_fused_moe_w8a8_fp8_get_kernel_m(
-            hidden_states,
+            quantized_hidden_states,
             w1,
             intermediate_cache13,
             top_k_num,
@@ -140,13 +154,31 @@ def maybe_override_stage_block_size_m(
         staged_configs[0]["BLOCK_SIZE_M"] = kernel_m
         staged_configs[1]["BLOCK_SIZE_M"] = kernel_m
 
+    if use_int4_w4a16 and quantized_hidden_states.dtype == torch.bfloat16:
+        # MCTLASS only supports W4A16 with BF16 activations (MC3-9935).
+        assert block_shape is not None, "block_shape must be provided for w4a16"
+        kernel_m = mctlass_ops.cutlass_moe_mm_w4a16_get_kernel_m(
+            a=quantized_hidden_states,
+            b=w1,
+            c=intermediate_cache13,
+            K=K,
+            num_valid_tokens=hidden_states.size(0) * top_k_num,
+            topk=top_k_num,
+            group_size=block_shape[1],
+        )
+        assert kernel_m > 0, (
+            "cutlass_fused_moe_w4a16 BLOCK_SIZE_M must greater than zero."
+        )
+        staged_configs[0]["BLOCK_SIZE_M"] = kernel_m
+        staged_configs[1]["BLOCK_SIZE_M"] = kernel_m
+
     if (
         hidden_states.dtype == torch.bfloat16
-        and not quant_config.use_int4_w4a8
-        and not quant_config.use_int4_w4a16
-        and not quant_config.use_int8_w8a8
-        and not quant_config.use_int8_w8a16
-        and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+        and not use_fp8_w8a8
+        and not use_int4_w4a8
+        and not use_int4_w4a16
+        and not use_int8_w8a8
+        and not use_int8_w8a16
     ):
         kernel_m = mctlass_ops.mctlassEx_fused_moe_bf16_get_kernel_m(
             hidden_states,  # A
