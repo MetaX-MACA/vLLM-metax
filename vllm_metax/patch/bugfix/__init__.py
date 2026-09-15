@@ -8,4 +8,9 @@
 # from . import dp_fix  # noqa: F401
 from . import triton_support  # noqa: F401
 from . import deepseek_v4  # noqa: F401
+from . import telechat3
 from . import transformers_utils
+from . import minimax_m3
+from . import int8_moe_gemm1_params
+from . import routed_experts_fused_weight_fix  # noqa: F401
+from . import qwen3_5_moe_loading  # noqa: F401

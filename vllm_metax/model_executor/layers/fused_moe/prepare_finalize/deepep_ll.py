@@ -24,24 +24,6 @@ DEEPEP_QUANT_BLOCK_SHAPE = [DEEPEP_QUANT_BLOCK_SIZE, DEEPEP_QUANT_BLOCK_SIZE]
 class MacaDeepEPLLPrepareAndFinalize(DeepEPLLPrepareAndFinalize):
     """Prepare/Finalize using DeepEP low-latency kernels."""
 
-    def _receiver(
-        self,
-        expert_x: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
-        expert_num_tokens: torch.Tensor,
-        a1_scale: torch.Tensor | None,
-        a1_dtype: torch.dtype,
-        quant_config: FusedMoEQuantConfig,
-    ) -> mk.PrepareResultType:
-        # expert_x, expert_x_scale = self._do_quant(expert_x, a1_dtype,
-        #                                           quant_config)
-
-        expert_x_scale = None
-        expert_tokens_meta = mk.ExpertTokensMetadata(
-            expert_num_tokens=expert_num_tokens, expert_num_tokens_cpu=None
-        )
-
-        return expert_x, expert_x_scale, expert_tokens_meta, None, None
-
     def prepare_async(
         self,
         a1: torch.Tensor,
@@ -120,20 +102,19 @@ class MacaDeepEPLLPrepareAndFinalize(DeepEPLLPrepareAndFinalize):
             self.max_tokens_per_rank,
             num_experts,
             use_fp8=self.use_fp8_dispatch,
-            # Metax Modification
+            # /---------------- MetaX Modification ---------------\
             # round_scale=self.use_ue8m0_dispatch,
             # use_ue8m0=self.use_ue8m0_dispatch,
             # **(dict(use_nvfp4=True) if use_nvfp4 else dict()),
             # **(
             #     dict(x_global_scale=qc_a1_gscale_or_scale)
-            #     if qc_a1_gscale_or_scale is not None
+            #     if qc_a1_gscale_or_scale is not None and nvfp4_dispatch
             #     else dict()
             # ),
-            # Metax Modification
+            # \---------------- MetaX Modification ---------------/
             async_finish=False,
             return_recv_hook=True,
         )
-
         self.handles[a2a_idx] = handle
 
         return (
@@ -146,3 +127,19 @@ class MacaDeepEPLLPrepareAndFinalize(DeepEPLLPrepareAndFinalize):
                 quant_config,
             ),
         )
+
+    def _receiver(
+        self,
+        expert_x: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
+        expert_num_tokens: torch.Tensor,
+        a1_scale: torch.Tensor | None,
+        a1_dtype: torch.dtype,
+        quant_config: FusedMoEQuantConfig,
+    ) -> mk.PrepareResultType:
+        expert_x, expert_x_scale = self._do_quant(expert_x, a1_dtype, quant_config)
+
+        expert_tokens_meta = mk.ExpertTokensMetadata(
+            expert_num_tokens=expert_num_tokens, expert_num_tokens_cpu=None
+        )
+
+        return expert_x, expert_x_scale, expert_tokens_meta, None, None

@@ -9,11 +9,11 @@ import torch
 from torch.distributed import ProcessGroup
 
 from vllm_metax import envs as mx_envs
-from vllm.logger import init_logger
-from vllm.distributed.device_communicators.cuda_communicator import CudaCommunicator
+from vllm.distributed.device_communicators.cuda_communicator import (
+    CudaCommunicator,
+    logger,
+)
 from vllm.distributed.utils import StatelessProcessGroup
-
-logger = init_logger(__name__)
 
 
 class MacaCommunicator(CudaCommunicator):
@@ -49,7 +49,7 @@ class MacaCommunicator(CudaCommunicator):
                     "Maca override AgRsAll2AllManager to %s for better performance.",
                     self.all2all_manager.__class__.__name__,
                 )
-            elif self.use_all2all and self.all2all_backend == "deepep_low_latency":
+            elif self.all2all_backend == "deepep_low_latency":
                 from .all2all import MacaDeepEPLLAll2AllManager
 
                 self.all2all_manager = MacaDeepEPLLAll2AllManager(

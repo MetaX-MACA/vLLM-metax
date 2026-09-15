@@ -57,3 +57,7 @@ def register_model():
     ModelRegistry.register_model(
         "Qwen3OmniMoeForConditionalGeneration", "vllm_metax.models.qwen3_omni_moe_thinker:Qwen3OmniMoeThinkerForConditionalGeneration"
     )
+
+    ModelRegistry.register_model(
+        "Step3p5ForCausalLM", "vllm_metax.models.step3p5:Step3p5ForCausalLM"
+    )
