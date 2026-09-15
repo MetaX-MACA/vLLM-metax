@@ -18,8 +18,8 @@ from vllm.model_executor.models.utils import (
 from vllm_metax.patch import patch
 
 
-@patch("vllm.models.minimax_m3.nvidia.model", "MiniMaxM3Model.model_load_weights")
-def model_load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
+@patch("vllm.models.minimax_m3.nvidia.model", "MiniMaxM3Model.load_weights")
+def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
     # q/k/v_proj -> fused qkv_proj; gate_proj/up_proj -> fused gate_up_proj
     # (dense MLP and shared expert). On sparse layers the indexer
     # index_q/index_k_proj fold into the same fused qkv_proj
