@@ -5,9 +5,6 @@ import inspect
 import os
 import torch
 
-from fla.ops.gated_delta_rule import (
-    chunk_gated_delta_rule as external_chunk_gated_delta_rule,
-)
 from vllm.model_executor.layers.mamba.gdn.qwen_gdn_linear_attn import (
     ChunkGatedDeltaRule,
 )
@@ -31,6 +28,10 @@ class MacaChunkGatedDeltaRule(ChunkGatedDeltaRule):
         core_attn_out: torch.Tensor | None = None,
     ):
         if os.getenv("MACA_VLLM_USE_EXTERNAL_FLA", "0") == "1":
+            from fla.ops.gated_delta_rule import (
+                chunk_gated_delta_rule as external_chunk_gated_delta_rule,
+            )
+
             _fla_parameters = inspect.signature(
                 external_chunk_gated_delta_rule
             ).parameters

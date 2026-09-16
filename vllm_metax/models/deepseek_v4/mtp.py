@@ -187,11 +187,7 @@ class DeepSeekV4MultiTokenPredictor(nn.Module):
         # Three aux streams shared across all MTP layers, mirroring DeepseekV4Model.
         # ------------------------------------------------
         # Note: Metax disable multi stream for performance
-        aux_stream_list = (
-            None
-            if current_platform.is_out_of_tree()
-            else [torch.cuda.Stream() for _ in range(3)]
-        )
+        aux_stream_list = None
 
         # to map the exact layer index from weights
         self.layers = torch.nn.ModuleDict(

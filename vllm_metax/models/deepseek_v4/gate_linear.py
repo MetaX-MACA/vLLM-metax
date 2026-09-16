@@ -54,13 +54,15 @@ class MacaGateLinear(GateLinear):
         # DSV3 specialized kernel eligibility (SM90+, exact dims)
         self.allow_specialized_router_gemm = can_use_specialized_kernels
         self.allow_dsv3_router_gemm = False
+        self._dsv3_max_batch = 16
 
         self.allow_fp32_router_gemm = (
             not bias
             and self.weight.dtype == torch.float32
-            and output_size in self.FP32_SUPPORTED_NUM_EXPERTS
-            and input_size in self.FP32_SUPPORTED_HIDDEN_SIZES
+            and (input_size, output_size) in self.FP32_SUPPORTED_SHAPES
         )
+
+        self.allow_bf16x3_router_gemm = False
 
         # cuBLAS bf16→fp32 eligibility
         self.allow_cublas_router_gemm = (
@@ -68,3 +70,7 @@ class MacaGateLinear(GateLinear):
             and self.weight.dtype == torch.bfloat16
             and self.out_dtype == torch.float32
         )
+
+        # These dispatch tiers were added to GateLinear.forward in vLLM 0.27.
+        # They are CUDA-specific and intentionally disabled on MetaX.
+        self.allow_ll_bf16_gemm = False

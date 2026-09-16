@@ -108,3 +108,12 @@ class MacaSparseAttnIndexer(SparseAttnIndexer):
             self.dcp_world_size,
             self.cp_kv_cache_interleave_size,
         )
+
+    def forward_native(
+        self,
+        hidden_states: torch.Tensor,
+        q_quant: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
+        k: torch.Tensor,
+        weights: torch.Tensor,
+    ):
+        return self.forward_oot(hidden_states, q_quant, k, weights)

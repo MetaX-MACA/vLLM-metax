@@ -18,7 +18,7 @@ from vllm.model_executor.layers.linear import (
     ReplicatedLinear,
     RowParallelLinear,
 )
-from vllm_metax.customized.layers.sparse_attn_indexer.sparse_attn_indexer import (
+from vllm_metax.registry.custom_ops.layers.sparse_attn_indexer.sparse_attn_indexer import (
     MacaSparseAttnIndexer,
 )
 from .ops import (
@@ -64,6 +64,7 @@ if TYPE_CHECKING:
 
 logger = init_logger(__name__)
 
+
 def _resolve_dsv4_kv_cache_dtype(
     use_fp8_ds_mla_layout: bool,
     kv_cache_dtype: str,
@@ -77,7 +78,7 @@ def _resolve_dsv4_kv_cache_dtype(
     page-size specs pick the 576B per-token slot). Plain-row backends store each
     token's KV row in its element dtype: bf16 or per-tensor FP8 E4M3.
     """
-    if use_fp8_ds_mla_layout and kv_cache_dtype.startswith("fp8"):
+    if use_fp8_ds_mla_layout:
         # fp8_ds_mla block format: UE8M0 block-scaled fp8 packed as uint8.
         assert kv_cache_dtype.startswith("fp8"), (
             f"DeepseekV4 fp8_ds_mla layout only supports fp8 kv-cache, "
@@ -108,6 +109,11 @@ class MacaDeepseekV4Attention(DeepseekV4Attention):
     ``DeepseekV4ROCMAiterMLAAttention`` (ROCm) — selected by the platform-specific
     deepseek_v4 model module. The base is never instantiated directly.
     """
+    # KV-cache per-token block format (both layouts are paged). True (default)
+    # = fp8_ds_mla (UE8M0 block-scaled fp8 packed as uint8); False = plain
+    # bf16 / per-tensor fp8 KV row. Backends can override the instance hook when
+    # a single attention class dispatches across arch-specific layouts.
+    use_fp8_ds_mla_layout: ClassVar[bool] = False
 
     def __init__(
         self,
@@ -309,31 +315,7 @@ class MacaDeepseekV4Attention(DeepseekV4Attention):
         cos_sin_cache = self.rotary_emb.cos_sin_cache
         cache_dtype = swa_kv_cache.dtype
 
-        if cache_dtype == torch.bfloat16:
-            swa_kv_cache_2d = swa_kv_cache.view(swa_kv_cache.shape[0], -1)
-
-            # Horizontally fused:
-            #   Q side:  q_head_norm (per-head RMSNorm, no weight) + GPT-J RoPE
-            #   KV side: GPT-J RoPE + UE8M0 FP8 quant + paged cache insert
-            # kv is unchanged; mla_attn reads kv solely via swa_kv_cache.
-            torch.ops._C.fused_deepseek_v4_qnorm_rope_kv_rope_insert(
-                q,
-                kv,
-                swa_kv_cache_2d,
-                swa_metadata.slot_mapping,
-                positions,
-                self.rotary_emb.cos_sin_cache,
-                self.eps,
-                swa_metadata.block_size,
-            )
-            if self.n_local_heads < self.padded_heads:
-                return F.pad(
-                    q,
-                    (0, 0, 0, self.padded_heads - self.n_local_heads),
-                    value=0.0,
-                )
-            return q
-
+        # kv is unchanged; attention reads kv solely via swa_kv_cache.
         if cache_dtype == torch.uint8:
             # fp8_ds_mla UE8M0 paged path. Horizontally fused:
             #   Q side:  per-head RMSNorm (no weight) + GPT-J RoPE, zero-filling
@@ -352,9 +334,33 @@ class MacaDeepseekV4Attention(DeepseekV4Attention):
                 self.eps,
                 swa_metadata.block_size,
             )
-        
+
+        # Plain-row path: the [num_blocks, block_size, 512] cache stores the KV
+        # row in its element dtype (no Q padding). bf16 rewrites q in place;
+        # per-tensor fp8 writes a separately-allocated fp8 q and quantizes the
+        # KV row.
         block_size = swa_metadata.block_size
         swa_kv_cache_3d = swa_kv_cache.view(-1, block_size, self.head_dim)
+        if cache_dtype == torch.bfloat16:
+            torch.ops._C.fused_deepseek_v4_qnorm_rope_kv_rope_full_cache_bf16_insert(
+                q,
+                kv,
+                swa_kv_cache_3d,
+                swa_metadata.slot_mapping,
+                positions,
+                cos_sin_cache,
+                self.eps,
+                block_size,
+            )
+            # TODO(Metax): donno why we still need this padding, to be examined 
+            if self.n_local_heads < self.padded_heads:
+                return F.pad(
+                    q,
+                    (0, 0, 0, self.padded_heads - self.n_local_heads),
+                    value=0.0,
+            )
+            return q
+
         # per-tensor fp8 (torch.float8_e4m3fn)
         q_fp8 = torch.empty_like(q, dtype=torch.float8_e4m3fn)
         torch.ops._C.fused_deepseek_v4_qnorm_rope_kv_rope_full_cache_fp8_insert(
@@ -376,6 +382,7 @@ class MacaDeepseekV4IndexerCache(DeepseekV4IndexerCache):
     def get_kv_cache_spec(self, vllm_config: VllmConfig) -> KVCacheSpec:
         # head_dim already carries the fp8 scale padding
         # compress_ratio=1 for V3.2, >1 for DeepseekV4; both use the same cache layout.
+        uses_fp8_ds_mla_layout = vllm_config.cache_config.cache_dtype == "fp8_ds_mla"
         return MLAAttentionSpec(
             block_size=self.cache_config.block_size,
             num_kv_heads=1,
@@ -461,8 +468,6 @@ class MacaDeepseekV4Indexer(nn.Module):
         # ----------------------------------------------
         # Note(Metax): int8 indxer cache use the same layout as FP8:
         k_cache_head_dim = self.head_dim + self.head_dim // self.quant_block_size * 4
-        
-        
         self.k_cache = MacaDeepseekV4IndexerCache(
             head_dim=k_cache_head_dim,
             dtype=torch.uint8,
