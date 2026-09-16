@@ -11,11 +11,6 @@ from vllm.model_executor.layers.fused_moe import (
     SharedExperts,
 )
 
-from vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors_moe.compressed_tensors_moe_wna16_marlin import (
-    CompressedTensorsWNA16MarlinMoEMethod as vllm_ctm_wna16_marlin,  # noqa: F401
-)
-
-
 import vllm.model_executor.layers.fused_moe.modular_kernel as mk
 
 

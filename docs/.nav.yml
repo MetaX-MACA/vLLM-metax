@@ -7,6 +7,9 @@ nav:
       - getting_started/installation/maca.md
     - Models:
       - models/supported_models.md
+    - Releases:
+      - releases/v0.29.0.md
+      - releases/v0.29.0.en.md
   - Developer Guide:
     - developing/README.md
     - Patch Management:
