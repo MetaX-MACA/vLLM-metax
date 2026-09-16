@@ -1,6 +1,6 @@
 # Contributing to plugin
 
-Thank you for your interest in contributing to `vllm-metax`! 
+Thank you for your interest in contributing to `vllm-metax`!
 
 Before writing the first line of codes, we strongly recommend you to take a look at plugin architecture and design principle. Here is a quick guide for them:
 
