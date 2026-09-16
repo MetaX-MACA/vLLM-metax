@@ -6,7 +6,7 @@ requires = [
     "packaging>=24.2",
     "setuptools>=77.0.3,<81.0.0",
     "setuptools-scm>=8.0",
-    "torch==2.10.0+metax3.8.0.7",
+    "torch==2.10.0+metax3.8.2.2",
     "wheel",
     "jinja2",
 ]
@@ -139,7 +139,7 @@ extend-exclude = ["tests/models/fixtures/*", "tests/prompts/*", "tests/tokenizer
     "examples/pooling/token_embed/*", "tests/models/language/pooling/*",
     "vllm/third_party/*", "vllm/entrypoints/serve/instrumentator/static/*", "tests/entrypoints/openai/speech_to_text/test_transcription_validation.py",
     "docs/governance/process.md", "tests/v1/engine/test_fast_incdec_prefix_err.py", ".git/*",
-    "vllm_metax/third_party/pymxsml.py", "tools/**", "tests/**", "examples/**", "csrc/**"]
+    "vllm_metax/third_party/pymxsml.py", "tools/**", "tests/**", "examples/**", "csrc/**", "requirements/**"]
 ignore-hidden = false
 
 [tool.typos.default]

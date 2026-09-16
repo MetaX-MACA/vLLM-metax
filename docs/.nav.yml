@@ -7,12 +7,18 @@ nav:
       - getting_started/installation/maca.md
     - Models:
       - models/supported_models.md
+    - Release Notes:
+      - glob: release/*/README.md
+        sort:
+          direction: desc
   - Developer Guide:
     - developing/README.md
     - Patch Management:
       - developing/patches/README.md
     - Model Implementation:
       - developing/model/registration.md
+    - Debug:
+      - developing/msprobe/msprobe_guide.md
     # - Inference and Serving:
       # - serving/*
 # Todo: Add more navigation items here

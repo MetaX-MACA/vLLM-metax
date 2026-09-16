@@ -1,8 +1,8 @@
 # Installation
 
 !!! warning "Breaking Change Notice"
-    After v0.11.2, vLLM-MetaX moved its `_C` and `_moe_C` kernel into a separate package named `mcoplib`. 
-    
+    After v0.11.2, vLLM-MetaX moved its `_C` and `_moe_C` kernel into a separate package named `mcoplib`.
+
     mcoplib is open-sourced at [MetaX-mcoplib](https://github.com/MetaX-MACA/mcoplib) and would maintain its own release cycle. vllm-metax's release rely on its corresponding version of mcoplib. Check it at the [Release Page](../quickstart.md#releases).
 
     Though the *csrc* folder is still kept in this repo for development convenience, and there is no guarantee that the code is always in sync with mcoplib. Not only the performance but also the correctness may differ from mcoplib. 
@@ -23,7 +23,6 @@
 - Python: 3.10 -- 3.12
 - Hardware: MetaX C-series
 - SDK: MACA-SDK
-
 
 ## Build from source
 
@@ -52,8 +51,8 @@ export LD_LIBRARY_PATH=${MACA_PATH}/lib:${MACA_PATH}/ompi/lib:${MACA_PATH}/mxgpu
 
 Clone vllm-metax project:
 
-```bash 
-git clone https://github.com/MetaX-MACA/vLLM-metax
+```bash
+git clone --branch releases/v0.26.0 https://github.com/MetaX-MACA/vLLM-metax
 cd vLLM-metax
 ```
 
@@ -66,7 +65,7 @@ Build the plugin:
 
 ### Build vllm
 
-!!! warning 
+!!! warning
 
     It's ***not recommended*** to install vllm directly from PYPI with:
 
@@ -78,7 +77,7 @@ Build the plugin:
 
 Clone vllm project:
 
-```bash 
+```bash
 git clone  --depth 1 --branch releases/v0.26.0 https://github.com/vllm-project/vllm 
 cd vllm
 ```

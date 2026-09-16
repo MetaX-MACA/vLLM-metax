@@ -1,4 +1,7 @@
+<!-- markdownlint-disable MD025 -->
+
 # --8<-- [start:prepare-env]
+
 !!! note
 
     UV **does not rely** on any pre-installed packages in the docker, and would install all the dependencies in a virtual environment from scratch.
@@ -35,9 +38,11 @@
         ```bash
         export UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple
         ```
+
 # --8<-- [end:prepare-env]
 
 # --8<-- [start:build-vllm-metax]
+
 !!! note
 
     ```bash
@@ -57,9 +62,11 @@
         ```bash 
         uv build --wheel
         ```
+
 # --8<-- [end:build-vllm-metax]
 
 # --8<-- [start:build-vllm]
+
 !!! note "To build vLLM using local uv environment"
 
     ```bash
@@ -74,6 +81,8 @@
 # --8<-- [end:build-vllm]
 
 # --8<-- [start:post-build]
+
 !!! note
     None
+
 # --8<-- [end:post-build]
