@@ -1,5 +1,7 @@
 # vLLM-MetaX v0.24.0 User Guide
 
+[中文](/release/0.25.0/zh.md){ .md-button }
+
 > This is the per-release user guide shipped with vLLM-MetaX v0.24.0, for users and delivery teams deploying large models on MetaX GPU (MACA).
 > Starting from this version, each release ships with a matching guide, kept together under `docs/releases/`.
 >

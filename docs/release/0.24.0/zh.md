@@ -1,5 +1,7 @@
 # vLLM-MetaX v0.24.0 使用指导手册
 
+[English](/release/0.25.0/en.md){ .md-button }
+
 > 本文是 vLLM-MetaX v0.24.0 版本随版发布的用户指导手册，面向在 MetaX GPU（MACA）上部署大模型的用户与交付团队。
 > 从本版本起，每个发布版本都会附一份对应的指导手册，统一记录在 `docs/releases/` 下。
 >
