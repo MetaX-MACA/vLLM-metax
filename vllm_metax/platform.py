@@ -219,9 +219,16 @@ class MacaPlatformBase(Platform):
     def is_cuda_alike(cls) -> bool:
         return True
 
-    @classmethod
     def is_sleep_mode_available(cls) -> bool:
         return True
+
+    def is_cumem_allocator_available(self) -> bool:
+        try:
+            from vllm_metax.device_allocator.cumem import cumem_available
+        except ImportError:
+            return False
+
+        return cumem_available
 
     @classmethod
     def is_fully_connected(cls, device_ids: list[int]) -> bool:
@@ -366,7 +373,8 @@ class MacaPlatformBase(Platform):
 
         # -------------------------------------------------------
         # Note: Support joyai_llm_flash MTP
-        if model_config is not None:
+        # This is a patch on
+        if model_config is not None and vllm_config.speculative_config is not None:
             hf_config = model_config.hf_config
             # logic copied from `SepculativeConfig.hf_config_override`
             if hf_config.model_type in ("joyai_llm_flash",):

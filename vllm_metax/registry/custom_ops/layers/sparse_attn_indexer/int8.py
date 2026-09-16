@@ -287,12 +287,12 @@ def sparse_attn_indexer_int8(
         topk_indices = topk_indices_buffer[:num_padded_tokens, :topk_tokens]
 
         use_cooperative_topk = (
-            current_platform.is_cuda_alike()
+            current_platform.is_cuda()
             and topk_tokens in (512, 1024, 2048)
             and num_rows <= 32
             and logits.stride(0) % 4 == 0  # TMA 16-byte alignment
         )
-        use_persistent_topk = current_platform.is_cuda_alike() and topk_tokens in (
+        use_persistent_topk = current_platform.is_cuda() and topk_tokens in (
             512,
             1024,
             2048,

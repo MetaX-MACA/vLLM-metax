@@ -258,7 +258,6 @@ class MacaDeepseekV4FlashMLAAttention(MacaDeepseekV4Attention):
     ) -> None:
         swa_only = attn_metadata is None
 
-        num_prefills = swa_metadata.num_prefills
         num_prefill_tokens = swa_metadata.num_prefill_tokens
         num_decodes = swa_metadata.num_decodes
         num_decode_tokens = swa_metadata.num_decode_tokens
@@ -291,7 +290,6 @@ class MacaDeepseekV4FlashMLAAttention(MacaDeepseekV4Attention):
             assert self.topk_indices_buffer is not None
             topk_indices = self.topk_indices_buffer[num_decode_tokens:]
             top_k = 0
-           
         chunk_plan = swa_metadata.get_prefill_chunk_plan(
             compress_ratio=self.compress_ratio,
             prefill_chunk_size=self.PREFILL_CHUNK_SIZE,

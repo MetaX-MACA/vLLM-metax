@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
+from typing import Any
+
 import torch
+
 from vllm.logger import init_logger
 from vllm.model_executor.layers.fused_moe.config import (
     FusedMoEConfig,
@@ -25,6 +28,9 @@ from vllm.utils.import_utils import (
 logger = init_logger(__name__)
 
 if has_deep_ep():
+    from vllm.model_executor.layers.fused_moe.prepare_finalize.deepep_ht import (
+        DeepEPHTPrepareAndFinalize,
+    )
     from vllm_metax.model_executor.layers.fused_moe.prepare_finalize.deepep_ll import (
         DEEPEP_QUANT_BLOCK_SHAPE,
         MacaDeepEPLLPrepareAndFinalize,
@@ -81,7 +87,18 @@ def maybe_make_prepare_finalize(
     #   * DeepEP low-latency kernels
     #   * All2All kernels with naive DP/EP
     # \ ----------------------------------------------------------------- /
-    if moe.use_deepep_ll_kernels:
+    if moe.use_deepep_ht_kernels:
+        assert moe.dp_size == all2all_manager.dp_world_size
+
+        all_to_all_args: dict[str, Any] = dict()
+        handle = all2all_manager.get_handle(all_to_all_args)
+        prepare_finalize = DeepEPHTPrepareAndFinalize(
+            handle,
+            num_dispatchers=all2all_manager.world_size,
+            dp_size=all2all_manager.dp_world_size,
+            rank_expert_offset=all2all_manager.rank * moe.num_local_experts,
+        )
+    elif moe.use_deepep_ll_kernels:
         assert quant_config is not None
         global_to_physical = physical_to_global = local_expert_global_ids = None
         if routing_tables is not None:

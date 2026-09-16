@@ -2,7 +2,16 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 #
 # -----------------------------------------------------------------------------
-# Note: logic error for loading experts.w13.scale
+# Note: Fix fused weight orientation checks in RoutedExperts.load_weights.
+#       v0.26.0 wrongly transposes fused per-channel scale tensors whose
+#       dimensions do not contain the hidden size, and the transposed
+#       checkpoint layout ([E, 1, 2*I]) must also be normalized before
+#       chunk(2, dim=1). Otherwise w1/w3 splitting operates on the size-1
+#       reduced axis and loading crashes in `_load_w13` with a copy_ shape
+#       mismatch (e.g. [0, 1] vs [0, 3072]).
+#
+#       Mirrors upstream PR #50137 plus the transposed-scale normalization
+#       from mx/v0.25.0-dev (987498d7).
 #
 # Affected versions: v0.26.0
 #
@@ -16,12 +25,41 @@ from vllm_metax.patch.utils import patch
 from vllm.model_executor.layers.fused_moe.routed_experts import logger
 
 
+def _orient_fused_weight(
+    fused_weight: torch.Tensor,
+    shard_id: str,
+    unpadded_hidden: int,
+) -> torch.Tensor:
+    """Orient fused weights while leaving per-channel scales unchanged."""
+    # Per-channel scale tensors (e.g. experts.w13.scale) are
+    # [E, 2*I, 1] in the vLLM-native layout and [E, 1, 2*I] in transposed
+    # checkpoints. The dimension of size 1 is the per-channel reduced axis
+    # and must stay last so the later chunk(2, dim=1) splits w1/w3 instead
+    # of chunking the singleton (which yields an undivided [E, 1, 2*I]
+    # slice that later TP-shards into [0, 2*I] and fails to copy).
+    if fused_weight.shape[-1] == 1 or fused_weight.shape[-2] == 1:
+        if fused_weight.shape[-2] == 1 and fused_weight.shape[-1] != 1:
+            return fused_weight.transpose(-1, -2)
+        return fused_weight
+
+    if shard_id == "w2":
+        hidden_axis, intermediate_axis = -2, -1
+    else:
+        hidden_axis, intermediate_axis = -1, -2
+    if (
+        fused_weight.shape[hidden_axis] != unpadded_hidden
+        and fused_weight.shape[intermediate_axis] == unpadded_hidden
+    ):
+        return fused_weight.transpose(-1, -2)
+    return fused_weight
+
+
 @patch(
     "vllm.model_executor.layers.fused_moe.routed_experts", "RoutedExperts.load_weights"
 )
 def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> Iterable[str]:
     expert_mapping = self.get_expert_mapping(include_fused=True)
-    unpadded_hidden = self.moe_config.hidden_dim_unpadded
+    unpadded_hidden = self.moe_config.hidden_dim_unpadded or self.moe_config.hidden_dim
     for expert_name, loaded_weight in weights:
         qual_name = f"{self.layer_name}.{expert_name}"
         # Fused expert weights can be identified by their 3D tensors
@@ -37,27 +75,22 @@ def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> Iterable[
             param_name = weight_name.removeprefix(f"{self.layer_name}.")
             param = getattr(self, param_name)
             if is_fused:
-                # w1 and w3 share one fused tensor; use a local copy so the
-                # transpose below doesn't mutate loaded_weight across
-                # iterations (else w3 is transposed twice and wrongly chunked)
-                fused_weight = loaded_weight
                 # /-------------------- MetaX Modification --------------------\
-                # Fix logic error for loading experts.w13.scale
+                # Normalize fused weights and per-channel scales to the
+                # canonical orientation before chunking w1/w3. Note that this
+                # only returns views, so loaded_weight is never mutated across
+                # iterations (else w3 would be transposed twice and wrongly
+                # chunked).
+                fused_weight = _orient_fused_weight(
+                    loaded_weight,
+                    shard_id,
+                    unpadded_hidden,
+                )
+                # \------------------------------------------------------------/
                 if shard_id in {"w1", "w3"}:
-                    if "scale" in weight_name:
-                        # [experts, gate_up, 1]
-                        experts_shard = loaded_weight.chunk(2, dim=1)[expert_id]
-                    else:
-                        if fused_weight.shape[-1] != unpadded_hidden:
-                            # [..., hidden, intermediate] -> [..., intermediate, hidden]
-                            fused_weight = fused_weight.transpose(-1, -2)
                     # Repurpose expert_id for deconcatenating w1 and w3
                     experts_shard = fused_weight.chunk(2, dim=1)[expert_id]
-                # \------------------------------------------------------------/
                 else:
-                    if fused_weight.shape[-2] != unpadded_hidden:
-                        # [..., intermediate, hidden] -> [..., hidden, intermediate]
-                        fused_weight = fused_weight.transpose(-1, -2)
                     experts_shard = fused_weight
                 start = 0
             else:

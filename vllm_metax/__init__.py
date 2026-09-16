@@ -2,6 +2,7 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 
 from .version import __version__, __version_tuple__  # noqa: F401
+import sys
 
 
 def collect_env() -> None:
@@ -18,6 +19,9 @@ def register():
 
 ########### general plugins ###########
 def _patch():
+    import vllm_metax.device_allocator.cumem
+
+    sys.modules["vllm.device_allocator.cumem"] = vllm_metax.device_allocator.cumem
     import vllm_metax.patch.bugfix  # noqa: F401
     import vllm_metax.patch.enhancement  # noqa: F401
     import vllm_metax.patch.performance  # noqa: F401
