@@ -5,8 +5,8 @@ Currently the recommended way to start ***vLLM-MetaX*** is via *docker*.
 You could get the docker image at [MetaX develop community](https://developer.metax-tech.com/softnova/docker?chip_name=%E6%9B%A6%E4%BA%91C500%E7%B3%BB%E5%88%97&package_kind=AI&dimension=docker&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85&ai_frame=vllm-metax&arch=amd64&system=ubuntu).
 
 !!! note
-    After v0.11.2, vllm-metax moved its `_C` and `_moe_C` kernels into a separate package named `mcoplib`. 
-    
+    After v0.11.2, vllm-metax moved its `_C` and `_moe_C` kernels into a separate package named `mcoplib`.
+
     **mcoplib** is open-sourced at [MetaX-mcoplib](https://github.com/MetaX-MACA/mcoplib) and would maintain its own release cycle. Please always install the corresponding version of mcoplib when using vLLM-MetaX.
 
     Though the *csrc* folder is still kept in this repo for development convenience, and there is no guarantee that the code is always in sync with mcoplib. Not only the performance but also the correctness may differ from mcoplib. 
@@ -20,22 +20,26 @@ You could get the docker image at [MetaX develop community](https://developer.me
 *Below is version mapping to released plugin and mcoplib with maca*:
 
 | plugin version | maca version | mcoplib version | docker image url |
-|:--------------:|:------------:|:-----------------------:|:-----------------------:|
-|v0.8.5          |maca2.33.1.13 | N/A | [vllm:0.8.5](https://developer.metax-tech.com/softnova/docker?package_name=vllm:maca.ai2.33.0.13-torch2.6-py310-ubuntu22.04-amd64) |
-|v0.9.1          |maca3.0.0.5   | N/A | [vllm:0.9.1](https://developer.metax-tech.com/softnova/docker?package_name=vllm:maca.ai3.0.0.5-torch2.6-py310-ubuntu22.04-amd64) |
-|v0.10.2         |maca3.2.1.7   | N/A | [vllm-metax:0.10.2](https://developer.metax-tech.com/softnova/docker?package_name=vllm:maca.ai3.1.0.7-torch2.6-py310-ubuntu22.04-amd64) |
-|v0.11.0         |maca3.3.0.x   | 0.1.1 | [vllm-metax:0.11.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.11.0-torch2.6) |
-|v0.11.2         |maca3.3.0.x   | 0.2.0 | [vllm-metax:0.11.2](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.11.2-torch2.8) |
-|v0.12.0         |maca3.3.0.x   | 0.3.0 | [vllm-metax:0.12.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.12.0-torch2.8) |
-|v0.13.0         |maca3.3.0.x   | 0.3.1 | [vllm-metax:0.13.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.13.0-torch2.8) |
-|v0.14.0         |maca3.5.3.x   | 0.4.0 | [vllm-metax:0.14.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.14.0-torch2.8) |
-|v0.15.0         |maca3.5.3.x   | 0.4.1 | [vllm-metax:0.15.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.15.0-torch2.8) |
-|v0.16.0         | N/A | N/A | **Skipped** |
-|v0.17.0         |maca3.5.3.x   | 0.4.2 | [vllm-metax:0.17.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.17.0-torch2.8) |
-|v0.18.0         |maca3.5.3.x   | 0.4.3 | [vllm-metax:0.18.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.18.0-torch2.8) |
-|v0.19.0         |maca3.5.3.x   | 0.4.4 | [vllm-metax:0.19.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.19.0-torch2.8) |
-|v0.20.0         |maca3.7.0.x   | 0.4.5 | [vllm-metax:0.20.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.20.0-torch2.8) |
-|v0.21.0         |maca3.7.1.x   | 0.4.6 | [vllm-metax:0.21.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.21.0-torch2.8) |
+| :---: | :---: | :---: | :---: |
+| v0.8.5 | maca2.33.1.13 | N/A | [vllm:0.8.5](https://developer.metax-tech.com/softnova/docker?package_name=vllm:maca.ai2.33.0.13-torch2.6-py310-ubuntu22.04-amd64) |
+| v0.9.1 | maca3.0.0.5 | N/A | [vllm:0.9.1](https://developer.metax-tech.com/softnova/docker?package_name=vllm:maca.ai3.0.0.5-torch2.6-py310-ubuntu22.04-amd64) |
+| v0.10.2 | maca3.2.1.7 | N/A | [vllm-metax:0.10.2](https://developer.metax-tech.com/softnova/docker?package_name=vllm:maca.ai3.1.0.7-torch2.6-py310-ubuntu22.04-amd64) |
+| v0.11.0 | maca3.3.0.x | 0.1.1 | [vllm-metax:0.11.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.11.0-torch2.6) |
+| v0.11.2 | maca3.3.0.x | 0.2.0 | [vllm-metax:0.11.2](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.11.2-torch2.8) |
+| v0.12.0 | maca3.3.0.x | 0.3.0 | [vllm-metax:0.12.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.12.0-torch2.8) |
+| v0.13.0 | maca3.3.0.x | 0.3.1 | [vllm-metax:0.13.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.13.0-torch2.8) |
+| v0.14.0 | maca3.5.3.x | 0.4.0 | [vllm-metax:0.14.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.14.0-torch2.8) |
+| v0.15.0 | maca3.5.3.x | 0.4.1 | [vllm-metax:0.15.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.15.0-torch2.8) |
+| v0.16.0 | N/A | N/A | **Skipped** |
+| v0.17.0 | maca3.5.3.x | 0.4.2 | [vllm-metax:0.17.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.17.0-torch2.8) |
+| v0.18.0 | maca3.5.3.x | 0.4.3 | [vllm-metax:0.18.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.18.0-torch2.8) |
+| v0.19.0 | maca3.5.3.x | 0.4.4 | [vllm-metax:0.19.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.19.0-torch2.8) |
+| v0.20.0 | maca3.7.0.x | 0.4.5 | [vllm-metax:0.20.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.20.0-torch2.8) |
+| v0.21.0 | maca3.7.1.x | 0.4.6 | [vllm-metax:0.21.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.21.0-torch2.8) |
+| v0.22.0 | maca3.8.0.x | 0.4.7 | [vllm-metax:0.22.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.22.0-torch2.10) |
+| v0.23.0 | maca3.8.0.x | 0.4.8 | [vllm-metax:0.23.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.23.0-torch2.10) |
+| v0.24.0 | maca3.8.2.x | 0.4.9 | [vllm-metax:0.24.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.24.0-torch2.10) |
+| v0.25.0 | maca3.8.2.x | 0.4.10 | [vllm-metax:0.25.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.25.0-torch2.10) |
 
 !!! warning "Usage Warning"
     **vLLM-MetaX is out of box via docker images provided above.**

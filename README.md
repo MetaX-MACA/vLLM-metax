@@ -23,8 +23,13 @@ vLLM MetaX Plugin
 ---
 
 *Latest News* 🔥
-- [2026/6] Released vllm-metax **v0.21.0** 🥳 — aligned with vLLM *v0.21.0*. 
-- [2026/6] Released vllm-metax **v0.20.0** 🚀 — aligned with vLLM *v0.20.0*. 
+
+- [2026/9] Released vllm-metax **v0.25.0** 🚀 — aligned with vLLM *v0.25.0*, forgot to let you know here🙇‍♀️.
+- [2026/8] Released vllm-metax **v0.24.0** ❤️‍🔥 — aligned with vLLM *v0.24.0*, supported more models and improved performance.
+- [2026/8] Released vllm-metax **v0.23.0** 🎉 — aligned with vLLM *v0.23.0*.
+- [2026/7] Released vllm-metax **v0.22.0** 🎉 — aligned with vLLM *v0.22.0*.
+- [2026/6] Released vllm-metax **v0.21.0** 🥳 — aligned with vLLM *v0.21.0*.
+- [2026/6] Released vllm-metax **v0.20.0** 🚀 — aligned with vLLM *v0.20.0*.
 - [2026/5] Released vllm-metax **v0.19.0** 🎉 — aligned with vLLM *v0.19.0*, but fully supported Gemma4!
 - [2026/4] Released vllm-metax **v0.18.0** 😎 — aligned with vLLM *v0.18.0*, same as usual.
 - [2026/3] Released vllm-metax **v0.17.0** 🎉 — aligned with vLLM *v0.17.0*, supported more models and improved performance.
@@ -37,16 +42,16 @@ vLLM MetaX Plugin
 - [2025/11] We hosted [vLLM Beijing Meetup](https://mp.weixin.qq.com/s/xSrYXjNgr1HbCP4ExYNG1w) focusing on distributed inference and diverse accelerator support with vLLM! Please find the meetup slides [here](https://drive.google.com/drive/folders/1nQJ8ZkLSjKxvu36sSHaceVXtttbLvvu-?usp=drive_link).
 - [2025/08] We hosted [vLLM Shanghai Meetup](https://mp.weixin.qq.com/s/pDmAXHcN7Iqc8sUKgJgGtg) focusing on building, developing, and integrating with vLLM! Please find the meetup slides [here](https://drive.google.com/drive/folders/1OvLx39wnCGy_WKq8SiVKf7YcxxYI3WCH).
 
-
 ## About
 
 vLLM MetaX is a hardware plugin that enables vLLM to run seamlessly on MetaX GPUs. MetaX provides a cuda-like backend through [*MACA*](https://www.metax-tech.com/en/goods/platform.html?cid=4), delivering a near-native CUDA experience on MetaX hardware.
 
-It is the recommended approach for supporting the MetaX backend within the vLLM community. 
+It is the recommended approach for supporting the MetaX backend within the vLLM community.
 
 The plugin is implemented in accordance with the vLLM plugin RFCs:
- - [[RFC]: Hardware pluggable](https://github.com/vllm-project/vllm/issues/11162)
- - [[RFC]: Enhancing vLLM Plugin Architecture](https://github.com/vllm-project/vllm/issues/19161)
+
+- [[RFC]: Hardware pluggable](https://github.com/vllm-project/vllm/issues/11162)
+- [[RFC]: Enhancing vLLM Plugin Architecture](https://github.com/vllm-project/vllm/issues/19161)
 
 These RFCs help ensure proper feature and functionality support when integrating MetaX GPUs with vLLM.
 
@@ -55,13 +60,13 @@ These RFCs help ensure proper feature and functionality support when integrating
 - Hardware: MetaX C-series
 - OS: Linux
 - Software:
-  - Python >= 3.10, <= 3.12
-  - vLLM (the same version as vllm-metax)
-  - Docker support
+    - Python >= 3.10, <= 3.12
+    - vLLM (the same version as vllm-metax)
+    - Docker support
 
 ## Getting Started
 
-vLLM MetaX currently supports deployment only with Docker images released by the [MetaX developer community](https://developer.metax-tech.com/softnova/docker?chip_name=%E6%9B%A6%E4%BA%91C500%E7%B3%BB%E5%88%97&package_kind=AI&dimension=docker&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85&ai_frame=vllm-metax), which work out of the box. 
+vLLM MetaX currently supports deployment only with Docker images released by the [MetaX developer community](https://developer.metax-tech.com/softnova/docker?chip_name=%E6%9B%A6%E4%BA%91C500%E7%B3%BB%E5%88%97&package_kind=AI&dimension=docker&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85&ai_frame=vllm-metax), which work out of the box.
 
 > The Dockerfile for other OS environments is still under testing.
 
@@ -79,10 +84,14 @@ vllm-metax has three kinds of branches.
 
 Below are the maintained branches:
 
-| Branch      | Status       | Note                                 |
-|-------------|--------------|--------------------------------------|
-| master      | N/A | Tracks vLLM main; functionality is not guaranteed |
-| releases/v0.21.0 | Released | Corresponds to vLLM release v0.21.0 
+| Branch | Status | Note |
+| --- | --- | --- |
+| master | N/A | Tracks vLLM main; functionality is not guaranteed |
+| releases/v0.25.0 | Released | Corresponds to vLLM release v0.25.0 |
+| releases/v0.24.0 | Released | Corresponds to vLLM release v0.24.0 |
+| releases/v0.23.0 | Released | Corresponds to vLLM release v0.23.0 |
+| releases/v0.22.0 | Released | Corresponds to vLLM release v0.22.0 |
+| releases/v0.21.0 | Released | Corresponds to vLLM release v0.21.0 |
 | releases/v0.20.0 | Released | Corresponds to vLLM release v0.20.0 |
 | releases/v0.19.0 | Released | Corresponds to vLLM release v0.19.0 |
 | releases/v0.18.0 | Released | Corresponds to vLLM release v0.18.0 |
@@ -94,7 +103,6 @@ Below are the maintained branches:
 | releases/v0.12.0 | Released | Corresponds to vLLM release v0.12.0 |
 | releases/v0.11.2 | Released | Corresponds to vLLM release v0.11.2 |
 | releases/v0.10.2 | Released | Corresponds to vLLM release v0.10.2 |
-
 
 For more details, please check the [Quickstart Guide](https://vllm-metax.readthedocs.io/en/latest/getting_started/quickstart.html).
 
