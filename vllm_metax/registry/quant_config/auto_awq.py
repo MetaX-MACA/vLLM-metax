@@ -23,6 +23,7 @@ from vllm.model_executor.layers.quantization.auto_awq import is_layer_skipped
 from vllm.model_executor.layers.quantization.base_config import QuantizeMethodBase
 from vllm.utils.torch_utils import direct_register_custom_op
 
+from vllm import _custom_ops as ops
 from vllm_metax import _custom_ops as mx_ops
 from vllm import _custom_ops as ops
 from vllm.model_executor.layers.quantization import register_quantization_config
