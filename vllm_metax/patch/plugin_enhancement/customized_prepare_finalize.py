@@ -24,15 +24,14 @@ from vllm.utils.import_utils import (
 
 logger = init_logger(__name__)
 
-if current_platform.is_cuda_alike():
-    if has_deep_ep():
-        from vllm_metax.model_executor.layers.fused_moe.prepare_finalize.deepep_ll import (
-            DEEPEP_QUANT_BLOCK_SHAPE,
-            MacaDeepEPLLPrepareAndFinalize,
-        )
+if has_deep_ep():
+    from vllm_metax.model_executor.layers.fused_moe.prepare_finalize.deepep_ll import (
+        DEEPEP_QUANT_BLOCK_SHAPE,
+        MacaDeepEPLLPrepareAndFinalize,
+    )
 
 
-def maca_maybe_make_prepare_finalize(
+def maybe_make_prepare_finalize(
     moe: FusedMoEConfig,
     quant_config: FusedMoEQuantConfig | None,
     routing_tables: tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None = None,
@@ -125,8 +124,3 @@ def maca_maybe_make_prepare_finalize(
         )
 
     return prepare_finalize
-
-
-from vllm.model_executor.layers.fused_moe import all2all_utils
-
-all2all_utils.maybe_make_prepare_finalize = maca_maybe_make_prepare_finalize

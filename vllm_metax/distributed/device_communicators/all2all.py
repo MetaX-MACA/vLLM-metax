@@ -14,6 +14,7 @@ import vllm.envs as envs
 
 from vllm.distributed.device_communicators.all2all import (
     DeepEPLLAll2AllManager,
+    DeepEPHTAll2AllManager,
 )
 
 
@@ -180,7 +181,7 @@ class MacaDeepEPLLAll2AllManager(DeepEPLLAll2AllManager):
         import os
 
         assert os.getenv("MXSHMEM_LIB_PATH", None) is not None, (
-            "please setting MXSHMEM_LIB_PATH and add ${MXSHMEM_LIB_PATH}/lib into LD_LIBRARY_PATH"
+            "please setting MXSHMEM_LIB_PATH and add ${MXSHMEM_LIB_PATH} into LD_LIBRARY_PATH"
         )
 
         import deep_ep  # type: ignore[import-not-found]
@@ -199,9 +200,7 @@ class MacaDeepEPLLAll2AllManager(DeepEPLLAll2AllManager):
 
         return dict(
             group=self.cpu_group,
-            # /------------------- Metax Modification -----------------------\
-            # num_nvl_bytes=num_nvl_bytes,
-            # \------------------- Metax Modification -----------------------/
+            num_nvl_bytes=num_nvl_bytes,
             num_rdma_bytes=num_rdma_bytes,
             low_latency_mode=True,
             num_qps_per_rank=num_qps_per_rank,
@@ -213,6 +212,57 @@ class MacaDeepEPLLAll2AllManager(DeepEPLLAll2AllManager):
 
     def destroy(self):
         with self.handle_cache._lock:
-            for _, handle in self.handle_cache._cache.items():
-                handle.destroy()
+            # /------------------- Metax Modification -----------------------\
+            # /---Do not call Buffer.destroy because explicitly_destroy=True is not supported---\
+
+            # for _, handle in self.handle_cache._cache.items():
+            #     handle.destroy()
+            # \------------------- Metax Modification -----------------------/
+            self.handle_cache._cache.clear()
+
+
+class MacaDeepEPHTAll2AllManager(DeepEPHTAll2AllManager):
+    def _make_all2all_kwargs(self) -> dict[Any, Any]:
+        import os
+
+        assert os.getenv("MXSHMEM_LIB_PATH", None) is not None, (
+            "please setting MXSHMEM_LIB_PATH and add ${MXSHMEM_LIB_PATH} into LD_LIBRARY_PATH"
+        )
+
+        # Defaults for internode and intranode are taken from DeepEP tests.
+        num_nvl_bytes = envs.VLLM_DEEPEP_BUFFER_SIZE_MB * 1024 * 1024
+        num_rdma_bytes = None
+        num_qps_per_rank = None
+
+        if self.internode and not envs.VLLM_DEEPEP_HIGH_THROUGHPUT_FORCE_INTRA_NODE:
+            num_rdma_bytes = envs.VLLM_DEEPEP_BUFFER_SIZE_MB * 1024 * 1024
+            num_qps_per_rank = self.num_sms // 2
+        else:
+            num_rdma_bytes = 0
+            num_qps_per_rank = 1
+
+        assert num_rdma_bytes is not None
+        assert num_qps_per_rank is not None
+        # TODO: remove platform-specific logic
+        # once ROCm DeepEP is updated with the latest APIs.
+        kwargs = dict(
+            group=self.cpu_group,
+            num_nvl_bytes=num_nvl_bytes,
+            num_rdma_bytes=num_rdma_bytes,
+            low_latency_mode=False,
+            num_qps_per_rank=num_qps_per_rank,
+            # /------------------- Metax Modification -----------------------\
+            # explicitly_destroy=True,
+            # /------------------- Metax Modification -----------------------\
+        )
+        return kwargs
+
+    def destroy(self):
+        with self.handle_cache._lock:
+            # /------------------- Metax Modification -----------------------\
+            # /---Do not call Buffer.destroy because explicitly_destroy=True is not supported---\
+
+            # for _, handle in self.handle_cache._cache.items():
+            #     handle.destroy()
+            # \------------------- Metax Modification -----------------------/
             self.handle_cache._cache.clear()

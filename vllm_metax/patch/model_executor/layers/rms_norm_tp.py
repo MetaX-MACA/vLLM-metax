@@ -23,8 +23,11 @@ from vllm_metax.patch.model_executor.layers.lamport_workspace import (
     get_allreduce_workspace as _metax_get_allreduce_workspace,
 )
 
-
+# do not use norm reduce fusion, if want to enable,just comment the following line, and make sure the workspace is enough.
+_MINIMAX_FUSED_AR_RMS_QK = None
 # └------------------------- Metax Modification -------------------------┘
+
+
 def _new_init(
     self,
     hidden_size: int,

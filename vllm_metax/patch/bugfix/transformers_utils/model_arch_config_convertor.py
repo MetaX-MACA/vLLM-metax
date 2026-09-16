@@ -4,9 +4,8 @@
 # -------------------------------------------------------
 # Note: This patch is fix joyai_llm_flash use wrong attn backend,
 #       remove this when upstream merge PR for model adaptation
-#
-# Affected versions: v0.23.0
 # -------------------------------------------------------
+
 
 from vllm.transformers_utils.model_arch_config_convertor import (
     ModelArchConfigConvertorBase,
@@ -22,10 +21,10 @@ def is_deepseek_mla(self) -> bool:
         "deepseek_v3",
         "deepseek_v32",
         "deepseek_v4",
-        # /------------------------ metax modified ------------------------\ #
-        "joyai_llm_flash",
-        # \----------------------------------------------------------------/ #
         "deepseek_mtp",
+        # /------------------------ metax modified ------------------------\ #
+        "joyai_llm_flash",  # # JoyAI_LLM_Flash
+        # \----------------------------------------------------------------/ #
         "glm_moe_dsa",
         "glm4_moe_lite",
         "glm4_moe_lite_mtp",

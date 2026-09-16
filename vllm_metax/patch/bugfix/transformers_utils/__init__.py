@@ -7,3 +7,6 @@
 # -----------------------------------------------
 
 from . import model_arch_config_convertor
+from . import tokenizer
+from . import cached_tokenizer
+from . import bytes_to_unicode

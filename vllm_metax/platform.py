@@ -22,6 +22,7 @@ from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_b
 from vllm.v1.attention.backends.mla.prefill.registry import MLAPrefillBackendEnum
 from vllm_metax.utils import import_pymxsml
 
+from vllm_metax.utils.msprobe_debug import resolve_worker_cls
 
 from vllm.platforms.interface import DeviceCapability, Platform, PlatformEnum
 from vllm.utils.argparse_utils import FlexibleArgumentParser
@@ -179,7 +180,7 @@ class MacaPlatformBase(Platform):
         "moe_wna16",
         "gguf",
     ]
-    if mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER:
+    if mx_envs.VLLM_METAX_SUPPORTS_FP8:
         supported_quantization.append("fp8")
         supported_quantization.append("deepseek_v4_fp8")
 
@@ -289,7 +290,10 @@ class MacaPlatformBase(Platform):
         model_config = vllm_config.model_config
 
         if parallel_config.worker_cls == "auto":
-            parallel_config.worker_cls = "vllm.v1.worker.gpu_worker.Worker"
+            parallel_config.worker_cls = resolve_worker_cls(
+                vllm_config.additional_config,
+                model_config.enforce_eager if model_config is not None else None,
+            )
 
         scheduler_config = vllm_config.scheduler_config
         # Note: model_config may be None during testing
@@ -556,7 +560,7 @@ class MacaPlatformBase(Platform):
 
     @classmethod
     def supports_fp8(cls) -> bool:
-        return mx_envs.VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER
+        return mx_envs.VLLM_METAX_SUPPORTS_FP8
 
     @classmethod
     def use_custom_allreduce(cls) -> bool:
@@ -644,7 +648,7 @@ class MacaPlatformBase(Platform):
 
     @classmethod
     def support_deep_gemm(cls) -> bool:
-        return False
+        return True
 
     @classmethod
     def is_integrated_gpu(cls, device_id: int = 0) -> bool:
@@ -1005,6 +1009,18 @@ mx_envs.override_vllm_env(
     "VLLM_USE_V2_MODEL_RUNNER",
     False,
     "v2 model runner is still under development and not fully tested on Maca platform, disable it by default",
+)
+
+mx_envs.override_vllm_env(
+    "VLLM_USE_DEEP_GEMM",
+    False,
+    "Deep gemm default to false on Maca platform",
+)
+
+mx_envs.override_vllm_env(
+    "VLLM_USE_DEEP_GEMM_E8M0",
+    False,
+    "USE_DEEP_GEMM_E8M0 default to false on Maca platform",
 )
 
 

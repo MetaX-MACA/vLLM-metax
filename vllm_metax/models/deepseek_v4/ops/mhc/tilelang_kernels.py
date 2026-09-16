@@ -10,6 +10,7 @@ import torch
 from vllm.platforms import current_platform
 from vllm.utils.import_utils import has_tilelang
 from vllm.utils.math_utils import cdiv
+import vllm_metax.envs as mx_envs
 
 # TileLang is used for MHC on CUDA and ROCm. Keep non-GPU imports cheap so
 # registering the Python wrapper modules does not require TileLang everywhere.
@@ -28,7 +29,10 @@ else:
 
 @cache
 def compute_num_split(num_tokrns: int) -> int:
-    return 16 if num_tokrns >= 512 else 64
+    if mx_envs.VLLM_METAX_SUPPORTS_FP8:
+        return 1
+    else:
+        return 16 if num_tokrns >= 512 else 64
 
 
 @tilelang.jit(
