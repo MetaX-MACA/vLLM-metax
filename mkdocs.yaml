@@ -6,6 +6,13 @@ exclude_docs: |
   argparse
   *.inc.md
   *.template.md
+# Language variants are reached through the release page buttons.
+not_in_nav: |
+  /release/*/en.md
+  /release/*/zh.md
+validation:
+  links:
+    absolute_links: relative_to_docs
 theme:
   name: material
   logo: assets/logos/vllm-logo-only-light.ico
@@ -40,7 +47,6 @@ theme:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.sections
-    - navigation.indexes
     - navigation.top
     - search.highlight
     - search.share

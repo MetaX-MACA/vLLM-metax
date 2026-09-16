@@ -1,4 +1,4 @@
-# Registering a Model
+# Model Registry
 
 vllm-metax basically reuses the models that are already registered by vLLM.
 

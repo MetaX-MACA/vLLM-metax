@@ -39,6 +39,8 @@ You could get the docker image at [MetaX develop community](https://developer.me
 | v0.22.0 | maca3.8.0.x | 0.4.7 | [vllm-metax:0.22.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.22.0-torch2.10) |
 | v0.23.0 | maca3.8.0.x | 0.4.8 | [vllm-metax:0.23.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.23.0-torch2.10) |
 | v0.24.0 | maca3.8.2.x | 0.4.9 | [vllm-metax:0.24.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.24.0-torch2.10) |
+| v0.25.0 | maca3.8.2.x | 0.4.10 | [vllm-metax:0.25.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.25.0-torch2.10) |
+| v0.26.0 | maca3.8.2.x | 0.4.11 | [vllm-metax:0.26.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.26.0-torch2.10) |
 
 !!! warning "Usage Warning"
     **vLLM-MetaX is out of box via docker images provided above.**

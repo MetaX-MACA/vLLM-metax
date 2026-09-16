@@ -1,4 +1,4 @@
-# msprobe Precision Debugging Guide
+# msprobe
 
 [msprobe](https://gitee.com/ascend/mstt/tree/master/debug/accuracy_tools/msprobe) (MindStudio Probe)
 is a precision-debugging toolkit that dumps intermediate tensors, weights, and
