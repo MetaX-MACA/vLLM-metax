@@ -1,10 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
-# -----------------------------------------------
+#
+# -----------------------------------------------------------------------------
 # Note: Limit Triton autotune `num_warps` for KDA kernels on MACA.
 #
-# Affected versions: v0.21.0
-# -----------------------------------------------
+# Affected versions: vLLM 0.29.1.dev0 (98dff2a81d), verified 2026-09-17.
+#
+# Remove at: Upstream autotuning excludes warp counts unsupported by MACA.
+# -----------------------------------------------------------------------------
+
 from vllm.triton_utils import tl, triton
 from vllm.third_party.flash_linear_attention.ops.op import log
 from vllm_metax.patch.utils import patch

@@ -1,5 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
+#
+# -----------------------------------------------------------------------------
+# Note: Register the JoyAI architecture converter because upstream does not recognize
+#     joyai_llm_flash as an MLA model.
+#
+# Affected versions: vLLM 0.29.1.dev0 (98dff2a81d), verified 2026-09-17.
+#
+# Remove at: Upstream registers joyai_llm_flash as an MLA architecture.
+# -----------------------------------------------------------------------------
+
 from vllm.transformers_utils.model_arch_config_convertor import (
     ModelArchConfigConvertorBase,
     MODEL_ARCH_CONFIG_CONVERTORS,

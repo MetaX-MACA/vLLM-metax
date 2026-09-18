@@ -3,18 +3,21 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 # SPDX-FileCopyrightText: Songlin Yang, Yu Zhang
 #
+# -----------------------------------------------------------------------------
+# Note: Reduce Triton `num_stages` in `chunk_delta_h` kernels to stay within
+#       MACA shared-memory limits.
+#
+# Affected versions: vLLM 0.29.1.dev0 (98dff2a81d), verified 2026-09-17.
+#
+# Remove at: Upstream autotuning selects configurations within MACA shared-memory
+#     limits.
+# -----------------------------------------------------------------------------
+
 # This file contains code copied from the flash-linear-attention project.
 # The original source code was licensed under the MIT license and included
 # the following copyright notice:
 # Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
 # ruff: noqa: E501
-#
-# -----------------------------------------------
-# Note: Reduce Triton `num_stages` in `chunk_delta_h` kernels to stay within
-#       MACA shared-memory limits.
-#
-# Affected versions: v0.21.0
-# -----------------------------------------------
 
 from vllm.triton_utils import tl, triton
 from vllm.third_party.flash_linear_attention.ops.op import exp, exp2

@@ -3,16 +3,17 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd.
 # All Rights Reserved.
-# -----------------------------------------------
+#
+# -----------------------------------------------------------------------------
 # Note: Dequantize Qwen3.5 MTP shared-expert gates that were quantized in the
 #       checkpoint despite being excluded by its quantization configuration.
 #
-# Affected versions: v0.25.0 - v0.26.0 (ported from v0.25.0;
-#                      validate weight loading on v0.26.0)
+# Affected versions: vLLM 0.29.1.dev0 (98dff2a81d), verified 2026-09-17.
 #
-# Remove at: Remove after affected checkpoints are fixed or upstream supports
-#            this checkpoint format.
-# -----------------------------------------------
+# Remove at: Affected checkpoints stop quantizing ignored MTP shared-expert gates, or
+#     upstream supports dequantizing those gates during loading.
+# -----------------------------------------------------------------------------
+
 from collections.abc import Iterable
 import torch
 from vllm.logger import init_logger

@@ -1,11 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
-# -----------------------------------------------
+#
+# -----------------------------------------------------------------------------
 # Note: Add MetaX-specific grouped-topk routing fast paths and backend dispatch.
 #
-# Affected versions: v0.21.0
-# -----------------------------------------------
+# Affected versions: vLLM 0.29.1.dev0 (98dff2a81d), verified 2026-09-17.
+#
+# Remove at: Upstream routing dispatch supports the MetaX fused grouped-topk kernels
+#     through a native extension point.
+# -----------------------------------------------------------------------------
+
 from functools import partial
 
 import torch

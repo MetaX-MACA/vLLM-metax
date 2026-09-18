@@ -1,24 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
-
-# -----------------------------------------------------------------------
-# Note: MiniMax M3 (and other clamped-SwiGLU models) configure per-layer
-#       gemm1_alpha/gemm1_beta/gemm1_clamp_limit, but vLLM's
-#       int8_w8a16_moe_quant_config()/int8_w8a8_moe_quant_config() don't
-#       accept or forward these to FusedMoEQuantConfig. Without them,
-#       TritonExperts.activation() asserts on SWIGLUOAI_UNINTERLEAVE
-#       ("requires gemm1_clamp_limit").
 #
-#       This mirrors https://github.com/vllm-project/vllm/pull/47552
-#       (JianDan0212:fix-minimax-m3-int8 -> vllm-project:main), which adds
-#       gemm1_alpha/beta/clamp_limit params to both functions below and
-#       forwards them into FusedMoEQuantConfig.
+# -----------------------------------------------------------------------------
+# Note: Upstream W8A16 already forwards SwiGLU alpha/beta/clamp parameters,
+#       but W8A8 still omits them. Keep only the W8A8 compatibility extension
+#       for MiniMax M3 and other clamped-SwiGLU models.
 #
-# Affected versions: v0.24.0 (PR #47552 not yet merged)
+# Affected versions: vLLM 0.29.1.dev0 (98dff2a81d), verified 2026-09-17.
 #
-# Remove at: once PR #47552 (or equivalent) merges into a vLLM release this
-#            plugin targets.
-# -----------------------------------------------------------------------
+# Remove at: Upstream int8_w8a8_moe_quant_config forwards gemm1_alpha, gemm1_beta and
+#     gemm1_clamp_limit.
+# -----------------------------------------------------------------------------
 
 import torch
 

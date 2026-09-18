@@ -6,6 +6,9 @@ an existing registry or extension point cannot be used.
 > Patches depend on vLLM implementation details. Keep them small, tested, and
 > easy to remove after the upstream issue is fixed.
 
+The current upstream compatibility review and removal decisions are recorded in
+[AUDIT.md](AUDIT.md).
+
 ## Quick start
 
 1. Choose a template:

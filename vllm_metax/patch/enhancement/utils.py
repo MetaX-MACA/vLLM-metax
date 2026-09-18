@@ -1,10 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
-# -----------------------------------------------
+#
+# -----------------------------------------------------------------------------
 # Note: Patch fused-MoE quantization helpers for MetaX INT8 execution paths.
 #
-# Affected versions: v0.21.0
-# -----------------------------------------------
+# Affected versions: vLLM 0.29.1.dev0 (98dff2a81d), verified 2026-09-17.
+#
+# Remove at: Upstream supports MetaX per-token INT8 quantization and the W4A8 descriptor
+#     used by MetaX MoE experts.
+# -----------------------------------------------------------------------------
+
 import torch
 from vllm.logger import init_logger
 from vllm.model_executor.layers.quantization.utils.int8_utils import (
@@ -37,7 +42,7 @@ def _int8_quantize(
         if per_act_token:
             # ┌------------------------  Metax Modification -------------------------┐
             # A, A_scale = per_token_quant_int8(A)
-            A, A_scale, _ = ops.scaled_int8_quant(A, A_scale)
+            A, A_scale, _ = ops.scaled_int8_quant(A)
             # └------------------------- Metax Modification -------------------------┘
         elif A_scale is not None:
             # Static per-tensor: use the optimized CUDA kernel

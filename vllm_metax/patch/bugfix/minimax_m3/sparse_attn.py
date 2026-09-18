@@ -15,9 +15,12 @@
 #       Only the inner K/V loop changes; common's cache layout, FP8 scales,
 #       top-k handling, and decode split-K logic are preserved.
 #
-# Remove at: Upstream adopts sub-tiling or the MetaX shared-memory limit permits
-#            the original 128-token tile.
+# Affected versions: vLLM 0.29.1.dev0 (98dff2a81d), verified 2026-09-17.
+#
+# Remove at: Upstream adopts sub-tiling or the MetaX shared-memory limit permits the
+#     original 128-token K/V tile.
 # -----------------------------------------------------------------------------
+
 """MetaX SUB_K fix for MiniMax-M3 block-sparse GQA attention kernels."""
 
 from vllm.triton_utils import tl, triton
@@ -29,7 +32,6 @@ from vllm_metax.patch.utils import patch
 @triton.heuristics(
     {
         "BLOCK_SIZE_D": lambda args: triton.next_power_of_2(args["head_dim"]),
-        # /-------------------- MetaX Modification --------------------\
         # Floored at 16: BLOCK_SIZE_QH (= BLOCK_SIZE_Q x BLOCK_SIZE_H) is the
         # M-dimension tile of `tl.dot(q, k)`; MetaX's MMA encoder requires it
         # to be >= 16 too, same as the decode kernel's existing BLOCK_SIZE_H
@@ -37,16 +39,13 @@ from vllm_metax.patch.utils import patch
         "BLOCK_SIZE_H": lambda args: max(
             16, triton.next_power_of_2(args["gqa_group_size"])
         ),
-        # \-------------------- MetaX Modification --------------------/
-        "BLOCK_SIZE_QH": lambda args: args["BLOCK_SIZE_Q"]
-        # /-------------------- MetaX Modification --------------------\
-        * max(16, triton.next_power_of_2(args["gqa_group_size"])),
-        # \-------------------- MetaX Modification --------------------/
-        # /-------------------- MetaX Modification --------------------\
+        "BLOCK_SIZE_QH": lambda args: (
+            args["BLOCK_SIZE_Q"]
+            * max(16, triton.next_power_of_2(args["gqa_group_size"]))
+        ),
         # Largest power-of-two <= 128 that keeps both GEMM tiles >= 16:
         #   BLOCK_SIZE_H (>= gqa) x SUB_K >= 16  and  SUB_K x BLOCK_SIZE_D (>= 16).
         "SUB_K": lambda args: 16,
-        # \-------------------- MetaX Modification --------------------/
     }
 )
 @triton.jit(do_not_specialize_on_alignment=["seq_lens", "prefix_lens"])

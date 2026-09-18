@@ -2,28 +2,35 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 #
 # -----------------------------------------------------------------------------
-# Note: On the chunked-context MLA prefill path, upstream copies the gathered
-# kv_c_normed tensor to kv_b_proj.weight.dtype before the projection. For
-# compressed-tensors W8A8-int8 checkpoints kv_b_proj.weight is stored as
-# int8, so this turns the model-dtype activations into int8 first; the int8
-# scaled-MM kernel then quantizes them again with dynamic_scaled_int8_quant,
-# which has no kernel overload for int8 ('Char') input and raises
-# NotImplementedError. The fp8/uint8 cases are already excluded upstream;
-# int8 needs the same exclusion because the int8 kernel quantizes internally.
+# Note: Keep model-dtype activations for dynamically quantized INT8 MLA weights. Patch
+#     the shared dtype helper to cover both context paths while preserving upstream
+#     chunking, parallelism and FP8 handling.
 #
-# Mirrors the v0.23 fix (e587de89 "[Bugfix][MLA] Fix int8_w8a8 mla crash while
-# chunk_prefill") that exists in vllm_metax's own MLA copy but was lost on the
-# v0.26 base-vLLM path used by MultiHeadLatentAttentionWrapper.
+# Affected versions: vLLM 0.29.1.dev0 (98dff2a81d), verified 2026-09-17.
 #
-# Affected versions: v0.26.0
-#
-# Remove at: Once upstream keeps model-dtype input for int8 W8A8 kv_b_proj
-#            in MLACommonBaseImpl._compute_prefill_context.
+# Remove at: Upstream _get_kv_b_proj_input_dtype preserves model-dtype activations for
+#     dynamically quantized INT8 weights.
 # -----------------------------------------------------------------------------
-from vllm_metax.model_executor.layers.attention.mla_attention import MLACommonBaseImpl
+
+"""Keep model-dtype activations for dynamically quantized INT8 MLA weights.
+
+Affected: vLLM 0.29.1.dev0 (98dff2a81d). Remove when the upstream dtype helper
+excludes INT8 weights. Patching the shared helper covers both context paths
+without replacing MLA's chunking, parallelism, or FP8 handling.
+"""
+
+import torch
+from vllm.model_executor.layers.attention.mla_attention import (
+    _get_kv_b_proj_input_dtype as _original_get_input_dtype,
+)
 from vllm_metax.patch.utils import patch
 
-patch(
-    "vllm.model_executor.layers.attention.mla_attention",
-    "MLACommonBaseImpl._compute_prefill_context",
-)(MLACommonBaseImpl._compute_prefill_context)
+
+@patch("vllm.model_executor.layers.attention.mla_attention")
+def _get_kv_b_proj_input_dtype(kv_b_proj, use_fp8_prefill: bool) -> torch.dtype | None:
+    # /-------------------- MetaX Modification --------------------\
+    weight = getattr(kv_b_proj, "weight", None)
+    if weight is not None and weight.dtype == torch.int8:
+        return None
+    # \-------------------- MetaX Modification --------------------/
+    return _original_get_input_dtype(kv_b_proj, use_fp8_prefill)

@@ -1,18 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
-
-
-# -----------------------------------------------
-# Note: The reason for this patch request. Make
-#       it as clear and concise as possible.
 #
-# Affected versions: List the versions of vllm
-#               that are affected by this issue.
+# -----------------------------------------------------------------------------
+# Note: Expose the shared patch decorator for MetaX runtime compatibility modules. This
+#     package initializer is infrastructure and does not install patches itself.
 #
-# Remove at: Specify when this patch can be removed
-#           (e.g., after the next vllm release, or
-#             after a specific bug is fixed upstream).
-# -----------------------------------------------
+# Affected versions: MetaX patch infrastructure with vLLM 0.29.1.dev0
+#     (98dff2a81d), verified 2026-09-17.
+#
+# Remove at: No MetaX runtime patch modules import the package-level patch decorator.
+# -----------------------------------------------------------------------------
 
 from .utils import patch
 

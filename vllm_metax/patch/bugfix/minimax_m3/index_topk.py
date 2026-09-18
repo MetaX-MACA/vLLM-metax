@@ -26,14 +26,12 @@
 #       to disable double-buffering (fits under the 64-KB ceiling), and
 #       floor `BLOCK_SIZE_Q` so `num_idx_heads * BLOCK_SIZE_Q >= 16`.
 #
-# Affected versions: All versions (kernel bodies unchanged upstream;
-#       confirmed still failing on v0.26.0 with the refactored wrapper).
-#       Root‑cause: insufficient shared‑memory size on C500‑series hardware.
+# Affected versions: vLLM 0.29.1.dev0 (98dff2a81d), verified 2026-09-17.
 #
-# Remove at: MetaX Triton backend (mcTriton) drops the 16-minimum MMA
-#       operand-tile requirement and the 64-KB shared-memory ceiling stops
-#       binding for these launch configs, or upstream widens them itself.
+# Remove at: Upstream index-score launches satisfy MACA shared-memory and minimum MMA
+#     tile limits, or the MACA backend removes those restrictions.
 # -----------------------------------------------------------------------------
+
 """MetaX MACA shared-memory / MMA-tile fix for the index-score kernels.
 
 Ports vllm_metax's v0.24.0 fix for `minimax_m3_index_score` and

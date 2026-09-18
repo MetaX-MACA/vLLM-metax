@@ -1,10 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
-
-# ------------------------------------------------------------
+#
+# -----------------------------------------------------------------------------
 # Note: This patch is to relax platform check at SMControlContextManager.__init__,
 #       since MACA is CUDA-like and compatible with following code
-# ------------------------------------------------------------
+#
+# Affected versions: vLLM 0.29.1.dev0 (98dff2a81d), verified 2026-09-17.
+#
+# Remove at: Upstream SM control accepts CUDA-like out-of-tree platforms.
+# -----------------------------------------------------------------------------
 
 from vllm_metax.patch.utils import patch
 
@@ -42,7 +46,7 @@ def __init__(
     assert current_platform.is_cuda_alike() or current_platform.is_rocm(), (
         "SM/CU control is supported on CUDA-like and ROCm platforms"
     )
-    # /-------------------- MetaX Modification --------------------\
+    # \-------------------- MetaX Modification --------------------/
 
     device = torch.accelerator.current_device_index()
     total_sms = num_compute_units(device)

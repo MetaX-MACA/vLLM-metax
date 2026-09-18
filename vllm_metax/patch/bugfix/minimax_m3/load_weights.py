@@ -1,10 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-# -----------------------------------------------
+#
+# -----------------------------------------------------------------------------
 # Note: fix MiniMax-M3-FP8 weight load
-# Affected versions: v0.24.0+ (ported to v0.26.0; runtime validation pending)
-# -----------------------------------------------
+#
+# Affected versions: vLLM 0.29.1.dev0 (98dff2a81d), verified 2026-09-17.
+#
+# Remove at: Upstream weight loading preserves weight_scale_inv for block-FP8 parameters
+#     on MetaX.
+# -----------------------------------------------------------------------------
+
 from collections.abc import Iterable
 import torch
 from vllm.model_executor.model_loader.weight_utils import (

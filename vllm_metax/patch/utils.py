@@ -1,5 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
+#
+# -----------------------------------------------------------------------------
+# Note: Provide the shared patch decorator used to install module and class
+#     replacements, preserve descriptors, record original attributes and reject
+#     duplicate patches. This is patch infrastructure, not an upstream behavior
+#     replacement.
+#
+# Affected versions: MetaX patch infrastructure with vLLM 0.29.1.dev0
+#     (98dff2a81d), verified 2026-09-17.
+#
+# Remove at: All MetaX runtime patches migrate to native upstream extension points or
+#     another shared installer, leaving no callers of this utility.
+# -----------------------------------------------------------------------------
+
 """Shared helpers for installing vLLM-MetaX runtime patches."""
 
 from __future__ import annotations
