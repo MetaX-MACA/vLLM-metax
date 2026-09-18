@@ -184,7 +184,7 @@ cython_debug/
 !.claude/skills/**
 
 # Codex
-.codex/
+# .codex/
 
 # Cursor
 .cursor/

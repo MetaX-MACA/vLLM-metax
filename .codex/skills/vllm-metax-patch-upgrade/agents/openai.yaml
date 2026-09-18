@@ -1,0 +1,4 @@
+interface:
+  display_name: "vLLM MetaX Patch Upgrade"
+  short_description: "Audit and adapt MetaX patches to upstream changes"
+  default_prompt: "Use $vllm-metax-patch-upgrade to detect the Python environment, local checkouts, installed distributions, and effective imports, ask me to confirm the proposed environment and target, then review and adapt every monkey patch with evidence, preserve explanatory comments, and validate the actual edited code."
