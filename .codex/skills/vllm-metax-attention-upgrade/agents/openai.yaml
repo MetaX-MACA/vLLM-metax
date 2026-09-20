@@ -1,0 +1,4 @@
+interface:
+  display_name: "vLLM-MetaX Attention Upgrade"
+  short_description: "Adapt attention against installed MetaX component APIs"
+  default_prompt: "Use $vllm-metax-attention-upgrade to review and adapt the attention code against the target vLLM revision and the installed MetaX kernels, verifying interfaces and GPU results."
