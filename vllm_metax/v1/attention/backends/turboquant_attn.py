@@ -54,7 +54,7 @@ from vllm.v1.attention.ops.triton_turboquant_decode import (
     triton_turboquant_decode_attention,
 )
 from vllm.v1.attention.ops.triton_turboquant_store import triton_turboquant_store
-from vllm.v1.kv_cache_interface import AttentionSpec
+from vllm.v1.kv_cache_interface import AttentionSpec, KVCacheLayout
 from vllm.v1.worker.workspace import (
     current_workspace_manager,
     is_workspace_manager_initialized,
@@ -129,6 +129,10 @@ class MacaTurboQuantAttentionBackend(AttentionBackend):
     def get_name() -> str:
         return "TURBOQUANT"
 
+    @classmethod
+    def supported_kv_cache_layouts(cls) -> tuple[KVCacheLayout, ...]:
+        return (KVCacheLayout.LBNHC,)
+
     @staticmethod
     def get_supported_kernel_block_sizes() -> list[int | MultipleOf]:
         return [16, 32, 64, 128]
@@ -148,39 +152,6 @@ class MacaTurboQuantAttentionBackend(AttentionBackend):
     @staticmethod
     def get_builder_cls() -> type["TurboQuantMetadataBuilder"]:
         return TurboQuantMetadataBuilder
-
-    @staticmethod
-    def get_kv_cache_shape(
-        num_blocks: int,
-        block_size: int,
-        num_kv_heads: int,
-        head_size: int,
-        cache_dtype_str: str = "turboquant_4bit_nc",
-    ) -> tuple[int, ...]:
-        """Combined K+V cache shape — no leading 2 dimension.
-
-        Standard attention backends use (2, num_blocks, block_size, num_kv_heads,
-        head_dim) with a leading 2 to separate K and V. TurboQuant packs K+V
-        into a single interleaved slot per head per position. The logical
-        (blocks-first, head-major) shape is:
-
-            (num_blocks, num_kv_heads, block_size, slot_size_aligned)
-
-        Each slot = [key_packed | value_packed | padding].
-        This is safe because TQ has its own get_kv_cache_shape override and
-        never shares cache tensors with other backends. Layers that fall back
-        to native dtype via kv_cache_dtype_skip_layers get their own
-        standard-shaped cache allocation.
-
-        head_size is the model's real head_dim. slot_size_aligned is computed
-        from the TQ config to ensure correct cache allocation for all head dims.
-        """
-        from vllm.model_executor.layers.quantization.turboquant.config import (
-            TurboQuantConfig,
-        )
-
-        tq_config = TurboQuantConfig.from_cache_dtype(cache_dtype_str, head_size)
-        return (num_blocks, num_kv_heads, block_size, tq_config.slot_size_aligned)
 
     @classmethod
     def supports_kv_cache_dtype(cls, kv_cache_dtype: CacheDType | None) -> bool:
@@ -355,6 +326,10 @@ class TurboQuantAttentionImpl(AttentionImpl["TurboQuantMetadata"]):
         self.max_num_kv_splits = (
             vllm_config.attention_config.tq_max_kv_splits_for_cuda_graph
         )
+
+        # Cache max_model_len now (config is available at __init__ but NOT
+        # during CUDA-graph capture when _ensure_on_device is re-entered).
+        self._max_model_len = vllm_config.model_config.max_model_len
 
     def _flash_attn_varlen(
         self,

@@ -21,7 +21,9 @@ def get_flash_attn_version(
     head_size: int | None = None,
     head_size_v: int | None = None,
     has_sinks: bool = False,
-    requires_local_attention: bool = False,
+    requires_softcap: bool = False,
+    kv_cache_block_size: int | None = None,
+    supports_fa4_hd256: bool = False,
 ) -> int | None:
     logger.info_once(
         "Using Maca version of flash attention, which only supports version 2."
@@ -44,6 +46,9 @@ def flash_attn_supports_kv_cache_dtype(
     head_size: int | None = None,
     head_size_v: int | None = None,
     has_sinks: bool = False,
+    requires_softcap: bool = False,
+    kv_cache_block_size: int | None = None,
+    supports_fa4_hd256: bool = False,
 ) -> bool:
     # Maca does not support quantized kv for fa2 (but soon in fa3 in the future)
     # Currently set to false
@@ -65,3 +70,9 @@ def flash_attn_supports_mla():
 
 def is_flash_attn_varlen_func_available() -> bool:
     return True
+
+
+def uses_fa4_hd256_kernel(
+    head_size: int | None, head_size_v: int | None = None
+) -> bool:
+    return False

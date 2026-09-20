@@ -30,13 +30,17 @@ from vllm_metax.v1.attention.backends.fa_utils import (
     get_flash_attn_version,
     is_fa_version_supported,
     is_flash_attn_varlen_func_available,
+    uses_fa4_hd256_kernel,
 )
 from vllm.v1.attention.backends.utils import (
     fill_mm_prefix_query_ranges,
     get_dcp_local_seq_lens,
+    get_num_attention_heads_from_layers,
 )
-from vllm.v1.attention.ops.common import cp_lse_ag_out_rs
-from vllm.v1.attention.ops.dcp_alltoall import dcp_a2a_lse_reduce
+from vllm.v1.attention.ops.dcp import (
+    cp_lse_ag_out_rs,
+    dcp_a2a_lse_reduce,
+)
 
 # --------------------------------------------------------------
 # Note: use Maca's merge_attn_states to get cuda kernel invoked
@@ -69,7 +73,6 @@ from vllm.v1.attention.backend import (
     CommonAttentionMetadata,
 )
 from vllm.v1.attention.backends.utils import (
-    get_kv_cache_layout,
     split_decodes_and_prefills,  # used for prefill decode split
     reshape_attn_output_for_spec_decode,  # used for prefill decode split with mtp
     reshape_query_for_spec_decode,  # used for prefill decode split with mtp
@@ -103,6 +106,7 @@ class MacaFlashAttentionBackend(AttentionBackend):
         "float16",
         "bfloat16",
     ]
+    head_size_v: int | None = None
 
     @staticmethod
     def get_supported_kernel_block_sizes() -> list[int | MultipleOf]:
@@ -149,43 +153,6 @@ class MacaFlashAttentionBackend(AttentionBackend):
     @staticmethod
     def get_builder_cls() -> type["FlashAttentionMetadataBuilder"]:
         return FlashAttentionMetadataBuilder
-
-    @staticmethod
-    def get_kv_cache_shape(
-        num_blocks: int,
-        block_size: int,
-        num_kv_heads: int,
-        head_size: int,
-        cache_dtype_str: str = "auto",
-    ) -> tuple[int, ...]:
-        if block_size % 16 != 0:
-            raise ValueError("Block size must be a multiple of 16.")
-        # K and V are packed into the content dim: logical (B, H, N, 2*D).
-        return (num_blocks, num_kv_heads, block_size, 2 * head_size)
-
-    @staticmethod
-    def get_kv_cache_stride_order(
-        include_num_layers_dimension: bool = False,
-    ) -> tuple[int, ...]:
-        # `stride_order` indicates the permutation that gets us from
-        # `get_kv_cache_shape` (logical (B, H, N, 2*D)) to the actual memory
-        # layout we want.
-        cache_layout = get_kv_cache_layout()
-        if cache_layout == "NHD" and include_num_layers_dimension:
-            # (num_blocks, num_layers, block_size, num_kv_heads, 2*head_size)
-            return (1, 0, 3, 2, 4)
-        elif cache_layout == "NHD":
-            # (num_blocks, block_size, num_kv_heads, 2*head_size)
-            stride_order = (0, 2, 1, 3)
-        elif cache_layout == "HND" and include_num_layers_dimension:
-            # (num_blocks, num_kv_heads, num_layers, block_size, 2*head_size)
-            return (1, 2, 0, 3, 4)
-        elif cache_layout == "HND":
-            # (num_blocks, num_kv_heads, block_size, 2*head_size)
-            stride_order = (0, 1, 2, 3)
-        else:
-            raise ValueError(f"Unknown cache layout format {cache_layout}.")
-        return stride_order
 
     @classmethod
     def supports_head_size(cls, head_size: int) -> bool:
@@ -234,10 +201,19 @@ class MacaFlashAttentionBackend(AttentionBackend):
         use_mm_prefix: bool,
         device_capability: DeviceCapability,
     ) -> str | None:
+        if has_sink and (dtype != torch.bfloat16 or head_size not in (64, 192)):
+            return "MetaX FlashAttention sinks require BF16 and head_size 64 or 192"
         if (
             kv_cache_dtype is not None
-            and kv_cache_dtype.startswith("fp8")
-            and get_flash_attn_version() != 3
+            and is_quantized_kv_cache(kv_cache_dtype)
+            and not flash_attn_supports_kv_cache_dtype(
+                kv_cache_dtype,
+                head_size=head_size,
+                head_size_v=head_size,
+                has_sinks=has_sink,
+                kv_cache_block_size=block_size,
+                supports_fa4_hd256=True,
+            )
         ):
             return "FP8 KV cache requires FA3"
         if (
@@ -539,16 +515,25 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         self.compilation_config = vllm_config.compilation_config
         self.attention_config = vllm_config.attention_config
 
-        self.num_heads_q = self.model_config.get_num_attention_heads(
-            self.parallel_config
-        )
-        self.num_heads_kv = self.model_config.get_num_kv_heads(self.parallel_config)
+        self.num_heads_q = get_num_attention_heads_from_layers(
+            vllm_config, layer_names
+        ) or self.model_config.get_num_attention_heads(self.parallel_config)
+        self.num_heads_kv = kv_cache_spec.num_kv_heads
         self.kv_cache_dtype = kv_cache_spec.dtype
-        self.headdim = self.model_config.get_head_size()
+        self.headdim = kv_cache_spec.head_size
         self.block_size = kv_cache_spec.block_size
 
         self.max_num_splits = 0  # No upper bound on the number of splits.
         self.aot_schedule = get_flash_attn_version() == 3
+
+        self.fa4_hd256 = uses_fa4_hd256_kernel(self.headdim) and (
+            get_flash_attn_version(
+                head_size=self.headdim,
+                kv_cache_block_size=self.block_size,
+                supports_fa4_hd256=True,
+            )
+            == 4
+        )
 
         # /------------------------  Metax Modification -------------------------\
         # In order to support the variable-length query in speculative decoding efficiently,
@@ -819,34 +804,6 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
 
         if envs.VLLM_BATCH_INVARIANT:
             max_num_splits = 1
-
-        def schedule(
-            batch_size, cu_query_lens, max_query_len, seqlens, max_seq_len, causal
-        ):
-            cache_dtype = self.cache_config.cache_dtype
-            if is_quantized_kv_cache(cache_dtype):
-                qkv_dtype = current_platform.fp8_dtype()
-            else:
-                qkv_dtype = self.kv_cache_dtype
-            if aot_schedule:
-                return get_scheduler_metadata(
-                    batch_size=batch_size,
-                    max_seqlen_q=max_query_len,
-                    max_seqlen_k=max_seq_len,
-                    num_heads_q=self.num_heads_q * self.dcp_world_size,
-                    num_heads_kv=self.num_heads_kv,
-                    headdim=self.headdim,
-                    cache_seqlens=seqlens,
-                    qkv_dtype=qkv_dtype,
-                    cu_seqlens_q=cu_query_lens,
-                    page_size=self.block_size,
-                    causal=causal,
-                    window_size=_maybe_symmetrize_window(
-                        self.aot_sliding_window, causal
-                    ),
-                    num_splits=max_num_splits,
-                )
-            return None
 
         use_cascade = common_prefix_len > 0
         max_dcp_context_kv_len = 0
@@ -1161,11 +1118,30 @@ class FlashAttentionImpl(AttentionImpl):
         self.num_queries_per_kv = self.num_heads // self.num_kv_heads
 
         self.attn_type = attn_type
+        vllm_config = get_current_vllm_config_or_none()
+        uses_kv_cache = attn_type not in (
+            AttentionType.ENCODER,
+            AttentionType.ENCODER_ONLY,
+        )
+        # The final KV cache block size is unavailable during construction.
         self.vllm_flash_attn_version = get_flash_attn_version(
             requires_alibi=alibi_slopes is not None,
             head_size=head_size,
             has_sinks=sinks is not None,
+            requires_softcap=bool(self.logits_soft_cap),
+            supports_fa4_hd256=True,
         )
+        self.fa4_hd256 = self.vllm_flash_attn_version == 4 and uses_fa4_hd256_kernel(
+            head_size
+        )
+        if self.fa4_hd256 and not uses_kv_cache and sliding_window is not None:
+            # The hd256 kernel requires seqused_k for local attention.
+            logger.warning_once(
+                "FA4's Blackwell head_size=256 kernel does not support local "
+                "attention on encoder inputs, defaulting to FA version 2."
+            )
+            self.vllm_flash_attn_version = 2
+            self.fa4_hd256 = False
         logger.info_once(
             "Using FlashAttention version %s",
             self.vllm_flash_attn_version,
@@ -1181,6 +1157,8 @@ class FlashAttentionImpl(AttentionImpl):
             head_size=head_size,
             head_size_v=head_size,
             has_sinks=sinks is not None,
+            requires_softcap=bool(self.logits_soft_cap),
+            supports_fa4_hd256=True,
         ):
             raise NotImplementedError(
                 f"FlashAttention does not support {self.kv_cache_dtype}"
@@ -1189,9 +1167,11 @@ class FlashAttentionImpl(AttentionImpl):
 
         self.sinks = sinks
         if self.sinks is not None:
-            assert flash_attn_supports_sinks(), (
-                "Sinks are only supported in FlashAttention 3"
-            )
+            if self.sinks.dtype != torch.bfloat16 or head_size not in (64, 192):
+                raise ValueError(
+                    "MetaX FlashAttention requires BF16 sinks and head_size 64 or 192"
+                )
+            assert flash_attn_supports_sinks()
             assert self.sinks.shape[0] == num_heads, (
                 "Sinks must have the same number of heads as the number of "
                 "heads in the layer"
@@ -1199,7 +1179,6 @@ class FlashAttentionImpl(AttentionImpl):
 
         self.supports_quant_query_input = flash_attn_supports_quant_query_input()
 
-        vllm_config = get_current_vllm_config_or_none()
         dcp_a2a = (
             vllm_config is not None
             and vllm_config.parallel_config.decode_context_parallel_size > 1

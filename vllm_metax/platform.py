@@ -215,8 +215,11 @@ class MacaPlatformBase(Platform):
     def get_device_total_memory(cls, device_id: int = 0) -> int:
         raise NotImplementedError
 
-    @classmethod
-    def is_cuda_alike(cls) -> bool:
+    def is_cuda_alike(self) -> bool:
+        return True
+
+    def is_maca(self) -> bool:
+        assert self.is_out_of_tree()
         return True
 
     def is_sleep_mode_available(cls) -> bool:

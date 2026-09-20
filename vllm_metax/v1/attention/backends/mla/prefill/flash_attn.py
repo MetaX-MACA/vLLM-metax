@@ -419,7 +419,8 @@ class MacaFlashAttnPrefillBackend(MLAPrefillBackend):
             # called "return_attn_probs" instead of return_softmax_lse
             kwargs["return_attn_probs"] = return_softmax_lse
             assert out is None and output_scale is None
-        if envs.VLLM_BATCH_INVARIANT:
+        # MetaX varlen has no split-KV control (unlike its kvcache API).
+        if envs.VLLM_BATCH_INVARIANT and self._is_vllm_fa:
             kwargs["num_splits"] = 1
 
         attn_out = FA4_MLA_PREFILL_KERNEL(
@@ -445,7 +446,7 @@ class MacaFlashAttnPrefillBackend(MLAPrefillBackend):
     def supports_out(self) -> bool:
         # A padded V produces a qk_head_dim output that cannot be written into
         # a v_head_dim `out`; only the unpadded path honors `out`.
-        return not self.requires_v_padding
+        return self._is_vllm_fa and not self.requires_v_padding
 
     def run_prefill_new_tokens(
         self,
