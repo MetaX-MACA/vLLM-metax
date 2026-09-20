@@ -1,6 +1,8 @@
 # Mandatory Environment and Source Preflight
 
-Complete this preflight at the start of a patch upgrade. The goal is to establish
+Complete this preflight at the start of an adaptation of `vllm_metax/patch/`.
+It does not impose a confirmation requirement on standalone adaptations elsewhere.
+The goal is to establish
 which source is being reviewed, which copy will be edited, and which code tests will
 actually execute. A local source tree and its installed wheel are separate artifacts.
 

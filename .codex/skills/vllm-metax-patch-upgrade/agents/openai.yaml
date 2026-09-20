@@ -1,4 +1,4 @@
 interface:
   display_name: "vLLM MetaX Patch Upgrade"
-  short_description: "Audit and adapt MetaX patches to upstream changes"
-  default_prompt: "Use $vllm-metax-patch-upgrade to detect the Python environment, local checkouts, installed distributions, and effective imports, ask me to confirm the proposed environment and target, then review and adapt every monkey patch with evidence, preserve explanatory comments, and validate the actual edited code."
+  short_description: "Audit and adapt patches in vllm_metax/patch/"
+  default_prompt: "Use $vllm-metax-patch-upgrade to adapt vllm_metax/patch/: detect the environment and source mappings, ask me to confirm the target, then review the patches with evidence, preserve explanations, and validate the edited code. Apply this skill only to the patch directory portion of the task."

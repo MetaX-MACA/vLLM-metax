@@ -1,6 +1,6 @@
 ---
 name: vllm-metax-patch-upgrade
-description: Audit and adapt vLLM-MetaX monkey patches against a target upstream revision. Decide whether to retain, update, migrate, or remove each patch; maintain patch headers and algorithm explanations; validate changes and record the evidence. Use for patch compatibility reviews after vLLM, Transformers, Torch, or Triton upgrades, not for unrelated model implementations or general refactoring.
+description: Audit and adapt monkey patches in vllm_metax/patch/ against a target upstream revision. Decide whether to retain, update, migrate, or remove each patch; maintain patch headers and explanations; validate changes and record evidence. Use only for compatibility work on this directory, not standalone attention backend, model, kernel, or other adaptations elsewhere in vllm_metax.
 ---
 
 # vLLM-MetaX Patch Upgrade
@@ -8,6 +8,20 @@ description: Audit and adapt vLLM-MetaX monkey patches against a target upstream
 Preserve necessary MetaX behavior while inheriting the target upstream implementation.
 Deliver reviewable changes, a complete patch inventory with decisions, and accurate
 validation results. Explain why each difference exists and when it can be removed.
+
+## Scope
+
+Apply this skill only when the requested adaptation concerns `vllm_metax/patch/`.
+An implementation adapted from upstream is not automatically a monkey patch in
+this scope. Standalone work on attention backends, models, kernels, or other
+directories must use the normal repository workflow, without inheriting this
+skill's environment-confirmation gate, patch headers, or patch audit requirements.
+
+For an in-scope patch, inspect upstream code, callers, registrations, and tests
+outside the directory as needed. Changes there must directly support that patch's
+adaptation, removal, migration, or validation. If a request spans both patch and
+non-patch work, apply this skill only to the patch portion; keep unrelated backend
+or model findings out of `vllm_metax/patch/AUDIT.md`.
 
 ## 1. Establish the baseline and repository requirements
 
@@ -42,7 +56,7 @@ validation results. Explain why each difference exists and when it can be remove
 
 ## 2. Inventory every patch and its activation path
 
-Start from the directory's file list and trace plugin entry points and package
+Start from the `vllm_metax/patch/` file list and trace plugin entry points and package
 initializers. Search beyond `@patch`: include direct attribute assignments, registry
 mutations, `sys.modules` redirects, imported aliases, and disabled or unimported patches.
 
