@@ -1,0 +1,4 @@
+interface:
+  display_name: "vLLM-MetaX Registry Upgrade"
+  short_description: "Adapt registry dispatch and MetaX quantization contracts"
+  default_prompt: "Use $vllm-metax-registry-upgrade to review and adapt registry code against the target vLLM revision and installed MetaX APIs, verifying registration, weight layouts and kernel dispatch."
