@@ -52,6 +52,7 @@ def map_unquantized_backend(runner_backend: MoEBackend) -> UnquantizedMoeBackend
     """Map user's MoEBackend to UnquantizedMoeBackend."""
     mapping = {
         "triton": UnquantizedMoeBackend.TRITON,
+        "batched_triton": UnquantizedMoeBackend.BATCHED_TRITON,
     }
     if backend := mapping.get(runner_backend):
         return backend

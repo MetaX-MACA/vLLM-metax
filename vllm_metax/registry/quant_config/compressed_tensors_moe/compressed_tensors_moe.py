@@ -7,10 +7,6 @@ from vllm.model_executor.layers.quantization.compressed_tensors.compressed_tenso
     logger,
 )
 
-from compressed_tensors.quantization import (
-    ActivationOrdering,
-    QuantizationStrategy,
-)
 
 from compressed_tensors import CompressionFormat
 from vllm_metax.registry.custom_ops.layers.fused_moe.unquantized_fused_moe_method import (
@@ -88,9 +84,6 @@ class CompressedTensorsMoEMethod(vllm_ct_moe_method):
         format = scheme_dict.get("format")
 
         if quant_config._is_wNa16_group_channel(weight_quant, input_quant):
-            # group_size=None means channelwise
-            group_size = weight_quant.group_size or -1  # noqa: F841
-
             valid_format_and_bits = (
                 weight_quant.num_bits in WNA16_SUPPORTED_BITS
                 and format == CompressionFormat.pack_quantized.value
@@ -98,28 +91,22 @@ class CompressedTensorsMoEMethod(vllm_ct_moe_method):
 
             if not valid_format_and_bits:
                 raise ValueError(
-                    "For Fused MoE layers, only format: ",
-                    f"{CompressionFormat.pack_quantized.value} ",
-                    f" and bits: {WNA16_SUPPORTED_BITS} is supported ",
+                    "For Fused MoE layers, only format: "
+                    f"{CompressionFormat.pack_quantized.value} "
+                    f"and bits: {WNA16_SUPPORTED_BITS} is supported "
                     f"but got format: {CompressionFormat.pack_quantized.value} "
-                    f" and bits: {weight_quant.num_bits}",
+                    f"and bits: {weight_quant.num_bits}"
                 )
 
-            if (
-                weight_quant.strategy == QuantizationStrategy.GROUP
-                and weight_quant.actorder
-                in (ActivationOrdering.GROUP, ActivationOrdering.DYNAMIC)
-            ):
-                raise ValueError(
-                    "WNA16MoE is not supported with actorder=group/dynamic."
-                )
             from .compressed_tensors_moe_wna16 import (
                 CompressedTensorsWNA16MoEMethod,
             )
 
             logger.info_once("Using CompressedTensorsWNA16MoEMethod")
             return CompressedTensorsWNA16MoEMethod(
-                weight_quant, input_quant, layer.moe_config
+                weight_quant,
+                input_quant,
+                layer.moe_config,
             )
         if quant_config._is_dynamic_token_w8a8(weight_quant, input_quant):
             from .compressed_tensors_moe_w8a8_int8 import (

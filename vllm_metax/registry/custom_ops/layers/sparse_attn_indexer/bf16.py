@@ -56,7 +56,7 @@ def sparse_attn_indexer_bf16(
     kv_cache: torch.Tensor,
     q_bf16: torch.Tensor,
     q_scale: torch.Tensor | None,
-    k_bf16: torch.Tensor,
+    k_bf16: torch.Tensor | None,
     weights: torch.Tensor,
     quant_block_size: int,
     scale_fmt: str | None,

@@ -49,7 +49,7 @@ def sparse_attn_indexer(
     kv_cache: torch.Tensor,
     q_quant: torch.Tensor,
     q_scale: torch.Tensor | None,
-    k: torch.Tensor,
+    k: torch.Tensor | None,
     weights: torch.Tensor,
     quant_block_size: int,
     scale_fmt: str | None,
@@ -203,7 +203,7 @@ def sparse_attn_indexer(
             k_quant = k_quant_full[: chunk.max_local_total_seq_lens]
             k_scale = k_scale_full[: chunk.max_local_total_seq_lens]
             if not chunk.skip_kv_gather and chunk.local_total_seq_lens > 0:
-                ops.cp_gather_indexer_k_quant_cache(
+                mx_ops.cp_gather_indexer_k_quant_cache(
                     kv_cache,
                     k_quant,
                     k_scale,
@@ -341,13 +341,13 @@ def sparse_attn_indexer(
 
         # TODO(hank): mcoplib does not support cooerative_topk
         use_cooperative_topk = (
-            current_platform.is_cuda()
+            not current_platform.is_maca()
             and topk_tokens in (512, 1024, 2048)
-            and num_rows <= 32
+            and num_rows <= 64
             and logits.stride(0) % 4 == 0  # TMA 16-byte alignment
         )
         # TODO(hank): mcoplib bugs in persistent_topk, disable it for now
-        use_persistent_topk = current_platform.is_cuda() and topk_tokens in (
+        use_persistent_topk = not current_platform.is_maca() and topk_tokens in (
             512,
             1024,
             2048,
@@ -420,7 +420,7 @@ def sparse_attn_indexer_fake(
     kv_cache: torch.Tensor,
     q_quant: torch.Tensor,
     q_scale: torch.Tensor | None,
-    k: torch.Tensor,
+    k: torch.Tensor | None,
     weights: torch.Tensor,
     quant_block_size: int,
     scale_fmt: str | None,

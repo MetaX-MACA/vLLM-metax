@@ -40,6 +40,7 @@ from vllm.model_executor.layers.quantization.utils.fp8_utils import (
     is_deep_gemm_e8m0_used,
 )
 from vllm.model_executor.layers.quantization.utils.quant_utils import (
+    FP8_DTYPE,
     QuantKey,
     kFp8Dynamic128Sym,
     kFp8DynamicTensorSym,
@@ -167,6 +168,19 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 (kFp8StaticTensorSym, kFp8StaticTensorSym),
                 (kFp8StaticTensorSym, kFp8DynamicTensorSym),
             ]
+            # Block-quantized FP8 with arbitrary block shape: the Triton
+            # kernels take the block shape as a runtime argument.
+            if (
+                weight_key is not None
+                and activation_key == kFp8Dynamic128Sym
+                and weight_key.dtype == FP8_DTYPE
+                and weight_key.symmetric
+                and weight_key.scale.static
+                and weight_key.scale.dtype == torch.float32
+                and weight_key.scale.group_shape.row > 1
+                and weight_key.scale.group_shape.col > 1
+            ):
+                return True
         return (weight_key, activation_key) in supported
 
     @staticmethod
@@ -333,7 +347,8 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
         elif (
             hidden_states.dtype == torch.float8_e4m3fn
             or hidden_states.dtype == torch.float8_e4m3fnuz
-        ) or hidden_states.dtype == torch.int8:
+            or hidden_states.dtype == torch.int8
+        ):
             compute_type = tl.bfloat16
         else:
             raise ValueError(f"Unsupported compute_type: {hidden_states.dtype}")
@@ -345,6 +360,10 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
             workspace13, (num_tokens * top_k_num, cache2_dim)
         )
         intermediate_cache3 = _resize_cache(workspace2, (num_tokens, top_k_num, K))
+
+        # Include fused shared-expert rows while preserving EP remapping.
+        num_align_experts = w1.shape[0] if expert_map is None else global_num_experts
+
         if mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
             maybe_override_stage_block_size_m(
                 hidden_states,
@@ -373,7 +392,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 staged_configs[0],
                 num_tokens,
                 top_k_num,
-                global_num_experts,
+                num_align_experts,
                 expert_map,
                 use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
                 use_int8_w8a16=self.quant_config.use_int8_w8a16,
@@ -558,7 +577,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                     staged_configs[1],
                     num_tokens,
                     top_k_num,
-                    global_num_experts,
+                    num_align_experts,
                     expert_map,
                     use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
                     use_int8_w8a16=self.quant_config.use_int8_w8a16,
@@ -699,6 +718,7 @@ class TritonWNA16Experts(TritonExperts):
             MoEActivation.GELU,
             MoEActivation.GELU_TANH,
             MoEActivation.SWIGLUOAI,
+            MoEActivation.SWIGLUOAI_UNINTERLEAVE,
             MoEActivation.SWIGLUSTEP,
             MoEActivation.SILU_NO_MUL,
             MoEActivation.GELU_NO_MUL,
@@ -807,10 +827,12 @@ class TritonWNA16Experts(TritonExperts):
         )
         intermediate_cache3 = _resize_cache(workspace2, (num_tokens, top_k_num, K))
 
+        # Include fused shared-expert rows while preserving EP remapping.
+        num_align_experts = w1.shape[0] if expert_map is None else global_num_experts
         sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
             topk_ids,
             staged_config[0]["BLOCK_SIZE_M"],
-            global_num_experts,
+            num_align_experts,
             expert_map,
         )
 
@@ -851,7 +873,7 @@ class TritonWNA16Experts(TritonExperts):
             sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
                 topk_ids,
                 staged_config[1]["BLOCK_SIZE_M"],
-                global_num_experts,
+                num_align_experts,
                 expert_map,
             )
 

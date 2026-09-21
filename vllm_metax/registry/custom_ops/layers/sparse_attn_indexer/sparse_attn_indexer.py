@@ -14,6 +14,9 @@ from vllm.model_executor.layers.sparse_attn_indexer import SparseAttnIndexer
 from . import bf16, int8  # noqa: F401
 
 from vllm.platforms import current_platform
+from vllm.utils.deep_gemm import (
+    has_deep_gemm,
+)
 
 if current_platform.supports_fp8():
     from . import fp8  # noqa: F401
@@ -40,6 +43,7 @@ class MacaSparseAttnIndexer(SparseAttnIndexer):
         topk_indices_buffer: torch.Tensor,
         skip_k_cache_insert: bool = False,
         use_fp4_cache: bool = False,
+        compress_ratio: int = 1,
     ):
         super(SparseAttnIndexer, self).__init__(enforce_enable=True)
         self.k_cache = k_cache
@@ -52,21 +56,28 @@ class MacaSparseAttnIndexer(SparseAttnIndexer):
         self.topk_indices_buffer = topk_indices_buffer
         self.skip_k_cache_insert = skip_k_cache_insert
         self.use_fp4_cache = use_fp4_cache
+        self.compress_ratio = compress_ratio
         self.dense_mha_metadata_layer_name = ""
         # DCP scalars are constant for the run; resolve them here (config is set
         # during model construction) and pass them into the custom op, rather
         # than threading them through per-step metadata.
         parallel_config = get_current_vllm_config().parallel_config
+        self._parallel_config = parallel_config
         self.dcp_world_size = parallel_config.decode_context_parallel_size
         self.dcp_rank = get_dcp_group().rank_in_group if self.dcp_world_size > 1 else 0
-        self.cp_kv_cache_interleave_size = parallel_config.cp_kv_cache_interleave_size
         self.use_pcp = parallel_config.prefill_context_parallel_size > 1
+        self._cp_kv_cache_interleave_size: int | None = None
+        if current_platform.is_maca() and not has_deep_gemm():
+            raise RuntimeError(
+                "Sparse Attention Indexer CUDA op requires DeepGEMM support in "
+                "the current vLLM environment."
+            )
 
     def forward_oot(
         self,
         hidden_states: torch.Tensor,
         q_quant: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
-        k: torch.Tensor,
+        k: torch.Tensor | None,
         weights: torch.Tensor,
     ):
         # MetaX INT8 uses one Q tensor because its per-token/head scale is

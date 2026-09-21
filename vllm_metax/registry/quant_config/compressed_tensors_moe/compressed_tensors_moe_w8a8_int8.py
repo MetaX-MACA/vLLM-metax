@@ -80,6 +80,8 @@ class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm_w8a8_int8):
             w2_scale=layer.w2_weight_scale,
             a1_scale=layer.w13_input_scale,
             a2_scale=layer.w2_input_scale,
+            w1_bias=getattr(layer, "w13_bias", None),
+            w2_bias=getattr(layer, "w2_bias", None),
             per_act_token_quant=True,
             gemm1_alpha=getattr(layer, "swiglu_alpha", None),
             gemm1_beta=getattr(layer, "swiglu_beta", None),
