@@ -861,7 +861,7 @@ pyyaml==6.0.2
     #   transformers
     #   uvicorn
     #   vocos
-pyzmq==27.1.0
+pyzmq==27.2.0
     # via -r requirements/common.txt
 rapidfuzz==3.12.1
     # via jiwer
@@ -919,7 +919,7 @@ rignore==0.8.1
     # via fastapi-cloud-cli
 rouge-score==0.1.2
     # via lm-eval
-rpds-py==0.30.0
+rpds-py==0.29.0
     # via
     #   jsonschema
     #   referencing

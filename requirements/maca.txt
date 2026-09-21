@@ -4,4 +4,3 @@
 
 numba == 0.65.0
 torch-c-dlpack-ext
-apache-tvm-ffi==0.1.12
