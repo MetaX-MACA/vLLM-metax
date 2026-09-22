@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
-"""Read-only attention source and component inventory; use the target Python."""
+"""Read-only MetaX upgrade source and component inventory; use the target Python."""
 
 import argparse
 import hashlib
@@ -161,6 +161,8 @@ def component_report():
     """Inventory candidates without importing GPU libraries or claiming API support."""
     modules = {}
     for name in (
+        "compressed_tensors",
+        "flashinfer",
         "deep_gemm",
         "flash_attn",
         "flash_attn_3",
@@ -186,6 +188,8 @@ def component_report():
         if not any(
             normalized.startswith(prefix)
             for prefix in (
+                "compressed_tensors",
+                "flashinfer",
                 "deep_gemm",
                 "flash_attn",
                 "flash_mla",
@@ -261,7 +265,7 @@ def main():
             "modeled_sys_path": sys.path,
         },
         "dependencies": dependencies,
-        "attention_components": component_report(),
+        "components": component_report(),
         "vllm": package_report("vllm", vllm_source),
         "vllm_metax": package_report("vllm_metax", metax_source),
         "limitations": [

@@ -25,19 +25,11 @@ MetaX compatibility. Validate the actual runtime implementation.
   the index, working tree, installed release, or another revision. For staged reviews,
   export the index to a temporary directory and test that snapshot; unstaged fixes
   must not silently satisfy its missing dependencies.
-- Run the read-only [environment preflight](references/environment-preflight.md).
-  Establish the interpreter/venv, both local source trees, both installed packages,
-  effective imports, and component distributions. Use the user's interpreter explicitly
-  (`/opt/venv/bin/python` when that uv venv is specified).
-- **Proactively confirm the intended comparison and runtime environment once when the
-  session has not already established it.** Show detected paths, revisions, component
-  versions, and material mismatches in one bundled question. This is clarification of
-  the target, not permission to perform already authorized work. Reuse prior confirmation
-  when unchanged; honor an explicit instruction to skip the question. Continue independent
-  inventory work while an unresolved target choice is pending. If this requirement
-  causes a pause, link this SKILL.md and quote the requirement when explaining why.
-- Adapt to the established target revision, not an assumed remote HEAD. Recheck import
-  correspondence when the interpreter, dependencies, checkout, or import path changes.
+- Read and apply [vllm-metax-upgrade-common](../vllm-metax-upgrade-common/SKILL.md)
+  before compatibility decisions. It owns environment/source discovery, the shared
+  read-only probe, one-time target confirmation and verification evidence rules.
+  Reuse the same established environment record across upgrade skills; do not ask
+  again for an unchanged mapping. Keep the domain-specific workflow below.
 - Inventory every requested file: active registration/callers, upstream counterpart,
   reason for each MetaX difference, proposed action and validation. Account for retained
   and inactive adaptations as well as changed ones; do not let a passing subset stand

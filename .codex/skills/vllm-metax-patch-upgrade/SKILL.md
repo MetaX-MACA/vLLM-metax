@@ -15,7 +15,8 @@ Apply this skill only when the requested adaptation concerns `vllm_metax/patch/`
 An implementation adapted from upstream is not automatically a monkey patch in
 this scope. Standalone work on attention backends, models, kernels, or other
 directories must use the normal repository workflow, without inheriting this
-skill's environment-confirmation gate, patch headers, or patch audit requirements.
+skill's patch headers or patch audit requirements. The common environment workflow
+applies through the relevant upgrade skill.
 
 For an in-scope patch, inspect upstream code, callers, registrations, and tests
 outside the directory as needed. Changes there must directly support that patch's
@@ -29,30 +30,11 @@ or model findings out of `vllm_metax/patch/AUDIT.md`.
   and existing audit records. Follow current repository requirements and user instructions.
 - Inspect working-tree and staged changes; preserve existing work. By default, do
   not commit, stage changes, alter installed dependencies, or modify the upstream checkout.
-- Complete the mandatory [environment preflight](references/environment-preflight.md)
-  before making compatibility decisions. Run the bundled read-only probe with the
-  selected interpreter and explicit local checkout paths; inspect its source comparisons.
-- Establish all five locations: Python/venv, local vLLM source, installed vLLM package,
-  local vllm_metax source, and installed vllm_metax package. Separately establish the
-  effective import origin of each package under the actual test/launch conditions.
-- Present the detected environment and proposed comparison/runtime plan, then proactively
-  ask the user to confirm them before compatibility decisions, patch edits, or runtime
-  validation. Follow the confirmation procedure in the preflight reference. Reuse an
-  explicit confirmation already given in this session when the mapping is unchanged;
-  a later instruction to proceed without confirmation takes precedence.
-- Use the user-specified interpreter. For a uv environment at `/opt/venv`, run Python
-  checks and tests with `/opt/venv/bin/python`, not system or Conda Python. An activated
-  shell, matching version strings, a wheel filename, or `direct_url.json` alone does
-  not establish source/runtime correspondence.
-- Resolve discrepancies by identifying the intended comparison source and validation
-  runtime. Continue independent inventory work, but do not base compatibility decisions
-  on an unverified checkout or claim local edits were tested when imports resolve to a
-  different copy. Include unresolved target choices in the environment confirmation;
-  do not reinstall,
-  change environment variables globally, or switch checkouts to conceal a mismatch.
-- Distinguish adapting to the installed version from upgrading to remote HEAD.
-  Unless the user requests the remote latest version, use the established target
-  revision and state it clearly. Do not call a local checkout the latest remote version.
+- Read and apply [vllm-metax-upgrade-common](../vllm-metax-upgrade-common/SKILL.md)
+  before compatibility decisions. It owns environment/source discovery, the shared
+  read-only probe, one-time target confirmation and verification evidence rules.
+  Reuse the same established environment record across upgrade skills; do not ask
+  again for an unchanged mapping. Keep the domain-specific workflow below.
 
 ## 2. Inventory every patch and its activation path
 

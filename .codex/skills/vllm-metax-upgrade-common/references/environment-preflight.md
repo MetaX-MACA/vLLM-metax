@@ -1,7 +1,7 @@
 # Mandatory Environment and Source Preflight
 
-Complete this preflight at the start of an adaptation of `vllm_metax/patch/`.
-It does not impose a confirmation requirement on standalone adaptations elsewhere.
+Complete this preflight when an upgrade skill invokes the common workflow, or when
+the user explicitly requests it.
 The goal is to establish
 which source is being reviewed, which copy will be edited, and which code tests will
 actually execute. A local source tree and its installed wheel are separate artifacts.
@@ -21,11 +21,11 @@ actually execute. A local source tree and its installed wheel are separate artif
 Run the probe with the selected Python. The paths below are examples, not defaults:
 
 ```bash
-/opt/venv/bin/python .codex/skills/vllm-metax-patch-upgrade/scripts/probe_environment.py \
+/opt/venv/bin/python .codex/skills/vllm-metax-upgrade-common/scripts/probe_environment.py \
   --vllm-source /workspace/vllm \
   --metax-source /workspace/vLLM-metax \
   --runtime-cwd /workspace/vLLM-metax \
-  > /tmp/metax-patch-environment.json
+  > /tmp/metax-upgrade-environment.json
 ```
 
 The probe uses only the standard library and does not import vLLM or MetaX, load GPU
@@ -52,6 +52,7 @@ Record one row per package plus an interpreter row:
 | Installed vLLM | Distribution version, metadata location, installed package directory, installer, editable status and installation provenance where available. |
 | Local vllm_metax | Repository and package paths, commit, dirty/untracked state, source manifest fingerprint. |
 | Installed vllm_metax | Distribution version, metadata location, installed package directory, installer, editable status and installation provenance where available. |
+| Components | Distribution candidates and top-level origins for compressed-tensors, DeepGEMM, FlashAttention, FlashMLA, FlashInfer, MCOPLIB, Torch and Triton. Verify device/MACA/ABI and actual selected APIs separately. |
 | Effective imports | Resolved origins/search paths for both packages under the intended invocation, checked again in the actual process. |
 | Source correspondence | Matching, changed, missing, and install-only Python files; generated version files reported separately; explicit explanation for intentional differences. |
 
@@ -80,7 +81,7 @@ and which copies validation will import under the proposed interpreter and cwd.
 Label proposed import-path adjustments as planned, not already verified.
 
 Ask one bundled question in the user's language, for example:
-"Are these the intended environment and source versions for this patch upgrade?
+"Are these the intended environment and source versions for this upgrade?
 Confirm the proposed setup, or specify which paths or target revision to change."
 Use an available user-input tool that supports this clarification; otherwise ask
 in the final response. Make the question self-contained by including the detected
@@ -90,8 +91,8 @@ while editing or testing another; link this skill's `SKILL.md` and quote its rel
 confirmation instruction when requesting the confirmation.
 
 Until the user responds, continue only independent read-only work such as listing
-patches and reading repository requirements. Wait before compatibility decisions,
-patch edits, or runtime validation. Silence, elapsed time, a preselected option, and
+requested files and reading repository requirements. Wait before compatibility decisions,
+adaptation edits, or runtime validation. Silence, elapsed time, a preselected option, and
 probe exit status 0 are not confirmation. This confirms the intended environment;
 it does not authorize package installation or other changes outside the task.
 
@@ -103,10 +104,10 @@ or becomes uncertain; expected edits within the confirmed checkout do not invali
 confirmation. Follow an explicit user instruction to skip this question, while still
 performing the technical checks and reporting discrepancies.
 
-## Interpret mismatches before adapting patches
+## Interpret mismatches before adapting code
 
 - **Upstream checkout versus installed vLLM differs:** identify whether the user wants
-  the installed revision or the checkout revision. Compare the exact patched modules,
+  the installed revision or the checkout revision. Compare the exact affected modules,
   helpers, and callers in that target. Do not silently read one and test the other.
 - **Local MetaX changes versus an older installed wheel:** this may be intentional.
   Record that tests must import the edited checkout. If they load the wheel instead,
@@ -115,7 +116,7 @@ performing the technical checks and reporting discrepancies.
   run source-level tests.
 - **Source import shadows installed metadata:** list both. Local `_version.py` and
   installed distribution metadata may describe different builds. A matching package
-  `__init__.py` does not establish that all patched modules match.
+  `__init__.py` does not establish that all affected modules match.
 - **Missing source, distribution, or unresolved editable mapping:** report unknowns.
   Continue independent inventory work, but do not assert compatibility against that
   artifact. Include unresolved fields in the environment confirmation and ask for
@@ -127,5 +128,17 @@ another build, record the extension origin, Torch/MACA ABI evidence, and appropr
 runtime checks. Do not label mixed source/binary execution as a fully matched build.
 
 Keep the resulting table, the chosen comparison/runtime plan, and the user's
-confirmation or explicit instruction to skip confirmation in the audit record.
+confirmation or explicit instruction to skip confirmation in the task evidence (a separate audit file is not required).
 Re-run the preflight after path, interpreter, checkout, or installation changes.
+
+## Component evidence boundary
+
+The JSON `components` field collects distribution candidates and top-level module
+resolution without importing GPU packages. Follow aliases, wrappers and native
+extensions inside the actual test process. Inspect signatures, docstrings and source
+where available; an unavailable Python signature does not prove lack of support.
+Check joint input/output dtype, shape, strides, optional argument and layout contracts.
+The calling specialist skill decides which capabilities and numerical cases to test.
+Comments, matching API names and upstream support claims require revalidation against
+the installed MACA implementation. Rediscover moved upstream package paths instead of
+assuming either `vllm/model_executor/models/` or `vllm/models/` always exists.

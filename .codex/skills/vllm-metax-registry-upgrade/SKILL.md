@@ -25,21 +25,12 @@ not establish that the installed MetaX implementation supports the same behavior
   stage, commit, reinstall packages or edit upstream/site-packages without authorization.
   For staged validation, export the index and prove that imports use that snapshot;
   unstaged files must not silently supply missing staged dependencies.
-- Read applicable repository instructions and complete the read-only
-  [environment preflight](references/environment-preflight.md). Establish all five
-  locations: interpreter/venv, local vLLM, installed vLLM, local vllm_metax and installed
-  vllm_metax. Compare relevant source contents and record actual runtime import origins.
-  Use the user-selected interpreter explicitly, such as `/opt/venv/bin/python` for
-  the specified uv environment; matching package versions are insufficient evidence.
-- **Proactively confirm the intended comparison and runtime environment once if it
-  has not already been established in the session.** Present detected paths, revisions,
-  component versions and mismatches in one bundled clarification. Reuse unchanged
-  session confirmation and honor an explicit instruction to skip it. Continue independent
-  inventory while target choices are unresolved. If this causes a pause, link this
-  SKILL.md and quote this requirement. This is target clarification, not renewed
-  permission for work already authorized.
-- Use the established target revision, not an assumed remote HEAD. Recheck source/import
-  correspondence when the interpreter, checkout, dependencies or import paths change.
+- Read applicable repository instructions.
+- Read and apply [vllm-metax-upgrade-common](../vllm-metax-upgrade-common/SKILL.md)
+  before compatibility decisions. It owns environment/source discovery, the shared
+  read-only probe, one-time target confirmation and verification evidence rules.
+  Reuse the same established environment record across upgrade skills; do not ask
+  again for an unchanged mapping. Keep the domain-specific workflow below.
 
 ## Trace registration and dispatch
 
