@@ -1,9 +1,8 @@
 # Mandatory Environment and Source Preflight
 
 Complete this preflight when an upgrade skill invokes the common workflow, or when
-the user explicitly requests it.
-The goal is to establish
-which source is being reviewed, which copy will be edited, and which code tests will
+the user explicitly requests it. Establish which source is being reviewed, which
+copy will be edited, and which code tests will
 actually execute. A local source tree and its installed wheel are separate artifacts.
 
 ## Discover explicit inputs

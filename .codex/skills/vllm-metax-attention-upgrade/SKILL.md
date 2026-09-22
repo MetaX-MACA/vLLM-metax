@@ -118,11 +118,8 @@ against independent numerical references in the intended environment. Test wrapp
 real branch routing in addition to raw APIs. A mocked conversion, isolated metadata test,
 or successful import is not a full kernel/end-to-end test.
 
-For now, do not depend on the repository's `tests/` directory, including its helpers,
-fixtures, conftest files or existing test cases. Generate self-contained validation
-scripts or tests as needed from the current runtime contracts and affected behavior.
-Place them in an isolated temporary directory and provide their own inputs, references
-and initialization. Keep the actual component under test real, not mocked.
+Use the common skill's isolated-validation and evidence rules. Keep the actual
+attention component under numerical test real, not mocked.
 
 For each finding or fix, retain the trigger, expected/observed behavior, component and
 source origins, reproduction command, result, and verification limits. Distinguish a

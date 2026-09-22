@@ -25,8 +25,8 @@ investigate, not proof of support on MetaX.
   read-only probe, one-time target confirmation and verification evidence rules.
   Reuse the same established environment record across upgrade skills; do not ask
   again for an unchanged mapping. Keep the domain-specific workflow below.
-- Apart from the common prerequisite above, do not automatically invoke patch, attention or
-  registry skills just because the model calls those modules. Apply a separately
+- Apart from the common prerequisite above, do not automatically invoke patch,
+  attention or registry skills just because the model calls those modules. Apply a separately
   requested specialist workflow only to its relevant portion. No monkey-patch headers
   or patch audit files are required for model adaptations.
 
@@ -137,9 +137,7 @@ Example shared-defect note:
 
 ## Validate and report
 
-Generate focused, self-contained validation scripts in an identified temporary artifact
-directory. For now, do not depend on repository `tests/`, helpers, fixtures or conftest,
-or on old `/tmp` artifacts surviving from earlier sessions.
+Apply the common skill's isolated-validation and evidence rules to these model checks.
 
 - Verify registration and fresh-process construction, then weight loading, transformed
   parameter state, dispatch and affected numerical behavior. Test meaningful boundary

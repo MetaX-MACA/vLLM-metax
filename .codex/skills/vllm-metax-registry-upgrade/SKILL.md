@@ -59,7 +59,8 @@ plugin entry point -> package imports -> decorator/table mutation
   loading, quant-config and execution methods.
 - Check actual factory signatures and return contracts. Follow the selected class's
   module/source through kernel invocation. A MetaX-named oracle can still return
-  upstream experts and bypass MCOPLIB, local tuning or communication adaptations.
+  upstream experts and bypass MCOPLIB, local tuning or communication adaptations, which
+  could lead to potential errors.
 - Distinguish shared and separately defined enums. Matching member names or values
   do not make members of different Enum classes interchangeable in backend dispatch.
 
@@ -92,9 +93,7 @@ implementation. Comments and earlier review conclusions are hypotheses to verify
 ## Validate and report
 
 Read [validation.md](references/validation.md) and select checks that discriminate the
-changed behavior. For now, do not depend on repository `tests/`, its helpers, fixtures
-or conftest. Generate self-contained scripts in an identified temporary artifact directory
-from current contracts; do not require old `/tmp` scripts from previous sessions.
+changed behavior, using the common skill's isolated-validation and evidence rules.
 
 Start with startup/lookup and interface checks, then validate affected state/layout and
 real GPU behavior. An isolated constructor or scatter test may bypass an earlier failure
