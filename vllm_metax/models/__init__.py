@@ -35,6 +35,10 @@ def register_model():
     )
 
     ModelRegistry.register_model(
+        "DSparkDraftModel", "vllm_metax.models.deepseek_v4:DSparkDeepseekV4ForCausalLM"
+    )
+
+    ModelRegistry.register_model(
         "Step3p5MTP", "vllm_metax.models.step3p5_mtp:Step3p5MTP"
     )
 

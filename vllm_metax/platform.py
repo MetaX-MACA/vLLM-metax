@@ -399,6 +399,8 @@ class MacaPlatformBase(Platform):
             hf_config = model_config.hf_config
             # logic copied from `SepculativeConfig.hf_config_override`
             if hf_config.model_type in ("joyai_llm_flash",):
+                # Preserve JoyAI's dense-MTP identity across the model-type rewrite.
+                hf_config.joyai_dense_mtp = True
                 hf_config.model_type = "deepseek_mtp"
                 n_predict = getattr(hf_config, "num_nextn_predict_layers", None)
                 hf_config.update(
@@ -1039,12 +1041,6 @@ mx_envs.maybe_override_vllm_env(
     "VLLM_FLOAT32_MATMUL_PRECISION",
     "high",
     "set float32 matmul precision to high for better performance on Maca platform",
-)
-
-mx_envs.maybe_override_vllm_env(
-    "VLLM_USE_V2_MODEL_RUNNER",
-    False,
-    "v2 model runner is still under development and not fully tested on Maca platform, disable it by default",
 )
 
 mx_envs.maybe_override_vllm_env(

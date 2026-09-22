@@ -42,7 +42,6 @@ class MacaDeepseekCompressor(DeepseekCompressor):
         prefix: str = "",
         k_cache_prefix="",
         use_fp4_cache: bool = False,
-        eager_scratch_pool: "DeepseekV4EagerScratchPool | None" = None,
     ):
         super().__init__(
             vllm_config,
@@ -53,7 +52,6 @@ class MacaDeepseekCompressor(DeepseekCompressor):
             prefix,
             k_cache_prefix,
             use_fp4_cache,
-            eager_scratch_pool,
         )
         self.use_fp8_indexer = vllm_config.attention_config.indexer_kv_dtype == "fp8"
         self.use_fp8_kvcache = vllm_config.cache_config.cache_dtype.startswith("fp8")
@@ -93,7 +91,7 @@ class MacaDeepseekCompressor(DeepseekCompressor):
         state_width = state_cache.shape[-1] // 2
         # ---------------------------------------------
         # Note: Metax not support pdl
-        pdl_kwargs = {} if current_platform.is_out_of_tree() else {"launch_pdl": False}
+        pdl_kwargs = {}
 
         save_partial_states(
             kv=kv,
@@ -110,7 +108,7 @@ class MacaDeepseekCompressor(DeepseekCompressor):
 
         # full graph cannot branch on per-step CPU metadata after capture
         if (
-            current_platform.is_cuda_alike()
+            current_platform.is_maca()
             and self.head_dim == 512
             and self.compress_ratio == 128
             and forward_context.cudagraph_runtime_mode != CUDAGraphMode.FULL
@@ -149,7 +147,7 @@ class MacaDeepseekCompressor(DeepseekCompressor):
             # Maca does not support cutedsl, so we use the triton kernel for all cases.
             pass
         elif (
-            self._use_two_stage_fused_compressor and current_platform.is_rocm()
+            self._use_two_stage_fused_compressor and not current_platform.is_maca()
         ):  # TODO(hank): Support it on maca
             # head=512 cr>=128 (no overlap): two-pass split compressor on the
             # prefill suffix, single-pass on the decode prefix.

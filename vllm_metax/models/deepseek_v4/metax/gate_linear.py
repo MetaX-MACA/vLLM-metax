@@ -28,16 +28,10 @@ class MacaGateLinear(GateLinear):
         force_fp32_compute: bool = False,
         prefix: str = "",
     ):
-        # is_hopper_or_blackwell = current_platform.is_device_capability(
-        #     (9, 0)
-        # ) or current_platform.is_device_capability_family(100)
-        # can_use_specialized_kernels = (
-        #     current_platform.is_cuda() and is_hopper_or_blackwell and not bias
-        # )
         can_use_specialized_kernels = not bias
 
         # If fp32 compute is required and no specialized kernel is available,
-        # store weights in fp32 so Tier 3 computes in fp32 natively.
+        # store weights in fp32 so the fallback linear path computes in fp32.
         if force_fp32_compute and not can_use_specialized_kernels:
             params_dtype = torch.float32
 
@@ -51,25 +45,30 @@ class MacaGateLinear(GateLinear):
         )
         self.out_dtype = out_dtype
 
-        # DSV3 specialized kernel eligibility (SM90+, exact dims)
         self.allow_specialized_router_gemm = can_use_specialized_kernels
-        self.allow_dsv3_router_gemm = False
-        self._dsv3_max_batch = 16
-
-        # These dispatch tiers were added to GateLinear.forward in vLLM 0.27.
-        # They are CUDA-specific and intentionally disabled on MetaX.
-        self.allow_ll_bf16_gemm = False
-        self.allow_bf16x3_router_gemm = False
 
         self.allow_fp32_router_gemm = (
             not bias
             and self.weight.dtype == torch.float32
             and (input_size, output_size) in self.FP32_SUPPORTED_SHAPES
         )
-
-        # cuBLAS bf16→fp32 eligibility
+        self.allow_bf16x3_router_gemm = False
+        # Fused bf16 x bf16 -> fp32 GEMM eligibility. torch.mm's out_dtype
+        # epilogue folds the fp32 cast into the GEMM, removing the standalone
+        # bf16->fp32 copy kernel that otherwise runs before grouped_topk. This is
+        # the plain cuBLAS (CUDA) / hipBLASLt (ROCm) out_dtype epilogue, so it
+        # applies on any CUDA-alike device (no bias, since torch.mm has no bias
+        # term). The specialized-kernel gate above excludes family-120 Blackwell
+        # (GB10 / DGX Spark), which this tier still covers. See #49921.
+        self._router_gemm_no_bias = not bias
+        self._router_gemm_cublas_capable = self._router_gemm_no_bias
         self.allow_cublas_router_gemm = (
-            self.allow_specialized_router_gemm
+            self._router_gemm_cublas_capable
             and self.weight.dtype == torch.bfloat16
             and self.out_dtype == torch.float32
         )
+
+        # cuteDSL ll_bf16_gemm eligibility. Any dims supported, but SM90+ required bc:
+        # 1. PDL support. Both dot-product and split-K kernels.
+        # 2. Thread Block Clusters. Split-K kernel for cross-CTA reduction.
+        self.allow_ll_bf16_gemm = False

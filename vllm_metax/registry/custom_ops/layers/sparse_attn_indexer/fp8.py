@@ -11,7 +11,6 @@ from vllm.config import CUDAGraphMode
 from vllm.distributed import get_pcp_group
 from vllm.forward_context import get_forward_context
 from vllm.logger import init_logger
-from vllm.model_executor.layers.attention.pcp import maybe_gather_indexer_k
 from vllm.platforms import current_platform
 
 from vllm_metax.utils.deep_gemm import (
@@ -28,6 +27,7 @@ from vllm_metax.v1.attention.backends.mla.indexer import (
     DeepseekV32IndexerMetadata,
 )
 from vllm.v1.attention.ops.common import pack_seq_triton, unpack_seq_triton
+from vllm.v1.attention.ops.pcp import maybe_gather_indexer_k
 from vllm.v1.worker.workspace import current_workspace_manager
 from vllm.model_executor.layers.sparse_attn_indexer import (
     _gather_workspace_shapes,

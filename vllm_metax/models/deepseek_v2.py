@@ -48,12 +48,20 @@ from vllm.distributed import (
 )
 from vllm.logger import init_logger
 from vllm.model_executor.layers.activation import SiluAndMul
-from vllm.model_executor.layers.attention import Attention, RSWAAttention
+from vllm.model_executor.layers.attention import (
+    Attention,
+    EncoderOnlyAttention,
+    RSWAAttention,
+)
 from vllm.model_executor.layers.attention_layer_base import AttentionLayerBase
 from vllm.model_executor.layers.fused_moe import (
     FusedMoEFactory,
     GateLinear,
     fused_moe_make_expert_params_mapping,
+)
+from vllm.model_executor.layers.fused_moe.utils import (
+    is_model_fused_shared_expert_compatible,
+    resolve_layer_fused_shared_expert,
 )
 from vllm.model_executor.layers.layernorm import LayerNorm, RMSNorm
 from vllm.model_executor.layers.linear import (
@@ -97,7 +105,7 @@ from vllm.model_executor.models.utils import (
 from vllm.platforms import current_platform
 from vllm.sequence import IntermediateTensors
 from vllm.utils.torch_utils import direct_register_custom_op
-from vllm.v1.attention.backend import AttentionBackend
+from vllm.v1.attention.backend import AttentionBackend, AttentionType
 from vllm_metax.v1.attention.backends.mla.indexer import (
     MacaDeepseekV32IndexerBackend as DeepseekV32IndexerBackend,
 )
@@ -334,9 +342,13 @@ class DeepseekV2MoE(nn.Module):
         self.n_local_physical_experts = self.n_physical_experts // self.ep_size
 
         self.is_rocm_aiter_moe_enabled = rocm_aiter_ops.is_fused_moe_enabled()
-        self.is_fusion_moe_shared_experts_enabled = (
-            rocm_aiter_ops.is_fusion_moe_shared_experts_enabled()
-        )
+
+        self.is_fused_shared_expert_enabled = False
+        if config.n_shared_experts is not None:
+            self.is_fused_shared_expert_enabled = resolve_layer_fused_shared_expert(
+                quant_config, prefix
+            )
+
         if (
             self.is_rocm_aiter_moe_enabled
             and self.gate.e_score_correction_bias is not None
@@ -345,7 +357,7 @@ class DeepseekV2MoE(nn.Module):
             # Accumulates in fp32; avoids bf16->fp32 cast.
             self.gate.set_out_dtype(self.gate.weight.dtype)
 
-        if config.n_shared_experts is None or self.is_fusion_moe_shared_experts_enabled:
+        if config.n_shared_experts is None or self.is_fused_shared_expert_enabled:
             self.shared_experts = None
         else:
             intermediate_size = config.moe_intermediate_size * config.n_shared_experts
@@ -382,8 +394,9 @@ class DeepseekV2MoE(nn.Module):
             is_sequence_parallel=self.is_sequence_parallel,
             reduce_results=reduce_results,
             n_shared_experts=config.n_shared_experts
-            if self.is_fusion_moe_shared_experts_enabled
+            if self.is_fused_shared_expert_enabled
             else None,
+            fuse_shared_experts=self.is_fused_shared_expert_enabled,
             router_logits_dtype=self.gate.out_dtype,
         )
 
@@ -449,7 +462,7 @@ class DeepseekV2Attention(nn.Module):
         qk_nope_head_dim: int,
         qk_rope_head_dim: int,
         v_head_dim: int,
-        q_lora_rank: int,
+        q_lora_rank: int | None,
         kv_lora_rank: int,
         max_position_embeddings: int = 8192,
         cache_config: CacheConfig | None = None,
@@ -487,7 +500,7 @@ class DeepseekV2Attention(nn.Module):
             )
             self.q_a_layernorm = RMSNorm(self.q_lora_rank, eps=config.rms_norm_eps)
             self.q_b_proj = ColumnParallelLinear(
-                q_lora_rank,
+                self.q_lora_rank,
                 self.num_heads * self.qk_head_dim,
                 bias=False,
                 quant_config=quant_config,
@@ -549,7 +562,22 @@ class DeepseekV2Attention(nn.Module):
             mscale = yarn_get_mscale(scaling_factor, float(mscale_all_dim))
             self.scaling = self.scaling * mscale * mscale
 
-        self.attn = Attention(
+        # DeepSeek is causal by default (decoder-only). Bidirectional
+        # (encoder-only) attention is used by embedding models derived from
+        # this architecture, which set `is_causal=False` on the HF config.
+        # This only applies on the non-MLA path, since the MLA kernels are
+        # causal-only; `ModelConfig.use_mla` already disables MLA for these
+        # models.
+        if getattr(config, "is_causal", True):
+            attn_type = AttentionType.DECODER
+        else:
+            attn_type = AttentionType.ENCODER_ONLY
+        attn_cls = (
+            EncoderOnlyAttention
+            if attn_type == AttentionType.ENCODER_ONLY
+            else Attention
+        )
+        self.attn = attn_cls(
             self.num_local_heads,
             self.qk_head_dim,
             self.scaling,
@@ -557,6 +585,7 @@ class DeepseekV2Attention(nn.Module):
             cache_config=cache_config,
             quant_config=quant_config,
             prefix=f"{prefix}.attn",
+            attn_type=attn_type,
         )
 
     def forward(
@@ -620,6 +649,11 @@ class DeepseekV32IndexerCache(torch.nn.Module, AttentionLayerBase):
         if prefix in compilation_config.static_forward_context:
             raise ValueError(f"Duplicate layer name: {prefix}")
         compilation_config.static_forward_context[prefix] = self
+
+    def bind_kv_cache(self, kv_cache: torch.Tensor) -> None:
+        # [B, H=1, N, C] -> [B, N, C]: the indexer kernels and
+        # kv_cache_as_quant_view index a 3-D block-major cache.
+        self.kv_cache = kv_cache.squeeze(1)
 
     def get_kv_cache_spec(self, vllm_config: VllmConfig) -> KVCacheSpec:
         return MLAAttentionSpec(
@@ -686,7 +720,7 @@ class Indexer(nn.Module):
         # NOTE: (zyongye) we use fp8 naive cache,
         #       where we store value in fp8 and scale in fp32
         #       per self.quant_block_size element
-
+        assert cache_config is not None
         if vllm_config.attention_config.indexer_kv_dtype == "fp8":
             self.k_cache = DeepseekV32IndexerCache(
                 head_dim=self.head_dim + self.head_dim // self.quant_block_size * 4,
@@ -863,20 +897,30 @@ def _try_load_fp8_int8_indexer_wk(
         return True  # still waiting for the other param
 
     # We have both weight and scale: dequantize WK to BF16.
-    weight_fp8, scale_inv = entry["weight"], entry["scale"]
+    weight_quantized, scale_inv = entry["weight"], entry["scale"]
     del buf[layer_prefix]
+    if scale_inv.dtype in (torch.uint8, torch.float8_e8m0fnu):
+        # MXFP8 checkpoints store power-of-two E8M0 scales, decode them to float.
+        scale_inv = scale_inv.view(torch.float8_e8m0fnu).to(torch.float32)
     if scale_inv.ndim == 1:
-        # Per-channel scale: one scale per row of [out, in].
-        group_shape = GroupShape(1, weight_fp8.shape[1])
-    else:
-        block_size = weight_fp8.shape[1] // scale_inv.shape[1]
-        if weight_fp8.dtype == torch.int8:
-            # INT8 quantization, not FP8
-            group_shape = GroupShape(1, block_size)
-        else:
-            group_shape = GroupShape(block_size, block_size)
+        # Normalize per-channel scales to the same [out, in] grid as 2D scales.
+        scale_inv = scale_inv.reshape(-1, 1)
+    if (
+        scale_inv.ndim != 2
+        or any(size == 0 for size in scale_inv.shape)
+        or any(w % s for w, s in zip(weight_quantized.shape, scale_inv.shape))
+    ):
+        raise ValueError(
+            f"WK scale shape {tuple(scale_inv.shape)} must evenly divide "
+            f"weight shape {tuple(weight_quantized.shape)}"
+        )
+    # Row and column groups can differ (e.g. per-channel or MX 1x32 scales).
+    group_shape = GroupShape(
+        weight_quantized.shape[0] // scale_inv.shape[0],
+        weight_quantized.shape[1] // scale_inv.shape[1],
+    )
     weight_bf16 = scaled_dequantize(
-        weight_fp8,
+        weight_quantized,
         scale_inv,
         group_shape=group_shape,
         out_dtype=torch.bfloat16,
@@ -1041,8 +1085,14 @@ class DeepseekV2MLAAttention(nn.Module):
                 prefix=f"{prefix}.kv_a_proj_with_mqa",
             )
 
-        qrep_enabled = (
+        # The env var predates the config field and still wins if set explicitly.
+        qrep_requested = (
             envs.VLLM_DCP_Q_REPLICATE
+            if envs.is_set("VLLM_DCP_Q_REPLICATE")
+            else bool(vllm_config.parallel_config.dcp_q_replicate)
+        )
+        qrep_enabled = (
+            qrep_requested
             and vllm_config.parallel_config.decode_context_parallel_size > 1
             and vllm_config.parallel_config.prefill_context_parallel_size <= 1
         )
@@ -1264,6 +1314,17 @@ class DeepseekV2DecoderLayer(nn.Module):
             and layer_idx >= config.first_k_dense_replace
             and layer_idx % moe_layer_freq == 0
         )
+        # JoyAI's MTP layer is dense; other 40-layer models may use MoE here.
+        # Source: https://www.modelscope.cn/models/jd-opensource/JoyAI-LLM-Flash
+        is_joyai_dense_mtp = (
+            (
+                config.model_type == "joyai_llm_flash"
+                or getattr(config, "joyai_dense_mtp", False)
+            )
+            and config.num_hidden_layers == 40
+            and layer_idx == 40
+        )
+        is_moe_layer = is_moe_layer and not is_joyai_dense_mtp
         # TODO(wentao): enable SP MoE with PP after the PP boundary logic can safely
         # send/receive sequence-parallel hidden_states across stages.
         self.use_sequence_parallel_moe = (
@@ -1286,20 +1347,10 @@ class DeepseekV2DecoderLayer(nn.Module):
             quant_config=quant_config,
             prefix=f"{prefix}.self_attn",
             topk_indices_buffer=topk_indices_buffer,
+            reduce_results=not self.use_sequence_parallel_moe,
         )
 
-        # /------------------------ metax modified ------------------------\
-        # is_dense_mtp -> only used in JoyAI_LLM_Flash mtp
-        # This modification is copied from:
-        # https://www.modelscope.cn/models/jd-opensource/JoyAI-LLM-Flash
-        # docker: jdopensource/joyai-llm-vllm:v0.15.1-joyai_llm_flash
-        is_dense_mtp = (
-            config.num_hidden_layers == 40 and layer_idx == 40
-        )  # JoyAI_LLM_Flash
-        if (
-            is_moe_layer and not is_dense_mtp  # JoyAI_LLM_Flash
-        ):
-            # \----------------------------------------------------------------/
+        if is_moe_layer:
             self.mlp = DeepseekV2MoE(
                 config=config,
                 parallel_config=parallel_config,
@@ -1440,6 +1491,12 @@ class DeepseekV2Model(nn.Module):
             prefix=f"{prefix}.layers",
         )
 
+        self.is_fused_shared_expert_enabled = is_model_fused_shared_expert_compatible(
+            self.layers,
+            DeepseekV2MoE,
+            "mlp",
+        )
+
         if get_pp_group().is_last_rank:
             self.norm = RMSNorm(self.hidden_size, eps=config.rms_norm_eps)
         else:
@@ -1550,9 +1607,6 @@ class DeepseekV2Model(nn.Module):
         return hidden_states
 
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
-        rocm_aiter_moe_shared_expert_enabled = (
-            rocm_aiter_ops.is_fusion_moe_shared_experts_enabled()
-        )
         stacked_params_mapping: list[tuple[str, str, int | str]] = [
             # (param_name, shard_name, shard_id)
             ("gate_up_proj", "gate_proj", 0),
@@ -1593,7 +1647,7 @@ class DeepseekV2Model(nn.Module):
             num_experts=self.config.n_routed_experts
             + (
                 self.config.n_shared_experts
-                if rocm_aiter_moe_shared_expert_enabled
+                if self.is_fused_shared_expert_enabled
                 else 0
             ),
             num_redundant_experts=self.num_redundant_experts,
@@ -1621,7 +1675,7 @@ class DeepseekV2Model(nn.Module):
                 continue  # this layer has no indexer; drop its checkpoint weights
 
             is_fusion_moe_shared_experts_layer = (
-                rocm_aiter_moe_shared_expert_enabled and ("mlp.shared_experts" in name)
+                self.is_fused_shared_expert_enabled and ("mlp.shared_experts" in name)
             )
 
             if _try_load_fp8_int8_indexer_wk(

@@ -104,7 +104,7 @@ class MacaCommunicator(CudaCommunicator):
         # keep ROCm on the base-class collective to avoid a decode regression.
         # /------------------------  Metax Modification -------------------------\
         # workaround for the issue of multi node inference hanging
-        if current_platform.is_rocm() or current_platform.is_cuda_alike():
+        if current_platform.is_maca():
             return super(CudaCommunicator, self).all_gather(input_, dim)
         # \------------------------  Metax Modification -------------------------/
 
