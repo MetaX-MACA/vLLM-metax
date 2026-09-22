@@ -1,0 +1,3 @@
+interface:
+  display_name: "vLLM-MetaX Model Trimming"
+  short_description: "Trim model configs for MetaX dummy serving smoke tests"
