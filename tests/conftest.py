@@ -40,21 +40,34 @@ from vllm import LLM, SamplingParams
 from vllm.assets.audio import AudioAsset
 from vllm.assets.image import ImageAsset
 from vllm.assets.video import VideoAsset
-from vllm.config import ConvertOption, RunnerOption, _get_and_verify_dtype
+from vllm.config.model import ConvertOption, RunnerOption, _get_and_verify_dtype
 from vllm.connections import global_http_connection
 from vllm.distributed import (cleanup_dist_env_and_memory,
                               init_distributed_environment,
                               initialize_model_parallel)
-from vllm.inputs import (ExplicitEncoderDecoderPrompt, TextPrompt,
-                         to_enc_dec_tuple_list, zip_enc_dec_prompts)
+from vllm.inputs import ExplicitEncoderDecoderPrompt, TextPrompt
 from vllm.logger import init_logger
 from vllm.multimodal.utils import fetch_image
 from vllm.outputs import RequestOutput
 from vllm.sampling_params import BeamSearchParams
-from vllm.sequence import Logprob
+from vllm.logprobs import Logprob
 from vllm.transformers_utils.utils import maybe_model_redirect
 
 logger = init_logger(__name__)
+
+
+def zip_enc_dec_prompts(encoder_prompts, decoder_prompts):
+    return [
+        ExplicitEncoderDecoderPrompt(encoder_prompt=encoder_prompt,
+                                     decoder_prompt=decoder_prompt)
+        for encoder_prompt, decoder_prompt in zip(encoder_prompts,
+                                                  decoder_prompts)
+    ]
+
+
+def to_enc_dec_tuple_list(encoder_decoder_prompts):
+    return [(prompt["encoder_prompt"], prompt["decoder_prompt"])
+            for prompt in encoder_decoder_prompts]
 
 _TEST_DIR = os.path.dirname(__file__)
 _TEST_PROMPTS = [os.path.join(_TEST_DIR, "prompts", "example.txt")]
