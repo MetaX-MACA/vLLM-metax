@@ -11,9 +11,19 @@ import torch
 import torch.nn.functional as F
 from transformers import PretrainedConfig
 
-from vllm.config import ModelConfig, ModelDType, RunnerOption
-from vllm.inputs import InputContext
-from vllm.sequence import Logprob, PromptLogprobs, SampleLogprobs
+from vllm.config import ModelConfig
+try:
+    from vllm.config import ModelDType, RunnerOption
+except ImportError:
+    from vllm.config.model import ModelDType, RunnerOption
+try:
+    from vllm.inputs import InputContext
+except ImportError:
+    class InputContext:
+        def __init__(self, model_config):
+            self.model_config = model_config
+from vllm.logprobs import Logprob
+from vllm.logprobs import PromptLogprobs, SampleLogprobs
 
 from .registry import HF_EXAMPLE_MODELS
 
