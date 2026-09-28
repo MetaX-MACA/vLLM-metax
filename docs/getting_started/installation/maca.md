@@ -78,7 +78,7 @@ Build the plugin:
 Clone vllm project:
 
 ```bash
-git clone  --depth 1 --branch releases/v0.28.0 https://github.com/vllm-project/vllm 
+git clone  --depth 1 --branch releases/v0.30.0 https://github.com/vllm-project/vllm 
 cd vllm
 ```
 
