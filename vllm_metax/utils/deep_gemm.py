@@ -210,9 +210,10 @@ def bf16_mqa_logits(
     The installed MetaX DeepGEMM non-paged BF16 kernel is numerically
     incorrect on C500. Use our GPU fallback until that kernel is validated.
     """
-    from vllm_metax.v1.attention.ops.bf16_mqa_logits import bf16_mqa_logits as fallback
-
-    return fallback(q, kv, weights, cu_seqlen_ks, cu_seqlen_ke)
+    _lazy_init()
+    if _bf16_mqa_logits_impl is None:
+        return _missing()
+    return _bf16_mqa_logits_impl(q, kv, weights, cu_seqlen_ks, cu_seqlen_ke)
 
 
 def bf16_paged_mqa_logits(
@@ -225,26 +226,45 @@ def bf16_paged_mqa_logits(
     max_model_len: int,
     clean_logits: bool = True,
 ) -> torch.Tensor:
-    """BF16 paged logits, including caches with gaps between physical pages.
+    """Compute BF16 MQA logits using paged KV-cache.
 
-    Q is [B,S,H,D], KV is BF16 [pages,page_size,1,D] with no scale tail.
-    Context lengths are [B] or [B,S]; weights are [B*S,H].
+    Args:
+        q_bf16: Query tensor of shape [B, next_n, H, D]. Casted to
+            `torch.float16` by caller.
+        kv_cache_bf16: Paged KV-cache in packed BF16+scale layout with shape
+            [num_blocks, block_size, 1, D+4], dtype `torch.uint8`. The last
+            4 bytes per (block,pos) store the `float` dequant scale.
+        weights: Contiguous tensor of shape [B * next_n, H], dtype
+            `torch.float32` or `torch.bfloat16`.
+        context_lens: Contiguous INT32 tensor with shape [B, next_n] (one
+            effective context limit per query) or [B] (limits are derived for
+            the `next_n` speculative positions).
+        block_tables: Tensor of shape [B, max_blocks], dtype int32; maps logical
+            block indices to physical blocks in the paged cache.
+        schedule_metadata: Returned by `get_paged_mqa_logits_metadata`;
+            used to distribute work across SMs.
+        max_model_len: Maximum sequence length used to size the logits output.
+
+    Returns:
+        Logits tensor of shape [B * next_n, max_model_len], dtype
+        `torch.float32`.
     """
-    if not kv_cache_bf16.is_contiguous():
-        from vllm_metax.v1.attention.ops.bf16_mqa_logits import (
-            bf16_mqa_logits as fallback,
-        )
+    # if not kv_cache_bf16.is_contiguous():
+    #     from vllm_metax.v1.attention.ops.bf16_mqa_logits import (
+    #         bf16_mqa_logits as fallback,
+    #     )
 
-        return fallback(
-            q_bf16,
-            kv_cache_bf16,
-            weights,
-            context_lens,
-            context_lens,
-            block_table=block_tables,
-            max_model_len=max_model_len,
-            clean_logits=clean_logits,
-        )
+    #     return fallback(
+    #         q_bf16,
+    #         kv_cache_bf16,
+    #         weights,
+    #         context_lens,
+    #         context_lens,
+    #         block_table=block_tables,
+    #         max_model_len=max_model_len,
+    #         clean_logits=clean_logits,
+    #     )
+
     _lazy_init()
     if _bf16_paged_mqa_logits_impl is None:
         return _missing()
