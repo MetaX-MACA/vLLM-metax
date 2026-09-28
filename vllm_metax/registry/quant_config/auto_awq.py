@@ -21,6 +21,7 @@ from vllm.model_executor.layers.quantization.auto_awq import (
 )
 from vllm.model_executor.layers.quantization.auto_awq import is_layer_skipped
 from vllm.model_executor.layers.quantization.base_config import QuantizeMethodBase
+from vllm.model_executor.layers.vocab_parallel_embedding import ParallelLMHead
 from vllm.utils.torch_utils import direct_register_custom_op
 
 from vllm_metax import _custom_ops as mx_ops
@@ -37,12 +38,14 @@ class MacaAutoAWQConfig(AutoAWQConfig):
     def get_quant_method(
         self, layer: torch.nn.Module, prefix: str
     ) -> Union["LinearMethodBase", "QuantizeMethodBase"] | None:
-        if isinstance(layer, LinearBase):
+        if isinstance(layer, LinearBase) or (
+            isinstance(layer, ParallelLMHead) and self.lm_head_quantized
+        ):
             if is_layer_skipped(
                 prefix,
                 self.modules_to_not_convert,
                 self.packed_modules_mapping,
-                skip_with_substr=True,
+                match_mode="substring",
             ):
                 return UnquantizedLinearMethod()
             return AutoAWQLinearMethod(self)
