@@ -55,6 +55,7 @@ from vllm.utils.math_utils import round_up
 from vllm_metax.patch.utils import patch
 
 
+@patch("vllm.models.minimax_m3.common.indexer", "minimax_m3_index_score")
 @patch("vllm.models.minimax_m3.common.ops.index_topk")
 @torch.no_grad()
 def minimax_m3_index_score(
