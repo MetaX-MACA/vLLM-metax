@@ -4,8 +4,6 @@
 
 import torch
 
-from vllm.utils.torch_utils import direct_register_custom_op
-
 
 def expand_to_mhc_ref(hidden: torch.Tensor, mhc_mult: int) -> torch.Tensor:
     return (
@@ -140,7 +138,49 @@ def big_fuse_reference(
     return post_mix, comb_mix, layer_input
 
 
-def mhc_pre(
+def mhc_pre_delayed_torch(
+    residual: torch.Tensor,
+    fn: torch.Tensor,
+    hc_scale: torch.Tensor,
+    hc_base: torch.Tensor,
+    rms_eps: float,
+    hc_pre_eps: float,
+    hc_sinkhorn_eps: float,
+    hc_post_mult_value: float,
+    sinkhorn_repeat: int,
+    pre_mix: torch.Tensor | None = None,
+    x: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Reference for mHC pre using coefficients from the previous sublayer."""
+    hc_mult = residual.shape[1]
+    x = (residual.flatten(1) if x is None else x).float()
+    mixes = (x @ fn.t()) * torch.rsqrt(x.square().mean(-1, keepdim=True) + rms_eps)
+    pre = (
+        torch.sigmoid(mixes[:, :hc_mult] * hc_scale[0] + hc_base[:hc_mult]) + hc_pre_eps
+    )
+    post = (
+        torch.sigmoid(
+            mixes[:, hc_mult : 2 * hc_mult] * hc_scale[1]
+            + hc_base[hc_mult : 2 * hc_mult]
+        )
+        * hc_post_mult_value
+    )
+    comb = mixes[:, 2 * hc_mult :].view(-1, hc_mult, hc_mult) * hc_scale[2]
+    comb = comb + hc_base[2 * hc_mult :].view(1, hc_mult, hc_mult)
+    comb = torch.softmax(comb, dim=-1) + hc_sinkhorn_eps
+    comb = comb / (comb.sum(dim=-2, keepdim=True) + hc_sinkhorn_eps)
+    for _ in range(sinkhorn_repeat - 1):
+        comb = comb / (comb.sum(dim=-1, keepdim=True) + hc_sinkhorn_eps)
+        comb = comb / (comb.sum(dim=-2, keepdim=True) + hc_sinkhorn_eps)
+    layer_input = (
+        residual[:, 0]
+        if pre_mix is None
+        else (pre_mix.unsqueeze(-1) * residual.float()).sum(dim=1).to(residual.dtype)
+    )
+    return post.unsqueeze(-1), comb, layer_input, pre
+
+
+def mhc_pre_torch(
     residual: torch.Tensor,
     fn: torch.Tensor,
     hc_scale: torch.Tensor,
@@ -190,110 +230,54 @@ def mhc_pre(
     assert hc_scale.shape == (3,)
     assert hc_base.shape == (hc_mult3,)
 
-    post_mix, comb_mix, layer_input = big_fuse_reference(
-        residual,
-        fn,
-        hc_scale,
-        hc_base,
-        rms_eps,
-        hc_pre_eps,
-        hc_sinkhorn_eps,
-        hc_post_mult_value,
-        sinkhorn_repeat,
-        n_splits,
-    )
-    return post_mix, comb_mix, layer_input
-
-
-def _mhc_pre_fake(
-    residual: torch.Tensor,
-    fn: torch.Tensor,
-    hc_scale: torch.Tensor,
-    hc_base: torch.Tensor,
-    rms_eps: float,
-    hc_pre_eps: float,
-    hc_sinkhorn_eps: float,
-    hc_post_mult_value: float,
-    sinkhorn_repeat: int,
-    n_splits: int = 1,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    hc_mult = residual.shape[-2]
-    hidden_size = residual.shape[-1]
     outer_shape = residual.shape[:-2]
 
-    # Create empty tensors with correct shapes for meta device / shape inference
-    post_mix = torch.empty(
-        *outer_shape,
-        hc_mult,
-        1,
-        dtype=torch.float32,
-        device=residual.device,
+    residual_flat = residual.view(-1, hc_mult, hidden_size)
+    num_tokens = residual_flat.shape[0]
+    fn_flat = fn
+
+    x = residual_flat.view(num_tokens, hc_mult * hidden_size).to(torch.float32)
+    mixes = torch.matmul(x, fn_flat.t())
+    sqrsum = x.square().sum(dim=-1, keepdim=True)
+    mixes = mixes * torch.rsqrt(sqrsum / (hc_mult * hidden_size) + rms_eps)
+
+    pre_logits = mixes[:, :hc_mult] * hc_scale[0] + hc_base[:hc_mult]
+    pre_mix = torch.sigmoid(pre_logits) + hc_pre_eps
+
+    post_logits = (
+        mixes[:, hc_mult : 2 * hc_mult] * hc_scale[1] + hc_base[hc_mult : 2 * hc_mult]
     )
-    comb_mix = torch.empty(
-        *outer_shape,
-        hc_mult,
-        hc_mult,
-        dtype=torch.float32,
-        device=residual.device,
-    )
-    layer_input = torch.empty(
-        *outer_shape,
-        hidden_size,
-        dtype=torch.bfloat16,
-        device=residual.device,
+    post_mix = torch.sigmoid(post_logits) * hc_post_mult_value
+
+    comb_logits = mixes[:, 2 * hc_mult :].view(num_tokens, hc_mult, hc_mult) * hc_scale[
+        2
+    ] + hc_base[2 * hc_mult :].view(1, hc_mult, hc_mult)
+    comb_mix = torch.softmax(comb_logits, dim=-1) + hc_sinkhorn_eps
+    comb_mix = comb_mix / (comb_mix.sum(dim=-2, keepdim=True) + hc_sinkhorn_eps)
+    for _ in range(sinkhorn_repeat - 1):
+        comb_mix = comb_mix / (comb_mix.sum(dim=-1, keepdim=True) + hc_sinkhorn_eps)
+        comb_mix = comb_mix / (comb_mix.sum(dim=-2, keepdim=True) + hc_sinkhorn_eps)
+
+    layer_input = torch.sum(
+        pre_mix.unsqueeze(-1) * residual_flat.to(torch.float32), dim=1
+    ).to(torch.bfloat16)
+    return (
+        post_mix.view(*outer_shape, hc_mult, 1),
+        comb_mix.view(*outer_shape, hc_mult, hc_mult),
+        layer_input.view(*outer_shape, hidden_size),
     )
 
-    return post_mix, comb_mix, layer_input
 
-
-##########################################################
-def mhc_post_ref(
+def mhc_post_torch(
     x: torch.Tensor,
     residual: torch.Tensor,
     post_layer_mix: torch.Tensor,
     comb_res_mix: torch.Tensor,
 ) -> torch.Tensor:
-    term2 = torch.einsum("bmn,bmc->bnc", comb_res_mix, residual.float())
-    # print(f">>>>>>>>>>>>>>>>..... mhc_post_ref, x: {x.shape}, comb_res_mix: {comb_res_mix.shape}, residual: {residual.shape}, post_layer_mix: {post_layer_mix.shape}")
-    return (x.float().unsqueeze(-2) * post_layer_mix + term2).bfloat16()
-
-
-def mhc_post(
-    x: torch.Tensor,
-    residual: torch.Tensor,
-    post_layer_mix: torch.Tensor,
-    comb_res_mix: torch.Tensor,
-) -> torch.Tensor:
-    out = torch.empty_like(residual)
-
-    out = mhc_post_ref(
-        x,
-        residual,
-        post_layer_mix,
-        comb_res_mix,
-        # out
+    mixed_residual = torch.einsum(
+        "...ij,...ih->...jh",
+        comb_res_mix.to(torch.float32),
+        residual.to(torch.float32),
     )
-    return out
-
-
-def _mhc_post_fake(
-    x: torch.Tensor,
-    residual: torch.Tensor,
-    post_layer_mix: torch.Tensor,
-    comb_res_mix: torch.Tensor,
-) -> torch.Tensor:
-    return torch.empty_like(residual)
-
-
-direct_register_custom_op(
-    op_name="mx_mhc_pre",
-    op_func=mhc_pre,
-    mutates_args=[],
-    fake_impl=_mhc_pre_fake,
-)
-direct_register_custom_op(
-    op_name="mx_mhc_post",
-    op_func=mhc_post,
-    mutates_args=[],
-    fake_impl=_mhc_post_fake,
-)
+    post_term = post_layer_mix.to(torch.float32) * x.unsqueeze(-2).to(torch.float32)
+    return (mixed_residual + post_term).to(residual.dtype)
