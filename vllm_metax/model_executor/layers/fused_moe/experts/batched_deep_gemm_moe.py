@@ -572,24 +572,6 @@ class BatchedDeepGemmExperts(mk.FusedMoEExpertsModular):
             max_num_tokens=max_num_tokens,
             num_dispatchers=num_dispatchers,
         )
-        self.gemm1_clamp_limit = (
-            quant_config.gemm1_clamp_limit
-            if quant_config.gemm1_clamp_limit is not None
-            else moe_config.swiglu_limit
-        )
-        self.gemm1_alpha = (
-            quant_config.gemm1_alpha
-            if quant_config.gemm1_alpha is not None
-            else (
-                moe_config.swiglu_alpha if moe_config.swiglu_alpha is not None else 1.0
-            )
-        )
-        self.gemm1_beta = (
-            quant_config.gemm1_beta
-            if quant_config.gemm1_beta is not None
-            else (moe_config.swiglu_beta if moe_config.swiglu_beta is not None else 0.0)
-        )
-
         self.is_fp8 = quant_config.use_fp8_w8a8
         self.is_int8 = quant_config.use_int8_w8a8
 
@@ -702,33 +684,28 @@ class BatchedDeepGemmExperts(mk.FusedMoEExpertsModular):
         activation: MoEActivation,
         output: torch.Tensor,
         input: torch.Tensor,
-        clamp_limit: float | None = None,
-        alpha: float = 1.0,
-        beta: float = 0.0,
+        **kwargs,
     ) -> None:
+        # NOTE(MetaX): Keep the MACA clamped-SiLU path, but use upstream's
+        # activation_config contract for all other activations. The base method
+        # no longer accepts clamp_limit/alpha/beta keywords.
+        clamp_limit = self.activation_config.clamp_limit
         if activation == MoEActivation.SILU and clamp_limit is not None:
-            swiglu_limit_func(output, input, float(clamp_limit))
+            swiglu_limit_func(output, input, clamp_limit)
             return
 
+        # NOTE(MetaX): ced6857af apply_moe_activation also drops the configured
+        # SWIGLUSTEP limit (defaults to 7.0). Keep this local workaround until
+        # upstream forwards activation_config.clamp_limit to the Triton kernel.
         if activation == MoEActivation.SWIGLUSTEP:
-            from vllm.model_executor.layers.activation import (
-                swiglustep_and_mul_triton,
-            )
+            from vllm.model_executor.layers.activation import swiglustep_and_mul_triton
 
-            assert clamp_limit is not None, (
-                "SWIGLUSTEP requires swiglu_limit in moe_config"
-            )
-            # Note: super().activation() call swiglustep_and_mul_triton() without
-            # limit argument, So we manually make the call.
-            # Remove this once it supported.
-            swiglustep_and_mul_triton(
-                output,
-                input,
-                limit=float(clamp_limit),
-            )
-        super().activation(
-            activation, output, input, clamp_limit=clamp_limit, alpha=alpha, beta=beta
-        )
+            limit = self.activation_config.clamp_limit
+            assert limit is not None, "SWIGLUSTEP requires swiglu_limit"
+            swiglustep_and_mul_triton(output, input, limit=limit)
+            return
+
+        super().activation(activation, output, input, **kwargs)
 
     def workspace_shapes(
         self,
@@ -992,9 +969,6 @@ class BatchedDeepGemmExperts(mk.FusedMoEExpertsModular):
             activation,
             activation_out_flat,
             workspace1_flat,
-            clamp_limit=self.gemm1_clamp_limit,
-            alpha=self.gemm1_alpha,
-            beta=self.gemm1_beta,
         )
 
         a2q, a2q_scale = moe_kernel_quantize_input(

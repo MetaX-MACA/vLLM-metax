@@ -114,15 +114,6 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
         self.quantization_emulation = False
         super().__init__(moe_config, quant_config)
 
-        self.gemm1_clamp_limit = quant_config.gemm1_clamp_limit
-        # Gated-activation params: silu == swigluoai with alpha=1, beta=0.
-        self.gemm1_alpha = (
-            quant_config.gemm1_alpha if quant_config.gemm1_alpha is not None else 1.0
-        )
-        self.gemm1_beta = (
-            quant_config.gemm1_beta if quant_config.gemm1_beta is not None else 0.0
-        )
-
     @staticmethod
     def activation_format() -> mk.FusedMoEActivationFormat:
         return mk.FusedMoEActivationFormat.Standard
@@ -223,6 +214,17 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 "SWIGLUOAI_UNINTERLEAVE requires gemm1_clamp_limit"
             )
 
+        # NOTE(MetaX): ced6857af apply_moe_activation also drops the configured
+        # SWIGLUSTEP limit (defaults to 7.0). Keep this local workaround until
+        # upstream forwards activation_config.clamp_limit to the Triton kernel.
+        if activation == MoEActivation.SWIGLUSTEP:
+            from vllm.model_executor.layers.activation import swiglustep_and_mul_triton
+
+            limit = self.activation_config.clamp_limit
+            assert limit is not None, "SWIGLUSTEP requires swiglu_limit"
+            swiglustep_and_mul_triton(output, input, limit=limit)
+            return
+
         super().activation(
             activation,
             output,
@@ -267,7 +269,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
         # Check constraints.
         if self.quant_config.use_int4_w4a16:
             assert hidden_states.size(-1) // 2 == w1.size(2), "Hidden size mismatch"
-        if self.quant_config.use_int4_w4a8:
+        elif self.quant_config.use_int4_w4a8:
             # 8bit activation and int4 packed weight
             assert hidden_states.size(-1) // 8 == w1.size(2), "Hidden size mismatch"
         else:

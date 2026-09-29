@@ -43,7 +43,7 @@ def maybe_make_prepare_finalize(
     routing_tables: tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None = None,
     allow_new_interface: bool = False,
     use_monolithic: bool = False,
-    eep_stage: bool = False,
+    all2all_manager: Any | None = None,
 ) -> FusedMoEPrepareAndFinalize | None:
     if not moe.moe_parallel_config.use_all2all_kernels:
         if not allow_new_interface:
@@ -55,7 +55,8 @@ def maybe_make_prepare_finalize(
                 "Detected DP deployment with no --enable-expert-parallel. "
                 "Falling back to AllGather+ReduceScatter dispatch/combine."
             )
-            all2all_manager = get_ep_all2all_manager(eep_stage)
+            if all2all_manager is None:
+                all2all_manager = get_ep_all2all_manager()
             return make_moe_prepare_and_finalize_naive_dp_ep(
                 is_sequence_parallel=moe.moe_parallel_config.is_sequence_parallel,
                 num_dispatchers=all2all_manager.world_size,
@@ -64,7 +65,8 @@ def maybe_make_prepare_finalize(
         else:
             return make_moe_prepare_and_finalize_no_dp_ep(use_monolithic)
 
-    all2all_manager = get_ep_all2all_manager(eep_stage)
+    if all2all_manager is None:
+        all2all_manager = get_ep_all2all_manager()
 
     prepare_finalize: FusedMoEPrepareAndFinalize | None = None
 

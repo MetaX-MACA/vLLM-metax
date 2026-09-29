@@ -78,28 +78,28 @@ class MacaDeepEPLLPrepareAndFinalize(DeepEPLLPrepareAndFinalize):
                 "DeepEP kernels quantize the inputs in blocks of shape 128"
             )
 
-        use_nvfp4 = False
         nvfp4_dispatch = (
             quant_config.quant_dtype == "nvfp4" and envs.VLLM_DEEPEPLL_NVFP4_DISPATCH
         )
-        if nvfp4_dispatch:
-            use_nvfp4 = True
-        qc_a1_gscale_or_scale = (
-            quant_config.a1_gscale if nvfp4_dispatch else quant_config.a1_scale
-        )
+        # NOTE(MetaX): installed DeepEP accepts use_fp8 but has no NVFP4 or
+        # packed-UE8M0 dispatch API. Do not silently omit these requested formats.
+        # Revalidate when the MACA Buffer API gains the corresponding arguments.
+        if nvfp4_dispatch or self.use_ue8m0_dispatch:
+            raise NotImplementedError(
+                "MetaX DeepEP does not support NVFP4 or packed UE8M0 dispatch"
+            )
         has_per_token_scales = (
-            qc_a1_gscale_or_scale.numel() != 1
-            if qc_a1_gscale_or_scale is not None
+            quant_config.a1_scale.numel() != 1
+            if quant_config.a1_scale is not None
             else (
                 quant_config.a2_scale.numel() != 1
                 if quant_config.a2_scale is not None
                 else False
             )
         )
-        if not use_nvfp4:
-            assert not has_per_token_scales, (
-                "low_latency kernels doesn't support dispatching per-token scales"
-            )
+        assert not has_per_token_scales, (
+            "low_latency kernels doesn't support dispatching per-token scales"
+        )
 
         if apply_router_weight_on_input:
             topk = topk_ids.size(1)
@@ -128,16 +128,6 @@ class MacaDeepEPLLPrepareAndFinalize(DeepEPLLPrepareAndFinalize):
                 if check_deepep_package() == "mxmesh"
                 else dict()
             ),
-            # /---------------- MetaX Modification ---------------\
-            # round_scale=self.use_ue8m0_dispatch,
-            # use_ue8m0=self.use_ue8m0_dispatch,
-            # **(dict(use_nvfp4=True) if use_nvfp4 else dict()),
-            # **(
-            #     dict(x_global_scale=qc_a1_gscale_or_scale)
-            #     if qc_a1_gscale_or_scale is not None and nvfp4_dispatch
-            #     else dict()
-            # ),
-            # \---------------- MetaX Modification ---------------/
             async_finish=False,
             return_recv_hook=True,
         )

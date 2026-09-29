@@ -6,7 +6,10 @@
 import torch
 
 import vllm.model_executor.layers.fused_moe.modular_kernel as mk
-from vllm.model_executor.layers.fused_moe.activation import MoEActivation
+from vllm.model_executor.layers.fused_moe.activation import (
+    MoEActivation,
+    apply_moe_activation_masked_supported,
+)
 from vllm.model_executor.layers.fused_moe.config import (
     FusedMoEConfig,
     FusedMoEParallelConfig,
@@ -40,7 +43,6 @@ from vllm.triton_utils.allocation import set_triton_allocator
 
 
 def _is_capturing_or_compiling() -> bool:
-    # torch.cuda.is_current_stream_capturing() is unavailable on non-CUDA (XPU) torch.
     return torch.compiler.is_compiling() or (torch.cuda.is_current_stream_capturing())
 
 
@@ -846,17 +848,7 @@ class BatchedTritonExperts(mk.FusedMoEExpertsModular):
 
     @staticmethod
     def _supports_activation(activation: MoEActivation) -> bool:
-        return activation in [
-            MoEActivation.SILU,
-            MoEActivation.GELU,
-            MoEActivation.GELU_TANH,
-            MoEActivation.SWIGLUOAI,
-            MoEActivation.SILU_NO_MUL,
-            MoEActivation.GELU_NO_MUL,
-            MoEActivation.GELU_TANH_NO_MUL,
-            MoEActivation.RELU2_NO_MUL,
-            MoEActivation.SWIGLUSTEP,
-        ]
+        return apply_moe_activation_masked_supported(activation)
 
     @staticmethod
     def _supports_parallel_config(moe_parallel_config: FusedMoEParallelConfig) -> bool:
@@ -873,12 +865,23 @@ class BatchedTritonExperts(mk.FusedMoEExpertsModular):
         input: torch.Tensor,
         **kwargs,
     ) -> None:
-        gemm1_clamp_limit = self.quant_config.gemm1_clamp_limit
+        gemm1_clamp_limit = self.activation_config.clamp_limit
         if activation == MoEActivation.SILU and gemm1_clamp_limit is not None:
             swiglu_limit_func(output, input, float(gemm1_clamp_limit))
             return
 
-        super().activation(activation, output, input)
+        # NOTE(MetaX): ced6857af apply_moe_activation also drops the configured
+        # SWIGLUSTEP limit (defaults to 7.0). Keep this local workaround until
+        # upstream forwards activation_config.clamp_limit to the Triton kernel.
+        if activation == MoEActivation.SWIGLUSTEP:
+            from vllm.model_executor.layers.activation import swiglustep_and_mul_triton
+
+            limit = self.activation_config.clamp_limit
+            assert limit is not None, "SWIGLUSTEP requires swiglu_limit"
+            swiglustep_and_mul_triton(output, input, limit=limit)
+            return
+
+        super().activation(activation, output, input, **kwargs)
 
     def workspace_shapes(
         self,
