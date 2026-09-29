@@ -9,18 +9,16 @@ import vllm.envs as envs
 from vllm.distributed import get_dp_group, get_ep_group, get_pcp_group
 from vllm.forward_context import get_forward_context
 
-from vllm.distributed.device_communicators.base_device_communicator import (
-    All2AllManagerBase,
-)
 from vllm.platforms import current_platform
 
 from vllm.distributed.device_communicators.all2all import (
+    AgRsAll2AllManager,
     DeepEPLLAll2AllManager,
     DeepEPHTAll2AllManager,
 )
 
 
-class MacaAgRsAll2AllManager(All2AllManagerBase):
+class MacaAgRsAll2AllManager(AgRsAll2AllManager):
     """
     An implementation of all2all communication based on
     all-gather (dispatch) and reduce-scatter (combine).
@@ -141,6 +139,30 @@ class MacaAgRsAll2AllManager(All2AllManagerBase):
 
         shape = [M_local, 2K + S]
         """
+        # NOTE(MetaX): fused_unpack writes FP32 weights/scales and INT32 IDs.
+        # Upstream also dispatches packed integer scales and arbitrary extra
+        # tensors; preserve their dtype/shape through the generic collective.
+        # Keep packing only for the layout supported by the installed kernel.
+        if (
+            topk_weights.dtype != torch.float32
+            or topk_ids.dtype != torch.int32
+            or (
+                extra_tensors is not None
+                and len(extra_tensors) == 1
+                and (
+                    extra_tensors[0].ndim != 2
+                    or extra_tensors[0].dtype != torch.float32
+                )
+            )
+        ):
+            return super().dispatch(
+                hidden_states,
+                topk_weights,
+                topk_ids,
+                is_sequence_parallel,
+                extra_tensors,
+            )
+
         dist_group = self._get_comm_group(is_sequence_parallel)
         sizes = self._get_sizes(hidden_states.shape[0], dist_group)
         assert sizes[dist_group.rank_in_group] == hidden_states.shape[0]
