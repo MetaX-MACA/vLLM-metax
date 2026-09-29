@@ -196,6 +196,8 @@ class MCCLLibrary:
         # shutdown when peer ranks may already be gone.
         # ncclResult_t  ncclCommAbort(ncclComm_t comm);
         Function("mcclCommAbort", ncclResult_t, [ncclComm_t]),
+        Function("mcclCommSuspend", ncclResult_t, [ncclComm_t, ctypes.c_int]),
+        Function("mcclCommResume", ncclResult_t, [ncclComm_t]),
         # ncclResult_t ncclGroupStart();
         Function("mcclGroupStart", ncclResult_t, []),
         # ncclResult_t ncclGroupEnd();
@@ -278,9 +280,17 @@ class MCCLLibrary:
                             # Having an exception here on ROCm platform is
                             # not allowed during graph capturing
                             continue
+                    # NOTE(MetaX): vLLM probes suspend/resume through has_symbol.
+                    # Older MCCL builds lack these optional entry points; keep
+                    # ordinary collectives usable and report the real capability.
+                    if func.name in ("mcclCommSuspend", "mcclCommResume"):
+                        continue
                     raise
             MCCLLibrary.path_to_dict_mapping[so_file] = _funcs
         self._funcs = MCCLLibrary.path_to_dict_mapping[so_file]
+
+    def has_symbol(self, name: str) -> bool:
+        return name.replace("nccl", "mccl", 1) in self._funcs
 
     def ncclGetErrorString(self, result: ncclResult_t) -> str:
         return self._funcs["mcclGetErrorString"](result).decode("utf-8")
@@ -460,6 +470,12 @@ class MCCLLibrary:
     def ncclCommAbort(self, comm: ncclComm_t) -> None:
         self.NCCL_CHECK(self._funcs["mcclCommAbort"](comm))
 
+    def ncclCommSuspend(self, comm: ncclComm_t, flags: int) -> None:
+        self.NCCL_CHECK(self._funcs["mcclCommSuspend"](comm, flags))
+
+    def ncclCommResume(self, comm: ncclComm_t) -> None:
+        self.NCCL_CHECK(self._funcs["mcclCommResume"](comm))
+
     def ncclGroupStart(self) -> None:
         self.NCCL_CHECK(self._funcs["mcclGroupStart"]())
 
@@ -469,11 +485,10 @@ class MCCLLibrary:
     def ncclCommWindowRegister(
         self, comm: ncclComm_t, buff: buffer_type, size: int, win_flags: int
     ) -> ncclWindow_t:
-        window = ncclWindow_t()
-        # self.NCCL_CHECK(self._funcs["mcclCommWindowRegister"](
-        #     comm, buff, size, ctypes.byref(window), win_flags))
-        return window
+        # NOTE(MetaX): MCCL 2.16.5 has no symmetric-memory window API. Returning
+        # a null handle falsely reports successful registration to vLLM.
+        # Revalidate the ABI before enabling this feature on newer MCCL builds.
+        raise NotImplementedError("MCCL symmetric-memory windows are not supported")
 
     def ncclCommWindowDeregister(self, comm: ncclComm_t, window: ncclWindow_t) -> None:
-        # self.NCCL_CHECK(self._funcs["mcclCommWindowDeregister"](comm, window))
-        return
+        raise NotImplementedError("MCCL symmetric-memory windows are not supported")
