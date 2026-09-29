@@ -1,5 +1,10 @@
 # Configuration and Service Validation
 
+The startup and batch-test examples below use **dummy mode**. For a real checkpoint,
+first complete the tensor and index checks in [real-weights.md](real-weights.md), then
+run the service with the actual checkpoint load format and without `--load-format dummy`.
+Record parameter-loading coverage separately from service health and generation.
+
 ## Configuration Preflight
 
 Use the target runtime and record versions and import origins. Load AutoConfig and
@@ -13,7 +18,7 @@ sharing producers, expert routing, sharding, and quantization alignment. Encode 
 with the tokenizer and check the chat template for chat tasks. Successful configuration
 parsing does not establish successful parameter allocation or quantization postprocessing.
 
-## Startup Example
+## Dummy Startup Example
 
 Run this template from the repository root. Replace MODEL_DIR, GPU_IDS, TP, and PORT and
 adjust budgets to measured free memory. Some models require a larger minimum context or
@@ -82,7 +87,9 @@ curl --fail-with-body --max-time 120 \
 
 ## batched_test Integration
 
-Generate a separate YAML only when batch-test configuration is requested. For a file under
+Generate a separate YAML only when batch-test configuration is requested. This example
+is for dummy mode; for real weights, point `model_path` to the validated checkpoint and
+omit `--load-format: dummy` (or set the checkpoint's actual format). For a file under
 `tools/batched_test/configs/`, use this example:
 
 ```yaml
@@ -118,7 +125,9 @@ sets CUDA visibility; check for conflicts with inherited MACA visibility setting
 
 Document source paths/versions, changed fields, layer mappings, copied assets, actual startup
 commands, GPUs/TP/quantization/backend, log paths, service and request outcomes, measured
-memory when available, untested branches, and failure causes in the output directory.
+memory when available, untested branches, and failure causes in the output directory. In
+real-weight mode also record source/output tensor inventories, checkpoint integrity,
+parameter-loading coverage, and whether the non-dummy runtime test passed.
 Parameter-size estimates do not include all scales, layout-conversion peaks, KV/SSM state,
 activations, communication, or graph caches. Checkpoint bytes, even divided by TP, are not
 a promise of actual runtime memory usage.
