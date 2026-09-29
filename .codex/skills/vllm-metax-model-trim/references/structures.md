@@ -72,6 +72,28 @@ text configuration lives at the top level or under `text_config`, `language_conf
   input for each target modality. Respect processor minima when reducing image resolution
   or audio duration, and record reduced coverage.
 
+## Engram and Other Layer-Specific Lookup Modules
+
+- Inventory lookup modules separately from ordinary attention/FFN layers. Engram can be an
+  active text-backbone path with large n-gram embedding tables; do not classify it as an
+  optional prediction head merely because text generation can run without it.
+- When this path is in scope, retain its owning layer and required tables, projections,
+  scales, tokenizer/hash metadata, and dependencies. Remap layer IDs and any parallel
+  arrays such as `engram_num_embeddings` together. Inspect whether original layer IDs
+  participate in hash construction: renumbering a layer must not silently change which
+  source table rows its tokens address.
+- Depth-only trimming does not shrink a retained lookup table. Measure its actual bytes
+  before choosing layers or promising an output size. Disk capacity and per-rank GPU/CPU
+  placement are separate constraints; TP may distribute a table without reducing its
+  aggregate checkpoint size, and replicated tensors can increase partitioned output size.
+- Omitting an Engram-owning layer and clearing its configuration removes a distinct text
+  path. Describe that loss explicitly and resolve any unapproved coverage reduction before
+  proceeding. Neither TP8 nor reduced depth inherently requires removing Engram. Keep
+  any resource-driven omission separate from claims about preserved text/image coverage.
+- Do not truncate table rows, alter hash/vocabulary sizes, or invent replacement weights
+  to fit storage under a depth-only plan. Such changes require a separate, validated
+  tensor and lookup mapping; a successful checkpoint load alone cannot validate hashing.
+
 ## Quantization, MTP, and Other Layer References
 
 - Quantization may live in `quantization_config`, `compression_config`, or separate files.

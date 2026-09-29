@@ -53,6 +53,10 @@ than applying another model family's field conventions.
    where possible.** Select the fewest layers that cover the targets and satisfy dependencies.
    A homogeneous model can start with 1–2 layers. For heterogeneous models, do not blindly
    keep the first N layers or set every `num_hidden_layers` field to the same value.
+   Removing the only retained instance of a distinct path, such as Engram, reduces feature
+   coverage; it is not equivalent to removing repeated homogeneous layers. A model that can
+   still generate text does not necessarily preserve all text-model paths. See the structure
+   guide's [Engram guidance](references/structures.md#engram-and-other-layer-specific-lookup-modules).
 3. Record the original-to-new layer mapping. Update layer arrays, periodic/offset rules,
    sharing relationships, quantization module paths, MTP indices, and cross-layer references
    together. Determine which fields the implementation reads; descriptive JSON fields may
@@ -64,6 +68,22 @@ than applying another model family's field conventions.
    groups, and kernel constraints before changing shapes. Record the original shapes and
    paths no longer covered. `gpu_memory_utilization` sets a budget; it does not shrink
    parameters, and an overly small budget can prevent startup.
+
+**Keep depth and TP decisions separate.** Depth-only trimming normally leaves the retained
+tensors' TP partition constraints unchanged; fewer layers do not require fewer TP ranks,
+and layer count need not be divisible by TP. Check actual dimensions, quantization, kernels,
+and loader support for the requested TP. PP layer placement is a separate concern. Distinguish
+storage shards from rank partitions using the
+[checkpoint parallelism contract](references/real-weights.md#storage-shards-and-tp-rank-partitions).
+Explain changes to pre-partitioned files as re-sharding for a new TP, not as a consequence of
+having fewer layers.
+
+For real weights, budget output disk space separately from GPU memory, including large lookup
+tables and any additional checkpoint formats. If capacity would require dropping a distinct
+target path, give the concrete size and coverage tradeoff and resolve that scope choice before
+omitting it, unless already authorized. Do not silently reinterpret “preserve text and image”
+as permission to remove an expensive text module; consider a larger destination or fewer
+duplicate output formats first.
 
 ## Generate the output directory
 

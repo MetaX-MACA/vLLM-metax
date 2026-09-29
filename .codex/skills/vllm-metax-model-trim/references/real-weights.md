@@ -26,6 +26,31 @@ preserve the original model's accuracy.
   that transform separately; name remapping alone is insufficient. Prefer depth-only
   trimming when preserving the original tensor values is the goal.
 
+## Storage shards and TP rank partitions
+
+- Establish separately the checkpoint's storage layout, any saved TP/EP partitions, and the
+  requested runtime TP. A Safetensors index split across many files can still contain full
+  tensors. File count and statements such as “the original model uses TP8” do not establish
+  that its checkpoint is pre-partitioned; inspect tensor shapes, metadata, and loader logic.
+- With full tensors, a compatible loader can partition the same reduced-depth checkpoint
+  at load time for TP2 or TP8, subject to its dimensional, quantization, kernel, and resource
+  constraints. Removing layers reduces parameter memory; it does not itself change the
+  remaining tensors' partition axes or require a TP change. Structural compatibility is
+  not proof of successful loading or generation at every TP.
+- With rank-local files, use the matching TP unless the loader explicitly supports
+  re-sharding. Changing TP8 to TP2 requires reconstructing/repartitioning the retained
+  tensors or converting from a full-tensor checkpoint; renaming files or selecting two
+  ranks is insufficient. Preserve replicated tensors, expert ownership, packed quantized
+  values, and their scales according to the actual converter/loader contract.
+- Keep extraction/layer renaming and TP conversion as separate reproducible operations.
+  A TP-only change should reuse an already validated full-tensor trimmed checkpoint when
+  available; it should not force a new layer selection or another depth reduction.
+  Do not assume attention, expert, and embedding partitions all follow the same rule.
+- Document which deliverable contains full tensors and which contains fixed-rank partitions,
+  the intended TP of each partitioned set, and which TP values were actually validated.
+  Keep different formats in separate loader discovery directories. Preserve both formats
+  only when useful and storage permits; dual-format output is not a requirement.
+
 ## Build the output
 
 Generate or adapt a reproducible extraction script from the inspected checkpoint format,
