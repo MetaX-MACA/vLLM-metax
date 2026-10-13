@@ -47,6 +47,19 @@ def register_model():
     )
 
     ModelRegistry.register_model(
+        "Qwen4ExpForCausalLM", "vllm_metax.models.qwen4_exp:Qwen4ExpForCausalLM"
+    )
+
+    ModelRegistry.register_model(
+        "Qwen4ExpForConditionalGeneration",
+        "vllm_metax.models.qwen4_exp:Qwen4ExpForConditionalGeneration",
+    )
+
+    ModelRegistry.register_model(
+        "Qwen4ExpMTP", "vllm_metax.models.qwen4_exp:Qwen4ExpMTP"
+    )
+
+    ModelRegistry.register_model(
         "DeepseekV41ForCausalLM",
         "vllm_metax.models.deepseek_v41:DeepseekV41ForCausalLM",
     )
