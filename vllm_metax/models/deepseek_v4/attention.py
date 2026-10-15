@@ -616,9 +616,8 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
             )
 
         # Plain-row path: the [num_blocks, block_size, 512] cache stores the KV
-        # row in its element dtype (no Q padding). bf16 rewrites q in place;
-        # per-tensor fp8 writes a separately-allocated fp8 q and quantizes the
-        # KV row.
+        # row in its element dtype. bf16 rewrites q in place; per-tensor fp8
+        # writes a separately-allocated fp8 q and quantizes the KV row.
         block_size = swa_metadata.block_size
         swa_kv_cache_3d = swa_kv_cache.view(-1, block_size, self.head_dim)
         if cache_dtype == torch.bfloat16:
@@ -632,6 +631,15 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
                 self.eps,
                 block_size,
             )
+            # FlashMLA decode requires q to be padded to padded_heads (64/128)
+            # so its shape matches the pre-allocated output buffer; the in-place
+            # insert op only touched the real heads, so zero-pad the rest.
+            if self.n_local_heads < self.padded_heads:
+                return F.pad(
+                    q,
+                    (0, 0, 0, self.padded_heads - self.n_local_heads),
+                    value=0.0,
+                )
             return q
 
         # per-tensor fp8 (torch.float8_e4m3fn)

@@ -28,6 +28,17 @@ else:
 logger = init_logger(__name__)
 
 
+_original_hf_config_override = SpeculativeConfig.hf_config_override
+
+
+@patch("vllm.config.speculative", "SpeculativeConfig.hf_config_override")
+def hf_config_override(hf_config: PretrainedConfig) -> PretrainedConfig:
+    """Recognize JoyAI's dense MTP while deriving the draft configuration."""
+    if hf_config.model_type == "joyai_llm_flash":
+        hf_config.model_type = "deepseek_mtp"
+    return _original_hf_config_override(hf_config)
+
+
 class _DraftHfOverrides:
     """Compose target-model HF overrides with draft-model overrides."""
 

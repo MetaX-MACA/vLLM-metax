@@ -6,6 +6,9 @@ exclude_docs: |
   argparse
   *.inc.md
   *.template.md
+validation:
+  links:
+    absolute_links: relative_to_docs
 theme:
   name: material
   logo: assets/logos/vllm-logo-only-light.ico
@@ -40,7 +43,6 @@ theme:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.sections
-    - navigation.indexes
     - navigation.top
     - search.highlight
     - search.share
@@ -50,6 +52,7 @@ theme:
 hooks:
   - docs/mkdocs/hooks/remove_announcement.py
   - docs/mkdocs/hooks/url_schemes.py
+  - docs/mkdocs/hooks/release_navigation.py
 
 plugins:
   - meta

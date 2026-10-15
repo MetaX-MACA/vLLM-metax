@@ -6,6 +6,11 @@ from vllm import ModelRegistry
 
 def register_model():
     ModelRegistry.register_model(
+        "CosyVoice2ForCausalLM",
+        "vllm_metax.models.cosyvoice2:CosyVoice2ForCausalLM",
+    )
+
+    ModelRegistry.register_model(
         "DeepSeekMTPModel", "vllm_metax.models.deepseek_mtp:DeepSeekMTP"
     )
 
