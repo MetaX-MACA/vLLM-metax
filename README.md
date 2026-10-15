@@ -21,14 +21,19 @@ vLLM MetaX Plugin
 </p>
 
 ---
+> NOTE: The v0.31.0 version would be skipped and the next dev branch will be v0.32.0, which is aligned with vLLM v0.32.0.
 
 *Latest News* 🔥
 
+- [2026/10] Released vllm-metax **v0.28.0** 🚀 — aligned with vLLM *v0.28.0*, the holiday enjoyment has come to an end😭.
+- [2026/9] Released vllm-metax **v0.27.0** 🚀 — aligned with vLLM *v0.27.0*, happy National Day🎉!
+- [2026/9] Released vllm-metax **v0.26.0** 🚀 — aligned with vLLM *v0.26.0*, working hard to make it more💪.
+- [2026/9] Released vllm-metax **v0.25.0** 🚀 — aligned with vLLM *v0.25.0*, already released, just forgot to let you know here🙇‍♀️.
 - [2026/8] Released vllm-metax **v0.24.0** ❤️‍🔥 — aligned with vLLM *v0.24.0*, supported more models and improved performance.
-- [2026/8] Released vllm-metax **v0.23.0** 🎉 — aligned with vLLM *v0.23.0*.
-- [2026/7] Released vllm-metax **v0.22.0** 🎉 — aligned with vLLM *v0.22.0*.
-- [2026/6] Released vllm-metax **v0.21.0** 🥳 — aligned with vLLM *v0.21.0*.
-- [2026/6] Released vllm-metax **v0.20.0** 🚀 — aligned with vLLM *v0.20.0*.
+- [2026/8] Released vllm-metax **v0.23.0** 🎉 — aligned with vLLM *v0.23.0*, same as usual😒.
+- [2026/7] Released vllm-metax **v0.22.0** 🎉 — aligned with vLLM *v0.22.0*, same as usual💪.
+- [2026/6] Released vllm-metax **v0.21.0** 🥳 — aligned with vLLM *v0.21.0*, same as usual🛫.
+- [2026/6] Released vllm-metax **v0.20.0** 🚀 — aligned with vLLM *v0.20.0*, same as usual🧨.
 - [2026/5] Released vllm-metax **v0.19.0** 🎉 — aligned with vLLM *v0.19.0*, but fully supported Gemma4!
 - [2026/4] Released vllm-metax **v0.18.0** 😎 — aligned with vLLM *v0.18.0*, same as usual.
 - [2026/3] Released vllm-metax **v0.17.0** 🎉 — aligned with vLLM *v0.17.0*, supported more models and improved performance.
@@ -86,6 +91,10 @@ Below are the maintained branches:
 | Branch | Status | Note |
 | --- | --- | --- |
 | master | N/A | Tracks vLLM main; functionality is not guaranteed |
+| releases/v0.28.0 | Released | Corresponds to vLLM release v0.26.0 |
+| releases/v0.27.0 | Released | Corresponds to vLLM release v0.26.0 |
+| releases/v0.26.0 | Released | Corresponds to vLLM release v0.26.0 |
+| releases/v0.25.0 | Released | Corresponds to vLLM release v0.25.0 |
 | releases/v0.24.0 | Released | Corresponds to vLLM release v0.24.0 |
 | releases/v0.23.0 | Released | Corresponds to vLLM release v0.23.0 |
 | releases/v0.22.0 | Released | Corresponds to vLLM release v0.22.0 |
