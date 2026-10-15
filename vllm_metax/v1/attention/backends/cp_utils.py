@@ -14,6 +14,7 @@ def run_split_fa2_dcp_context_attention(
     dcp_context_out: torch.Tensor,
     cu_seqlens_q: torch.Tensor,
     max_seqlen_q: int,
+    prefill_max_seqlen_q: int,
     dcp_context_cu_seqlens_k: torch.Tensor,
     max_dcp_context_kv_len: int,
     softmax_scale: float,
@@ -74,13 +75,26 @@ def run_split_fa2_dcp_context_attention(
             ]
             - dcp_context_cu_seqlens_k[num_decode_reqs]
         )
+        # MetaX FlashAttention derives the split-KV (flash-decoding) launch
+        # geometry from `max_seqlen_q`, while the split-KV scratch buffers
+        # (oaccum / softmax_lseaccum) are sized from the query rows actually
+        # passed in.  Handing it the whole batch's max query length instead of
+        # this sub-batch's over-states the geometry and makes the splitkv /
+        # combine kernels address past that scratch buffer, which faults the
+        # GPU (`Xnack Error/ATU Fault(0x8)`, `invalid_xvm_pde`) and aborts the
+        # engine.  The decode branch above is unaffected because its
+        # max_seqlen_q is the literal 1 that matches its single query row.
+        assert 0 < prefill_max_seqlen_q <= max_seqlen_q, (
+            f"prefill_max_seqlen_q={prefill_max_seqlen_q} must be within "
+            f"(0, max_seqlen_q={max_seqlen_q}]"
+        )
         prefill_context_out, prefill_context_lse, _ = flash_attn_varlen_func(
             q=query_across_dcp[prefill_start:prefill_end],
             k=key_cache,
             v=value_cache,
             cu_seqlens_q=prefill_query_start_loc,
             cu_seqlens_k=prefill_dcp_context_cu_seqlens_k,
-            max_seqlen_q=max_seqlen_q,
+            max_seqlen_q=prefill_max_seqlen_q,
             max_seqlen_k=max_dcp_context_kv_len,
             softmax_scale=softmax_scale,
             causal=False,

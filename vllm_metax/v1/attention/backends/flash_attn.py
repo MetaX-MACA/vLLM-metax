@@ -309,6 +309,13 @@ class FlashAttentionMetadata:
     num_prefill_reqs: int = 0
     num_decode_tokens: int = 0
     num_prefill_tokens: int = 0
+    # Maximum query length among the context-bearing extend rows that the split
+    # DCP context-prefill sub-call actually receives.  MetaX FlashAttention
+    # sizes the split-KV launch geometry from `max_seqlen_q` while the split-KV
+    # scratch buffers are sized from the rows passed in, so this must describe
+    # the sub-batch -- not the whole batch's max_query_len.  See
+    # `run_split_fa2_dcp_context_attention`.
+    dcp_context_prefill_max_query_len: int = 0
 
     # Optional aot scheduling
     scheduler_metadata: torch.Tensor | None = None
@@ -859,6 +866,7 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         # --------------------
         # For metax GQA DCP
         dcp_context_cu_seqlens_k = None
+        dcp_context_prefill_max_query_len = 0
 
         cu_prefix_query_lens = None
         prefix_kv_lens = None
@@ -904,6 +912,25 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
                     max_query_len,
                     num_actual_tokens,
                 )
+                # `run_split_fa2_dcp_context_attention` launches the
+                # context-prefill sub-batch on its own, so it needs the max
+                # query length of *that* sub-batch.  Passing the whole batch's
+                # `max_query_len` (which can be dominated by an unrelated
+                # chunked-prefill chunk) makes MetaX FlashAttention drive its
+                # split-KV kernels past the split-KV scratch buffer and trap
+                # the GPU.  Derived from the CPU-side query_start_loc so
+                # forward() stays free of device syncs.
+                if num_prefill_reqs > 0:
+                    qsl_cpu = common_attn_metadata.query_start_loc_cpu
+                    prefill_q_lens_cpu = (
+                        qsl_cpu[
+                            num_decode_reqs + 1 : num_decode_reqs + num_prefill_reqs + 1
+                        ]
+                        - qsl_cpu[num_decode_reqs : num_decode_reqs + num_prefill_reqs]
+                    )
+                    dcp_context_prefill_max_query_len = int(
+                        prefill_q_lens_cpu.max().item()
+                    )
 
             # After DCP distribution, the maximum number of tokens for any rank is
             # ceil(L / (N * I)) * I, where L is max_seq_len, N is dcp_world_size,
@@ -1014,6 +1041,7 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
             max_dcp_context_kv_len=max_dcp_context_kv_len,
             dcp_context_kv_lens=dcp_context_kv_lens,
             dcp_context_cu_seqlens_k=dcp_context_cu_seqlens_k,
+            dcp_context_prefill_max_query_len=dcp_context_prefill_max_query_len,
             num_decode_reqs=num_decode_reqs,
             num_prefill_reqs=num_prefill_reqs,
             num_decode_tokens=num_decode_tokens,
@@ -1673,6 +1701,7 @@ class FlashAttentionImpl(AttentionImpl):
                 dcp_context_out,
                 cu_seqlens_q,
                 max_seqlen_q,
+                attn_metadata.dcp_context_prefill_max_query_len,
                 attn_metadata.dcp_context_cu_seqlens_k,
                 attn_metadata.max_dcp_context_kv_len,
                 self.scale,
