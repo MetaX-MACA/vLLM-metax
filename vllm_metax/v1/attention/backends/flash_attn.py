@@ -209,7 +209,7 @@ class MacaFlashAttentionBackend(AttentionBackend):
 
     @classmethod
     def supports_mm_prefix(cls) -> bool:
-        return False
+        return True
 
     @classmethod
     def supports_sink(cls) -> bool:
@@ -242,7 +242,7 @@ class MacaFlashAttentionBackend(AttentionBackend):
             return "FP8 KV cache requires FA3"
         if (
             use_mm_prefix
-            and get_flash_attn_version(head_size=head_size, has_sinks=has_sink) != 4
+            and get_flash_attn_version(head_size=head_size, has_sinks=has_sink) != 2
         ):
             return (
                 "mm_prefix (PrefixLM bidirectional attention) requires "

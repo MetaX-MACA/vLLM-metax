@@ -213,6 +213,17 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
             swiglu_limit_func(output, input, activation_config.clamp_limit)
             return
 
+        # /------------------------- Metax Modification --------------------------\
+        if activation == MoEActivation.SWIGLUSTEP:
+            from vllm_metax._custom_ops import swiglustep_and_mul
+
+            limit = self.moe_config.swiglu_limit
+            if limit is None:
+                limit = 7.0
+            swiglustep_and_mul(output, input, float(limit))
+            return
+        # \-----------------------------------------------------------------------/
+
         # SWIGLUOAI_UNINTERLEAVE routes to the silu_and_mul_with_clamp kernel and
         # requires a clamp limit. Other activations ignore these parameters.
         if activation == MoEActivation.SWIGLUOAI_UNINTERLEAVE:
@@ -374,21 +385,24 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
         if staged_configs[0].get("SPLIT_K", 1) > 1:
             intermediate_cache1.zero_()
 
-        sorted_token_ids, expert_ids, num_tokens_post_padded = (
-            _prepare_expert_assignment(
-                topk_ids,
-                staged_configs[0],
-                num_tokens,
-                top_k_num,
-                global_num_experts,
-                expert_map,
-                use_int8_w8a16=self.quant_config.use_int8_w8a16,
-                use_int4_w4a16=self.quant_config.use_int4_w4a16,
-                use_int8_w8a8=self.quant_config.use_int8_w8a8,
-                use_int4_w4a8=self.quant_config.use_int4_w4a8,
-                block_shape=self.block_shape,
-                block_size_m_override=block_size_m_override,
-            )
+        (
+            sorted_token_ids,
+            expert_ids,
+            num_tokens_post_padded,
+            filter_expert,
+        ) = _prepare_expert_assignment(
+            topk_ids,
+            staged_configs[0],
+            num_tokens,
+            top_k_num,
+            global_num_experts,
+            expert_map,
+            use_int8_w8a16=self.quant_config.use_int8_w8a16,
+            use_int4_w4a16=self.quant_config.use_int4_w4a16,
+            use_int8_w8a8=self.quant_config.use_int8_w8a8,
+            use_int4_w4a8=self.quant_config.use_int4_w4a8,
+            block_shape=self.block_shape,
+            block_size_m_override=block_size_m_override,
         )
 
         # LoRA w13: applied to intermediate_cache1 before activation. When
@@ -451,6 +465,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 use_int4_w4a8=self.quant_config.use_int4_w4a8,
                 use_int4_w4a16=self.quant_config.use_int4_w4a16,
                 per_channel_quant=self.per_act_token_quant,
+                filter_expert=filter_expert,
                 block_shape=self.block_shape,
                 B_bias=self.w1_bias,
             )
@@ -530,6 +545,29 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 group_size=128,
                 quant_dtype=current_platform.fp8_dtype(),
             )
+
+        elif (
+            activation == MoEActivation.SWIGLUSTEP
+            and self.quant_config.use_fp8_w8a8
+            and self.block_shape == [128, 128]
+            and lora_context is None
+            and not is_deep_gemm_e8m0_used()
+        ):
+            from vllm_metax._custom_ops import (
+                swiglu_step_and_mul_per_block_quant,
+            )
+
+            limit = self.moe_config.swiglu_limit
+            if limit is None:
+                limit = 7.0
+
+            qintermediate_cache2, a2q_scale = swiglu_step_and_mul_per_block_quant(
+                intermediate_cache1.view(-1, N),
+                group_size=128,
+                quant_dtype=current_platform.fp8_dtype(),
+                clamp_limit=float(limit),
+            )
+
         else:
             self.activation(
                 activation, intermediate_cache2, intermediate_cache1.view(-1, N)
@@ -545,20 +583,23 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
             )
 
         if staged_configs[1]["BLOCK_SIZE_M"] != staged_configs[0]["BLOCK_SIZE_M"]:
-            sorted_token_ids, expert_ids, num_tokens_post_padded = (
-                _prepare_expert_assignment(
-                    topk_ids,
-                    staged_configs[1],
-                    num_tokens,
-                    top_k_num,
-                    global_num_experts,
-                    expert_map,
-                    use_int8_w8a16=self.quant_config.use_int8_w8a16,
-                    use_int4_w4a16=self.quant_config.use_int4_w4a16,
-                    use_int8_w8a8=self.quant_config.use_int8_w8a8,
-                    use_int4_w4a8=self.quant_config.use_int4_w4a8,
-                    block_shape=self.block_shape,
-                )
+            (
+                sorted_token_ids,
+                expert_ids,
+                num_tokens_post_padded,
+                filter_expert,
+            ) = _prepare_expert_assignment(
+                topk_ids,
+                staged_configs[1],
+                num_tokens,
+                top_k_num,
+                global_num_experts,
+                expert_map,
+                use_int8_w8a16=self.quant_config.use_int8_w8a16,
+                use_int4_w4a16=self.quant_config.use_int4_w4a16,
+                use_int8_w8a8=self.quant_config.use_int8_w8a8,
+                use_int4_w4a8=self.quant_config.use_int4_w4a8,
+                block_shape=self.block_shape,
             )
 
         if expert_map is not None or staged_configs[1].get("SPLIT_K", 1) > 1:
@@ -590,6 +631,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 use_int4_w4a8=self.quant_config.use_int4_w4a8,
                 use_int4_w4a16=self.quant_config.use_int4_w4a16,
                 per_channel_quant=self.per_act_token_quant,
+                filter_expert=filter_expert,
                 block_shape=self.block_shape,
                 B_bias=self.w2_bias,
             )

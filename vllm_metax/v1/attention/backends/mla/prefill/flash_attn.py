@@ -443,9 +443,14 @@ class MacaFlashAttnPrefillBackend(MLAPrefillBackend):
         return attn_out
 
     def supports_out(self) -> bool:
+        # 只有 vllm 版 FA(_is_vllm_fa: CUDA/XPU) 才支持 out/output_scale 的融合写出;
+        # MetaX 走的是 else 分支(上游 flash_attn, 只认 return_attn_probs), 那里明确
+        # assert out is None and output_scale is None。所以这里必须跟着 _is_vllm_fa:
+        # 否则(_is_vllm_fa=False 但 v_head_dim==128 且 qk_head_dim==192 时)上层会把
+        # out 传进来 → flash_attn.py 里 assert 失败(Kimi-Linear-48B tp2 就是这个问题)。
         # A padded V produces a qk_head_dim output that cannot be written into
         # a v_head_dim `out`; only the unpadded path honors `out`.
-        return not self.requires_v_padding
+        return self._is_vllm_fa and not self.requires_v_padding
 
     def run_prefill_new_tokens(
         self,

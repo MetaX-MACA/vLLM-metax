@@ -266,8 +266,12 @@ def mctlassEx_fused_moe_bf16_gemm(
     expert_ids: torch.Tensor,
     num_tokens_post_padded: torch.Tensor,
     mul_routed_weight: bool,
+    filter_expert: bool = True,
 ) -> torch.Tensor:
     assert mctlass_moe_gemm is not None, "mctlass op is not imported correctly"
+    bf16_kwargs: dict[str, Any] = {
+        "filter_expert": filter_expert,
+    }
     mctlass_moe_gemm(
         batch_size,
         N,
@@ -286,6 +290,7 @@ def mctlassEx_fused_moe_bf16_gemm(
         expert_ids,
         num_tokens_post_padded,
         mul_routed_weight,
+        **bf16_kwargs,
     )
     return C
 
@@ -308,6 +313,7 @@ def mctlassEx_fused_moe_bf16_gemm_fake(
     expert_ids: torch.Tensor,
     num_tokens_post_padded: torch.Tensor,
     mul_routed_weight: bool,
+    filter_expert: bool = True,
 ) -> torch.Tensor:
     return C
 
@@ -783,6 +789,7 @@ def cutlass_moe_w8a8_fp8(
     topk: int,
     mul_routed_weight: bool,
     block_shape: list[int] | None = None,
+    filter_expert: bool = True,
 ) -> torch.Tensor:
     torch.ops.vllm.mctlassEx_fused_moe_w8a8_fp8(
         a,
@@ -798,6 +805,7 @@ def cutlass_moe_w8a8_fp8(
         topk,
         mul_routed_weight,
         block_shape,
+        filter_expert,
     )
 
     return c
@@ -1036,6 +1044,7 @@ def cutlass_moe_mm_bf16(
     expert_ids: torch.Tensor,
     num_tokens_post_padded: torch.Tensor,
     mul_routed_weight: bool,
+    filter_expert: bool = True,
 ) -> torch.Tensor:
     return mctlassEx_fused_moe_bf16_gemm(
         batch_size,
@@ -1055,6 +1064,7 @@ def cutlass_moe_mm_bf16(
         expert_ids,
         num_tokens_post_padded,
         mul_routed_weight,
+        filter_expert,
     )
 
 

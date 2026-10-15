@@ -26,6 +26,22 @@
 #       to disable double-buffering (fits under the 64-KB ceiling), and
 #       floor `BLOCK_SIZE_Q` so `num_idx_heads * BLOCK_SIZE_Q >= 16`.
 #
+#       Coverage: a module-attribute patch only rebinds the module it names, so
+#       it must be stacked onto every import location. `common/indexer.py` does
+#       `from ...common.ops.index_topk import minimax_m3_index_score` at module
+#       import time, and importing that module also drags in
+#       `common/ops/__init__.py`, which re-exports the same name. Patching only
+#       the defining module therefore left every caller on the upstream wrapper
+#       (the launch config was never applied, and the prefill kernel still died
+#       with `OutOfResources: shared memory, Required: 82432`). Both score
+#       wrappers are now installed on the definition module, the `common.ops`
+#       re-export, and every caller that binds them by name.
+#       `nvidia/indexer_msa.py` binds `minimax_m3_index_decode_score` too, but
+#       it is imported lazily and only when the SM100 MSA impl is selected;
+#       MetaX never selects it, and importing it here would pull in
+#       CuteDSL/fmha_sm100, so it is deliberately left on the (unused) SM100
+#       path.
+#
 # Affected versions: All versions (kernel bodies unchanged upstream;
 #       confirmed still failing on v0.26.0 with the refactored wrapper).
 #       Root‑cause: insufficient shared‑memory size on C500‑series hardware.
@@ -41,6 +57,10 @@ Ports vllm_metax's v0.24.0 fix for `minimax_m3_index_score` and
 v0.26.0's refactored wrappers. Kernel bodies are unmodified -- only the
 launch configuration differs, so the kernels are imported rather than
 redefined.
+
+Each `@patch` decorator covers one import location of the replaced wrapper;
+see the `Coverage:` note above for why the definition module alone is not
+enough.
 """
 
 import torch
@@ -57,6 +77,8 @@ from vllm.utils.math_utils import round_up
 from vllm_metax.patch.utils import patch
 
 
+@patch("vllm.models.minimax_m3.common.indexer")
+@patch("vllm.models.minimax_m3.common.ops")
 @patch("vllm.models.minimax_m3.common.ops.index_topk")
 @torch.no_grad()
 def minimax_m3_index_score(
@@ -120,6 +142,7 @@ def minimax_m3_index_score(
     return score
 
 
+@patch("vllm.models.minimax_m3.common.ops")
 @patch("vllm.models.minimax_m3.common.ops.index_topk")
 @torch.no_grad()
 def minimax_m3_index_decode_score(

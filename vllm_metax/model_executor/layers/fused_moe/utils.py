@@ -130,6 +130,20 @@ def maybe_override_stage_block_size_m(
         staged_configs[0]["BLOCK_SIZE_M"] = kernel_m
         staged_configs[1]["BLOCK_SIZE_M"] = kernel_m
 
+    if quant_config.use_fp8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
+        kernel_m = mctlass_ops.mctlassEx_fused_moe_w8a8_fp8_get_kernel_m(
+            hidden_states,
+            w1,
+            intermediate_cache13,
+            top_k_num,
+            block_shape,
+        )
+        assert kernel_m > 0, (
+            "fp8_w8a8 FusedMoeGEMM.get_kernel_m kernel_m must greater than zero."
+        )
+        staged_configs[0]["BLOCK_SIZE_M"] = kernel_m
+        staged_configs[1]["BLOCK_SIZE_M"] = kernel_m
+
     if (
         hidden_states.dtype == torch.bfloat16
         and not quant_config.use_int4_w4a8

@@ -915,6 +915,7 @@ def invoke_fused_moe_triton_kernel(
     use_int4_w4a8: bool,
     use_int4_w4a16: bool,
     per_channel_quant: bool,
+    filter_expert: bool = True,
     block_shape: list[int] | None = None,
     B_bias: torch.Tensor | None = None,
 ):
@@ -1047,6 +1048,7 @@ def invoke_fused_moe_triton_kernel(
             top_k,
             mul_routed_weight,
             block_shape,
+            filter_expert,
         )
     elif (
         A.dtype == torch.bfloat16
@@ -1075,6 +1077,7 @@ def invoke_fused_moe_triton_kernel(
             expert_ids,  # expert_ids
             num_tokens_post_padded,  # num_tokens_post_padded
             mul_routed_weight,  # mul_routed_weight
+            filter_expert,
         )
     else:
         config = config.copy()
@@ -1083,19 +1086,19 @@ def invoke_fused_moe_triton_kernel(
         BLOCK_SIZE_K = config.pop("BLOCK_SIZE_K")
         if block_shape is not None:
             BLOCK_SIZE_K = min(BLOCK_SIZE_K, min(block_shape[0], block_shape[1]))
-    if use_td and A.size(1) % BLOCK_SIZE_K != 0:
-        # TD gather/load feeding tl.dot with a non-block-aligned K
-        # miscompiles (~74% of output elements wrong) on real HW;
-        # this is a compiler-codegen issue, not a Python-maskable
-        # boundary gap. Fall back to the pointer-arith path.
-        logger.warning_once(
-            "Disabling VLLM_TRITON_USE_TD for this MoE launch: K=%d is not "
-            "a multiple of BLOCK_SIZE_K=%d, which triggers a known "
-            "Triton tensor-descriptor + tl.dot miscompilation.",
-            A.size(1),
-            BLOCK_SIZE_K,
-        )
-        use_td = False
+        if use_td and A.size(1) % BLOCK_SIZE_K != 0:
+            # TD gather/load feeding tl.dot with a non-block-aligned K
+            # miscompiles (~74% of output elements wrong) on real HW;
+            # this is a compiler-codegen issue, not a Python-maskable
+            # boundary gap. Fall back to the pointer-arith path.
+            logger.warning_once(
+                "Disabling VLLM_TRITON_USE_TD for this MoE launch: K=%d is not "
+                "a multiple of BLOCK_SIZE_K=%d, which triggers a known "
+                "Triton tensor-descriptor + tl.dot miscompilation.",
+                A.size(1),
+                BLOCK_SIZE_K,
+            )
+            use_td = False
         # Triton kernel "fused_moe_kernel" has been maintained by mcoplib
         # since v0.18.0-dev.
         if mx_envs.USE_PRECOMPILED_KERNEL:
@@ -1220,6 +1223,7 @@ def dispatch_fused_moe_kernel(
     use_int4_w4a8: bool,
     use_int4_w4a16: bool,
     per_channel_quant: bool,
+    filter_expert: bool = True,
     block_shape: list[int] | None = None,
     B_bias: torch.Tensor | None = None,
 ) -> None:
@@ -1321,6 +1325,7 @@ def dispatch_fused_moe_kernel(
             use_int4_w4a8,
             use_int4_w4a16,
             per_channel_quant,
+            filter_expert,
             block_shape,
             B_bias,
         )
@@ -1992,8 +1997,13 @@ def _prepare_expert_assignment(
     block_shape: list[int] | None = None,
     ignore_invalid_experts: bool = False,
     block_size_m_override: Callable | None = None,
-) -> tuple[torch.Tensor | None, torch.Tensor, torch.Tensor]:
-    """Prepare expert assignments for the aligned and low-latency Triton paths."""
+) -> tuple[torch.Tensor | None, torch.Tensor, torch.Tensor, bool]:
+    """Prepare expert assignments for the aligned and low-latency Triton paths.
+
+    The 4th return is filter_expert for mctlass: True iff expert_ids may
+    still contain -1. moe_align_block_size(ignore_invalid_experts=True)
+    drops invalid experts, so the kernel must not filter again.
+    """
     # SPARSITY_FACTOR is a heuristic margin ensuring tokens_in_chunk * top_k
     # activates only a small fraction of total experts
     # Skips moe_align_block_size and activates the `sorted_token_ids is None`
@@ -2013,6 +2023,12 @@ def _prepare_expert_assignment(
         and not mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
     )
 
+    # /-------------------- MetaX Modification --------------------\
+    ignore_invalid_experts = ignore_invalid_experts or (
+        expert_map is not None and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+    )
+    # \-------------------- MetaX Modification --------------------/
+
     if naive_block_assignment:
         return (
             None,
@@ -2023,23 +2039,24 @@ def _prepare_expert_assignment(
                 dtype=torch.int32,
                 device=topk_ids.device,
             ),
+            True,
         )
-
-    # /-------------------- MetaX Modification --------------------\
-    ignore_invalid_experts = ignore_invalid_experts or (
-        expert_map is not None and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
-    )
-    # \-------------------- MetaX Modification --------------------/
 
     if block_size_m_override is not None:
         block_size_m_override()
 
-    return moe_align_block_size(
+    sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
         topk_ids,
         config["BLOCK_SIZE_M"],
         global_num_experts,
         expert_map,
         ignore_invalid_experts=ignore_invalid_experts,
+    )
+    return (
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_padded,
+        not ignore_invalid_experts,
     )
 
 
@@ -2413,6 +2430,7 @@ def fused_experts_impl(
                 expert_map,
                 ignore_invalid_experts=True,
             )
+            filter_expert = False
         else:
             max_num_tokens_padded = topk_ids.numel() * stage1_config["BLOCK_SIZE_M"]
             expert_ids = curr_topk_ids.view(-1)
@@ -2421,6 +2439,7 @@ def fused_experts_impl(
             )
             num_tokens_post_padded.fill_(max_num_tokens_padded)
             sorted_token_ids = None
+            filter_expert = True
 
         # -------- stage1 --------
         # SPLIT_K>1 uses tl.atomic_add, so output must be zero-initialized.
@@ -2448,6 +2467,7 @@ def fused_experts_impl(
             use_int4_w4a8=use_int4_w4a8,
             use_int4_w4a16=use_int4_w4a16,
             per_channel_quant=per_channel_quant,
+            filter_expert=filter_expert,
             block_shape=block_shape,
             B_bias=w1_bias,
         )
@@ -2501,8 +2521,10 @@ def fused_experts_impl(
                             stage2_config["BLOCK_SIZE_M"],
                             global_num_experts,
                             expert_map,
+                            ignore_invalid_experts=True,
                         )
                     )
+                    filter_expert = False
                 else:
                     max_num_tokens_padded = (
                         topk_ids.numel() * stage2_config["BLOCK_SIZE_M"]
@@ -2513,6 +2535,7 @@ def fused_experts_impl(
                     )
                     num_tokens_post_padded.fill_(max_num_tokens_padded)
                     sorted_token_ids = None
+                    filter_expert = True
 
             if expert_map is not None or stage2_config.get("SPLIT_K", 1) > 1:
                 intermediate_cache3.zero_()
@@ -2538,6 +2561,7 @@ def fused_experts_impl(
                 use_int4_w4a8=use_int4_w4a8,
                 use_int4_w4a16=use_int4_w4a16,
                 per_channel_quant=per_channel_quant,
+                filter_expert=filter_expert,
                 block_shape=block_shape,
                 B_bias=w2_bias,
             )

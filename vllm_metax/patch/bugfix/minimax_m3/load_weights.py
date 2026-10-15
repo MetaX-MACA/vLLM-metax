@@ -1,11 +1,22 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+
 # -----------------------------------------------
-# Note: fix MiniMax-M3-FP8 weight load
+# Note: fix MiniMax-M3-FP8 weight load. The checkpoint stores MXFP8 block
+#       scales as ``weight_scale_inv`` and the MiniMax-M3 FP8 layers expose
+#       them under the same name, so upstream's ``weight_scale_inv`` ->
+#       ``weight_scale`` rename in ``MiniMaxM3Model.load_weights`` makes every
+#       block-scale lookup miss.
+#
 # Affected versions: v0.24.0+ (ported to v0.26.0; runtime validation pending)
+#
+# Remove at: Once upstream loads the MiniMax-M3-FP8 checkpoint without
+#            rewriting ``weight_scale_inv``.
 # -----------------------------------------------
+
 from collections.abc import Iterable
+
 import torch
 from vllm.model_executor.model_loader.weight_utils import (
     default_weight_loader,
@@ -15,11 +26,11 @@ from vllm.model_executor.models.utils import (
     is_pp_missing_parameter,
 )
 
-from vllm_metax.patch import patch
+from vllm_metax.patch.utils import patch
 
 
-@patch("vllm.models.minimax_m3.nvidia.model", "MiniMaxM3Model.model_load_weights")
-def model_load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
+@patch("vllm.models.minimax_m3.nvidia.model", "MiniMaxM3Model.load_weights")
+def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
     # q/k/v_proj -> fused qkv_proj; gate_proj/up_proj -> fused gate_up_proj
     # (dense MLP and shared expert). On sparse layers the indexer
     # index_q/index_k_proj fold into the same fused qkv_proj
@@ -37,23 +48,28 @@ def model_load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set
         (".gate_up_proj", ".gate_proj", 0),
         (".gate_up_proj", ".up_proj", 1),
     ]
+
     # (param_name, weight_name, expert_id, shard_id)
     expert_params_mapping = self.get_expert_mapping()
+
     params_dict = dict(self.named_parameters())
     loaded_params: set[str] = set()
     for name, loaded_weight in weights:
         # The MTP module is not modeled yet.
         if "mtp." in name:
             continue
+
         # The checkpoint stores block scales as ``weight_scale_inv``; the
         # ModelOpt MXFP8 layers expose them as ``weight_scale``.
         # ------------------------  Metax Modification -------------------------
         # Metax(note): The checkpoint stores block scales as ``weight_scale_inv``,
         # and the FP8 layers also expose them as ``weight_scale_inv``.
         # There is no need for conversion here.
+
         # if "weight_scale_inv" in name:
         #     name = name.replace("weight_scale_inv", "weight_scale")
         # -------------------------------------------- -------------------------
+
         for param_name, weight_name, shard_id in stacked_params_mapping:
             if weight_name not in name:
                 continue
