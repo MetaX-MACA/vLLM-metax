@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     VLLM_METAX_USE_FP8_WO_A: bool = True
     VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK: bool = False
     VLLM_METAX_USE_FLASHINFER_SAMPLER: bool = False
+    VLLM_METAX_PATCH_KV_BLOCK_ZEROER: bool = False
 
 environment_variables: dict[str, Callable[[], Any]] = {
     # ================== Installation Time Env Vars ==================
@@ -100,6 +101,16 @@ environment_variables: dict[str, Callable[[], Any]] = {
                 os.getenv("VLLM_USE_FLASHINFER_SAMPLER", "0"),
             )
         )
+    ),
+    # Re-apply the v0.27 KVBlockZeroer / _zero_kv_blocks_kernel workaround
+    # from vllm_metax.patch.bugfix.deepseek_v4.utils. Off by default: that
+    # copy predates zero_base_kv_cache and side-storage hooks, so it crashes
+    # current vLLM with:
+    #   TypeError: __init__() got an unexpected keyword argument
+    #   'zero_base_kv_cache'
+    # Set to 1 only on v0.27-era trees that still need the OOB workaround.
+    "VLLM_METAX_PATCH_KV_BLOCK_ZEROER": lambda: bool(
+        int(os.environ.get("VLLM_METAX_PATCH_KV_BLOCK_ZEROER", "0"))
     ),
     # =================== Debug Env Vars ==================
     # if set, use vllm's fused_moe implementation instead of maca's one for debugging and comparison

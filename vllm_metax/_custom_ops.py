@@ -262,3 +262,55 @@ def sgl_fused_moe_gate_opt(
         num_shared_experts,
         scale_factor,
     )
+
+
+def swiglustep_and_mul(
+    act_out: torch.Tensor,
+    act_in: torch.Tensor,
+    clamp_limit: float = 7.0,
+    alpha: float = 1.0,
+    beta: float = 0.0,
+) -> int:
+    return torch.ops._C.silu_and_mul_with_clamp(
+        act_out,
+        act_in,
+        float(clamp_limit),
+        float(alpha),
+        float(beta),
+        True,
+    )
+
+
+def swiglu_step_and_mul_per_block_quant(
+    input: torch.Tensor,
+    group_size: int = 128,
+    quant_dtype: torch.dtype = torch.float8_e4m3fn,
+    clamp_limit: float = 7.0,
+    alpha: float = 1.0,
+    beta: float = 0.0,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    num_tokens = input.shape[0]
+    hidden_size = input.shape[-1] // 2
+
+    output = torch.empty(
+        (num_tokens, hidden_size), device=input.device, dtype=quant_dtype
+    )
+    scales = torch.empty(
+        (num_tokens, hidden_size // group_size),
+        device=input.device,
+        dtype=torch.float32,
+    )
+
+    torch.ops._C.swiglu_step_and_mul_per_block_quant(
+        output,
+        input,
+        float(clamp_limit),
+        scales,
+        group_size,
+        None,
+        False,
+        float(alpha),
+        float(beta),
+    )
+
+    return output, scales

@@ -21,7 +21,7 @@ from vllm.logger import logger
 from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
 from vllm.v1.attention.backends.mla.prefill.registry import MLAPrefillBackendEnum
 from vllm_metax.utils import import_pymxsml
-
+from vllm_metax.utils.msprobe_debug import resolve_worker_cls
 
 from vllm.platforms.interface import DeviceCapability, Platform, PlatformEnum
 from vllm.utils.argparse_utils import FlexibleArgumentParser
@@ -300,7 +300,10 @@ class MacaPlatformBase(Platform):
         model_config = vllm_config.model_config
 
         if parallel_config.worker_cls == "auto":
-            parallel_config.worker_cls = "vllm.v1.worker.gpu_worker.Worker"
+            parallel_config.worker_cls = resolve_worker_cls(
+                vllm_config.additional_config,
+                model_config.enforce_eager if model_config is not None else None,
+            )
 
         scheduler_config = vllm_config.scheduler_config
         # Note: model_config may be None during testing
@@ -1041,7 +1044,6 @@ mx_envs.maybe_override_vllm_env(
     False,
     "USE_DEEP_GEMM_E8M0 default to false on Maca platform",
 )
-
 
 # --------------------------------------------------
 # Note: vllm_metax currently does not support third-party

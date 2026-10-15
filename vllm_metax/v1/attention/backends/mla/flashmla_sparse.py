@@ -580,7 +580,7 @@ class FlashMLASparseMetadataBuilder(
         elif self.use_bf16_kv_cache:
             metadata.bf16_use_mixed_batch = False  # default use separate_prefill_decode
 
-        if self.use_fp8_kv_cache and not self.is_deepseek_v4:
+        if self.use_fp8_kv_cache:
             if fp8_use_mixed_batch:
                 metadata.fp8_extra_metadata = self._build_fp8_mixed_decode_prefill(
                     common_attn_metadata
@@ -717,11 +717,18 @@ class FlashMLASparseImpl(SparseMLACommonImpl[FlashMLASparseMetadata]):
             bf16_metadata, FlashMLASparseMetadata.BF16SeparatePrefillDecode
         )
         num_decodes = bf16_metadata.num_decodes
+        num_mqa_tokens = q.shape[0]
+        num_decode_tokens = bf16_metadata.num_decode_tokens
+        num_prefill_tokens = num_mqa_tokens - num_decode_tokens
+        assert num_prefill_tokens in (0, bf16_metadata.num_prefill_tokens), (
+            "BF16 sparse MLA expects either the decode subset or the full batch"
+        )
 
         # Convert per-request indices to global slots (decode) or workspace
-        # offsets (prefill).
+        # offsets (prefill). req_id_per_token covers the whole batch; slice it
+        # to the MQA tokens (q may exclude prefill tokens routed to dense MHA).
         topk_indices, topk_length = triton_convert_req_index_to_global_index(
-            attn_metadata.req_id_per_token,
+            attn_metadata.req_id_per_token[: topk_indices.shape[0]],
             attn_metadata.block_table,
             topk_indices,
             BLOCK_SIZE=attn_metadata.block_size,
@@ -755,9 +762,6 @@ class FlashMLASparseImpl(SparseMLACommonImpl[FlashMLASparseMetadata]):
             #              -> (num_decode_tokens, num_heads, head_dim_v)
             return reshape_attn_output_for_spec_decode(attn_out)
 
-        num_decode_tokens = bf16_metadata.num_decode_tokens
-        num_prefill_tokens = bf16_metadata.num_prefill_tokens
-
         # Pure decode: direct call without allocation
         if num_decode_tokens > 0 and num_prefill_tokens == 0:
             assert bf16_metadata.decode is not None
@@ -765,7 +769,7 @@ class FlashMLASparseImpl(SparseMLACommonImpl[FlashMLASparseMetadata]):
         else:
             # Mixed or pure prefill: allocate output tensor
             attn_out = q.new_empty(
-                (attn_metadata.num_actual_tokens, self.num_heads, self.kv_lora_rank),
+                (num_mqa_tokens, self.num_heads, self.kv_lora_rank),
                 dtype=q.dtype,
                 device=q.device,
             )
@@ -775,12 +779,11 @@ class FlashMLASparseImpl(SparseMLACommonImpl[FlashMLASparseMetadata]):
                     q[:num_decode_tokens], topk_indices[:num_decode_tokens]
                 )
 
-            num_actual_tokens = attn_metadata.num_actual_tokens
-            attn_out[num_decode_tokens:num_actual_tokens] = self._bf16_flash_mla_kernel(
-                q[num_decode_tokens:num_actual_tokens],
+            attn_out[num_decode_tokens:num_mqa_tokens] = self._bf16_flash_mla_kernel(
+                q[num_decode_tokens:num_mqa_tokens],
                 kv_c_and_k_pe_cache,
-                topk_indices[num_decode_tokens:num_actual_tokens],
-                topk_length=topk_length[num_decode_tokens:num_actual_tokens],
+                topk_indices[num_decode_tokens:num_mqa_tokens],
+                topk_length=topk_length[num_decode_tokens:num_mqa_tokens],
             )
 
         return attn_out
