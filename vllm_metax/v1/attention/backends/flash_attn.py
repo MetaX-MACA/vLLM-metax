@@ -287,6 +287,8 @@ class FlashAttentionMetadata:
     dcp_context_kv_lens: torch.Tensor | None = None
     # [num_reqs + 1], cumulative form required by the MetaX FlashAttention API.
     dcp_context_cu_seqlens_k: torch.Tensor | None = None
+    # calc the max query length for DCP context attention in split
+    dcp_context_prefill_max_query_len: int = 0
 
     # Split counts for FA2 DCP context attention. num_prefill_* tracks
     # context-bearing extend rows; pure prefills do not attend to DCP context.
@@ -829,6 +831,7 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         # --------------------
         # For metax GQA DCP
         dcp_context_cu_seqlens_k = None
+        dcp_context_prefill_max_query_len = 0
 
         cu_prefix_query_lens = None
         prefix_kv_lens = None
@@ -874,6 +877,19 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
                     max_query_len,
                     num_actual_tokens,
                 )
+
+                if num_prefill_reqs > 0:
+                    prefill_q_lens_cpu = (
+                        common_attn_metadata.query_start_loc_cpu[
+                            num_decode_reqs + 1 : num_decode_reqs + num_prefill_reqs + 1
+                        ]
+                        - common_attn_metadata.query_start_loc_cpu[
+                            num_decode_reqs : num_decode_reqs + num_prefill_reqs
+                        ]
+                    )
+                    dcp_context_prefill_max_query_len = int(
+                        prefill_q_lens_cpu.max().item()
+                    )
 
             # After DCP distribution, the maximum number of tokens for any rank is
             # ceil(L / (N * I)) * I, where L is max_seq_len, N is dcp_world_size,
@@ -985,6 +1001,7 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
             max_dcp_context_kv_len=max_dcp_context_kv_len,
             dcp_context_kv_lens=dcp_context_kv_lens,
             dcp_context_cu_seqlens_k=dcp_context_cu_seqlens_k,
+            dcp_context_prefill_max_query_len=dcp_context_prefill_max_query_len,
             num_decode_reqs=num_decode_reqs,
             num_prefill_reqs=num_prefill_reqs,
             num_decode_tokens=num_decode_tokens,
@@ -1666,7 +1683,7 @@ class FlashAttentionImpl(AttentionImpl):
                 value_cache,
                 dcp_context_out,
                 cu_seqlens_q,
-                max_seqlen_q,
+                attn_metadata.dcp_context_prefill_max_query_len,
                 attn_metadata.dcp_context_cu_seqlens_k,
                 attn_metadata.max_dcp_context_kv_len,
                 self.scale,
