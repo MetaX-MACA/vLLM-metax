@@ -11,9 +11,11 @@ import torch
 import torch.nn.functional as F
 from transformers import PretrainedConfig
 
-from vllm.config import ModelConfig, ModelDType, RunnerOption
-from vllm.inputs import InputContext
-from vllm.sequence import Logprob, PromptLogprobs, SampleLogprobs
+from vllm.config import ModelConfig
+from vllm.config.model import ModelDType, RunnerOption
+from vllm.multimodal.processing import InputProcessingContext
+from vllm.tokenizers import cached_tokenizer_from_config
+from vllm.logprobs import Logprob, PromptLogprobs, SampleLogprobs
 
 from .registry import HF_EXAMPLE_MODELS
 
@@ -299,7 +301,9 @@ def build_model_context(
         enforce_eager=model_info.enforce_eager,
         **model_config_kwargs,
     )
-    return InputContext(model_config)
+    tokenizer = (None if model_config.skip_tokenizer_init
+                 else cached_tokenizer_from_config(model_config))
+    return InputProcessingContext(model_config, tokenizer)
 
 
 def check_embeddings_close(
