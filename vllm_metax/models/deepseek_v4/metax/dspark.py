@@ -32,7 +32,7 @@ from vllm.model_executor.layers.fused_moe import (
     fused_moe_make_expert_params_mapping,
 )
 from vllm.model_executor.layers.layernorm import RMSNorm
-from vllm.model_executor.layers.linear import ReplicatedLinear
+from vllm.model_executor.layers.linear import ReplicatedLinear, UnquantizedLinearMethod
 from vllm.model_executor.layers.logits_processor import LogitsProcessor
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     ParallelLMHead,
@@ -323,6 +323,9 @@ class DSparkDeepseekV4ForCausalLM(nn.Module):
         self.model = DSparkDeepseekV4Model(
             vllm_config=vllm_config, prefix=maybe_prefix(prefix, "model")
         )
+        # Checkpoints that ignore-list their mtp.* draft weights ship those
+        # tensors unquantized (no weight_scale); stashed here at load time.
+        self._unquantized_mtp_stash: dict[str, torch.Tensor] = {}
         # Shared with the target (aliased by the speculator's load utility).
         self.lm_head = ParallelLMHead(
             self.config.vocab_size,
@@ -438,6 +441,20 @@ class DSparkDeepseekV4ForCausalLM(nn.Module):
             if mapped is None:
                 continue
             name = mapped
+            if (
+                name.endswith(".attn.wo_a.weight") or name == "model.main_proj.weight"
+            ) and loaded_weight.dtype in (torch.float16, torch.bfloat16, torch.float32):
+                # The quantization ignore-list matches checkpoint-side
+                # ``mtp.N.*`` names, but this model registers the same weights
+                # as ``model.layers.N.*`` / ``model.main_proj.*``, so the
+                # modules are still built int8-quantized. Checkpoints that
+                # ignore-list these weights ship them unquantized, without a
+                # ``weight_scale``; the quantized loader would int8-cast the
+                # values and pair them with an uninitialized scale. Stash the
+                # unquantized tensor and install it after loading instead.
+                self._unquantized_mtp_stash[name] = loaded_weight
+                loaded_params.add(name)
+                continue
             if "confidence_head." in name:
                 loaded_confidence_head = True
 
@@ -515,8 +532,39 @@ class DSparkDeepseekV4ForCausalLM(nn.Module):
         return loaded_params
 
     def _finalize_moe(self) -> None:
+        self._install_unquantized_mtp_weights()
         for layer in self.model.layers:
             layer.ffn.finalize_mega_moe_weights()
+
+    def _install_unquantized_mtp_weights(self) -> None:
+        if not self._unquantized_mtp_stash:
+            return
+        tp_size = get_tensor_model_parallel_world_size()
+        tp_rank = get_tensor_model_parallel_rank()
+        installed: list[str] = []
+        for name, weight in self._unquantized_mtp_stash.items():
+            if name == "model.main_proj.weight":
+                module = self.model.main_proj
+                shard = weight
+            else:
+                layer_idx = int(name.split(".")[2])
+                module = self.model.layers[layer_idx].attn.wo_a
+                # ColumnParallelLinear shards the output dim (rows).
+                local_rows = weight.shape[0] // tp_size
+                shard = weight[tp_rank * local_rows : (tp_rank + 1) * local_rows]
+            module.weight = torch.nn.Parameter(
+                shard.to(
+                    dtype=torch.bfloat16, device=module.weight.device
+                ).contiguous(),
+                requires_grad=False,
+            )
+            module.quant_method = UnquantizedLinearMethod()
+            installed.append(name)
+        self._unquantized_mtp_stash.clear()
+        logger.info(
+            "DSpark: installed unquantized checkpoint weights for %s",
+            ", ".join(installed),
+        )
 
     def process_weights_after_loading(self) -> None:
         self._finalize_moe()
