@@ -50,6 +50,41 @@ from vllm.v1.attention.backends.short_conv_attn import (
 from ..common.ple import PLEVocabParallelEmbedding
 from .ops.ple import ple_conv, ple_gate, ple_ngram_ids
 
+import triton
+import triton.language as tl
+from vllm.distributed import (
+    get_tensor_model_parallel_world_size,
+    tensor_model_parallel_all_reduce,
+)
+
+
+@triton.jit
+def _ple_pinned_lookup_kernel(
+    weight_ptr,
+    ids_ptr,
+    output_ptr,
+    embedding_dim,
+    tp_vocab_start,
+    tp_vocab_end,
+    BLOCK_D: tl.constexpr,
+):
+    row = tl.program_id(0)
+    global_idx = tl.load(ids_ptr + row)
+    in_range = (global_idx >= tp_vocab_start) & (global_idx < tp_vocab_end)
+    local_idx = tl.where(in_range, global_idx - tp_vocab_start, 0)
+    offsets = tl.arange(0, BLOCK_D)
+    store_mask = offsets < embedding_dim
+    values = tl.load(
+        weight_ptr + local_idx * embedding_dim + offsets,
+        mask=store_mask & in_range,
+        other=0.0,
+    )
+    tl.store(
+        output_ptr + row * embedding_dim + offsets,
+        values,
+        mask=store_mask,
+    )
+
 
 class Qwen4ExpPLEGroupedNorm(nn.Module):
     def __init__(
@@ -329,6 +364,7 @@ class Qwen4ExpNGramEmbedding(nn.Module):
                 quant_config, f"{prefix}.ngram_embedding"
             ),
         )
+        self._ple_pin_state = 0
 
     @staticmethod
     def _shift_precompute(
@@ -446,7 +482,41 @@ class Qwen4ExpNGramEmbedding(nn.Module):
         ngram_context: torch.Tensor,
     ) -> torch.Tensor:
         ngram_ids = self.compute_ngram_ids(input_ids, query_start_loc, ngram_context)
-        return self.ngram_embedding(ngram_ids).flatten(-2)
+        emb = self.ngram_embedding
+        if self._ple_pin_state == 0:
+            try:
+                w = emb.weight.data
+                emb._pinned = w.detach().to("cpu", copy=True).pin_memory()
+                emb._pinned_dim = w.shape[1]
+                emb.weight.data = torch.empty(
+                    (0, w.shape[1]), dtype=w.dtype, device=w.device
+                )
+                torch.cuda.empty_cache()
+                self._ple_pin_state = 1
+            except Exception:
+                self._ple_pin_state = 2
+        if self._ple_pin_state == 1:
+            flat = ngram_ids.reshape(-1).long()
+            out = torch.empty(
+                (flat.numel(), emb._pinned_dim),
+                dtype=emb._pinned.dtype,
+                device=flat.device,
+            )
+            if flat.numel():
+                _ple_pinned_lookup_kernel[(flat.numel(),)](
+                    emb._pinned,
+                    flat,
+                    out,
+                    emb._pinned_dim,
+                    emb.shard_indices.org_vocab_start_index,
+                    emb.shard_indices.org_vocab_end_index,
+                    BLOCK_D=triton.next_power_of_2(emb._pinned_dim),
+                )
+            out = out.view(*ngram_ids.shape, emb._pinned_dim)
+            if get_tensor_model_parallel_world_size() > 1:
+                out = tensor_model_parallel_all_reduce(out)
+            return out.flatten(-2)
+        return emb(ngram_ids).flatten(-2)
 
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
         """Load hash buffers and checkpoint-split embedding rows."""
@@ -459,6 +529,23 @@ class Qwen4ExpNGramEmbedding(nn.Module):
         loaded: set[str] = set()
         regular_weights: list[tuple[str, torch.Tensor]] = []
         shard_prefix = "ngram_embedding.shard_"
+
+        emb0 = self.ngram_embedding
+        if self._ple_pin_state == 0:
+            try:
+                rows, cols = emb0.weight.shape
+                emb0._pinned = torch.empty(
+                    (rows, cols), dtype=emb0.weight.dtype, device="cpu",
+                    pin_memory=True,
+                )
+                emb0._pinned_dim = cols
+                emb0.weight.data = torch.empty(
+                    (0, cols), dtype=emb0.weight.dtype, device=emb0.weight.device
+                )
+                torch.cuda.empty_cache()
+                self._ple_pin_state = 1
+            except Exception:
+                self._ple_pin_state = 2
 
         for name, loaded_weight in weights:
             leaf_name = name.rsplit(".", 1)[-1]
@@ -501,11 +588,23 @@ class Qwen4ExpNGramEmbedding(nn.Module):
                         f"expected {expected_shape}, got "
                         f"{tuple(loaded_weight.shape)}"
                     )
-                embedding.weight.weight_loader(
-                    embedding.weight,
-                    loaded_weight,
-                    checkpoint_start=checkpoint_start,
-                )
+                if self._ple_pin_state == 1:
+                    org_start = emb0.shard_indices.org_vocab_start_index
+                    org_end = emb0.shard_indices.org_vocab_end_index
+                    g0 = checkpoint_start
+                    g1 = checkpoint_start + expected_rows
+                    l0 = max(g0, org_start)
+                    l1 = min(g1, org_end)
+                    if l1 > l0:
+                        emb0._pinned[l0 - org_start : l1 - org_start].copy_(
+                            loaded_weight[l0 - g0 : l1 - g0].to(emb0._pinned.dtype)
+                        )
+                else:
+                    embedding.weight.weight_loader(
+                        embedding.weight,
+                        loaded_weight,
+                        checkpoint_start=checkpoint_start,
+                    )
                 loaded.add("ngram_embedding.weight")
                 continue
             regular_weights.append((name, loaded_weight))
