@@ -24,6 +24,7 @@ from vllm.model_executor.layers.quantization.base_config import QuantizeMethodBa
 from vllm.model_executor.layers.vocab_parallel_embedding import ParallelLMHead
 from vllm.utils.torch_utils import direct_register_custom_op
 
+from vllm import _custom_ops as ops
 from vllm_metax import _custom_ops as mx_ops
 from vllm import _custom_ops as ops
 from vllm.model_executor.layers.quantization import register_quantization_config
