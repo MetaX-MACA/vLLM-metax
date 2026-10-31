@@ -126,11 +126,12 @@ class MacaSparseAttnIndexer(SparseAttnIndexer):
         elif q_values.dtype is torch.int8:
             sparse_attn_indexer_impl = torch.ops.vllm.mx_sparse_attn_indexer_int8
         elif mx_envs.VLLM_METAX_SUPPORTS_FP8:
+            # The consolidated FP8/FP4 implementation dispatches by q_scale.
             sparse_attn_indexer_impl = torch.ops.vllm.mx_sparse_attn_indexer
         else:
             raise NotImplementedError(
-                "MacaSparseAttnIndexer supports BF16, FP16, INT8, and optional "
-                f"platform FP8 Q tensors; got {q_values.dtype}."
+                "MacaSparseAttnIndexer supports BF16, FP16, INT8, FP8 and "
+                f"MXFP4 Q tensors; got {q_values.dtype}."
             )
 
         return sparse_attn_indexer_impl(

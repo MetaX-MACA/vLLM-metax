@@ -67,12 +67,6 @@ def dsa_indexer_uses_fp4(vllm_config: VllmConfig) -> bool:
             f"sparse indexer (expected one of {DSA_INDEXER_KV_DTYPES})."
         )
     use_fp4 = kv_dtype == "mxfp4"
-    if use_fp4 and not current_platform.is_device_capability_family(100):
-        raise ValueError(
-            "indexer_kv_dtype='mxfp4' requires Blackwell datacenter GPUs "
-            "(sm_10x, e.g. B200/GB200); sm_120 (consumer Blackwell) and "
-            "earlier architectures are not supported."
-        )
     return use_fp4
 
 
@@ -88,12 +82,6 @@ def dsa_dsv41_indexer_use(vllm_config: VllmConfig) -> tuple[bool, bool]:
         )
     use_fp4 = kv_dtype == "mxfp4"
     use_int8 = kv_dtype == "int8"
-    if use_fp4 and not current_platform.is_device_capability_family(100):
-        raise ValueError(
-            "indexer_kv_dtype='mxfp4' requires Blackwell datacenter GPUs "
-            "(sm_10x, e.g. B200/GB200); sm_120 (consumer Blackwell) and "
-            "earlier architectures are not supported."
-        )
     return use_fp4, use_int8
 
 
@@ -920,11 +908,9 @@ def get_max_prefill_buffer_size(vllm_config: VllmConfig):
 
 
 def _supports_varlen_paged_mqa_logits() -> bool:
-    return (
-        current_platform.is_cuda()
-        and current_platform.is_device_capability_family(100)
-        and has_deep_gemm()
-    )
+    # MACA's paged MQA entry accepts 2-D context lengths and per-request query
+    # layouts.
+    return has_deep_gemm()
 
 
 def _supports_flattened_device_query_lens() -> bool:

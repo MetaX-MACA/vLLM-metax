@@ -19,6 +19,7 @@ from . import draft_config_overrides  # noqa: F401
 from . import minimax_m3  # noqa: F401
 from . import telechat3  # noqa: F401
 from . import bytes_to_unicode  # noqa: F401
-from . import qwen  # noqa: F401
+
+# from . import qwen  # noqa: F401
 from . import routed_experts_fused_weight_fix  # noqa: F401
 from . import rejection_sampler  # noqa: F401
