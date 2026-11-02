@@ -40,7 +40,7 @@ def _bytes_to_unicode():
             bs.append(b)
             cs.append(2**8 + n)
             n += 1
-    return {b: chr(c) for b, c in zip(bs, cs)}
+    return {b: chr(c) for b, c in zip(bs, cs, strict=False)}
 
 
 # Preserve the native helper when running a Transformers version that has it.

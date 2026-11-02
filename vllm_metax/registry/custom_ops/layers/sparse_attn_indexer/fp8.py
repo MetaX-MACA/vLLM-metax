@@ -13,8 +13,8 @@ from vllm.forward_context import get_forward_context
 from vllm.platforms import current_platform
 
 from vllm_metax.utils.deep_gemm import (
-    fp8_mqa_logits,
-    fp8_paged_mqa_logits,
+    fp8_fp4_mqa_logits,
+    fp8_fp4_paged_mqa_logits,
 )
 
 from vllm.utils.torch_utils import (
@@ -298,10 +298,8 @@ def sparse_attn_indexer(
                     q_slice_cast = q_slice
                     k_quant_cast = k_quant
                     k_scale_cast = k_scale.view(torch.float32).squeeze(-1)
-                logits = fp8_mqa_logits(
-                    # --------------------------------------
-                    # Note(Metax): fp8_mqa_logits only support fp8
-                    q_slice_cast,
+                logits = fp8_fp4_mqa_logits(
+                    (q_slice_cast, q_scale_slice),
                     (k_quant_cast, k_scale_cast),
                     weights[chunk.token_start : chunk.token_end],
                     cu_seqlen_ks,
@@ -414,10 +412,8 @@ def sparse_attn_indexer(
             if use_fp4_cache
             else padded_q_quant_decode_tokens
         )
-        logits = fp8_paged_mqa_logits(
-            # --------------------------------------
-            # Note(Metax): fp8_paged_mqa_logits only support fp8
-            padded_q_quant_cast,
+        logits = fp8_fp4_paged_mqa_logits(
+            (padded_q_quant_cast, padded_q_scale),
             kv_cache,
             weights[:num_padded_tokens],
             seq_lens,

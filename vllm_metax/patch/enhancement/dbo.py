@@ -14,7 +14,7 @@
 
 from vllm_metax.patch.utils import patch
 
-from typing import Callable
+from collections.abc import Callable
 import torch
 from vllm.platforms import current_platform
 from vllm.utils.platform_utils import num_compute_units

@@ -239,6 +239,34 @@ def quantize_and_insert_k_cache_int8(
     )
 
 
+def fused_deepseek_v4_kv_rope_insert_int8(
+    kv: torch.Tensor,
+    k_cache: torch.Tensor,
+    slot_mapping: torch.Tensor,
+    positions: torch.Tensor,
+    cos_sin_cache: torch.Tensor,
+    block_size: int,
+) -> None:
+    """KV-only counterpart of vLLM's ``fused_deepseek_v4_kv_rope_insert``.
+
+    vLLM 0.32's native op intentionally accepts only packed FP8, bf16 and
+    per-tensor FP8 caches. MetaX's ``int8_ds_mla`` cache uses the Triton writer
+    below: GPT-J RoPE followed by symmetric INT8 quantization in groups of 32
+    dims and a paged store with one fp32 scale per group.
+    """
+    if k_cache.shape[1] != block_size:
+        raise ValueError(
+            f"block_size {block_size} does not match INT8 cache page {k_cache.shape[1]}"
+        )
+    quantize_and_insert_k_cache_int8(
+        kv,
+        k_cache,
+        slot_mapping,
+        positions,
+        cos_sin_cache,
+    )
+
+
 def dequantize_and_gather_k_cache_int8_ref(
     out: torch.Tensor,
     k_cache: torch.Tensor,

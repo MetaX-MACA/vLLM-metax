@@ -55,6 +55,7 @@ from vllm.model_executor.layers.quantization.utils.quant_utils import (
     kInt8Static,
     kInt8StaticChannelSym,
     kInt8StaticTensorSym,
+    kMxfp4Static,
 )
 from vllm.platforms import current_platform
 from vllm.triton_utils import tl
@@ -158,6 +159,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 (kFp8StaticTensorSym, kFp8DynamicTokenSym),
                 (kFp8StaticTensorSym, kFp8StaticTensorSym),
                 (kFp8StaticTensorSym, kFp8DynamicTensorSym),
+                (kMxfp4Static, None),
             ]
             # Block-quantized FP8 with arbitrary block shape: the Triton
             # kernels take the block shape as a runtime argument.

@@ -9,9 +9,17 @@ import torch
 
 from vllm import _custom_ops as ops
 from vllm.config import get_current_vllm_config
+from vllm.platforms import current_platform
+from vllm.utils.flashinfer import has_flashinfer
 from vllm.v1.worker.workspace import current_workspace_manager
 
 RADIX_TOPK_WORKSPACE_SIZE = 1024 * 1024
+
+# cooperative_topk's hard row limit: one cluster wave covers at most this many
+# rows. "auto" uses cooperative_topk for every batch within the limit and falls
+# back to persistent_topk past it; explicit ``cooperative`` requests are
+# validated against the same bound.
+AUTO_COOPERATIVE_MAX_ROWS = 64
 
 # ---------------------------------------------------------------------------
 # DeepSelect (vllm._deepselect_C)
@@ -21,19 +29,17 @@ RADIX_TOPK_WORKSPACE_SIZE = 1024 * 1024
 IDX_OOB_FILL_VALUE = -1
 
 try:
-    import vllm._deepselect_C  # noqa: F401  (registers torch.ops.deep_select)
-except ImportError as e:
-    from vllm.logger import init_logger
+    import deep_select  # noqa: F401
 
-    init_logger(__name__).warning(
-        "Failed to import the DeepSelect extension (vllm._deepselect_C): %s", e
-    )
+    _HAS_DEEP_SELECT_C = True
+except ImportError:
+    _HAS_DEEP_SELECT_C = False
 
 
 @functools.lru_cache(maxsize=1)
 def get_deep_select_stride_requirement() -> tuple[int, int]:
     """Stride alignment requirement (input, output) in bytes."""
-    return torch.ops.deep_select.get_alignment_requirement()
+    return deep_select.get_alignment_requirement()
 
 
 def is_deep_select_supported(input: torch.Tensor, topk: int) -> bool:
@@ -103,7 +109,7 @@ def deep_select_topk(
         assert output_idx.dtype == indices_dtype
         assert output_idx.shape[0] >= num_rows and output_idx.shape[1] >= topk
 
-    torch.ops.deep_select.topk(
+    deep_select.topk(
         input,
         topk,
         None,  # begin is not supported
@@ -146,9 +152,12 @@ class SparseIndexerTopk(torch.nn.Module):
             backend = (
                 get_current_vllm_config().kernel_config.sparse_indexer_topk_backend
             )
-        self._is_maca = True
         self._backend = backend
-        self._has_deep_select = False
+        self._is_maca = current_platform.is_maca()
+        self._has_deep_select = _HAS_DEEP_SELECT_C
+        self._has_flashinfer_topk = has_flashinfer()
+        self._cooperative_capable = False  # TODO: check
+        self._persistent_capable = False  # TODO: check
 
     def resolve_backend(
         self, logits: torch.Tensor, topk_tokens: int, num_rows: int
@@ -170,14 +179,22 @@ class SparseIndexerTopk(torch.nn.Module):
                     f"topk_tokens must be in (512, 1024, 2048), got {topk_tokens}"
                 )
         elif self._backend == "deep_select":
-            if not self._is_maca:
-                failures.append("requires a MACA platform")
-            elif not self._has_deep_select:
-                failures.append("requires mcoplib with DeepSelect support")
+            if not self._has_deep_select:
+                failures.append("vllm._deepselect_C could not be imported")
             elif not is_deep_select_supported(logits, topk_tokens):
                 failures.append(
                     f"inputs violate DeepSelect's constraints: dtype={logits.dtype},"
                     f" stride={logits.stride()}, topk={topk_tokens}"
+                )
+        elif self._backend == "flashinfer":
+            if not self._has_flashinfer_topk:
+                failures.append(
+                    "flashinfer.topk.top_k_ragged_transform is not importable"
+                )
+            if logits.dtype != torch.float32 or logits.stride(1) != 1:
+                failures.append(
+                    f"requires fp32 logits with stride(1) == 1, got "
+                    f"dtype={logits.dtype}, stride={logits.stride()}"
                 )
         if failures:
             raise RuntimeError(
@@ -201,7 +218,7 @@ class SparseIndexerTopk(torch.nn.Module):
         """
         if not self._cooperative_constraints(logits, topk_tokens, num_rows):
             return "cooperative"
-        if self._is_maca and topk_tokens in (512, 1024, 2048):
+        if self._persistent_capable and topk_tokens in (512, 1024, 2048):
             return "persistent"
         return "per_row"
 
@@ -212,16 +229,20 @@ class SparseIndexerTopk(torch.nn.Module):
         failures = []
         if not self._is_maca:
             failures.append("mcoplib not supported yet")
-        # if topk_tokens not in (512, 1024, 2048):
-        #     failures.append(
-        #         f"topk_tokens must be in (512, 1024, 2048), got {topk_tokens}"
-        #     )
-        # if num_rows > 64:
-        #     failures.append(f"num_rows must be <= 64, got {num_rows}")
-        # if logits.stride(0) % 4 != 0:
-        #     failures.append(
-        #         f"logits.stride(0) must be divisible by 4, got {logits.stride(0)}"
-        #     )
+        if topk_tokens not in (512, 1024, 2048):
+            failures.append(
+                f"topk_tokens must be in (512, 1024, 2048), got {topk_tokens}"
+            )
+        if num_rows > AUTO_COOPERATIVE_MAX_ROWS:
+            failures.append(
+                f"num_rows must be <= {AUTO_COOPERATIVE_MAX_ROWS}, got {num_rows}"
+            )
+        if logits.stride(0) % 4 != 0:
+            failures.append(
+                f"logits.stride(0) must be divisible by 4, got {logits.stride(0)}"
+            )
+        if not self._cooperative_capable:
+            failures.append("requires SM90+ and is not supported on the SM12x family")
         return failures
 
     @staticmethod
@@ -291,8 +312,20 @@ class SparseIndexerTopk(torch.nn.Module):
                 topk_indices,
                 topk_workspace,
                 topk_tokens,
-                logits.shape[1],
+                max_seq_len,
             )
+        elif backend == "flashinfer":
+            # Deferred: importing flashinfer initializes CUDA at import time.
+            from flashinfer.topk import top_k_ragged_transform
+
+            row_ends = self._row_ends(seq_lens, next_n, logits.shape[0])
+            offsets = torch.zeros(
+                logits.shape[0], dtype=torch.int32, device=logits.device
+            )
+            # top_k_ragged_transform selects within [0, row_ends[i]) per
+            # row and -1-fills past the row length.
+            indices = top_k_ragged_transform(logits, offsets, row_ends, topk_tokens)
+            topk_indices.copy_(indices)
         elif backend == "torch":
             # Debug reference: mask everything past each row's end, then topk.
             row_ends = self._row_ends(seq_lens, next_n, logits.shape[0])
@@ -308,13 +341,23 @@ class SparseIndexerTopk(torch.nn.Module):
             topk_indices.copy_(indices)
         else:
             assert backend == "per_row", f"unknown topk backend: {backend}"
-            ops.top_k_per_row_decode(
-                logits,
-                next_n,
-                seq_lens,
-                topk_indices,
-                logits.shape[0],
-                logits.stride(0),
-                logits.stride(1),
-                topk_tokens,
-            )
+            self._per_row(logits, seq_lens, next_n, topk_indices, topk_tokens)
+
+    @staticmethod
+    def _per_row(
+        logits: torch.Tensor,
+        seq_lens: torch.Tensor,
+        next_n: int,
+        topk_indices: torch.Tensor,
+        topk_tokens: int,
+    ) -> None:
+        ops.top_k_per_row_decode(
+            logits,
+            next_n,
+            seq_lens,
+            topk_indices,
+            logits.shape[0],
+            logits.stride(0),
+            logits.stride(1),
+            topk_tokens,
+        )

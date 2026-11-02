@@ -21,7 +21,6 @@ from vllm.utils.deep_gemm import (
     _import_deep_gemm,
     is_deep_gemm_supported,
     logger,
-    get_paged_mqa_logits_metadata,  # noqa: F401
     get_paged_mqa_page_sizes,  # noqa: F401
 )
 
@@ -104,6 +103,7 @@ _fp8_gemm_nt_impl: Callable[..., Any] | None = None
 _bf16_mqa_logits_impl: Callable[..., Any] | None = None
 _bf16_paged_mqa_logits_impl: Callable[..., Any] | None = None
 _get_num_blocks_paged_mqa_logits_metadata_impl: Callable[..., Any] | None = None
+_get_paged_mqa_logits_metadata_impl: Callable[..., Any] | None = None
 _int8_grouped_masked_impl: Callable[..., Any] | None = None
 _int8_mqa_logits_impl: Callable[..., Any] | None = None
 _int8_paged_mqa_logits_impl: Callable[..., Any] | None = None
@@ -113,6 +113,15 @@ _fp8_mqa_logits_impl: Callable[..., Any] | None = None
 _fp8_paged_mqa_logits_impl: Callable[..., Any] | None = None
 _get_mk_alignment_for_contiguous_layout_impl: Callable[..., Any] | None = None
 _transform_sf_into_required_layout_impl: Callable[..., Any] | None = None
+_fp8_fp4_mqa_logits_impl: Callable[..., Any] | None = None
+_fp8_fp4_paged_mqa_logits_impl: Callable[..., Any] | None = None
+_fp8_sparse_mqa_logits_impl: Callable[..., Any] | None = None
+_fp8_paged_sparse_mqa_logits_impl: Callable[..., Any] | None = None
+_fp4_sparse_mqa_logits_impl: Callable[..., Any] | None = None
+_get_sparse_mqa_logits_metadata_impl: Callable[..., Any] | None = None
+_get_paged_sparse_mqa_logits_metadata_impl: Callable[..., Any] | None = None
+_fp4_index_logits_decode_impl: Callable[..., Any] | None = None
+_support_cvt_fp4_impl: Callable[..., Any] | None = None
 
 
 # _layz_init for:
@@ -125,17 +134,25 @@ def _lazy_init() -> None:
     global _bf16_mqa_logits_impl, _bf16_paged_mqa_logits_impl
     global _int8_mqa_logits_impl, _int8_paged_mqa_logits_impl
     global _get_num_blocks_paged_mqa_logits_metadata_impl
+    global _get_paged_mqa_logits_metadata_impl
     global _bf16_einsum
     global _tf32_hc_prenorm_gemm_impl
     global _fp8_mqa_logits_impl, _fp8_paged_mqa_logits_impl
     global _get_mk_alignment_for_contiguous_layout_impl
     global _transform_sf_into_required_layout_impl
+    global _fp8_fp4_mqa_logits_impl, _fp8_fp4_paged_mqa_logits_impl
+    global _fp8_sparse_mqa_logits_impl, _fp8_paged_sparse_mqa_logits_impl
+    global _fp4_sparse_mqa_logits_impl
+    global _get_sparse_mqa_logits_metadata_impl
+    global _get_paged_sparse_mqa_logits_metadata_impl
+    global _fp4_index_logits_decode_impl, _support_cvt_fp4_impl
 
     # fast path
     if (
         _bf16_mqa_logits_impl is not None
         or _bf16_paged_mqa_logits_impl is not None
         or _get_num_blocks_paged_mqa_logits_metadata_impl is not None
+        or _get_paged_mqa_logits_metadata_impl is not None
         or _int8_mqa_logits_impl is not None
         or _int8_paged_mqa_logits_impl is not None
         or _bf16_einsum is not None
@@ -143,6 +160,15 @@ def _lazy_init() -> None:
         or _fp8_mqa_logits_impl is not None
         or _fp8_paged_mqa_logits_impl is not None
         or _get_mk_alignment_for_contiguous_layout_impl is not None
+        or _fp8_fp4_mqa_logits_impl is not None
+        or _fp8_fp4_paged_mqa_logits_impl is not None
+        or _fp8_sparse_mqa_logits_impl is not None
+        or _fp8_paged_sparse_mqa_logits_impl is not None
+        or _get_sparse_mqa_logits_metadata_impl is not None
+        or _get_paged_sparse_mqa_logits_metadata_impl is not None
+        or _fp4_sparse_mqa_logits_impl is not None
+        or _fp4_index_logits_decode_impl is not None
+        or _support_cvt_fp4_impl is not None
         or _transform_sf_into_required_layout_impl is not None
         or _fp8_gemm_nt_impl is not None
         or _grouped_impl is not None
@@ -169,12 +195,30 @@ def _lazy_init() -> None:
     _get_num_blocks_paged_mqa_logits_metadata_impl = getattr(
         _dg, "get_num_blocks_paged_mqa_logits_metadata", None
     )
+    _get_paged_mqa_logits_metadata_impl = getattr(
+        _dg, "get_paged_mqa_logits_metadata", None
+    )
     _int8_mqa_logits_impl = getattr(_dg, "int8_mqa_logits", None)
     _int8_paged_mqa_logits_impl = getattr(_dg, "int8_paged_mqa_logits", None)
     _bf16_einsum = getattr(_dg, "einsum", None)
     _tf32_hc_prenorm_gemm_impl = getattr(_dg, "tf32_hc_prenorm_gemm", None)
     _fp8_mqa_logits_impl = getattr(_dg, "fp8_mqa_logits", None)
     _fp8_paged_mqa_logits_impl = getattr(_dg, "fp8_paged_mqa_logits", None)
+    _fp8_fp4_mqa_logits_impl = getattr(_dg, "fp8_fp4_mqa_logits", None)
+    _fp8_fp4_paged_mqa_logits_impl = getattr(_dg, "fp8_fp4_paged_mqa_logits", None)
+    _fp8_sparse_mqa_logits_impl = getattr(_dg, "fp8_sparse_mqa_logits", None)
+    _fp8_paged_sparse_mqa_logits_impl = getattr(
+        _dg, "fp8_sparse_paged_mqa_logits", None
+    )
+    _fp4_sparse_mqa_logits_impl = getattr(_dg, "fp4_sparse_mqa_logits", None)
+    _get_sparse_mqa_logits_metadata_impl = getattr(
+        _dg, "get_sparse_mqa_logits_metadata", None
+    )
+    _get_paged_sparse_mqa_logits_metadata_impl = getattr(
+        _dg, "get_sparse_paged_mqa_logits_metadata", None
+    )
+    _fp4_index_logits_decode_impl = getattr(_dg, "fp4_index_logits_decode", None)
+    _support_cvt_fp4_impl = getattr(_dg, "support_cvt_fp4", None)
     _fp8_gemm_nt_impl = getattr(_dg, "fp8_gemm_nt", None)
     _get_mk_alignment_for_contiguous_layout_impl = getattr(
         _dg, "get_mk_alignment_for_contiguous_layout", None
@@ -186,6 +230,24 @@ def _lazy_init() -> None:
     _fp8_grouped_masked_impl = getattr(_dg, "fp8_m_grouped_gemm_nt_masked", None)
     _int8_grouped_masked_impl = getattr(_dg, "int8_m_grouped_gemm_nt_masked", None)
     DeepGemmQuantScaleFMT.init_oracle_cache()
+
+
+def get_paged_mqa_logits_metadata(
+    context_lens: torch.Tensor,
+    block_size: int,
+    num_sms: int,
+    indices: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Build dense paged-MQA scheduling metadata for the active backend.
+
+    CUDA's wrapper accepts ``indices`` for varlen request-row mapping. MACA's
+    DeepGEMM entry has the three-argument ABI and derives dense scheduling from
+    ``context_lens`` directly, so the CUDA-only argument must not be forwarded.
+    """
+    _lazy_init()
+    if _get_paged_mqa_logits_metadata_impl is None:
+        return _missing()
+    return _get_paged_mqa_logits_metadata_impl(context_lens, block_size, num_sms)
 
 
 def get_num_blocks_paged_mqa_logits_metadata(num_sms: int) -> int:
@@ -321,7 +383,6 @@ def int8_mqa_logits(
         cu_seqlen_ks,
         cu_seqlen_ke,
         clean_logits,
-        backend="tilelang",
     )
 
 
@@ -585,7 +646,6 @@ def tf32_hc_prenorm_gemm(
         out,
         sqrsum,
         num_split,
-        backend="mctlassEx",
     )
 
 
@@ -688,6 +748,202 @@ def fp8_paged_mqa_logits(
     )
 
 
+def fp8_fp4_mqa_logits(
+    q: tuple[torch.Tensor, torch.Tensor | None],
+    kv: tuple[torch.Tensor, torch.Tensor],
+    weights: torch.Tensor,
+    cu_seqlen_ks: torch.Tensor,
+    cu_seqlen_ke: torch.Tensor,
+    clean_logits: bool,
+) -> torch.Tensor:
+    """Dense MQA logits with one interface for FP8 and MXFP4.
+
+    MetaX DeepGEMM dispatches on ``q[1]``: ``None`` selects FP8 and an
+    int32 packed E8M0 tensor selects MXFP4.
+    """
+    _lazy_init()
+    if _fp8_fp4_mqa_logits_impl is None:
+        return _missing()
+    return _fp8_fp4_mqa_logits_impl(
+        q,
+        kv,
+        weights,
+        cu_seqlen_ks,
+        cu_seqlen_ke,
+        clean_logits=clean_logits,
+        logits_dtype=torch.float32,
+        backend="maca_c",
+    )
+
+
+def fp8_fp4_paged_mqa_logits(
+    q: tuple[torch.Tensor, torch.Tensor | None],
+    kv_cache: torch.Tensor,
+    weights: torch.Tensor,
+    context_lens: torch.Tensor,
+    block_tables: torch.Tensor,
+    schedule_metadata: torch.Tensor,
+    max_model_len: int,
+    clean_logits: bool,
+    indices: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Paged dense MQA logits with unified FP8/MXFP4 dispatch."""
+    del indices  # Retained for the existing vLLM call signature.
+    _lazy_init()
+    if _fp8_fp4_paged_mqa_logits_impl is None:
+        return _missing()
+    return _fp8_fp4_paged_mqa_logits_impl(
+        q,
+        kv_cache,
+        weights,
+        context_lens,
+        block_tables,
+        schedule_metadata,
+        max_model_len,
+        clean_logits=clean_logits,
+        logits_dtype=torch.float32,
+        backend="maca_c",
+    )
+
+
+def has_deep_gemm_sparse_mqa(use_fp4_cache: bool = False) -> bool:
+    """Whether the installed MACA DeepGEMM exposes candidate-list MQA APIs."""
+    _lazy_init()
+    common = (
+        _get_sparse_mqa_logits_metadata_impl is not None
+        and _get_paged_sparse_mqa_logits_metadata_impl is not None
+    )
+    if not common:
+        return False
+    if not use_fp4_cache:
+        return (
+            _fp8_sparse_mqa_logits_impl is not None
+            and _fp8_paged_sparse_mqa_logits_impl is not None
+        )
+    # FP4 candidate prefill uses ``fp4_sparse_mqa_logits``, which requires
+    # the native E2M1 conversion builtin. ``fp4_index_logits_decode`` has a
+    # manual fallback, but cannot make the prefill arm runnable by itself.
+    return (
+        _fp4_sparse_mqa_logits_impl is not None
+        and _fp4_index_logits_decode_impl is not None
+        and _support_cvt_fp4_impl is not None
+        and bool(_support_cvt_fp4_impl())
+    )
+
+
+def get_sparse_mqa_logits_metadata(
+    sparse_indices: torch.Tensor,
+    cu_seqlen_ks: torch.Tensor,
+    cu_seqlen_ke: torch.Tensor,
+    num_kv_tokens: int,
+) -> torch.Tensor:
+    _lazy_init()
+    if _get_sparse_mqa_logits_metadata_impl is None:
+        return _missing()
+    return _get_sparse_mqa_logits_metadata_impl(
+        sparse_indices, cu_seqlen_ks, cu_seqlen_ke, num_kv_tokens
+    )
+
+
+def get_paged_sparse_mqa_logits_metadata(
+    sparse_indices: torch.Tensor,
+    context_lens: torch.Tensor,
+    block_table: torch.Tensor,
+    page_kv: int,
+) -> torch.Tensor:
+    _lazy_init()
+    if _get_paged_sparse_mqa_logits_metadata_impl is None:
+        return _missing()
+    return _get_paged_sparse_mqa_logits_metadata_impl(
+        sparse_indices, context_lens, block_table, page_kv
+    )
+
+
+def fp8_fp4_sparse_mqa_logits(
+    q: tuple[torch.Tensor, torch.Tensor | None],
+    kv: tuple[torch.Tensor, torch.Tensor],
+    weights: torch.Tensor,
+    sparse_indices: torch.Tensor,
+    cu_seqlen_ks: torch.Tensor,
+    cu_seqlen_ke: torch.Tensor,
+    use_fp4_cache: bool,
+    metadata: torch.Tensor | None = None,
+    clean_logits: bool = True,
+) -> torch.Tensor:
+    """Candidate-only MQA logits for FP8 or MXFP4 K caches.
+
+    Both installed sparse kernels take an unscaled FP8 Q and fold its scale
+    into ``weights``. They differ only in the KV cache representation.
+    """
+    _lazy_init()
+    impl = _fp4_sparse_mqa_logits_impl if use_fp4_cache else _fp8_sparse_mqa_logits_impl
+    if impl is None:
+        return _missing()
+    return impl(
+        q,
+        kv,
+        weights,
+        sparse_indices,
+        cu_seqlen_ks,
+        cu_seqlen_ke,
+        metadata=metadata,
+        clean_logits=clean_logits,
+    )
+
+
+def fp8_fp4_sparse_paged_mqa_logits(
+    q: tuple[torch.Tensor, torch.Tensor | None],
+    kv_cache: torch.Tensor,
+    weights: torch.Tensor,
+    sparse_indices: torch.Tensor,
+    context_lens: torch.Tensor,
+    block_table: torch.Tensor,
+    page_kv: int,
+    use_fp4_cache: bool,
+    metadata: torch.Tensor | None = None,
+    clean_logits: bool = True,
+) -> torch.Tensor:
+    """Paged candidate-only sparse MQA logits.
+
+    MACA DeepGEMM currently provides the candidate-paged primitive for FP8;
+    FP4 decode uses ``fp4_index_logits_decode`` over expanded candidate slots
+    in the caller.
+    """
+    if use_fp4_cache:
+        raise NotImplementedError(
+            "FP4 candidate-paged sparse MQA uses fp4_index_logits_decode"
+        )
+    _lazy_init()
+    if _fp8_paged_sparse_mqa_logits_impl is None:
+        return _missing()
+    return _fp8_paged_sparse_mqa_logits_impl(
+        q,
+        kv_cache,
+        weights,
+        sparse_indices,
+        context_lens,
+        block_table,
+        page_kv,
+        metadata=metadata,
+        clean_logits=clean_logits,
+    )
+
+
+def fp4_index_logits_decode(
+    q: torch.Tensor,
+    weights: torch.Tensor,
+    slots: torch.Tensor,
+    lens: torch.Tensor,
+    table: torch.Tensor,
+    page_size: int,
+) -> torch.Tensor:
+    """Score an explicit list of MXFP4 cache slots (FP4 decode fallback)."""
+    _lazy_init()
+    if _fp4_index_logits_decode_impl is None:
+        return _missing()
+    return _fp4_index_logits_decode_impl(q, weights, slots, lens, table, page_size)
+
+
 def fp8_gemm_nt(*args, **kwargs):
     _lazy_init()
     if _fp8_gemm_nt_impl is None:
@@ -752,6 +1008,7 @@ def dummy():
 __all__ = [
     "bf16_mqa_logits",
     "bf16_paged_mqa_logits",
+    "get_paged_mqa_logits_metadata",
     "get_num_blocks_paged_mqa_logits_metadata",
     "is_deep_gemm_supported",
     "int8_mqa_logits",
@@ -760,6 +1017,14 @@ __all__ = [
     "tf32_hc_prenorm_gemm",
     "fp8_mqa_logits",
     "fp8_paged_mqa_logits",
+    "fp8_fp4_mqa_logits",
+    "fp8_fp4_paged_mqa_logits",
+    "has_deep_gemm_sparse_mqa",
+    "get_sparse_mqa_logits_metadata",
+    "get_paged_sparse_mqa_logits_metadata",
+    "fp8_fp4_sparse_mqa_logits",
+    "fp8_fp4_sparse_paged_mqa_logits",
+    "fp4_index_logits_decode",
     "get_mk_alignment_for_contiguous_layout",
     "transform_sf_into_required_layout",
     "m_grouped_fp8_gemm_nt_contiguous",

@@ -46,7 +46,8 @@ class Mxfp4MoEMethod(_vllm_Mxfp4MoEMethod):
         # Checkpoint-declared activation quantization. Only backends that pick
         # their activation format from the layer (Humming) consume it.
         self.activation_key = activation_key
-
+        self.is_k3_situ_aiter = False
+        self.is_k3_situ_int4_gfx942 = False
         self.mxfp4_backend, self.experts_cls = select_deepseek_v4_mxfp4_moe_backend(moe)
 
         self.max_capture_size = moe.max_capture_size
