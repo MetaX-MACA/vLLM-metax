@@ -86,6 +86,7 @@ def deep_select_topk(
 
     Returns:
         The (num_rows, topk) indices tensor.
+
     """
     assert input.dim() == 2 and input.stride(1) == 1
     assert (
@@ -188,8 +189,16 @@ class SparseIndexerTopk(torch.nn.Module):
     def _resolve_auto(
         self, logits: torch.Tensor, topk_tokens: int, num_rows: int
     ) -> str:
-        """The pre-existing priority chain: cooperative -> persistent ->
-        per_row. deep_select/flashinfer/torch are opt-in only."""
+        """The priority chain: cooperative -> persistent -> per_row.
+        aiter/deep_select/flashinfer/torch are opt-in only.
+
+        cooperative_topk is preferred whenever it is applicable, i.e. within
+        its AUTO_COOPERATIVE_MAX_ROWS row limit; larger batches go to
+        persistent_topk.
+
+        aiter not auto-resolved as it does not outperform the per-row on every shape,
+        hence we delegate to the caller to decide when to use it.
+        """
         if not self._cooperative_constraints(logits, topk_tokens, num_rows):
             return "cooperative"
         if self._is_maca and topk_tokens in (512, 1024, 2048):
@@ -203,16 +212,16 @@ class SparseIndexerTopk(torch.nn.Module):
         failures = []
         if not self._is_maca:
             failures.append("mcoplib not supported yet")
-        if topk_tokens not in (512, 1024, 2048):
-            failures.append(
-                f"topk_tokens must be in (512, 1024, 2048), got {topk_tokens}"
-            )
-        if num_rows > 64:
-            failures.append(f"num_rows must be <= 64, got {num_rows}")
-        if logits.stride(0) % 4 != 0:
-            failures.append(
-                f"logits.stride(0) must be divisible by 4, got {logits.stride(0)}"
-            )
+        # if topk_tokens not in (512, 1024, 2048):
+        #     failures.append(
+        #         f"topk_tokens must be in (512, 1024, 2048), got {topk_tokens}"
+        #     )
+        # if num_rows > 64:
+        #     failures.append(f"num_rows must be <= 64, got {num_rows}")
+        # if logits.stride(0) % 4 != 0:
+        #     failures.append(
+        #         f"logits.stride(0) must be divisible by 4, got {logits.stride(0)}"
+        #     )
         return failures
 
     @staticmethod
@@ -249,7 +258,8 @@ class SparseIndexerTopk(torch.nn.Module):
         max_seq_len: int,
     ) -> None:
         """Run the resolved decode top-k implementation, writing into
-        topk_indices (int32, -1 fill for rows shorter than topk_tokens)."""
+        topk_indices (int32, -1 fill for rows shorter than topk_tokens).
+        """
         backend = self.resolve_backend(logits, topk_tokens, logits.shape[0])
         if backend == "deep_select":
             row_ends = self._row_ends(seq_lens, next_n, logits.shape[0])
@@ -270,6 +280,11 @@ class SparseIndexerTopk(torch.nn.Module):
             (topk_workspace,) = current_workspace_manager().get_simultaneous(
                 ((RADIX_TOPK_WORKSPACE_SIZE,), torch.uint8),
             )
+            # persistent_topk's last argument is the host-side "max seq_len
+            # across rows" bound (it gates the sampled_topk path and clamps
+            # per-row lengths), not the padded row width: logits is sized to
+            # max_model_len, so passing its width would incorrectly enable the
+            # long-row kernels on short-context batches.
             torch.ops._C.persistent_topk(
                 logits,
                 seq_lens,

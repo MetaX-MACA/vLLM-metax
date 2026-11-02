@@ -295,7 +295,7 @@ class MacaDeepseekV32IndexerBackend(AttentionBackend):
         return DeepseekV32IndexerMetadataBuilder
 
 
-class Glm5NextIndexerBackend(MacaDeepseekV32IndexerBackend):
+class MacaGlm5NextIndexerBackend(MacaDeepseekV32IndexerBackend):
     @staticmethod
     def get_supported_kernel_block_sizes(kv_cache_spec=None) -> list[int | MultipleOf]:
         if kv_cache_spec is not None:
