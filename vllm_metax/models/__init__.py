@@ -82,3 +82,13 @@ def register_model():
         "DSparkV41DraftModel",
         "vllm_metax.models.deepseek_v41:DSparkDeepseekV4ForCausalLM",
     )
+
+    ModelRegistry.register_model(
+        "Glm5NextForCausalLM",
+        "vllm_metax.models.glm5next:Glm5NextForCausalLM",
+    )
+
+    ModelRegistry.register_model(
+        "Glm5NextForConditionalGeneration",
+        "vllm_metax.models.glm5next:Glm5NextForConditionalGeneration",
+    )
