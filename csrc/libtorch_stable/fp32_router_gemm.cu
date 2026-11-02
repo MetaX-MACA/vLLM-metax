@@ -8,6 +8,7 @@
 // (E=256, H=6144) bf16 uses a B300-tuned wide-block geometry; see
 // invokeFp32RouterGemm.
 
+// clang-format off
 #include <cuda_bf16.h>
 #include <cuda_runtime.h>
 
@@ -200,7 +201,7 @@ static void launchFp32RouterGemm(float* output, InputT const* mat_a,
 #else
   fp32_router_gemm_kernel<InputT, kBlockSize, kNumTokens, kEPB, kNumExperts,
                           kHiddenDim, kTGroups>
-      <<<kNumExperts / kEPB, kBlockSize * kTGroups, 0, stream> > >(
+      <<<kNumExperts / kEPB, kBlockSize * kTGroups, 0, stream>>>(
           output, mat_a, mat_b);
 #endif
 }
