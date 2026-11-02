@@ -1,0 +1,342 @@
+{
+  "mode": "dummy",
+  "source": "https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash/files",
+  "source_config_sha256": "bb8f01c42cb92a52ca72e65afb4d5bd8d11aef083cd210e8de25dfb904f23e9f",
+  "output_config_sha256": "306a15bb4b3445d613265e3e936997e978d9ebd6505adcf05784a68297195ef0",
+  "text_original_to_new": {
+    "0": 0,
+    "3": 1,
+    "44": 2,
+    "45": 3
+  },
+  "text_backbone_original_layers": [
+    0,
+    3,
+    44
+  ],
+  "mtp_original_to_new": {
+    "45": 3
+  },
+  "vision_original_to_new": {
+    "0": 0
+  },
+  "changes": {
+    "text_config.num_hidden_layers": [
+      45,
+      3
+    ],
+    "text_config.first_k_dense_replace": [
+      3,
+      1
+    ],
+    "text_config.layer_types": [
+      [
+        "linear_attention",
+        "linear_attention",
+        "linear_attention",
+        "deepseek_sparse_attention",
+        "linear_attention",
+        "linear_attention",
+        "linear_attention",
+        "deepseek_sparse_attention",
+        "linear_attention",
+        "linear_attention",
+        "linear_attention",
+        "deepseek_sparse_attention",
+        "linear_attention",
+        "linear_attention",
+        "linear_attention",
+        "deepseek_sparse_attention",
+        "linear_attention",
+        "linear_attention",
+        "linear_attention",
+        "deepseek_sparse_attention",
+        "linear_attention",
+        "linear_attention",
+        "linear_attention",
+        "deepseek_sparse_attention",
+        "linear_attention",
+        "linear_attention",
+        "linear_attention",
+        "deepseek_sparse_attention",
+        "linear_attention",
+        "linear_attention",
+        "linear_attention",
+        "deepseek_sparse_attention",
+        "linear_attention",
+        "linear_attention",
+        "linear_attention",
+        "deepseek_sparse_attention",
+        "linear_attention",
+        "linear_attention",
+        "linear_attention",
+        "deepseek_sparse_attention",
+        "linear_attention",
+        "linear_attention",
+        "linear_attention",
+        "deepseek_sparse_attention",
+        "linear_attention"
+      ],
+      [
+        "linear_attention",
+        "deepseek_sparse_attention",
+        "linear_attention"
+      ]
+    ],
+    "text_config.mlp_layer_types": [
+      [
+        "dense",
+        "dense",
+        "dense",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse",
+        "sparse"
+      ],
+      [
+        "dense",
+        "sparse",
+        "sparse"
+      ]
+    ],
+    "text_config.indexer_types": [
+      [
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full",
+        "full"
+      ],
+      [
+        "full",
+        "full",
+        "full"
+      ]
+    ],
+    "text_config.linear_attn_config.kda_layers": [
+      [
+        0,
+        1,
+        2,
+        4,
+        5,
+        6,
+        8,
+        9,
+        10,
+        12,
+        13,
+        14,
+        16,
+        17,
+        18,
+        20,
+        21,
+        22,
+        24,
+        25,
+        26,
+        28,
+        29,
+        30,
+        32,
+        33,
+        34,
+        36,
+        37,
+        38,
+        40,
+        41,
+        42,
+        44
+      ],
+      [
+        0,
+        2
+      ]
+    ],
+    "text_config.linear_attn_config.full_attn_layers": [
+      [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39,
+        43
+      ],
+      [
+        1
+      ]
+    ],
+    "vision_config.depth": [
+      24,
+      1
+    ],
+    "quantization": [
+      "FP8 e4m3 block [128,128]",
+      "compressed-tensors INT8 W8A8: dynamic per-token activation; static per-channel weights"
+    ],
+    "quantization_excluded_modules_count": [
+      1509,
+      127
+    ]
+  },
+  "quantization_conversion": {
+    "authorization": "\u6a21\u578bconfig\u6539\u4e00\u4e0b\uff0c\u6539\u6210vllm-metax\u652f\u6301\u7684 int8_w8a8\u7684\u91cf\u5316\u7684config",
+    "scope": "dummy configuration only; no real checkpoint weights converted",
+    "source_quantization_metadata": "source_fp8_quantization_config.json",
+    "active_config_key": "compression_config",
+    "method": "compressed-tensors",
+    "format": "int-quantized",
+    "weight": "symmetric INT8 static per-channel",
+    "activation": "symmetric INT8 dynamic per-token",
+    "original_exclusions": "Retained after exact text/MTP/vision layer remapping"
+  },
+  "retained": [
+    "KDA+Dense, DSA/kpool+MoE and KDA+MoE backbone combinations",
+    "mHC expansion, inter-layer fusion and final contraction",
+    "index_kpool=4, topk=2048, compressed cache and incomplete tail",
+    "288 routed experts, 1 shared expert, top-8 routing",
+    "one configured MTP layer with DSA+MoE",
+    "image/video processor, vision attention/MLP/downsample/merger",
+    "all original widths, head/LoRA dimensions and vocabulary",
+    "user-authorized INT8 W8A8 with original remapped BF16 exclusions"
+  ],
+  "limitations": [
+    "Only repeated layers removed; this is not an accuracy/performance checkpoint",
+    "No weights or weight index; --load-format dummy is mandatory",
+    "MTP configuration retained; MetaX MTP registration/execution must be verified separately",
+    "DCP remains unsupported by the reviewed MetaX adaptation",
+    "Long input must exceed topk=2048 (and effective pool selection range) to prove sparse selection"
+  ],
+  "assets": [
+    {
+      "path": "LICENSE",
+      "bytes": 1070,
+      "sha256": "30b85b6b9659f2e78aa259f8faf5d920a68dee7c9ced3fa6dba1f19f2bc4fca1"
+    },
+    {
+      "path": "SOURCE_MODEL_CARD.md",
+      "bytes": 8027,
+      "sha256": "e6c5d41400e28f5a89418a0d15b09b9c113314a7553d40d7d4a8a72fcdb87d02"
+    },
+    {
+      "path": "chat_template.jinja",
+      "bytes": 10830,
+      "sha256": "2614a3c896d53e265f564c23701173c0049f985dacfbae79fc4bcd9f5ba083f4"
+    },
+    {
+      "path": "config.json",
+      "bytes": 8835,
+      "sha256": "306a15bb4b3445d613265e3e936997e978d9ebd6505adcf05784a68297195ef0"
+    },
+    {
+      "path": "configuration.json",
+      "bytes": 29,
+      "sha256": "8fa209ef18ac53dea0c47cf8d6f4e92c907565a4971bee413c1772e314a251fa"
+    },
+    {
+      "path": "generation_config.json",
+      "bytes": 194,
+      "sha256": "230c30609ecbbb9e6583bedde8e7bdda0c6eb8fe5fad0eaeb3d1b293d751cb4f"
+    },
+    {
+      "path": "processor_config.json",
+      "bytes": 909,
+      "sha256": "aae38374c94b08cc9b0547c6e64f05b951bd9735cea571c6988f5ed552bed3ed"
+    },
+    {
+      "path": "tokenizer.json",
+      "bytes": 20217442,
+      "sha256": "19e773648cb4e65de8660ea6365e10acca112d42a854923df93db4a6f333a82d"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "bytes": 761,
+      "sha256": "98b1271574f41abf89427ae2dda030d94dc9478f0edc5a8bd240db213c6fd5fc"
+    }
+  ]
+}

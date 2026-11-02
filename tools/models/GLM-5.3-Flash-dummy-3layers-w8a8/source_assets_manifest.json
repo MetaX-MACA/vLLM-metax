@@ -1,0 +1,72 @@
+{
+  "repository": "ZhipuAI/GLM-5.3-Flash",
+  "source_page": "https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash/files",
+  "requested_branch": "master",
+  "collected_utc": "2026-11-02T05:59:56.297439+00:00",
+  "note": "Each asset is fetched from its listed last-change commit and verified against the official master file-list SHA256. Weight shards and weight index intentionally not retrieved.",
+  "assets": [
+    {
+      "path": "LICENSE",
+      "bytes": 1070,
+      "sha256": "30b85b6b9659f2e78aa259f8faf5d920a68dee7c9ced3fa6dba1f19f2bc4fca1",
+      "file_revision": "b1fbefc9a4dfb3d3e497b318cf3928e941ac0eaa",
+      "url": "https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash/resolve/b1fbefc9a4dfb3d3e497b318cf3928e941ac0eaa/LICENSE"
+    },
+    {
+      "path": "README.md",
+      "bytes": 8027,
+      "sha256": "e6c5d41400e28f5a89418a0d15b09b9c113314a7553d40d7d4a8a72fcdb87d02",
+      "file_revision": "75c56598ac2716b378dc99f69e38a2035e69b956",
+      "url": "https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash/resolve/75c56598ac2716b378dc99f69e38a2035e69b956/README.md"
+    },
+    {
+      "path": "chat_template.jinja",
+      "bytes": 10830,
+      "sha256": "2614a3c896d53e265f564c23701173c0049f985dacfbae79fc4bcd9f5ba083f4",
+      "file_revision": "13a452149521ed1c24fe792dc6273ade596c0d5e",
+      "url": "https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash/resolve/13a452149521ed1c24fe792dc6273ade596c0d5e/chat_template.jinja"
+    },
+    {
+      "path": "config.json",
+      "bytes": 69416,
+      "sha256": "bb8f01c42cb92a52ca72e65afb4d5bd8d11aef083cd210e8de25dfb904f23e9f",
+      "file_revision": "9498a5512cd16a2cf63b6e4f7c4c5450357038f6",
+      "url": "https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash/resolve/9498a5512cd16a2cf63b6e4f7c4c5450357038f6/config.json"
+    },
+    {
+      "path": "configuration.json",
+      "bytes": 29,
+      "sha256": "8fa209ef18ac53dea0c47cf8d6f4e92c907565a4971bee413c1772e314a251fa",
+      "file_revision": "719e6bb4da267799dbdf6448c9e2928f407f5959",
+      "url": "https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash/resolve/719e6bb4da267799dbdf6448c9e2928f407f5959/configuration.json"
+    },
+    {
+      "path": "generation_config.json",
+      "bytes": 194,
+      "sha256": "230c30609ecbbb9e6583bedde8e7bdda0c6eb8fe5fad0eaeb3d1b293d751cb4f",
+      "file_revision": "9498a5512cd16a2cf63b6e4f7c4c5450357038f6",
+      "url": "https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash/resolve/9498a5512cd16a2cf63b6e4f7c4c5450357038f6/generation_config.json"
+    },
+    {
+      "path": "processor_config.json",
+      "bytes": 909,
+      "sha256": "aae38374c94b08cc9b0547c6e64f05b951bd9735cea571c6988f5ed552bed3ed",
+      "file_revision": "15af4d43dd1fa23dd280a2e71339e56b41f7d264",
+      "url": "https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash/resolve/15af4d43dd1fa23dd280a2e71339e56b41f7d264/processor_config.json"
+    },
+    {
+      "path": "tokenizer.json",
+      "bytes": 20217442,
+      "sha256": "19e773648cb4e65de8660ea6365e10acca112d42a854923df93db4a6f333a82d",
+      "file_revision": "15af4d43dd1fa23dd280a2e71339e56b41f7d264",
+      "url": "https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash/resolve/15af4d43dd1fa23dd280a2e71339e56b41f7d264/tokenizer.json"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "bytes": 761,
+      "sha256": "98b1271574f41abf89427ae2dda030d94dc9478f0edc5a8bd240db213c6fd5fc",
+      "file_revision": "15af4d43dd1fa23dd280a2e71339e56b41f7d264",
+      "url": "https://modelscope.cn/models/ZhipuAI/GLM-5.3-Flash/resolve/15af4d43dd1fa23dd280a2e71339e56b41f7d264/tokenizer_config.json"
+    }
+  ]
+}
