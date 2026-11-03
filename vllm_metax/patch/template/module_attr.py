@@ -46,9 +46,10 @@ Equivalent to:
     ------------------------------------------------------------------------------
 
 Stack ``@patch`` decorators if one implementation replaces multiple import
-locations. Already-loaded same-name aliases in ``vllm.*`` modules are updated
-automatically by object identity, including aliases also named by a stacked
-decorator. Other exports and renamed aliases are left untouched. Use
+locations. Already-loaded same-name aliases in modules whose names start with
+``vllm`` (including ``vllm_metax``) are updated automatically by object identity,
+including aliases also named by a stacked decorator. Other exports and renamed
+aliases are left untouched. Use
 ``allow_missing=True`` only when intentionally adding an attribute; existing
 targets are required by default to catch misspelled paths.
 
