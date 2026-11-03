@@ -2,7 +2,8 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 
 import os
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
 
 if TYPE_CHECKING:
     VLLM_TARGET_DEVICE: str = "cuda"
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
     VLLM_METAX_USE_QUANT_MAIN_PROJ: bool = True
     VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK: bool = False
     VLLM_METAX_USE_FLASHINFER_SAMPLER: bool = False
+    VLLM_METAX_DISABLE_ASYNC_OUTPUT: bool = True
 
 environment_variables: dict[str, Callable[[], Any]] = {
     # ================== Installation Time Env Vars ==================
@@ -95,6 +97,10 @@ environment_variables: dict[str, Callable[[], Any]] = {
                 os.getenv("VLLM_USE_FLASHINFER_SAMPLER", "0"),
             )
         )
+    ),
+    # if set, disable MRV2 asyc output stream
+    "VLLM_METAX_DISABLE_ASYNC_OUTPUT": lambda: bool(
+        int(os.environ.get("VLLM_METAX_DISABLE_ASYNC_OUTPUT", "1"))
     ),
     # =================== Debug Env Vars ==================
     # if set, use vllm's fused_moe implementation instead of maca's one for debugging and comparison
