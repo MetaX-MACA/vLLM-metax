@@ -42,6 +42,7 @@ vllm_collect_env = "vllm_metax:collect_env"
 metax = "vllm_metax:register"
 
 [project.entry-points."vllm.general_plugins"]
+metax_attn_backends = "vllm_metax:register_attn_backends"
 metax_out_of_tree = "vllm_metax:register_out_of_tree"
 metax_enhanced_model = "vllm_metax:register_model"
 

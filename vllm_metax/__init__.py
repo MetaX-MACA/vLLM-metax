@@ -10,6 +10,29 @@ def collect_env() -> None:
     collect_env_main()
 
 
+_GLOBAL_PATCH_APPLIED = False
+
+
+def _ensure_global_patch():
+    global _GLOBAL_PATCH_APPLIED
+    if _GLOBAL_PATCH_APPLIED:
+        return
+
+    import vllm_metax.patch.bugfix  # noqa: F401
+    import vllm_metax.patch.enhancement  # noqa: F401
+    import vllm_metax.patch.performance  # noqa: F401
+
+    _GLOBAL_PATCH_APPLIED = True
+
+
+def _out_of_tree():
+    import vllm_metax.registry  # noqa: F401
+
+
+def _attn_backends():
+    import vllm_metax.v1.attention.registry  # noqa: F401
+
+
 ########### platform plugin ###########
 def register():
     """Register the METAX platform."""
@@ -17,23 +40,16 @@ def register():
 
 
 ########### general plugins ###########
-def _patch():
-    import sys
-    import vllm_metax.device_allocator.cumem
-
-    sys.modules["vllm.device_allocator.cumem"] = vllm_metax.device_allocator.cumem
-    import vllm_metax.patch.bugfix  # noqa: F401
-    import vllm_metax.patch.enhancement  # noqa: F401
-    import vllm_metax.patch.performance  # noqa: F401
-
-
-def _out_of_tree():
-    import vllm_metax.registry  # noqa: F401
 
 
 def register_out_of_tree():
-    _patch()
+    _ensure_global_patch()
     _out_of_tree()
+
+
+def register_attn_backends():
+    _ensure_global_patch()
+    _attn_backends()
 
 
 def register_model():

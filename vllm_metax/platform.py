@@ -18,7 +18,7 @@ import vllm_metax.envs as mx_envs
 import vllm.envs as envs
 from vllm.logger import logger
 
-from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
+from vllm.v1.attention.backends.registry import AttentionBackendEnum
 from vllm.v1.attention.backends.mla.prefill.registry import MLAPrefillBackendEnum
 from vllm_metax.utils import import_pymxsml
 from vllm_metax.utils.msprobe_debug import resolve_worker_cls
@@ -111,54 +111,6 @@ def _get_backend_priorities(
         ]
 
 
-def register_attention_backends() -> None:
-    from vllm.v1.attention.backends.mla.prefill.registry import (
-        register_mla_prefill_backend,
-    )
-
-    # Pre-register all attention backends
-    register_backend(
-        backend=AttentionBackendEnum.FLASHMLA,
-        class_path="vllm_metax.v1.attention.backends.mla.flashmla.MacaFlashMLABackend",
-    )
-    register_backend(
-        backend=AttentionBackendEnum.FLASHMLA_SPARSE,
-        class_path="vllm_metax.v1.attention.backends.mla.flashmla_sparse.MacaFlashMLASparseBackend",
-    )
-    register_backend(
-        backend=AttentionBackendEnum.TRITON_MLA,
-        class_path="vllm_metax.v1.attention.backends.mla.triton_mla.MacaTritonMLABackend",
-    )
-    register_backend(
-        AttentionBackendEnum.FLASH_ATTN,
-        class_path="vllm_metax.v1.attention.backends.flash_attn.MacaFlashAttentionBackend",
-    )
-    register_backend(
-        backend=AttentionBackendEnum.FLASH_ATTN_DIFFKV,
-        class_path="vllm_metax.v1.attention.backends.flash_attn_diffkv.FlashAttentionDiffKVBackend",
-    )
-    register_backend(
-        backend=AttentionBackendEnum.FLASHINFER,
-        class_path="vllm_metax.v1.attention.backends.flashinfer.MacaFlashInferBackend",
-    )
-    register_backend(
-        backend=AttentionBackendEnum.TRITON_ATTN,
-        class_path="vllm_metax.v1.attention.backends.triton_attn.MacaTritonAttentionBackend",
-    )
-    register_backend(
-        backend=AttentionBackendEnum.FLEX_ATTENTION,
-        class_path="vllm_metax.v1.attention.backends.flex_attention.MacaFlexAttentionBackend",
-    )
-    register_backend(
-        backend=AttentionBackendEnum.TURBOQUANT,
-        class_path="vllm_metax.v1.attention.backends.turboquant_attn.MacaTurboQuantAttentionBackend",
-    )
-    register_mla_prefill_backend(
-        backend=MLAPrefillBackendEnum.FLASH_ATTN,
-        class_path="vllm_metax.v1.attention.backends.mla.prefill.flash_attn.MacaFlashAttnPrefillBackend",
-    )
-
-
 def with_mxsml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
     @wraps(fn)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
@@ -196,6 +148,7 @@ class MacaPlatformBase(Platform):
     if mx_envs.VLLM_METAX_SUPPORTS_FP8:
         supported_quantization.append("fp8")
         supported_quantization.append("deepseek_v4_fp8")
+        supported_quantization.append("mxfp4")
 
     @classmethod
     def set_device(cls, device: torch.device) -> None:
@@ -480,7 +433,6 @@ class MacaPlatformBase(Platform):
         attn_selector_config: "AttentionSelectorConfig",
         num_heads: int | None = None,
     ) -> str:
-        register_attention_backends()
         device_capability = cls.get_device_capability()
         assert device_capability is not None
 
@@ -588,8 +540,6 @@ class MacaPlatformBase(Platform):
         dtype: torch.dtype,
         backend: "AttentionBackendEnum | None",
     ) -> "AttentionBackendEnum":
-        register_attention_backends()
-
         if backend is not None:
             assert backend in cls.get_supported_vit_attn_backends(), (
                 f"Backend {backend} is not supported for vit attention. "
@@ -758,7 +708,6 @@ class MacaPlatformBase(Platform):
         """Pre-register and update Maca platform."""
         if parser is not None:
             parser.set_defaults(async_scheduling=False)
-        register_attention_backends()
 
     @classmethod
     def validate_environ(cls, hard_fail: bool) -> None:

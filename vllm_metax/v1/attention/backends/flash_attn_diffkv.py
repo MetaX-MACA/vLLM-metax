@@ -36,12 +36,14 @@ from .flash_attn import (
     FlashAttentionImpl,
     FlashAttentionMetadata,
 )
+from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
 
 import vllm_metax.envs as mx_envs
 
 logger = init_logger(__name__)
 
 
+@register_backend(AttentionBackendEnum.FLASH_ATTN_DIFFKV)
 class FlashAttentionDiffKVBackend(FlashAttentionBackend):
     # Default to 128 for this backend
     head_size_v: int = 128
