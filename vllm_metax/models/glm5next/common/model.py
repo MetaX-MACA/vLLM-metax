@@ -473,13 +473,13 @@ class Glm5NextDecoderLayer(nn.Module):
             self.mhc_fused_post_pre_op = MHCFusedPostPreOp()
 
             if vllm_config.kernel_config.enable_jit_warmup:
-                from vllm.model_executor.kernels.mhc.tilelang_kernels import (
+                from vllm_metax.model_executor.kernels.mhc.tilelang_kernels import (
                     _HC_PRENORM_GEMM_TILELANG_KERNEL,
                     _MHC_FUSED_TILELANG_KERNEL,
                     _MHC_POST_TILELANG_KERNEL,
                     _MHC_PRE_BIG_FUSE_TILELANG_KERNEL,
                 )
-                from vllm.utils.deep_gemm import is_deep_gemm_supported
+                from vllm_metax.utils.deep_gemm import is_deep_gemm_supported
 
                 include_pre_gemm_splits = is_deep_gemm_supported()
                 _MHC_PRE_BIG_FUSE_TILELANG_KERNEL.register_warmup(

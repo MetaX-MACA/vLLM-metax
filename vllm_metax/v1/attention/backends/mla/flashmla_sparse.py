@@ -159,7 +159,7 @@ class MacaFlashMLASparseBackend(AttentionBackend):
     @staticmethod
     def get_supported_kernel_block_sizes(kv_cache_spec=None) -> list[int | MultipleOf]:
         # NOTE(metax): The installed MACA sparse FlashMLA kernel uses fixed 64-token pages.
-        return [64]
+        return [MultipleOf(64)]
 
     @classmethod
     def customize_spec(cls, spec: AttentionSpec) -> AttentionSpec:

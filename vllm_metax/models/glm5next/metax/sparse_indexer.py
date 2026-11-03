@@ -353,7 +353,7 @@ def sparse_attn_indexer_kpool(
             use_int8_cache,
             use_bf16_cache,
         )
-        workspace_manager().get_simultaneous(k_quant_full, k_scale_full)
+        workspace_manager.get_simultaneous(k_quant_full, k_scale_full)
         for chunk in prefill_metadata.chunks if not short_prefill else ():
             # Under DCP this rank only gathers the pools it owns.
             assert chunk.local_cu_seq_lens is not None
@@ -824,13 +824,37 @@ class MacaSparseAttnIndexerKpool(SparseAttnIndexerKpool):
         index_kpool: int = 1,
         positions: torch.Tensor | None = None,
     ):
-        return self.forward_cuda(
+        # FP8 path: single tensor (per-token scale is folded into `weights`).
+        # FP4 path: (values, scales) tuple with scales required by the kernel.
+        if isinstance(q_quant, tuple):
+            q_values, q_scale = q_quant
+        else:
+            q_values, q_scale = q_quant, None
+        return sparse_attn_indexer_kpool(
             hidden_states,
-            q_quant,
+            self.k_cache.prefix,
+            self.k_cache.kv_cache,
+            q_values,
+            q_scale,
             k,
             weights,
-            gate_score=gate_score,
-            compress_ape=compress_ape,
-            index_kpool=index_kpool,
-            positions=positions,
+            self.quant_block_size,
+            self.scale_fmt,
+            self.topk_tokens,
+            self.head_dim,
+            self.max_pool_len,
+            self.max_total_seq_len,
+            self.topk_indices_buffer,
+            self.skip_k_cache_insert,
+            self.use_fp4_cache,
+            gate_score,
+            compress_ape,
+            index_kpool,
+            positions,
+            self.tail_cache.kv_cache if self.tail_cache is not None else None,
+            self.tail_cache.prefix if self.tail_cache is not None else None,
+            self.topk_backend,
+            self.dcp_rank,
+            self.dcp_world_size,
+            self.cp_kv_cache_interleave_size,
         )
