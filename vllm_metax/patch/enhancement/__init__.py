@@ -13,6 +13,7 @@
 
 # module level imports
 
+from . import device_allocator  # noqa: F401
 from . import chores  # noqa: F401
 from . import distributed  # noqa: F401
 from . import quant_kernels  # noqa: F401

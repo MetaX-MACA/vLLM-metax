@@ -18,7 +18,8 @@
 #     with a stand-in whose `is_cuda_alike()` returns True. That half is
 #     redundant here (the MACA platform already returns True) and would be
 #     unsafe on v0.30.0: the patch installer repoints same-name exports in every
-#     already-loaded `vllm.*` module by object identity, so a stand-in object
+#     already-loaded module whose name starts with `vllm` (including MetaX) by
+#     object identity, so a stand-in object
 #     would spread to unrelated `current_platform` callers.
 #
 # Affected versions: vLLM 0.30.0 (ced6857afa0e), ported 2026-10-15 from
@@ -36,9 +37,9 @@ which reports the driver's opt-in size (98304 bytes) on MACA while Triton
 validates the launch against the real 65536-byte per-block limit, so the
 upstream fallback never triggers.
 The module is patched at its own attribute level, so the LoRA MoE op is the
-intended consumer. The installer may also repoint other loaded `vllm.*` modules
-that imported the same helper, which only lowers the reported limit to the value
-Triton enforces for the device.
+intended consumer. The installer may also repoint other loaded modules with names
+starting with `vllm` (including `vllm_metax`) that imported the same helper, which
+only lowers the reported limit to the value Triton enforces for the device.
 """
 
 from __future__ import annotations
