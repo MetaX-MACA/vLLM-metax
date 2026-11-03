@@ -11,8 +11,10 @@ build one in this very run. Since setup.py turns this file into
 install_requires, a stale pin ends up in the metadata of the built wheel.
 This tool rewrites the version part of every pinned line with the version found
 in the build environment, in the given wheel directories, or with an explicit
---set override. Comments, blank lines, option lines and unpinned lines are kept
-as they are.
+--set override. The NIXL and MIXL distribution names are aliases during the
+rename transition, and the project name of the MIXL source checkout takes
+precedence when --scan-root is supplied. Comments, blank lines, option lines
+and unpinned lines are kept as they are.
 Examples:
     python tools/sync_maca_private.py                    # report only
     python tools/sync_maca_private.py --write            # rewrite in place
@@ -26,8 +28,13 @@ import importlib.metadata as importlib_metadata
 import regex as re
 import sys
 from pathlib import Path
+from packaging.version import InvalidVersion, Version
 
 DEFAULT_FILE = Path("requirements/maca_private.txt")
+NIXL_DIST_NAMES = ("nixl", "mixl")
+PROJECT_NAME_RE = re.compile(
+    r'^\s*name\s*=\s*["\'](?P<name>[^"\']+)["\']', re.MULTILINE
+)
 # name==version, optionally followed by an inline comment
 PIN_RE = re.compile(
     r"^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)\s*==\s*(?P<version>[^\s#]+)\s*$"
@@ -37,6 +44,23 @@ PIN_RE = re.compile(
 def canonical(name: str) -> str:
     """PEP 503 name normalization, so flash_attn_3 == flash-attn-3 == flash.attn.3."""
     return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def nixl_distribution_from_sources(roots):
+    """Return the nixl/mixl distribution that the checked-out MIXL project builds."""
+    for root in roots:
+        root = Path(root)
+        for source_dir in (root, root / "mixl", root / "nixl"):
+            for filename in ("pyproject.toml", "pyproject.toml.in"):
+                project_file = source_dir / filename
+                if not project_file.is_file():
+                    continue
+                match = PROJECT_NAME_RE.search(project_file.read_text())
+                if match:
+                    name = canonical(match.group("name"))
+                    if name in NIXL_DIST_NAMES:
+                        return name
+    return None
 
 
 def versions_from_environment() -> dict:
@@ -72,18 +96,35 @@ def versions_from_wheels(dirs) -> dict:
     return found
 
 
+def is_newer_version(candidate: str, current: str) -> bool:
+    """Compare PEP 440 versions, falling back to lexical order if needed."""
+    try:
+        return Version(candidate) > Version(current)
+    except InvalidVersion:
+        return candidate > current
+
+
 def versions_from_scan(roots) -> dict:
-    """Same, but walking <root>/*/wheel and <root>/*/*/wheel.
+    """Same, but walking the wheel layouts used by the build pipeline.
     The pipeline extracts every package it ships into the workspace with that
-    layout (3.8.2.2/wheel, sdk-python/<ver>/wheel, tilelang/<ver>/wheel,
-    maca-mcoplib-*/wheel, maca-lmcache-*/wheel, maca-mooncake-*/wheel, ...), so a
-    scan picks up all of them instead of a hand written list of directories.
+    layout (<root>/*/wheel, <root>/*/*/wheel, and torch-specific wheel
+    variants such as <root>/*/wheel/torch2.10 and
+    <root>/*/*/wheel/torch2.10), so a scan picks up all of them instead of a
+    hand written list of directories.
     """
+    found = {}
     dirs = []
     for root in roots:
         dirs += sorted(str(p) for p in Path(root).glob("*/wheel"))
         dirs += sorted(str(p) for p in Path(root).glob("*/*/wheel"))
-    return versions_from_wheels(dirs)
+        dirs += sorted(str(p) for p in Path(root).glob("*/wheel/*"))
+        dirs += sorted(str(p) for p in Path(root).glob("*/*/wheel/*"))
+    for directory in dirs:
+        for name, version in versions_from_wheels([directory]).items():
+            current = found.get(name)
+            if current is None or is_newer_version(version, current):
+                found[name] = version
+    return found
 
 
 def resolve(args) -> dict:
@@ -97,7 +138,13 @@ def resolve(args) -> dict:
         name, sep, version = item.partition("=")
         if not sep or not name or not version:
             raise SystemExit(f"error: --set expects NAME=VERSION, got {item!r}")
-        resolved[canonical(name)] = version
+        name = canonical(name)
+        if name in NIXL_DIST_NAMES:
+            # The build script historically used --set nixl for both names.
+            for alias in NIXL_DIST_NAMES:
+                resolved[alias] = version
+        else:
+            resolved[name] = version
     return resolved
 
 
@@ -141,6 +188,7 @@ def main(argv=None) -> int:
         print(f"error: {path} not found", file=sys.stderr)
         return 2
     resolved = resolve(args)
+    source_nixl_dist = nixl_distribution_from_sources(args.scan_root)
     updated, in_sync, unresolved, skipped = [], [], [], []
     lines = []
     for line in path.read_text().splitlines(keepends=True):
@@ -156,18 +204,21 @@ def main(argv=None) -> int:
             lines.append(line)
             continue
         name, old_version = match.group("name"), match.group("version")
+        new_name = name
+        if canonical(name) in NIXL_DIST_NAMES and source_nixl_dist:
+            new_name = source_nixl_dist
         new_version = resolved.get(canonical(name))
         if new_version is None:
             unresolved.append(f"{name}=={old_version}")
             lines.append(line)
             continue
-        if new_version == old_version:
+        if new_name == name and new_version == old_version:
             in_sync.append(f"{name}=={old_version}")
             lines.append(line)
             continue
         trailing = body[len(body.rstrip()) :]
-        updated.append(f"{name}: {old_version} -> {new_version}")
-        lines.append(f"{name}=={new_version}{trailing}{sep}{comment}{newline}")
+        updated.append(f"{name}=={old_version} -> {new_name}=={new_version}")
+        lines.append(f"{new_name}=={new_version}{trailing}{sep}{comment}{newline}")
     for item in updated:
         print(f"update {item}")
     for item in unresolved:
