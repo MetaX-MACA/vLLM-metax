@@ -66,6 +66,9 @@ from vllm_metax.model_executor.layers.fused_moe.utils import (
     maybe_override_stage_block_size_m,
 )
 import vllm_metax.envs as mx_envs
+from vllm_metax.model_executor.layers.quantization import (
+    _python_api_ops as mctlass_ops,
+)
 
 if mx_envs.USE_PRECOMPILED_KERNEL:
     from mcoplib.triton_fused_moe import (
@@ -860,33 +863,73 @@ class TritonWNA16Experts(TritonExperts):
         )
         intermediate_cache3 = _resize_cache(workspace2, (num_tokens, top_k_num, K))
 
+        # NOTE(metax): MCTLASS W4A16 requires BF16 and its own token block size.
+        use_mctlass = (
+            self.quant_config.use_int4_w4a16
+            and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+            and hidden_states.dtype == torch.bfloat16
+            and self.block_shape is not None
+            and self.block_shape[1] > 0
+        )
+        if use_mctlass:
+            maybe_override_stage_block_size_m(
+                hidden_states,
+                w1,
+                intermediate_cache1,
+                staged_config,
+                top_k_num,
+                self.block_shape,
+                num_tokens,
+                N,
+                K,
+                use_int4_w4a16=True,
+            )
+
         # Include fused shared-expert rows while preserving EP remapping.
         num_align_experts = w1.shape[0] if expert_map is None else global_num_experts
+        # NOTE(metax): The W4A16 wrapper does not filter expert_ids == -1.
         sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
             topk_ids,
             staged_config[0]["BLOCK_SIZE_M"],
             num_align_experts,
             expert_map,
+            ignore_invalid_experts=use_mctlass,
         )
 
-        invoke_fused_moe_wna16_triton_kernel(
-            hidden_states,
-            w1,
-            intermediate_cache1,
-            self.w1_scale,
-            self.quant_config.w1_zp,
-            None,  # topk_weights
-            sorted_token_ids,
-            expert_ids,
-            num_tokens_post_padded,
-            False,  # mul_routed_weights
-            top_k_num,
-            staged_config[0],
-            compute_type=compute_type,
-            use_int8_w8a16=self.quant_config.use_int8_w8a16,
-            use_int4_w4a16=self.quant_config.use_int4_w4a16,
-            block_shape=self.block_shape,
-        )
+        if use_mctlass:
+            mctlass_ops.cutlass_moe_mm_w4a16(
+                a=hidden_states,
+                b=w1,
+                c=intermediate_cache1,
+                b_scales=self.w1_scale,
+                topk_weights=topk_weights,
+                token_ids=sorted_token_ids,
+                expert_ids=expert_ids,
+                num_tokens_post_padded=num_tokens_post_padded,
+                mul_routed_weight=False,
+                topk=top_k_num,
+                group_size=self.block_shape[1],
+                b_zp=self.quant_config.w1_zp,
+            )
+        else:
+            invoke_fused_moe_wna16_triton_kernel(
+                hidden_states,
+                w1,
+                intermediate_cache1,
+                self.w1_scale,
+                self.quant_config.w1_zp,
+                None,  # topk_weights
+                sorted_token_ids,
+                expert_ids,
+                num_tokens_post_padded,
+                False,  # mul_routed_weights
+                top_k_num,
+                staged_config[0],
+                compute_type=compute_type,
+                use_int8_w8a16=self.quant_config.use_int8_w8a16,
+                use_int4_w4a16=self.quant_config.use_int4_w4a16,
+                block_shape=self.block_shape,
+            )
 
         self.activation(
             activation, intermediate_cache2, intermediate_cache1.view(-1, N)
@@ -908,6 +951,7 @@ class TritonWNA16Experts(TritonExperts):
                 staged_config[1]["BLOCK_SIZE_M"],
                 num_align_experts,
                 expert_map,
+                ignore_invalid_experts=use_mctlass,
             )
 
         # `workspace2` is reused and WNA16 kernels may not overwrite all elements
@@ -915,24 +959,40 @@ class TritonWNA16Experts(TritonExperts):
         if expert_map is not None or staged_config[1].get("SPLIT_K", 1) > 1:
             intermediate_cache3.zero_()
 
-        invoke_fused_moe_wna16_triton_kernel(
-            qintermediate_cache2,
-            w2,
-            intermediate_cache3,
-            self.w2_scale,
-            self.quant_config.w2_zp,
-            topk_weights,
-            sorted_token_ids,
-            expert_ids,
-            num_tokens_post_padded,
-            not apply_router_weight_on_input,
-            1,
-            staged_config[1],
-            compute_type=compute_type,
-            use_int8_w8a16=self.quant_config.use_int8_w8a16,
-            use_int4_w4a16=self.quant_config.use_int4_w4a16,
-            block_shape=self.block_shape,
-        )
+        if use_mctlass:
+            mctlass_ops.cutlass_moe_mm_w4a16(
+                a=qintermediate_cache2,
+                b=w2,
+                c=intermediate_cache3,
+                b_scales=self.w2_scale,
+                topk_weights=topk_weights,
+                token_ids=sorted_token_ids,
+                expert_ids=expert_ids,
+                num_tokens_post_padded=num_tokens_post_padded,
+                mul_routed_weight=not apply_router_weight_on_input,
+                topk=1,
+                group_size=self.block_shape[1],
+                b_zp=self.quant_config.w2_zp,
+            )
+        else:
+            invoke_fused_moe_wna16_triton_kernel(
+                qintermediate_cache2,
+                w2,
+                intermediate_cache3,
+                self.w2_scale,
+                self.quant_config.w2_zp,
+                topk_weights,
+                sorted_token_ids,
+                expert_ids,
+                num_tokens_post_padded,
+                not apply_router_weight_on_input,
+                1,
+                staged_config[1],
+                compute_type=compute_type,
+                use_int8_w8a16=self.quant_config.use_int8_w8a16,
+                use_int4_w4a16=self.quant_config.use_int4_w4a16,
+                block_shape=self.block_shape,
+            )
 
         # separate function is required for MoE + LoRA
         self.moe_sum(intermediate_cache3, output)
