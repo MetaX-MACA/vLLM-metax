@@ -7,6 +7,20 @@ from vllm.v1.attention.backends.mla.prefill.registry import (
 from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
 
 # Pre-register all attention backends
+# NOTE(metax): Resolve explicit MiniMax backend selection to the local model too.
+register_backend(
+    backend=AttentionBackendEnum.MINIMAX_M3_SPARSE,
+    class_path="vllm_metax.models.minimax_m3.common.sparse_attention.MiniMaxM3SparseBackend",
+)
+# NOTE(metax): Legacy MSA aliases also resolve to portable Triton, never CuTeDSL.
+register_backend(
+    backend=AttentionBackendEnum.CUTLASS_MSA,
+    class_path="vllm_metax.models.minimax_m3.common.sparse_attention.MiniMaxM3SparseBackend",
+)
+register_backend(
+    backend=AttentionBackendEnum.TRITON_MSA,
+    class_path="vllm_metax.models.minimax_m3.common.sparse_attention.MiniMaxM3SparseBackend",
+)
 register_backend(
     backend=AttentionBackendEnum.FLASHMLA,
     class_path="vllm_metax.v1.attention.backends.mla.flashmla.MacaFlashMLABackend",

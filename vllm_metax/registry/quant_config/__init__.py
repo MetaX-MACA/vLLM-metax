@@ -11,4 +11,5 @@ from . import (
     fp8,  # noqa: F401
     deepseek_fp8,  # noqa: F401
     mxfp4,  # noqa: F401
+    minimax_m3,  # noqa: F401
 )

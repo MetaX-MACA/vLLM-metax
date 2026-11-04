@@ -16,5 +16,6 @@ from . import parallel_state  # noqa: F401
 from . import int8_w8a8  # noqa: F401
 from . import tokenizer  # noqa: F401
 from . import draft_config_overrides  # noqa: F401
+from . import minimax_m3_draft_config  # noqa: F401
 from . import bytes_to_unicode  # noqa: F401
 from . import routed_experts_fused_weight_fix  # noqa: F401

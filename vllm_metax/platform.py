@@ -144,6 +144,8 @@ class MacaPlatformBase(Platform):
         "compressed_tensors",  # This is `_` version of `-`
         "moe_wna16",
         "gguf",
+        "mxfp8",
+        "modelopt_mxfp8",
     ]
     if mx_envs.VLLM_METAX_SUPPORTS_FP8:
         supported_quantization.append("fp8")

@@ -50,7 +50,26 @@ def _update_nested_hf_config(target, updates: Mapping[str, Any]) -> None:
 
 @patch("vllm.config.speculative", "SpeculativeConfig.hf_config_override")
 def hf_config_override(hf_config: PretrainedConfig) -> PretrainedConfig:
-    """Recognize JoyAI's dense MTP while deriving the draft configuration."""
+    """Preserve standalone DSpark and JoyAI dense-MTP checkpoint identity."""
+    if "DSparkMiniMaxDraftModel" in (getattr(hf_config, "architectures", None) or []):
+        quantization = getattr(hf_config, "quantization_config", None)
+        hf_config = getattr(hf_config, "text_config", hf_config)
+        if (
+            quantization is not None
+            and getattr(hf_config, "quantization_config", None) is None
+        ):
+            hf_config.quantization_config = copy.deepcopy(quantization)
+        dflash = dict(getattr(hf_config, "dflash_config", None) or {})
+        dflash.setdefault("causal", False)
+        hf_config.model_type = "minimax_m3_dspark"
+        hf_config.update(
+            {
+                "architectures": ["DSparkMiniMaxDraftModel"],
+                "dflash_config": dflash,
+                "markov_rank": hf_config.dspark_markov_rank,
+            }
+        )
+        return hf_config
     if hf_config.model_type == "joyai_llm_flash":
         # The MACA decoder needs this identity after the upstream type rewrite
         # to distinguish JoyAI's dense MTP layer from its routed backbone.
@@ -78,7 +97,10 @@ class _DraftHfOverrides:
 @patch("vllm.config.speculative", "SpeculativeConfig.compose_draft_hf_overrides")
 def compose_draft_hf_overrides(target_hf_overrides):
     # /-------------------- MetaX Modification --------------------\
-    if isinstance(target_hf_overrides, Mapping) and target_hf_overrides:
-        return _DraftHfOverrides(target_hf_overrides)
+    # The patched static method's module export is a staticmethod descriptor,
+    # so returning its underlying function is not pickle-safe. Use the existing
+    # callable object for empty overrides too (the default for draft configs).
+    if target_hf_overrides is None or isinstance(target_hf_overrides, Mapping):
+        return _DraftHfOverrides(target_hf_overrides or {})
     # \-------------------- MetaX Modification --------------------/
     return _original_compose(target_hf_overrides)

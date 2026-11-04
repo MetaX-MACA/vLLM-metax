@@ -92,3 +92,23 @@ def register_model():
         "Glm5NextForConditionalGeneration",
         "vllm_metax.models.glm5next:Glm5NextForConditionalGeneration",
     )
+
+    # NOTE(metax): Own the complete NVIDIA-derived MiniMax model and draft paths.
+    ModelRegistry.register_model(
+        "MiniMaxM3SparseForCausalLM",
+        "vllm_metax.models.minimax_m3:MiniMaxM3SparseForCausalLM",
+    )
+
+    ModelRegistry.register_model(
+        "MiniMaxM3SparseForConditionalGeneration",
+        "vllm_metax.models.minimax_m3:MiniMaxM3SparseForConditionalGeneration",
+    )
+
+    ModelRegistry.register_model(
+        "MiniMaxM3MTP", "vllm_metax.models.minimax_m3:MiniMaxM3MTP"
+    )
+
+    ModelRegistry.register_model(
+        "DSparkMiniMaxDraftModel",
+        "vllm_metax.models.minimax_m3:MiniMaxM3DSparkForCausalLM",
+    )

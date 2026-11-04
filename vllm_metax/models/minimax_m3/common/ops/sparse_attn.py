@@ -1,37 +1,46 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
-#
-# -----------------------------------------------------------------------------
-# Note: A 128-token K/V tile needs 139264 B of shared memory, exceeding the
-#       MetaX C550 limit of 65536 B. Process it as eight SUB_K=16 tiles instead:
-#
-#       selected K/V block (128 tokens)
-#       +----+----+----+----+----+----+----+----+
-#       | 16 | 16 | 16 | 16 | 16 | 16 | 16 | 16 |
-#       +----+----+----+----+----+----+----+----+
-#         tile: load K -> QK -> softmax -> load V -> PV
-#               (m_i, lse_i, acc_o) ----------------> next tile
-#
-#       Floor the prefill head tile at 16 for MACA's MMA encoder, and subdivide
-#       the inner K/V loop. Cache layout, FP8 scales, top-k handling, causal
-#       masking and decode split-K logic are preserved. For a 17-token visible
-#       range, the first sub-tile attends to positions 0..15 and the next to
-#       position 16; positions 17..127 contribute zero softmax weight.
-#
-# Affected versions: vLLM 0.32.0 (5df63a7203cd), reviewed 2026-10-21.
-#
-# Remove at: Upstream adopts sub-tiling or the MetaX shared-memory limit permits the
-#     original 128-token K/V tile.
-# -----------------------------------------------------------------------------
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+"""Triton kernels for MiniMax M3 block-sparse GQA attention.
 
-"""MetaX SUB_K fix for MiniMax-M3 block-sparse GQA attention kernels."""
+The main heads attend only to the blocks selected by the lightning indexer (see
+``index_topk``). Adapted to vLLM's paged KV cache: the KV page size is forced to
+equal the sparse block size (128), so one selected block maps to exactly one
+page.
 
+Main K/V cache layout (vLLM):
+  ``(num_blocks, num_kv_heads, 128, 2 * head_dim)``
+  K=[..., :head_dim] V=[..., head_dim:]
+
+Only the paths MiniMax M3 uses are implemented: no attention sink, base-2
+(exp2/log2) softmax. The decode kernels use split-K (flash-decoding) over the
+selected blocks with a separate merge step, since one query token per request
+leaves the prefill kernels (which parallelize over the query dim) idle.
+"""
+
+import torch
+
+from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
 
-from vllm_metax.patch.utils import patch
+# One sparse block == one KV page.
+SPARSE_BLOCK_SIZE = 128
+
+_FP8_DTYPES = (
+    torch.float8_e4m3fn,
+    torch.float8_e4m3fnuz,
+    torch.float8_e5m2,
+    torch.float8_e5m2fnuz,
+)
 
 
-@patch("vllm.models.minimax_m3.common.ops.sparse_attn", "_gqa_sparse_fwd_kernel")
+# ---------------------------------------------------------------------------
+# GQA block-sparse attention (paged). Main heads attend only to the selected
+# blocks. BLOCK_SIZE_K == 128 so each selected block is one page.
+# ---------------------------------------------------------------------------
+# since prefill metadata is sliced from mixed batch metadata, seq_lens and prefix_lens
+# might lose pointer alignment, which trigger Triton recompiles. we don't actually
+# need pointer alignment for those tensors anyway because we do scalar load.
 @triton.heuristics(
     {
         "BLOCK_SIZE_D": lambda args: triton.next_power_of_2(args["head_dim"]),
@@ -228,7 +237,14 @@ def _gqa_sparse_fwd_kernel(
         )
 
 
-@patch("vllm.models.minimax_m3.common.ops.sparse_attn", "_gqa_sparse_decode_kernel")
+# ---------------------------------------------------------------------------
+# Decode kernels (split-K). Decode batches are flattened request-major, with a
+# runtime query length used to map each query token back to its request metadata.
+# This parallelizes over the selected top-k blocks, producing partials that the
+# merge kernel combines (flash-decoding). All chunk counts depend only on shape
+# constants so the grid is fixed within a cuda graph. Base-2 (exp2/log2)
+# softmax matches the prefill kernel.
+# ---------------------------------------------------------------------------
 @triton.heuristics(
     {
         "BLOCK_SIZE_H": lambda args: max(
@@ -415,8 +431,7 @@ def _gqa_sparse_decode_kernel(
     if USE_PDL:
         tl.extra.cuda.gdc_launch_dependents()
 
-    # Empty chunks for active rows must store zero output; otherwise the merge
-    # can hit 0 * NaN. All-empty padded rows may still produce NaNs in merge.
+    # Empty chunks store zero output; the merge also handles all-empty padded rows.
     scale = tl.where(lse_i > float("-inf"), tl.exp2(m_i - lse_i), tl.zeros_like(lse_i))
     acc_o = acc_o * scale[:, None]
     tl.store(
@@ -435,4 +450,317 @@ def _gqa_sparse_decode_kernel(
         + (pid_h + off_h) * stride_l_h,
         lse_i.to(lse_ptr.dtype.element_ty),
         mask=h_mask,
+    )
+
+
+@triton.heuristics(
+    {"BLOCK_SIZE_D": lambda args: triton.next_power_of_2(args["head_dim"])}
+)
+@triton.jit
+def _merge_topk_attn_out_kernel(
+    o_ptr,  # partials: [NUM_TOPK_CHUNKS, total_q, num_heads, head_dim]
+    lse_ptr,  # partials (log2): [NUM_TOPK_CHUNKS, total_q, num_heads]
+    out_ptr,  # merged out: [total_q, num_heads, head_dim]
+    head_dim,
+    stride_o_c,
+    stride_o_b,
+    stride_o_h,
+    stride_o_d,
+    stride_l_c,
+    stride_l_b,
+    stride_l_h,
+    stride_out_n,
+    stride_out_h,
+    stride_out_d,
+    NUM_TOPK_CHUNKS: tl.constexpr,
+    BLOCK_SIZE_D: tl.constexpr,
+    USE_PDL: tl.constexpr,
+):
+    pid_b, pid_h = tl.program_id(0), tl.program_id(1)
+
+    # NOTE: assume seq_lens is safe to load before gdc_wait()
+    if USE_PDL:
+        tl.extra.cuda.gdc_wait()
+        tl.extra.cuda.gdc_launch_dependents()
+
+    off_c = tl.arange(0, NUM_TOPK_CHUNKS)
+    off_d = tl.arange(0, BLOCK_SIZE_D)
+    d_mask = off_d < head_dim
+    o_ptrs = (
+        o_ptr
+        + pid_b * stride_o_b
+        + pid_h * stride_o_h
+        + off_c[:, None] * stride_o_c
+        + off_d[None, :] * stride_o_d
+    )
+    lse_ptrs = lse_ptr + pid_b * stride_l_b + pid_h * stride_l_h + off_c * stride_l_c
+    o = tl.load(o_ptrs, mask=d_mask[None, :], other=0.0)
+    lse = tl.load(lse_ptrs)  # empty chunks contribute -inf -> weight 0
+    lse_max = tl.max(lse, axis=0)
+    # NOTE(metax): v0.32's merge produces NaNs when every chunk is empty (padded
+    # decode rows). Keep the workaround model-local and return zero for that row.
+    lse_max = tl.where(lse_max > float("-inf"), lse_max, 0.0)
+    weights = tl.exp2(lse - lse_max)
+    weights = weights / tl.maximum(tl.sum(weights, axis=0), 1.0)
+    o_merged = tl.sum(o * weights[:, None], axis=0)
+    out_ptrs = (
+        out_ptr + pid_b * stride_out_n + pid_h * stride_out_h + off_d * stride_out_d
+    )
+    tl.store(out_ptrs, o_merged.to(out_ptr.dtype.element_ty), mask=d_mask)
+
+
+# ---------------------------------------------------------------------------
+# Python wrappers
+# ---------------------------------------------------------------------------
+_KV_SCALE_NONE = 0
+_KV_SCALE_SCALAR = 1
+_KV_SCALE_PER_TOKEN_HEAD = 2
+
+
+def _kv_scale_args(
+    output: torch.Tensor,
+    num_kv_heads: int,
+    k_scale: torch.Tensor | None,
+    v_scale: torch.Tensor | None,
+) -> tuple[torch.Tensor, torch.Tensor, int, int, int, int, int]:
+    if k_scale is None and v_scale is None:
+        return output, output, 0, 0, 0, 0, _KV_SCALE_NONE
+    if k_scale is None or v_scale is None:
+        raise ValueError("k_scale and v_scale must be both provided or both None")
+    if k_scale.device != output.device or v_scale.device != output.device:
+        raise ValueError("k_scale and v_scale must be on the same device as output")
+    if k_scale.numel() == 1 and v_scale.numel() == 1:
+        return k_scale, v_scale, 0, 0, 0, 0, _KV_SCALE_SCALAR
+    if k_scale.dim() == 2 and v_scale.dim() == 2:
+        if k_scale.shape[0] != num_kv_heads or v_scale.shape[0] != num_kv_heads:
+            raise ValueError(
+                "per-token/head KV scales must have shape "
+                f"[{num_kv_heads}, max_kv_tokens]"
+            )
+        if k_scale.shape != v_scale.shape:
+            raise ValueError("k_scale and v_scale must have matching shapes")
+        return (
+            k_scale,
+            v_scale,
+            k_scale.stride(0),
+            k_scale.stride(1),
+            v_scale.stride(0),
+            v_scale.stride(1),
+            _KV_SCALE_PER_TOKEN_HEAD,
+        )
+    raise ValueError(
+        "MiniMax-M3 sparse attention supports scalar KV scales or "
+        "[num_kv_heads, max_kv_tokens] per-token/head scales"
+    )
+
+
+@torch.no_grad()
+def minimax_m3_sparse_attn(
+    q: torch.Tensor,  # [total_q, num_heads, head_dim]
+    kv_cache: torch.Tensor,  # [num_blocks, num_kv_heads, 128, 2*head_dim]
+    topk_idx: torch.Tensor,  # [num_kv_heads, total_q, topk]
+    block_table: torch.Tensor,  # [batch, max_blocks]
+    cu_seqlens_q: torch.Tensor,  # [batch+1] int32
+    seq_lens: torch.Tensor,  # [batch] int32
+    prefix_lens: torch.Tensor,  # [batch] int32
+    max_query_len: int,
+    num_kv_heads: int,
+    sm_scale: float,
+    output: torch.Tensor,  # [total_q, num_heads, head_dim]
+    k_scale: torch.Tensor | None = None,
+    v_scale: torch.Tensor | None = None,
+) -> None:
+    """GQA block-sparse attention over the selected blocks. block_size_q == 1."""
+    total_q, num_heads, head_dim = q.shape
+    batch = cu_seqlens_q.shape[0] - 1
+    topk = topk_idx.shape[-1]
+    gqa_group_size = num_heads // num_kv_heads
+    use_fp8 = kv_cache.dtype in _FP8_DTYPES
+    (
+        k_scale_arg,
+        v_scale_arg,
+        stride_ks_h,
+        stride_ks_t,
+        stride_vs_h,
+        stride_vs_t,
+        kv_scale_mode,
+    ) = (
+        _kv_scale_args(output, num_kv_heads, k_scale, v_scale)
+        if use_fp8
+        else (
+            output,
+            output,
+            0,
+            0,
+            0,
+            0,
+            _KV_SCALE_NONE,
+        )
+    )
+    grid = (max_query_len, num_kv_heads, batch)
+    _gqa_sparse_fwd_kernel[grid](
+        q,
+        kv_cache,
+        k_scale_arg,
+        v_scale_arg,
+        topk_idx,
+        output,
+        block_table,
+        cu_seqlens_q,
+        cu_seqlens_q,  # cu_seqblocks_q == cu_seqlens_q when block_size_q == 1
+        seq_lens,
+        prefix_lens,
+        num_kv_heads,
+        gqa_group_size,
+        head_dim,
+        topk,
+        1,  # num_q_loop
+        sm_scale,
+        q.stride(0),
+        q.stride(1),
+        q.stride(2),
+        kv_cache.stride(0),
+        kv_cache.stride(1),
+        kv_cache.stride(2),
+        kv_cache.stride(3),
+        stride_ks_h,
+        stride_ks_t,
+        stride_vs_h,
+        stride_vs_t,
+        topk_idx.stride(0),
+        topk_idx.stride(1),
+        topk_idx.stride(2),
+        output.stride(0),
+        output.stride(1),
+        output.stride(2),
+        block_table.stride(0),
+        BLOCK_SIZE_Q=1,
+        BLOCK_SIZE_K=SPARSE_BLOCK_SIZE,
+        USE_FP8=use_fp8,
+        KV_SCALE_MODE=kv_scale_mode,
+    )
+
+
+@torch.no_grad()
+def minimax_m3_sparse_attn_decode(
+    q: torch.Tensor,  # [total_q, num_heads, head_dim]
+    kv_cache: torch.Tensor,  # [num_blocks, num_kv_heads, 128, 2*head_dim]
+    topk_idx: torch.Tensor,  # [num_kv_heads, total_q, topk]
+    block_table: torch.Tensor,  # [num_reqs, max_blocks]
+    seq_lens: torch.Tensor,  # [num_reqs] int32
+    num_kv_heads: int,
+    sm_scale: float,
+    output: torch.Tensor,  # [total_q, num_heads, head_dim]
+    decode_query_len: int,
+    k_scale: torch.Tensor | None = None,
+    v_scale: torch.Tensor | None = None,
+) -> None:
+    """GQA block-sparse attention for decode (split-K over the top-k blocks)."""
+    total_q, num_heads, head_dim = q.shape
+    assert total_q == seq_lens.shape[0] * decode_query_len
+    max_topk = topk_idx.shape[-1]
+    gqa_group_size = num_heads // num_kv_heads
+    use_fp8 = kv_cache.dtype in _FP8_DTYPES
+    (
+        k_scale_arg,
+        v_scale_arg,
+        stride_ks_h,
+        stride_ks_t,
+        stride_vs_h,
+        stride_vs_t,
+        kv_scale_mode,
+    ) = (
+        _kv_scale_args(output, num_kv_heads, k_scale, v_scale)
+        if use_fp8
+        else (
+            output,
+            output,
+            0,
+            0,
+            0,
+            0,
+            _KV_SCALE_NONE,
+        )
+    )
+    use_pdl = current_platform.is_arch_support_pdl()
+    # `launch_pdl` is a Triton runtime kwarg only some backends accept (CUDA
+    # SM9+); this ROCm Triton rejects it even when False ("Keyword argument
+    # launch_pdl was specified but unrecognised"). Only pass it when PDL is
+    # actually supported -- on ROCm use_pdl is always False, so it's omitted.
+    pdl_launch = {"launch_pdl": True} if use_pdl else {}
+    # split-K over the selected blocks; chunk count is shape-constant (cuda graph).
+    TARGET_GRID = 256
+    target = max(1, min(max_topk, TARGET_GRID // max(1, total_q * num_kv_heads)))
+    num_topk_chunks = 1 << (target.bit_length() - 1)
+    o_partial = torch.empty(
+        num_topk_chunks, total_q, num_heads, head_dim, dtype=q.dtype, device=q.device
+    )
+    lse_partial = torch.empty(
+        num_topk_chunks, total_q, num_heads, dtype=torch.float32, device=q.device
+    )
+    grid = (total_q * num_topk_chunks, num_kv_heads)
+    _gqa_sparse_decode_kernel[grid](
+        q,
+        kv_cache,
+        k_scale_arg,
+        v_scale_arg,
+        topk_idx,
+        o_partial,
+        lse_partial,
+        block_table,
+        seq_lens,
+        total_q,
+        gqa_group_size,
+        head_dim,
+        max_topk,
+        sm_scale,
+        decode_query_len,
+        q.stride(0),
+        q.stride(1),
+        q.stride(2),
+        kv_cache.stride(0),
+        kv_cache.stride(1),
+        kv_cache.stride(2),
+        kv_cache.stride(3),
+        stride_ks_h,
+        stride_ks_t,
+        stride_vs_h,
+        stride_vs_t,
+        topk_idx.stride(0),
+        topk_idx.stride(1),
+        topk_idx.stride(2),
+        o_partial.stride(0),
+        o_partial.stride(1),
+        o_partial.stride(2),
+        o_partial.stride(3),
+        lse_partial.stride(0),
+        lse_partial.stride(1),
+        lse_partial.stride(2),
+        block_table.stride(0),
+        BLOCK_SIZE_K=SPARSE_BLOCK_SIZE,
+        NUM_TOPK_CHUNKS=num_topk_chunks,
+        USE_FP8=use_fp8,
+        KV_SCALE_MODE=kv_scale_mode,
+        USE_PDL=use_pdl,
+        **pdl_launch,
+    )
+    merge_grid = (total_q, num_heads)
+    _merge_topk_attn_out_kernel[merge_grid](
+        o_partial,
+        lse_partial,
+        output,
+        head_dim,
+        o_partial.stride(0),
+        o_partial.stride(1),
+        o_partial.stride(2),
+        o_partial.stride(3),
+        lse_partial.stride(0),
+        lse_partial.stride(1),
+        lse_partial.stride(2),
+        output.stride(0),
+        output.stride(1),
+        output.stride(2),
+        NUM_TOPK_CHUNKS=num_topk_chunks,
+        USE_PDL=use_pdl,
+        **pdl_launch,
     )

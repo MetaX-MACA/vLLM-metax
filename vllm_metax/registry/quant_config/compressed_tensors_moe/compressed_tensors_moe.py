@@ -9,6 +9,7 @@ from vllm.model_executor.layers.quantization.compressed_tensors.compressed_tenso
 
 
 from compressed_tensors import CompressionFormat
+from compressed_tensors.quantization import QuantizationStrategy
 from vllm_metax.registry.custom_ops.layers.fused_moe.unquantized_fused_moe_method import (
     UnquantizedFusedMoEMethod,
 )
@@ -134,6 +135,32 @@ class CompressedTensorsMoEMethod(vllm_ct_moe_method):
             return CompressedTensorsW4A8Int4MoEMethod(
                 weight_quant, input_quant, layer.moe_config
             )
+
+        if (
+            format == CompressionFormat.float_quantized.value
+            and quant_config._is_fp8_w8a8(weight_quant, input_quant)
+            and weight_quant.num_bits == input_quant.num_bits == 8
+            and weight_quant.strategy == QuantizationStrategy.BLOCK
+            and weight_quant.block_structure == [128, 128]
+            and input_quant.strategy == QuantizationStrategy.GROUP
+            and input_quant.group_size == 128
+            and input_quant.dynamic
+            and input_quant.symmetric
+        ):
+            from vllm.model_executor.layers.quantization.fp8 import Fp8Config
+            from vllm_metax.registry.quant_config.fp8 import Fp8MoEMethod
+
+            method = Fp8MoEMethod(
+                Fp8Config(
+                    is_checkpoint_fp8_serialized=True,
+                    activation_scheme="dynamic",
+                    weight_block_size=weight_quant.block_structure,
+                ),
+                layer,
+            )
+            # CT stores block descales as weight_scale, not weight_scale_inv.
+            method.weight_scale_name = "weight_scale"
+            return method
 
         raise RuntimeError(
             f"Unsupported FusedMoe scheme: {weight_quant}, {input_quant}"

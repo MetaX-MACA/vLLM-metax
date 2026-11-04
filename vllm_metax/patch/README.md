@@ -344,7 +344,7 @@ def target_kernel(...):
 
 | Directory | Ownership |
 | --- | --- |
-| `models/<model>/` | Workarounds, compatibility features and optimizations whose behavior is specific to a model or model family. Currently: `deepseek_v4`, `joyai`, `kimi_k3`, `minimax_m3`, `qwen`, `telechat3`. |
+| `models/<model>/` | Workarounds, compatibility features and optimizations whose behavior is specific to a model or model family. Currently: `deepseek_v4`, `joyai`, `kimi_k3`, `qwen`, `telechat3`. |
 | `bugfix/` | Shared correctness and integration fixes, including generic communication, tokenizer, quantization and Triton restrictions. |
 | `enhancement/` | Shared MetaX compatibility features, backend dispatch and runtime options. |
 | `enhancement/performance/` | Shared performance replacements: grouped routing, sampling and speculative-decode batch ordering. |
@@ -394,3 +394,9 @@ two names can attempt to install it twice.
 - Use `allow_missing=True` only when intentionally adding a new compatibility
   attribute; normal patches require the target to exist.
 - Record affected versions and a concrete removal condition in every patch.
+
+MiniMax-M3 now owns its complete NVIDIA-derived implementation under
+`vllm_metax/models/minimax_m3/`. Its norm, loading, sparse-attention, index-score
+and auxiliary-state logic no longer monkey-patch upstream model symbols. Only
+pre-model draft configuration integration remains in `bugfix/`; see the model's
+[adaptation record](../models/minimax_m3/README.md).
