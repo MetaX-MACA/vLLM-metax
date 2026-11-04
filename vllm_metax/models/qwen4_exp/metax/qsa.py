@@ -57,6 +57,7 @@ from vllm_metax.v1.attention.backends.flash_attn import (
     FlashAttentionMetadataBuilder,
 )
 from vllm.v1.kv_cache_interface import (
+    AttentionSpec,
     FullAttentionSpec,
     KVCacheSpec,
     get_kv_quant_mode,
@@ -144,6 +145,29 @@ class Qwen4ExpQSAMetadataBuilder(FlashAttentionMetadataBuilder):
     """Flash metadata supporting uniform decode and target-verify graphs."""
 
     _cudagraph_support: ClassVar[AttentionCGSupport] = AttentionCGSupport.UNIFORM_BATCH
+    requires_block_table_width: ClassVar[bool] = True
+
+    def __init__(
+        self,
+        kv_cache_spec: AttentionSpec,
+        layer_names: list[str],
+        vllm_config: VllmConfig,
+        device: torch.device,
+        *,
+        block_table_width: int,
+    ):
+        super().__init__(kv_cache_spec, layer_names, vllm_config, device)
+        if not vllm_config.kernel_config.enable_jit_warmup:
+            return
+        # NOTE(metax): MRV1 can use an unaligned table; MRV2 and kernel block
+        # tables use the width supplied by AttentionGroup. Warm both strides.
+        raw_width = kv_cache_spec.max_num_blocks_per_req(
+            vllm_config, vllm_config.model_config.max_model_len
+        )
+        widths = tuple(dict.fromkeys((raw_width, block_table_width)))
+        for name in layer_names:
+            layer = vllm_config.compilation_config.static_forward_context[name]
+            layer._qsa_warmup_block_table_widths = widths
 
 
 class Qwen4ExpQSAFlashAttentionBackend(MacaFlashAttentionBackend):
@@ -454,6 +478,7 @@ class Qwen4ExpQSAAttention(Qwen3NextAttention, AttentionLayerBase):
             raise NotImplementedError("Qwen4Exp QSA requires BF16 cache storage")
         self.kv_sharing_target_layer_name = None
         self.kv_cache = torch.tensor([])
+        self._qsa_warmup_block_table_widths: tuple[int, ...] = ()
         set_default_quant_scales(self, register_buffer=True)
 
         self.attn_backend = Qwen4ExpQSAFlashAttentionBackend
@@ -513,6 +538,12 @@ class Qwen4ExpQSAAttention(Qwen3NextAttention, AttentionLayerBase):
         if self.layer_name in static_context:
             raise ValueError(f"Duplicate layer name: {self.layer_name}")
         static_context[self.layer_name] = self
+        if vllm_config.kernel_config.enable_jit_warmup:
+            from .warmup import qsa_sparse_attention_warmup
+
+            # NOTE(metax): Both runners activate the registry during model load.
+            # The provider reads the bound cache layout later, at warmup time.
+            qsa_sparse_attention_warmup.register_warmup(self)
 
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
         mapper = None

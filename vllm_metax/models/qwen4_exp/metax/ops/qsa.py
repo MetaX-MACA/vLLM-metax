@@ -659,7 +659,8 @@ def qsa_sparse_paged_attention(
         return out
 
     group_size = q.shape[1] // k_cache.shape[2]
-    block_m = triton.next_power_of_2(group_size)
+    # NOTE(metax): Smaller BF16 dot tiles hit MACA Triton's FMA lowering assert.
+    block_m = max(16, triton.next_power_of_2(group_size))
     selection_width = logical_indices.shape[1] - 1  # trailing column is the count
     block_n, partial_warps, num_tiles, num_splits = _select_config(
         q.shape[0], k_cache.shape[2], use_prefill_config, selection_width, is_fp8
@@ -764,7 +765,8 @@ def warmup_qsa_sparse_paged_attention(
     cache_dtype = torch.float8_e4m3fn if is_fp8 else key_cache.dtype
     num_kv_heads = key_cache.shape[2]
     group_size = num_query_heads // num_kv_heads
-    block_m = triton.next_power_of_2(group_size)
+    # NOTE(metax): Match the runtime's minimum supported dot tile.
+    block_m = max(16, triton.next_power_of_2(group_size))
 
     # Every config the dispatch can pick for this group size.
     profiles = {
