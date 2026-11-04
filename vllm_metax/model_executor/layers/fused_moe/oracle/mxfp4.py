@@ -15,6 +15,7 @@ from vllm_metax.model_executor.layers.fused_moe.all2all_utils import (
 from vllm.model_executor.utils import replace_parameter
 from vllm.model_executor.layers.fused_moe.activation import MoEActivation
 from vllm.model_executor.layers.quantization.utils.quant_utils import (
+    QuantKey,
     kMxfp4Static,
 )
 from vllm.model_executor.layers.fused_moe.config import (
@@ -99,6 +100,8 @@ def convert_weight_to_mxfp4_moe_kernel_format(
     w2_bias: torch.Tensor | None = None,
     _cache_permute_indices: dict[torch.Size, torch.Tensor] | None = None,
     activation: MoEActivation | None = None,
+    use_separated_a4w4: bool = False,
+    activation_key: QuantKey | None = None,
 ) -> tuple[
     torch.Tensor,
     torch.Tensor,
@@ -187,3 +190,23 @@ def make_mxfp4_moe_kernel(
     )
 
     return kernel
+
+
+def mxfp4_round_up_hidden_size_and_intermediate_size(
+    backend: Mxfp4MoeBackend,
+    hidden_size: int,
+    intermediate_size: int,
+    activation: MoEActivation | None = None,
+) -> tuple[int, int]:
+    """Round up hidden_size and intermediate_size based on backend requirements."""
+    if backend == Mxfp4MoeBackend.TRITON:
+        return hidden_size, intermediate_size
+    else:
+        # NOTE(metax): fall back to upstream impl
+        from vllm.model_executor.layers.fused_moe.oracle.mxfp4 import (
+            mxfp4_round_up_hidden_size_and_intermediate_size as vllm_mxfp4_round_up_hidden_size_and_intermediate_size,
+        )
+
+        return vllm_mxfp4_round_up_hidden_size_and_intermediate_size(
+            backend, hidden_size, intermediate_size, activation
+        )

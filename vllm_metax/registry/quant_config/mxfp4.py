@@ -9,6 +9,7 @@ from vllm.model_executor.layers.quantization.mxfp4 import (
 from vllm.model_executor.layers.fused_moe import (
     FusedMoEConfig,
     FusedMoEMethodBase,
+    FusedMoEParallelConfig,
     RoutedExperts,
 )
 from vllm.model_executor.layers.quantization import register_quantization_config
@@ -22,6 +23,7 @@ from vllm_metax.model_executor.layers.fused_moe.oracle.mxfp4 import (
     convert_weight_to_mxfp4_moe_kernel_format,
     select_deepseek_v4_mxfp4_moe_backend,
     make_mxfp4_moe_kernel,
+    mxfp4_round_up_hidden_size_and_intermediate_size,
 )
 from vllm.model_executor.layers.quantization.utils.quant_utils import (
     QuantKey,
@@ -58,6 +60,28 @@ class Mxfp4MoEMethod(_vllm_Mxfp4MoEMethod):
         # Used for triton kernel precision configs
         self.w13_precision_config = None
         self.w2_precision_config = None
+
+    def maybe_roundup_sizes(
+        self,
+        hidden_size: int,
+        intermediate_size_per_partition: int,
+        act_dtype: torch.dtype,
+        moe_parallel_config: FusedMoEParallelConfig,
+    ) -> tuple[int, int]:
+        hidden_size, intermediate_size_per_partition = super(
+            _vllm_Mxfp4MoEMethod, self
+        ).maybe_roundup_sizes(
+            hidden_size=hidden_size,
+            intermediate_size_per_partition=intermediate_size_per_partition,
+            act_dtype=act_dtype,
+            moe_parallel_config=moe_parallel_config,
+        )
+        return mxfp4_round_up_hidden_size_and_intermediate_size(
+            self.mxfp4_backend,
+            hidden_size,
+            intermediate_size_per_partition,
+            activation=self.moe.activation,
+        )
 
     def _setup_kernel(
         self,
@@ -128,6 +152,8 @@ class Mxfp4MoEMethod(_vllm_Mxfp4MoEMethod):
                 w2_bias=w2_bias,
                 _cache_permute_indices=self._cache_permute_indices,
                 activation=self.moe.activation,
+                use_separated_a4w4=self.moe.use_mxfp4_w4a4_dsv4,
+                activation_key=self.activation_key,
             )
         )
 
