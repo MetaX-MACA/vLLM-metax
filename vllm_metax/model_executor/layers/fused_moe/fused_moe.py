@@ -1069,6 +1069,7 @@ def invoke_fused_moe_triton_kernel(
             mul_routed_weight=mul_routed_weight,
             topk=top_k,
             group_size=32,
+            filter_expert=filter_expert,
         )
     elif (
         A.dtype == torch.bfloat16

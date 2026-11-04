@@ -1279,6 +1279,7 @@ def mctlassEx_fused_moe_mxfp4_w4a16_gemm(
     num_tokens_post_padded: torch.Tensor,
     mul_routed_weight: bool,
     group_size: int,
+    filter_expert: bool,
 ) -> torch.Tensor:
     c1 = c.view(-1, c.size(-1))
     assert c1.is_contiguous(), "fused moe output buffer is not contiguous"
@@ -1315,7 +1316,7 @@ def mctlassEx_fused_moe_mxfp4_w4a16_gemm(
         mul_routed_weight,
         is_blockwise=True,
         group_size=group_size,
-        filter_expert=True,
+        filter_expert=filter_expert,
         use_fp8=True,
         is_scale_a_1d=True,
         is_scale_b_1d=True,
@@ -1345,6 +1346,7 @@ def mctlassEx_fused_moe_mxfp4_w4a16_gemm_fake(
     num_tokens_post_padded: torch.Tensor,
     mul_routed_weight: bool,
     group_size: int,
+    filter_expert: bool,
 ) -> torch.Tensor:
     return c
 
@@ -1396,6 +1398,7 @@ def cutlass_moe_mm_mxfp4_w4a16(
     topk: int,
     mul_routed_weight: bool,
     group_size: int,
+    filter_expert: bool = True,
 ) -> torch.Tensor:
     batch_size = a.size(0)
     K = a.size(1)
@@ -1421,4 +1424,5 @@ def cutlass_moe_mm_mxfp4_w4a16(
         num_tokens_post_padded=num_tokens_post_padded,
         mul_routed_weight=mul_routed_weight,
         group_size=group_size,
+        filter_expert=filter_expert,
     )
