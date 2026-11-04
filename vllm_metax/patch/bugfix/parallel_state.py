@@ -2,8 +2,9 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 #
 # -----------------------------------------------------------------------------
-# Note: This patch is fix DeepSeek-V4 trap when use pipeline parallel,
-#       temporarily disable the optimization of use all_gather in send/recv
+# Note: Disable the send/recv all-gather optimization for the recorded MACA PP
+#     trap observed with DeepSeek-V4. This replaces GroupCoordinator globally,
+#     so the workaround applies to every model using this communication path.
 #
 # Affected versions: vLLM 0.30.0 (ced6857afa0e), reviewed 2026-10-12.
 #

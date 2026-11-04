@@ -14,9 +14,12 @@ The current upstream compatibility review and removal decisions are recorded in
 1. Choose a template:
    - `template/module_attr.py` for module functions, classes, or Triton kernels.
    - `template/class_method.py` for instance methods.
-2. Copy the template into `bugfix/`, `enhancement/`, or `performance/`.
+2. Choose a directory using the classification rules below. Model-specific
+   patches go in `models/<model>/`; shared performance patches go in
+   `enhancement/performance/`.
 3. Complete the header and replace every `TODO`.
-4. Import the new patch module from the nearest `__init__.py`.
+4. Import the new patch module from the nearest `__init__.py`, then ensure
+   that package is imported by its parent initializer.
 5. Add a focused regression test.
 
 Importing a patch module applies it immediately. Module-attribute patches also
@@ -339,11 +342,46 @@ def target_kernel(...):
 
 ## Patch layout
 
-- `bugfix/`: upstream and integration fixes.
-- `enhancement/`: temporary compatibility features.
-- `performance/`: performance replacements.
-- `template/`: ready-to-copy patch examples.
-- `utils.py`: the shared `@patch` implementation.
+| Directory | Ownership |
+| --- | --- |
+| `models/<model>/` | Workarounds, compatibility features and optimizations whose behavior is specific to a model or model family. Currently: `deepseek_v4`, `joyai`, `kimi_k3`, `minimax_m3`, `qwen`, `telechat3`. |
+| `bugfix/` | Shared correctness and integration fixes, including generic communication, tokenizer, quantization and Triton restrictions. |
+| `enhancement/` | Shared MetaX compatibility features, backend dispatch and runtime options. |
+| `enhancement/performance/` | Shared performance replacements: grouped routing, sampling and speculative-decode batch ordering. |
+| `template/` | Inactive, ready-to-copy patch examples. |
+| `utils.py` | The shared `@patch` implementation. |
+
+Classify by behavior and affected consumers, not only the model that first
+exposed the issue or the module containing the target. A Qwen-only branch in
+the generic weight loader belongs in `models/qwen/`. Conversely, the PP
+all-gather workaround affects every `GroupCoordinator`, so it belongs in
+`bugfix/parallel_state.py` even though DeepSeek-V4 exposed the failure. Keep
+shared tokenizer/config wrappers in `bugfix/` while they serve multiple models;
+do not split or install the same target twice just to match model directories.
+
+Performance is a subset of enhancement. Nesting it keeps shared optimizations
+discoverable without making it compete with model ownership at the top level.
+Keep model-specific optimizations in `models/<model>/`, and describe whether a
+patch fixes correctness, adds compatibility or improves speed in its header.
+
+### Activation and directory moves
+
+Both `register_out_of_tree()` and `register_attn_backends()` call the guarded
+`_ensure_global_patch()` in `vllm_metax/__init__.py`. It imports `bugfix`,
+`enhancement`, then `models` once per process. `register_out_of_tree()` loads
+the ordinary registries afterward.
+
+`enhancement/__init__.py` imports `performance` last, after allocator,
+communication, quantization and runner setup. The performance package imports
+its siblings with `from . import ...`. Do not import it separately from the
+plugin entry point or restore the retired `patch.performance` path.
+
+These directories organize eager plugin activation; `models/` does not select
+patches based on the model being served. Model-only behavior still needs an
+appropriate target or runtime guard. After a move, check relative and absolute
+imports, the parent activation chain, initialization order and the audit table.
+Avoid compatibility aliases under retired paths: importing the same patch under
+two names can attempt to install it twice.
 
 ## Keep in mind
 

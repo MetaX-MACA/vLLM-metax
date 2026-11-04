@@ -17,10 +17,12 @@ from . import device_allocator  # noqa: F401
 from . import chores  # noqa: F401
 from . import distributed  # noqa: F401
 from . import quant_kernels  # noqa: F401
-from . import joyai_support  # noqa: F401
 from . import MRV2  # noqa: F401
 
 # single files
 from . import utils  # noqa: F401
 from . import dbo  # noqa: F401
 from . import indexer_kv_dtype  # noqa: F401
+
+# Keep runner/sampler imports after allocator, communication and kernel setup.
+from . import performance  # noqa: F401
