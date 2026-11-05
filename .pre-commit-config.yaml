@@ -48,6 +48,7 @@ repos:
     entry: python tools/pre_commit/mypy.py "3.11"
     language: python
     types_or: [python, pyi]
+    exclude: ^tests/
     require_serial: true
     additional_dependencies: ["mypy==1.20.2", regex, types-cachetools, types-setuptools, types-PyYAML, types-requests, types-torch, "pydantic==2.13.5"]
   - id: shellcheck

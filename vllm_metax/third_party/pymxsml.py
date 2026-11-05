@@ -39,6 +39,7 @@ import threading
 ##
 from ctypes import *
 from functools import wraps
+from typing import Any, TYPE_CHECKING
 
 ## C Type mappings ##
 ## Enums
@@ -842,7 +843,8 @@ class MXSMLEXLibraryMismatchError(Exception):
 
 ## Error Checking ##
 class NVMLError(Exception):
-    _valClassMapping = dict()
+    value: int
+    _valClassMapping: dict[int, type["NVMLError"]] = dict()
     # List of currently known error codes
     _errcode_to_string = {
         MXSMLEX_ERROR_UNINITIALIZED: "Uninitialized",
@@ -936,6 +938,11 @@ def _extractNVMLErrorsAsClasses():
 
 _extractNVMLErrorsAsClasses()
 
+if TYPE_CHECKING:
+    # The exception classes are generated dynamically above at runtime.
+    class NVMLError_FunctionNotFound(NVMLError):
+        pass
+
 
 def _nvmlCheckReturn(ret):
     if (ret != MXSMLEX_SUCCESS):
@@ -944,7 +951,7 @@ def _nvmlCheckReturn(ret):
 
 
 ## Function access ##
-_nvmlGetFunctionPointer_cache = dict(
+_nvmlGetFunctionPointer_cache: dict[str, Any] = dict(
 )  # function pointers are cached to prevent unnecessary libLoadLock locking
 
 
@@ -1035,7 +1042,7 @@ class _PrintableStructure(Structure):
 
     Exact format of returned str from this class is subject to change in the future.
     """
-    _fmt_ = {}
+    _fmt_: dict[str, str] = {}
 
     def __str__(self):
         result = []
@@ -2211,8 +2218,8 @@ def convertStrBytes(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         # encoding a str returns bytes in python 2 and 3
-        args = [arg.encode() if isinstance(arg, str) else arg for arg in args]
-        res = func(*args, **kwargs)
+        encoded_args = [arg.encode() if isinstance(arg, str) else arg for arg in args]
+        res = func(*encoded_args, **kwargs)
         # In python 2, str and bytes are the same
         # In python 3, str is unicode and should be decoded.
         # Ctypes handles most conversions, this only effects c_char and char arrays.
@@ -3058,6 +3065,7 @@ def nvmlDeviceGetPendingGpuOperationMode(handle):
 
 
 def nvmlDeviceGetMemoryInfo(handle, version=None):
+    c_memory: c_nvmlMemory_t | c_nvmlMemory_v2_t
     if not version:
         c_memory = c_nvmlMemory_t()
         fn = _nvmlGetFunctionPointer("mxSmlExDeviceGetMemoryInfo")
@@ -5119,6 +5127,7 @@ def nvmlDeviceGetMigMode(device):
 
 
 def nvmlDeviceGetGpuInstanceProfileInfo(device, profile, version=2):
+    c_info: c_nvmlGpuInstanceProfileInfo_v2_t | c_nvmlGpuInstanceProfileInfo_t
     if version == 2:
         c_info = c_nvmlGpuInstanceProfileInfo_v2_t()
         fn = _nvmlGetFunctionPointer("mxSmlExDeviceGetGpuInstanceProfileInfoV")
@@ -5204,6 +5213,7 @@ def nvmlGpuInstanceGetComputeInstanceProfileInfo(device,
                                                  profile,
                                                  engProfile,
                                                  version=2):
+    c_info: c_nvmlComputeInstanceProfileInfo_v2_t | c_nvmlComputeInstanceProfileInfo_t
     if version == 2:
         c_info = c_nvmlComputeInstanceProfileInfo_v2_t()
         fn = _nvmlGetFunctionPointer(
@@ -5726,7 +5736,8 @@ MXSMLEX_GPM_METRIC_MAX = 98
 ## Structs
 
 
-class c_nvmlUnitInfo_t(_PrintableStructure):
+# Preserve the duplicate structure definition supplied by the vendor bindings.
+class c_nvmlUnitInfo_t(_PrintableStructure):  # type: ignore[no-redef]
     _fields_ = [
         ('name', c_char * 96),
         ('id', c_char * 96),

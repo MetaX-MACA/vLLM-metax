@@ -71,7 +71,7 @@ def _kpool_compress_insert(
     slot_mapping: torch.Tensor,
     kpool: int,
     head_dim: int,
-    round_scale: bool,
+    round_scale: bool = False,
 ) -> None:
     """Pool ``kpool`` consecutive tokens into one fp8 K and write at pool slots.
 
@@ -162,7 +162,7 @@ def sparse_attn_indexer_kpool(
             use_int8_cache,
             use_bf16_cache,
         )
-        specs = [values_spec]
+        specs: list[tuple[tuple[int, ...], torch.dtype]] = [values_spec]
         if scales_spec is not None:
             specs.append(scales_spec)
         specs.append(((RADIX_TOPK_WORKSPACE_SIZE,), torch.uint8))
@@ -345,7 +345,7 @@ def sparse_attn_indexer_kpool(
         # MXFP4 (head_dim/2 bytes packed + head_dim/MXFP4_BLOCK_SIZE ue8m0
         # scales) based on use_fp4_cache.
         workspace_manager = current_workspace_manager()
-        k_quant_full, k_scale_full = _gather_workspace_shapes(
+        values_spec, scales_spec = _gather_workspace_shapes(
             total_seq_lens,
             head_dim,
             fp8_dtype,
@@ -353,7 +353,9 @@ def sparse_attn_indexer_kpool(
             use_int8_cache,
             use_bf16_cache,
         )
-        workspace_manager.get_simultaneous(k_quant_full, k_scale_full)
+        k_quant_full, k_scale_full = workspace_manager.get_simultaneous(
+            values_spec, scales_spec
+        )
         for chunk in prefill_metadata.chunks if not short_prefill else ():
             # Under DCP this rank only gathers the pools it owns.
             assert chunk.local_cu_seq_lens is not None
@@ -756,7 +758,7 @@ class MacaSparseAttnIndexerKpool(SparseAttnIndexerKpool):
         self,
         k_cache,
         quant_block_size: int,
-        scale_fmt: str,
+        scale_fmt: str | None,
         topk_tokens: int,
         head_dim: int,
         max_pool_len: int,

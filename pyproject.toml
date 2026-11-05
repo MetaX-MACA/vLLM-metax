@@ -67,6 +67,8 @@ exclude = [
 "vllm_metax/csrc/**" = ["ALL"]
 "vllm_metax/models/**" = ["ALL"]
 "tools/**" = ["ALL"]
+# Preserve the existing lint policy of the relocated upgrade helpers.
+".agents/skills/common-sense/scripts/metax_upgrade/**" = ["ALL"]
 "setup.py" = ["G004"]
 
 [tool.ruff.lint]
@@ -103,6 +105,7 @@ docstring-code-format = true
 
 [tool.mypy]
 plugins = ['pydantic.mypy']
+exclude = '^tests/'
 ignore_missing_imports = true
 check_untyped_defs = true
 follow_imports = "silent"

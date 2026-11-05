@@ -20,6 +20,7 @@ from tools.batched_test import deployment, suites
 from tools.batched_test.api_client import ApiConnection, ChatCompletionClient, EmbeddingClient
 from tools.batched_test.launch import Scheduler, SchedulerArgs
 from tools.batched_test.model_worker import InferenceTask, BenchmarkTask
+from tools.batched_test.identity import ValidationIdentity
 from tools.batched_test.reporting import CsvReport, ResumeIndex, inference_row
 from tools.batched_test.resources import LocalBackend, ClusterBackend, ResourceLease, NodeAllocation
 from tools.batched_test.results import CaseResult, Phase, Status, TaskOutcome, TaskResult
@@ -63,7 +64,7 @@ def model(**kwargs):
 def task():
     return InferenceTask(model(infer_types=('text-only',)), InferenceSpec((
         SuiteSpec('text-only', (CaseSpec('question', ('answer',)),)),
-    )))
+    )), validation_identity=ValidationIdentity('synthetic-source', 'synthetic-environment', 'synthetic-checkpoint', 'synthetic-inputs', True))
 
 
 class Job:
@@ -177,7 +178,7 @@ def test_inference_task_accuracy(runtime, tmp_path, monkeypatch, passed, expecte
     assert row['Stage'] == ('NORMAL_END' if passed else 'ACCURACY_FAILED')
 
 
-@pytest.mark.parametrize('ratio, skip', [('0%', False), ('99%', False), ('100%', True), ('invalid', False)])
+@pytest.mark.parametrize('ratio, skip', [('0%', False), ('99%', False), ('100%', False), ('invalid', False)])
 def test_resume_legacy_accuracy(tmp_path, ratio, skip):
     path = tmp_path / 'results.csv'
     with path.open('w', newline='') as stream:
@@ -469,7 +470,7 @@ def test_same_legacy_tag_configs_get_distinct_resume_identity(tmp_path):
     assert not resume.should_skip(tasks[1])
 
 
-def test_inference_scheduler_skips_without_allocating(tmp_path):
+def test_inference_scheduler_skips_without_allocating(tmp_path, monkeypatch):
     config = tmp_path / 'models.yaml'
     cases = tmp_path / 'text.yaml'
     config.write_text('- name: mock\n  model_path: mock-path\n  infer_type: [text-only]\n')
@@ -478,6 +479,8 @@ def test_inference_scheduler_skips_without_allocating(tmp_path):
     original = task()
     with CsvReport(resume_path, [original], 'inference') as report:
         report.write(original, TaskResult(Status.SKIPPED, Phase.COMPLETE, 0))
+    monkeypatch.setattr('tools.batched_test.identity.runtime_identity', lambda: {'source': 'synthetic-source', 'environment': 'synthetic-environment'})
+    monkeypatch.setattr('tools.batched_test.identity.capture', lambda *args: original.validation_identity)
     obj = Scheduler(SchedulerArgs(
         work_dir=str(tmp_path / 'output'), model_config=str(config),
         text_case=str(cases), image_case='not-needed', resume_csv=str(resume_path),

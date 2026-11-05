@@ -72,6 +72,8 @@ class _Glm5NextMergedColumnParallelLinear(MergedColumnParallelLinear):
     loading for replicated shards.
     """
 
+    tp_rank: int
+
     def __init__(
         self,
         input_size: int,

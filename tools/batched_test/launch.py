@@ -474,6 +474,9 @@ class Scheduler:
             f.write(env_info)
 
     def run_inference(self):
+        from tools.batched_test.identity import capture, runtime_identity
+
+        identity = runtime_identity()
         tasks = []
         for cfg in self.model_list:
             model = ModelSpec.parse(cfg, base_dir=Path(self.args.model_config).parent)
@@ -483,8 +486,13 @@ class Scheduler:
                 image_case=self.args.image_case,
                 embedding_case=self.args.embedding_case,
                 long_text_case=self.args.long_text_case,
+                validation_mode=cfg.get("validation_mode"),
             )
-            tasks.append(InferenceTask(model, spec))
+            tasks.append(
+                InferenceTask(
+                    model, spec, validation_identity=capture(model, spec, identity)
+                )
+            )
         tasks = self._label_tasks(tasks)
         resume = ResumeIndex(self.args.resume_csv)
         todo = [task for task in tasks if not resume.should_skip(task)]

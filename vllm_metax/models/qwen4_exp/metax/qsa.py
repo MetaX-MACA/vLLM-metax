@@ -71,6 +71,8 @@ from .indexer_qsa import QSAIndexer
 class Qwen4ExpQSAQKVIndexerLinear(MergedColumnParallelLinear):
     """Pack sharded Q/gate, K, V and replicated indexer Q/K in one GEMM."""
 
+    tp_rank: int
+
     def __init__(
         self,
         qkv_proj: QKVParallelLinear,
@@ -144,7 +146,7 @@ def qsa_kv_cache_dtype(cache_config: CacheConfig, prefix: str) -> CacheDType:
 class Qwen4ExpQSAMetadataBuilder(FlashAttentionMetadataBuilder):
     """Flash metadata supporting uniform decode and target-verify graphs."""
 
-    _cudagraph_support: ClassVar[AttentionCGSupport] = AttentionCGSupport.UNIFORM_BATCH
+    _cudagraph_support = AttentionCGSupport.UNIFORM_BATCH
     requires_block_table_width: ClassVar[bool] = True
 
     def __init__(

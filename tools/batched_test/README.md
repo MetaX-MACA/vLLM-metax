@@ -144,5 +144,21 @@ performance/
 
 For resume, keep `inference_results.csv` and its adjacent `.manifest.json` together.
 Only matching successful results with 100% accuracy are skipped. Changed model
-settings or cases are rerun. Old CSVs without a manifest are accepted, but cannot
-detect configuration or case changes.
+settings or cases are rerun. Old CSVs/manifests without validation identity are rerun.
+
+Result reuse requires a schema-2 manifest matching source, selected environment,
+checkpoint content, model configuration and case/input identities. Remote mutable model
+IDs or media without verified local identity are not reused. Local weight files are
+streamed for full hashes during planning, which can take time for large checkpoints.
+Task constructors/properties do not perform source or checkpoint I/O. In upgrade runs,
+the runner passes METAX_UPGRADE_VALIDATION_IDENTITY_FILE; the validating child propagates
+its source/environment identity into the result manifest. A successful old result for
+the same model/config does not validate changed framework code.
+
+For `--load-format dummy`, inference automatically uses `dummy_smoke`. It sends at least
+two concurrent requests, checks valid generation with at least two completion tokens,
+and reports execution stability without semantic keyword scoring. CSV uses
+DUMMY_SMOKE_PASSED/FAILED, Validation Mode, Smoke Pass Ratio and Correct Ratio=N/A.
+Real weights use `accuracy`. Optional model YAML `validation_mode` must agree with the
+load format; dummy results cannot be labeled as semantic accuracy. Exact active batch
+shapes and mixed prefill/decode coverage require server-side dispatch evidence.

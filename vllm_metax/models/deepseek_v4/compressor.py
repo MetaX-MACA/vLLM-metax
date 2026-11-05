@@ -188,7 +188,7 @@ class MacaDeepseekCompressor(nn.Module):
         state_width = state_cache.shape[-1] // 2
         # ---------------------------------------------
         # Note: Metax not support pdl
-        pdl_kwargs = {}
+        pdl_kwargs: dict[str, Any] = {}
 
         _SAVE_PARTIAL_STATES_KERNEL(
             kv=kv,

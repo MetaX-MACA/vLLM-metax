@@ -1,0 +1,4 @@
+interface:
+  display_name: "vLLM MetaX Patch Upgrade"
+  short_description: "Audit and adapt patches in vllm_metax/patch/"
+  default_prompt: "Use $patch-upgrade with common-sense after module adaptation to remove obsolete patches, replace them with supported hooks where possible, and minimize and justify every unavoidable patch."

@@ -18,7 +18,7 @@ import importlib.util
 import locale
 import os
 from pathlib import Path
-import regex as re
+import re
 import shutil
 import subprocess
 from typing import TYPE_CHECKING

@@ -14,6 +14,7 @@ for file in requires_files:
         "+metax" in "".join(lines).lower()
         or "+maca" in "".join(lines).lower()
         or "mcpy" in "".join(lines).lower()
+        or "-r maca_private.txt" in "".join(lines).lower()
     ):
         print("removed:")
         with open(file, "w") as f:
@@ -22,6 +23,7 @@ for file in requires_files:
                     "+metax" not in line.lower()
                     and "+maca" not in line.lower()
                     and "mcpy" not in line.lower()
+                    and "-r maca_private.txt" not in line.lower()
                 ):
                     f.write(line)
                 else:

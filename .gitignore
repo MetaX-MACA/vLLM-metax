@@ -186,8 +186,7 @@ cython_debug/
 !.claude/skills/
 !.claude/skills/**
 
-# Codex
-# .codex/
+# Project skills and agent instructions in .agents/ are versioned.
 
 # Cursor
 .cursor/

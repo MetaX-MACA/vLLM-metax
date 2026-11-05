@@ -97,6 +97,7 @@ class ChatCompletionClient:
     ):
         # Shared transport and cancellation policy, usually injected by the suite executor.
         self.connection = connection or ApiConnection(host, port, stop_event)
+        self.last_completion_tokens = 0
 
     def get_model(self):
         return self.connection.get_model()
@@ -106,6 +107,7 @@ class ChatCompletionClient:
         questions: list[str],
         model: str | None = None,
         max_completion_tokens: int = 256,
+        smoke: bool = False,
     ) -> Iterable[str]:
         if model is None:
             model = self.get_model()
@@ -117,6 +119,14 @@ class ChatCompletionClient:
                 messages=messages,
                 model=model,
                 max_completion_tokens=max_completion_tokens,
+                **(
+                    {"extra_body": {"ignore_eos": True, "min_tokens": 2}}
+                    if smoke
+                    else {}
+                ),
+            )
+            self.last_completion_tokens = (
+                getattr(getattr(response, "usage", None), "completion_tokens", 0) or 0
             )
             yield response.choices[0].message.content or ""
 
@@ -126,6 +136,7 @@ class ChatCompletionClient:
         max_completion_tokens: int,
         image_urls: list[str],
         model: str | None = None,
+        smoke: bool = False,
     ) -> Iterable[str]:
         """Yield image responses; transport failures propagate to the task runner."""
         if model is None:
@@ -153,6 +164,15 @@ class ChatCompletionClient:
                 ],
                 model=model,
                 max_completion_tokens=max_completion_tokens,
+                **(
+                    {"extra_body": {"ignore_eos": True, "min_tokens": 2}}
+                    if smoke
+                    else {}
+                ),
+            )
+            self.last_completion_tokens = (
+                getattr(getattr(chat_completion, "usage", None), "completion_tokens", 0)
+                or 0
             )
             yield chat_completion.choices[0].message.content or ""
 

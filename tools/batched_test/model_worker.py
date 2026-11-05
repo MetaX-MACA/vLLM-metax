@@ -10,13 +10,14 @@ import regex as re
 import shlex
 
 from tools.batched_test import deployment
+from tools.batched_test.identity import ValidationIdentity
 from tools.batched_test.results import Phase, Status, TaskOutcome
 from tools.batched_test.runtime import RunContext
 from tools.batched_test.specs import BenchmarkSpec, InferenceSpec, ModelSpec
 from tools.batched_test.suites import run_suites
 
 
-def task_fingerprint(model, spec) -> str:
+def task_fingerprint(model, spec, validation_identity=None) -> str:
     def canonical(value):
         if isinstance(value, dict):
             return {key: canonical(item) for key, item in value.items()}
@@ -27,14 +28,25 @@ def task_fingerprint(model, spec) -> str:
         return value
 
     payload = json.dumps(
-        canonical({"model": asdict(model), "spec": asdict(spec)}), sort_keys=True
+        canonical(
+            {
+                "model": asdict(model),
+                "spec": asdict(spec),
+                "validation_identity": asdict(validation_identity)
+                if validation_identity
+                else None,
+            }
+        ),
+        sort_keys=True,
     )
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
-def artifact_id(model: ModelSpec, spec: InferenceSpec, kind: str):
+def artifact_id(
+    model: ModelSpec, spec: InferenceSpec, kind: str, validation_identity=None
+):
     tag = re.sub(r"[^a-zA-Z0-9_.-]", "_", model.tag(kind))
-    return f"{tag}_{task_fingerprint(model, spec)[:12]}"
+    return f"{tag}_{task_fingerprint(model, spec, validation_identity)[:12]}"
 
 
 @dataclass(frozen=True)
@@ -45,6 +57,7 @@ class InferenceTask:
     spec: InferenceSpec
     # Optional disambiguated CSV name; excluded from the configuration fingerprint.
     report_name: str | None = None
+    validation_identity: ValidationIdentity | None = None
     # Report category and output subtree for correctness tests.
     kind = "inference"
 
@@ -54,11 +67,11 @@ class InferenceTask:
 
     @property
     def fingerprint(self):
-        return task_fingerprint(self.model, self.spec)
+        return task_fingerprint(self.model, self.spec, self.validation_identity)
 
     @property
     def artifact_id(self):
-        return artifact_id(self.model, self.spec, self.kind)
+        return artifact_id(self.model, self.spec, self.kind, self.validation_identity)
 
     def execute(self, context: RunContext) -> TaskOutcome:
         context.phase = Phase.STARTING
@@ -75,7 +88,11 @@ class InferenceTask:
             ""
             if passed
             else f"Correct ratio below required {self.spec.pass_threshold:.0%}",
-            {"log_dir": str(context.work_dir)},
+            {
+                "log_dir": str(context.work_dir),
+                "validation_mode": self.spec.validation_mode,
+                "semantic_accuracy_claim": self.spec.validation_mode == "accuracy",
+            },
         )
 
 

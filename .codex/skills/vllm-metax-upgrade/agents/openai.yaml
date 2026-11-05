@@ -1,4 +1,0 @@
-interface:
-  display_name: "vLLM-MetaX Full Upgrade"
-  short_description: "Coordinate resumable upgrades with explicit environment gates"
-  default_prompt: "Use $vllm-metax-upgrade to prepare and confirm my environment, then coordinate a full vLLM-MetaX upgrade against the released target with a persistent TODO and verified dependency closures."

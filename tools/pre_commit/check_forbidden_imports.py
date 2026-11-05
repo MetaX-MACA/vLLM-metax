@@ -78,12 +78,21 @@ CHECK_IMPORTS = {
             "or 'import pybase64 as base64'."
         ),
         allowed_pattern=re.compile(r"^\s*import\s+pybase64(\s*|\s+as\s+base64\s*)$"),
+        # Environment preparation must run before third-party dependencies exist.
+        allowed_files={
+            ".agents/skills/environment-check/scripts/metax_environment/install.py",
+        },
     ),
     "re": ForbiddenImport(
         pattern=r"^\s*(?:import\s+re(?:$|\s|,)|from\s+re\s+import)",
         tip="Replace 'import re' with 'import regex as re' or 'import regex'.",
         allowed_pattern=re.compile(r"^\s*import\s+regex(\s*|\s+as\s+re\s*)$"),
-        allowed_files={"setup.py"},
+        # Bootstrap and diagnostic tools must also work in stdlib-only Python.
+        allowed_files={
+            "setup.py",
+            "vllm_metax/collect_env.py",
+            ".agents/skills/environment-check/scripts/metax_environment/preparation.py",
+        },
     ),
     "triton": ForbiddenImport(
         pattern=r"^(from|import)\s+triton(\s|\.|$)",

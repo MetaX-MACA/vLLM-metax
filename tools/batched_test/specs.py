@@ -75,6 +75,15 @@ class ServeSpec:
     def required_gpus(self) -> int:
         return self.tp * self.pp * self.dp
 
+    @property
+    def load_format(self):
+        for index, value in enumerate(self.extra_args):
+            if value.startswith("--load-format="):
+                return value.split("=", 1)[1]
+            if value == "--load-format" and index + 1 < len(self.extra_args):
+                return self.extra_args[index + 1]
+        return None
+
     @classmethod
     def parse(cls, raw: dict | None):
         raw = raw or {}
@@ -190,12 +199,15 @@ class InferenceSpec:
     suites: tuple[SuiteSpec, ...]
     # Minimum fraction of passing cases, in (0, 1]; CLI currently uses 1.0.
     pass_threshold: float = 1.0
+    validation_mode: str = "accuracy"
 
     def __post_init__(self):
         if not self.suites or not all(suite.cases for suite in self.suites):
             raise ValueError("Inference needs at least one nonempty suite")
         if not 0 < self.pass_threshold <= 1:
             raise ValueError("pass_threshold must be in (0, 1]")
+        if self.validation_mode not in {"accuracy", "dummy_smoke"}:
+            raise ValueError("validation_mode must be accuracy or dummy_smoke")
 
 
 @dataclass(frozen=True)

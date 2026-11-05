@@ -1,0 +1,4 @@
+interface:
+  display_name: "vLLM-MetaX Full Upgrade"
+  short_description: "Coordinate resumable upgrades with explicit environment gates"
+  default_prompt: "Use $vllm-metax-upgrade to upgrade all framework sources first, then every local model and patch, and only then run e2e and batched inference validation with a complete resumable file inventory."

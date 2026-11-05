@@ -9,7 +9,15 @@ from pathlib import Path
 
 from tools.batched_test.results import Phase, Status, TaskResult
 
-INFERENCE_FIELDS = ["Model", "Correct Ratio", "Stage", "Reason", "Model Path"]
+INFERENCE_FIELDS = [
+    "Model",
+    "Correct Ratio",
+    "Stage",
+    "Reason",
+    "Model Path",
+    "Validation Mode",
+    "Smoke Pass Ratio",
+]
 BENCHMARK_FIELDS = [
     "task_name",
     "status",
@@ -41,9 +49,18 @@ def inference_row(task, result: TaskResult) -> dict:
         filter(None, (result.error, result.outcome.reason, result.cleanup_error))
     )
     ratio = 1.0 if result.status == Status.SKIPPED else result.outcome.correct_ratio
+    smoke = task.spec.validation_mode == "dummy_smoke"
+    if smoke and result.status in {Status.PASSED, Status.SKIPPED, Status.FAILED}:
+        stage = (
+            "DUMMY_SMOKE_PASSED"
+            if result.status in {Status.PASSED, Status.SKIPPED}
+            else "DUMMY_SMOKE_FAILED"
+        )
     return {
         "Model": task.report_tag,
-        "Correct Ratio": f"{ratio * 100:g}%",
+        "Correct Ratio": "N/A" if smoke else f"{ratio * 100:g}%",
+        "Validation Mode": task.spec.validation_mode,
+        "Smoke Pass Ratio": f"{ratio * 100:g}%" if smoke else "N/A",
         "Stage": stage,
         "Reason": reason.replace("\n", " | ")[:1000],
         "Model Path": task.model.model_path,
@@ -85,9 +102,14 @@ class ResumeIndex:
                     self.rows.setdefault(row["Model"].strip(), []).append(row)
             manifest = manifest_path(Path(path))
             if manifest.exists():
-                self.fingerprints = json.loads(manifest.read_text(encoding="utf-8"))
+                payload = json.loads(manifest.read_text(encoding="utf-8"))
+                if payload.get("schema_version") == 2:
+                    self.fingerprints = payload["tasks"]
 
     def should_skip(self, task) -> bool:
+        identity = getattr(task, "validation_identity", None)
+        if not identity or not identity.reusable or self.fingerprints is None:
+            return False
         tag = task.report_tag
         rows = self.rows.get(tag, [])
         if not rows:
@@ -98,12 +120,18 @@ class ResumeIndex:
         ):
             return False
         for row in rows:
+            smoke = task.spec.validation_mode == "dummy_smoke"
             try:
-                ratio = float(row["Correct Ratio"].strip().rstrip("%"))
+                ratio = float(
+                    row["Smoke Pass Ratio" if smoke else "Correct Ratio"]
+                    .strip()
+                    .rstrip("%")
+                )
             except (ValueError, KeyError):
                 return False
             if (
-                row.get("Stage", "").strip() != "NORMAL_END"
+                row.get("Stage", "").strip()
+                != ("DUMMY_SMOKE_PASSED" if smoke else "NORMAL_END")
                 or ratio != 100
                 or row.get("Model Path", "") != task.model.model_path
             ):
@@ -124,7 +152,22 @@ class CsvReport:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         manifest_path(self.path).write_text(
             json.dumps(
-                {task.report_tag: task.fingerprint for task in self.tasks}, indent=2
+                {
+                    "schema_version": 2,
+                    "tasks": {task.report_tag: task.fingerprint for task in self.tasks},
+                    "validation_modes": {
+                        task.report_tag: task.spec.validation_mode
+                        for task in self.tasks
+                        if hasattr(task, "spec")
+                        and hasattr(task.spec, "validation_mode")
+                    },
+                    "validation_identities": {
+                        task.report_tag: asdict(task.validation_identity)
+                        for task in self.tasks
+                        if getattr(task, "validation_identity", None)
+                    },
+                },
+                indent=2,
             ),
             encoding="utf-8",
         )

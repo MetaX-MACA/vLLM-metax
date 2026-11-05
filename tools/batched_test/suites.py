@@ -3,6 +3,8 @@
 """Case loading, suite execution and scoring; no resource or process ownership."""
 
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
+import math
 from pathlib import Path
 import yaml
 
@@ -74,6 +76,7 @@ def plan_inference(
     image_case: str | None,
     embedding_case: str | None = None,
     long_text_case: str | None = None,
+    validation_mode: str | None = None,
 ) -> InferenceSpec:
     if not model.infer_types:
         raise ValueError(f"{model.name}: infer_type must be specified")
@@ -96,7 +99,14 @@ def plan_inference(
             )
             cases += (long_cases[index],)
         suites.append(SuiteSpec(kind, cases))
-    return InferenceSpec(tuple(suites))
+    mode = validation_mode or (
+        "dummy_smoke" if model.serve.load_format == "dummy" else "accuracy"
+    )
+    if (mode == "dummy_smoke") != (model.serve.load_format == "dummy"):
+        raise ValueError(
+            "Dummy weights require dummy_smoke; real weights require accuracy"
+        )
+    return InferenceSpec(tuple(suites), validation_mode=mode)
 
 
 def score_keywords(content: str, keywords: tuple[str, ...]) -> bool:
@@ -107,6 +117,8 @@ def score_keywords(content: str, keywords: tuple[str, ...]) -> bool:
 
 
 def run_suites(context, spec: InferenceSpec, port: int) -> tuple[CaseResult, ...]:
+    if spec.validation_mode == "dummy_smoke":
+        return run_dummy_smoke(context, spec, port)
     results = []
     connection = ApiConnection(
         port=port, stop_event=context.cancel, timeout=context.request_timeout
@@ -159,3 +171,68 @@ def run_suites(context, spec: InferenceSpec, port: int) -> tuple[CaseResult, ...
     finally:
         connection.close()
     return tuple(results)
+
+
+def run_dummy_smoke(context, spec, port):
+    """Concurrent requests check execution and decode, without semantic claims."""
+    connection = ApiConnection(
+        port=port, stop_event=context.cancel, timeout=context.request_timeout
+    )
+    jobs = [
+        (suite.kind, index, case)
+        for suite in spec.suites
+        for index, case in enumerate(suite.cases)
+    ]
+    if len(jobs) == 1:
+        kind, index, case = jobs[0]
+        jobs.append((kind, index + 1, case))
+
+    def execute(job):
+        kind, index, case = job
+        context.check()
+        if kind == "embedding":
+            vectors = EmbeddingClient(connection=connection).embed([case.input])
+            passed = (
+                len(vectors) == 1
+                and bool(vectors[0])
+                and all(math.isfinite(value) for value in vectors[0])
+            )
+            content = f"embedding_dimension={len(vectors[0]) if vectors else 0}"
+        else:
+            client = ChatCompletionClient(connection=connection)
+            maximum = max(2, case.max_tokens)
+            if kind == "single-image":
+                content = next(
+                    client.run_single_image(maximum, [case.input], smoke=True)
+                )
+            else:
+                content = next(
+                    client.run_text_only(
+                        [case.input], max_completion_tokens=maximum, smoke=True
+                    )
+                )
+            passed = bool(content.strip()) and client.last_completion_tokens >= 2
+            if any(word in content for word in CRITICAL_WORDS):
+                passed = False
+        context.check()
+        return CaseResult(
+            kind,
+            index,
+            passed,
+            content,
+            ""
+            if passed
+            else "Dummy execution smoke failed; no semantic accuracy claim",
+        )
+
+    try:
+        with ThreadPoolExecutor(max_workers=min(4, len(jobs))) as pool:
+            results = tuple(pool.map(execute, jobs))
+        with (context.work_dir / "dummy_smoke.log").open("w") as stream:
+            for result in results:
+                stream.write(
+                    f"{result.suite}:{result.index} passed={result.passed} response={result.response}\n"
+                )
+        return results
+    finally:
+        connection.close()

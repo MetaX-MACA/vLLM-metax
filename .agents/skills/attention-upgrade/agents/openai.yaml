@@ -1,0 +1,4 @@
+interface:
+  display_name: "vLLM-MetaX Attention Upgrade"
+  short_description: "Adapt attention against installed MetaX component APIs"
+  default_prompt: "Use $attention-upgrade with common-sense to adapt quantized cache layouts and split prefill/decode forwards; keep complete-model validation in the coordinator’s final phase."
