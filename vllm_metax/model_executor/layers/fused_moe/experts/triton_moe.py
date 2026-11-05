@@ -887,13 +887,13 @@ class TritonWNA16Experts(TritonExperts):
 
         # Include fused shared-expert rows while preserving EP remapping.
         num_align_experts = w1.shape[0] if expert_map is None else global_num_experts
-        # NOTE(metax): The W4A16 wrapper does not filter expert_ids == -1.
+        # NOTE(metax): Only EP remapping can leave -1 in processed blocks.
+        filter_expert = expert_map is not None
         sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
             topk_ids,
             staged_config[0]["BLOCK_SIZE_M"],
             num_align_experts,
             expert_map,
-            ignore_invalid_experts=use_mctlass,
         )
 
         if use_mctlass:
@@ -910,6 +910,7 @@ class TritonWNA16Experts(TritonExperts):
                 topk=top_k_num,
                 group_size=self.block_shape[1],
                 b_zp=self.quant_config.w1_zp,
+                filter_expert=filter_expert,
             )
         else:
             invoke_fused_moe_wna16_triton_kernel(
@@ -951,7 +952,6 @@ class TritonWNA16Experts(TritonExperts):
                 staged_config[1]["BLOCK_SIZE_M"],
                 num_align_experts,
                 expert_map,
-                ignore_invalid_experts=use_mctlass,
             )
 
         # `workspace2` is reused and WNA16 kernels may not overwrite all elements
@@ -973,6 +973,7 @@ class TritonWNA16Experts(TritonExperts):
                 topk=1,
                 group_size=self.block_shape[1],
                 b_zp=self.quant_config.w2_zp,
+                filter_expert=filter_expert,
             )
         else:
             invoke_fused_moe_wna16_triton_kernel(
