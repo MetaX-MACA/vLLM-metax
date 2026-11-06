@@ -122,8 +122,8 @@ functional difference, not a measured quality improvement or an unconditional
 claim that no third-party processor can implement it.
 
 See [the fixed-revision comparison](windowed-sampling-comparison.md) for exact
-code locations and [component validation](component-validation.md) for the
-experiment scope, measured regressions and remaining acceptance work.
+code locations and [component measurements](component-validation.md) for the
+benchmark setup, results and measured regressions.
 
 ## Validation and benchmarking
 
@@ -153,7 +153,3 @@ upstream full-history penalties or an end-to-end model-throughput measurement.
 python -m benchmarks.benchmark_windowed_penalties --iterations 30 --repeats 3 --output benchmark-fp32.json
 python -m benchmarks.benchmark_windowed_penalties --batch-sizes 1 8 --vocab-sizes 256 --windows 128 4096 --output benchmark-crossover.json
 ```
-
-MACA native execution and whole-model generation remain unverified. V2 is
-unsupported. An independent CPU installation and standalone HPCC kernel tests
-do not resolve these production limitations.

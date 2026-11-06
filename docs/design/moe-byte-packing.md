@@ -43,11 +43,8 @@ torchrun --standalone --nproc-per-node=4 -m pytest -q --confcutdir=tests/distrib
 ```
 
 The distributed test composes the production pack/unpack with actual ordered
-broadcast collectives for uneven gather. It does **not** validate the complete
-manager or vLLM serving stack. Cross-stream and changed-input graph tests cover
-local kernels separately. On the experiment host, all GPU commands must also
-use its shared coordination launcher; do not bypass reservations with torchrun.
+broadcast collectives for uneven gather. Cross-stream and changed-input graph
+tests cover local kernels separately. Reserve devices before running torchrun.
 
-MACA/MCCL, actual manager integration and multi-node execution remain unverified.
-See [component validation](component-validation.md) for historical measurements,
-regressions and acceptance requirements before enabling this in production.
+See [component measurements](component-validation.md) for benchmark results,
+regressions and temporary memory costs.

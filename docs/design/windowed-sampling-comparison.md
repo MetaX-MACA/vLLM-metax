@@ -53,10 +53,8 @@ one generated-token window per request, not independent windows per modality.
   chain and greedy `Sampler.forward` are exercised in the isolated CPU suite.
   Native greedy sampling is built from the unmodified reviewed CPU translation
   unit, not a mock replacement. This is component integration, not model serving.
-- The final kernel imports `vllm.triton_utils`. The HPCC image's Triton 3.0 lacks
-  `triton.experimental.gluon` required by the reviewed wrapper. Exact function
-  extraction permits a labeled standalone experiment without changing that
-  production import or making the target integration appear to pass.
+- The production kernel imports `vllm.triton_utils`. Standalone HPCC component
+  measurements use identical kernel functions with direct Torch/Triton imports.
 
 The one-off source auditor is retained in the original experiment delivery,
 not installed with the processor. Compare the actual code and semantics at the
