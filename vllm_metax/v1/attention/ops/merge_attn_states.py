@@ -7,6 +7,20 @@ import torch
 from vllm.platforms import current_platform
 
 
+def prepare_merge_attn_lse(lse: torch.Tensor) -> torch.Tensor:
+    """Keep a strided LSE view unless the kernel provider is opaque."""
+    if lse.is_contiguous():
+        return lse
+    if current_platform.is_maca():
+        from vllm_metax import envs
+
+        # NOTE(metax): The source kernel and upstream Triton index both LSE
+        # strides. Keep the historical layout for unverified mcoplib binaries.
+        if envs.USE_PRECOMPILED_KERNEL:
+            return lse.contiguous()
+    return lse
+
+
 def _merge_attn_states_torch(
     output: torch.Tensor,
     prefix_output: torch.Tensor,

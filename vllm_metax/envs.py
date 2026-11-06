@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     VERBOSE: bool = False
     USE_PRECOMPILED_KERNEL: bool = True
     VLLM_METAX_OPTIMIZED_DP_ALL2ALL: bool = True
+    VLLM_METAX_EXPERIMENTAL_MOE_BYTE_PACK: bool = False
     MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: bool = True
     USE_VLLM_TRITON_EXPERT: bool = False
     VLLM_METAX_ENABLE_FA_SPLIT_FORWARD: bool = True
@@ -65,6 +66,11 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # if set, enable combine allreduce all2all
     "VLLM_METAX_OPTIMIZED_DP_ALL2ALL": lambda: bool(
         int(os.environ.get("VLLM_METAX_OPTIMIZED_DP_ALL2ALL", "1"))
+    ),
+    # Experimental lossless row packing; must agree on every communication rank.
+    # Disabled until the target MACA/MCCL configuration has been validated.
+    "VLLM_METAX_EXPERIMENTAL_MOE_BYTE_PACK": lambda: bool(
+        int(os.environ.get("VLLM_METAX_EXPERIMENTAL_MOE_BYTE_PACK", "0"))
     ),
     # if set, enable FA split forward into
     # prefill and decode for better latency

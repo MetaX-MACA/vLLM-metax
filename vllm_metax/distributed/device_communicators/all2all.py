@@ -116,6 +116,25 @@ class MacaAgRsAll2AllManager(AgRsAll2AllManager):
 
         shape = [M_local, 2K + S]
         """
+        if mx_envs.VLLM_METAX_EXPERIMENTAL_MOE_BYTE_PACK:
+            from .byte_pack import gather_packed, should_pack
+
+            tensors = [hidden_states, topk_weights, topk_ids]
+            if extra_tensors is not None:
+                tensors.extend(extra_tensors)
+            # As with all_gatherv, non-token shape/dtype and the environment
+            # setting must agree across ranks. Strides and local N may differ.
+            dist_group = self._get_comm_group(is_sequence_parallel)
+            sizes = self._get_sizes(hidden_states.shape[0], dist_group)
+            assert sizes[dist_group.rank_in_group] == hidden_states.shape[0]
+            # Uniform batches and two-rank eager execution regressed on HPCC.
+            # The opt-in is experimental, not a MACA performance guarantee.
+            if should_pack(tensors, sizes):
+                outputs = gather_packed(tensors, sizes, dist_group.all_gatherv)
+                if extra_tensors is not None:
+                    return outputs[0], outputs[1], outputs[2], outputs[3:]
+                return outputs[0], outputs[1], outputs[2]
+
         # NOTE(MetaX): fused_unpack writes FP32 weights/scales and INT32 IDs.
         # Upstream also dispatches packed integer scales and arbitrary extra
         # tensors; preserve their dtype/shape through the generic collective.
