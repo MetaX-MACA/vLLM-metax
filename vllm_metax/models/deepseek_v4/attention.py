@@ -284,6 +284,22 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
             prefix=f"{prefix}.wo_b",
         )
 
+        # Per-tensor fp8 KV descale factors consumed by
+        # fused_deepseek_v4_qnorm_rope_kv_rope_full_cache_fp8_insert (and the
+        # DSpark draft precompute). 1-element tensors: the fused op's AOTI
+        # wrapper rejects 0-dim scalars (aoti_torch_get_size on a 0-dim
+        # tensor). Neutral defaults so fp8 KV boots without checkpoint scales.
+        self._flashinfer_fp8_kv_scale = torch.tensor(
+            [1.0],
+            dtype=torch.float32,
+            device=torch.device("cuda", torch.cuda.current_device()),
+        )
+        self._flashinfer_fp8_q_scale_inv = torch.tensor(
+            [1.0],
+            dtype=torch.float32,
+            device=torch.device("cuda", torch.cuda.current_device()),
+        )
+
         # Initialize rotary embedding before the indexer/compressor consume it.
         self.rotary_emb = build_deepseek_v4_rope(
             config,
