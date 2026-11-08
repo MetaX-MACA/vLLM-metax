@@ -11,7 +11,14 @@ import torch
 from packaging.version import Version
 from transformers import __version__ as TRANSFORMERS_VERSION
 
-from vllm.config import ModelDType, TokenizerMode
+try:
+    from vllm.config import TokenizerMode
+except ImportError:
+    from vllm.config.model import TokenizerMode
+try:
+    from vllm.config import ModelDType
+except ImportError:
+    from vllm.config.model import ModelDType
 
 
 @dataclass(frozen=True)
