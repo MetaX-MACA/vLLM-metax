@@ -62,8 +62,7 @@ class MMEncoderAttention(vllm_MMEncoderAttention):
         }
 
         # ----------------------------------------------------
-        # Note: Use maca's get_flash_attn_version to determine
-        #       the FA version for MACA, which will return 2.
+        # NOTE(metax): Select FA2 or FA3 for noncausal encoder attention.
         self._fa_version = (
             get_flash_attn_version(head_size=head_size)
             if self.is_flash_attn_backend

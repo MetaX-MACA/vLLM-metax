@@ -6000,3 +6000,13 @@ def nvmlDeviceGetSramEccErrorStatus(device, status):
     ret = fn(device, status)
     _nvmlCheckReturn(ret)
     return ret
+
+
+def mxSmlGetDeviceIsaVersion(device_id):
+    isa_version = c_int(0)
+    fn = _nvmlGetFunctionPointer("mxSmlGetDeviceIsaVersion")
+    if fn is None:
+        raise NVMLError(MXSMLEX_ERROR_FUNCTION_NOT_FOUND)
+    ret = fn(c_uint(device_id), byref(isa_version))
+    _nvmlCheckReturn(ret)
+    return isa_version.value

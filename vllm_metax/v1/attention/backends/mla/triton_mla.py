@@ -201,20 +201,20 @@ class TritonMLAImpl(MLACommonImpl[MLACommonMetadata]):
                 "TritonMLAImpl"
             )
 
-        if current_platform.is_cuda():
+        if current_platform.is_cuda_alike():
             cap = current_platform.get_device_capability()
             cap_str = cap.as_version_str() if cap is not None else "unknown"
             dev = current_platform.get_device_name()
             if self.kv_cache_dtype.startswith("fp8") and not (
-                current_platform.has_device_capability(89)
+                current_platform.supports_fp8()
             ):
                 suggested = (
                     "float16" if (cap is None or cap.to_int() < 80) else "bfloat16"
                 )
                 raise ValueError(
                     f"FP8 KV cache is not supported by the Triton MLA backend "
-                    f"on {dev} (compute capability {cap_str}); native FP8 "
-                    f"(fp8e4nv) requires SM89+. Re-run with "
+                    f"on {dev} (mapped capability {cap_str}); MetaX FP8 "
+                    f"requires ISA 16+ (mapped capability 8.9+). Re-run with "
                     f"--kv-cache-dtype {suggested}."
                 )
             if self.kv_cache_dtype == "bfloat16" and not (

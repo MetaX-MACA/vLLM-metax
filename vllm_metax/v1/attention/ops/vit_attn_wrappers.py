@@ -35,9 +35,7 @@ def flash_attn_maxseqlen_wrapper(
     max_seqlen: torch.Tensor | None = None,
 ) -> torch.Tensor:
     # -----------------------------------
-    # Meca version of flash attention
-    # NOTE(metax): fa_utils selects MACA FA2; its API has no out or
-    # fa_version keyword, including when the caller supplies a version selector.
+    # NOTE(metax): The adapter dispatches the selected MACA FA version.
     from vllm_metax.v1.attention.backends.fa_utils import flash_attn_varlen_func
 
     q_len = q.size(1)
@@ -64,7 +62,9 @@ def flash_attn_maxseqlen_wrapper(
         dropout_p=0.0,
         causal=False,
         softmax_scale=scale,
+        fa_version=2 if fa_version is None else fa_version,
     )
+    assert isinstance(output, torch.Tensor)
     # NOTE(metax): FA2 allocates its own output. Clear unmapped graph-padding
     # rows using the runtime device boundary; they may otherwise contain NaNs.
     output = output.contiguous()

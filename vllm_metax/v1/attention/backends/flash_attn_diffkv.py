@@ -14,7 +14,7 @@ from vllm.utils.torch_utils import (
 )
 from vllm.v1.attention.backend import AttentionType
 from vllm_metax.v1.attention.backends.fa_utils import (
-    get_flash_attn_version,
+    is_fa_version_supported,
     is_flash_attn_varlen_func_available,
 )
 from vllm.v1.attention.ops.triton_reshape_and_cache_flash import (
@@ -59,19 +59,12 @@ class FlashAttentionDiffKVBackend(FlashAttentionBackend):
         head_size_v: int,
         has_sinks: bool,
     ) -> bool:
-        """Check the DiffKV dimensions supported by MetaX FlashAttention."""
-        if not is_flash_attn_varlen_func_available():
+        """MetaX FA2/FA3 support the exact QK/V pair 192/128."""
+        if (head_size, head_size_v) != (192, 128):
             return False
-        # MetaX FlashAttention supports BF16 sinks with QK head sizes 64 and
-        # 192 (validated for QK/V = 64/64 and 192/128). This DiffKV backend
-        # only accepts the 192/128 pair below; 64/64 uses the regular backend.
-        # Require the exact QK size for sinks: rounding e.g. 160 up to 192
-        # must not make an unsupported sink configuration appear supported.
-        if has_sinks and head_size != 192:
-            return False
-        rounded_head_size = ((head_size + 31) // 32) * 32
-        rounded_head_size_v = ((head_size_v + 31) // 32) * 32
-        return (rounded_head_size, rounded_head_size_v) == (192, 128)
+        if has_sinks:
+            return is_fa_version_supported(2)
+        return is_flash_attn_varlen_func_available()
 
     @staticmethod
     def get_name() -> str:
@@ -86,16 +79,8 @@ class FlashAttentionDiffKVImpl(FlashAttentionImpl):
     vllm_flash_attn_version: int | None
 
     def __init__(self, *args, **kwargs) -> None:
+        self.head_size_v = FlashAttentionDiffKVBackend.head_size_v
         super().__init__(*args, **kwargs)
-        # Re-derive the FA version with diff-kv context so that
-        # get_flash_attn_version can apply the FA3 -> FA4 upgrade rule
-        # for sinks + hdim != hdim_v.
-        self.vllm_flash_attn_version = get_flash_attn_version(
-            requires_alibi=self.alibi_slopes is not None,
-            head_size=self.head_size,
-            head_size_v=FlashAttentionDiffKVBackend.head_size_v,
-            has_sinks=self.sinks is not None,
-        )
         self.fa4_hd256 = False
 
     def do_kv_cache_update(
@@ -232,6 +217,21 @@ class FlashAttentionDiffKVImpl(FlashAttentionImpl):
         scheduler_metadata = attn_metadata.scheduler_metadata  # noqa: F841
 
         descale_shape = (cu_seqlens_q.shape[0] - 1, self.num_kv_heads)
+        q_descale = (
+            layer._q_scale.expand(descale_shape)
+            if self.vllm_flash_attn_version == 3
+            else None
+        )
+        k_descale = (
+            layer._k_scale.expand(descale_shape)
+            if self.vllm_flash_attn_version == 3
+            else None
+        )
+        v_descale = (
+            layer._v_scale.expand(descale_shape)
+            if self.vllm_flash_attn_version == 3
+            else None
+        )
 
         if self.dcp_world_size > 1:
             self._forward_with_dcp(
@@ -256,26 +256,72 @@ class FlashAttentionDiffKVImpl(FlashAttentionImpl):
                 # For handling prefill decode split
                 split_decode_num_tokens = attn_metadata.split_decode_num_tokens
                 if attn_metadata.split_prefill_num_reqs > 0:
-                    output[split_decode_num_tokens:num_actual_tokens] = (
-                        flash_attn_varlen_func(
+                    if self.vllm_flash_attn_version == 3:
+                        # NOTE(metax): FA3 varlen cannot read paged KV, including cached prefixes.
+                        num_decodes = attn_metadata.split_decode_num_reqs
+                        flash_attn_with_kvcache(
                             q=query[split_decode_num_tokens:num_actual_tokens],
-                            k=key_cache,
-                            v=value_cache,
-                            cu_seqlens_q=(attn_metadata.split_prefill_query_start_loc),
-                            cu_seqlens_k=attn_metadata.split_prefill_cu_seqlens_k,
-                            max_seqlen_q=attn_metadata.max_query_len,
-                            max_seqlen_k=attn_metadata.split_prefill_max_seq_len,
+                            k_cache=key_cache,
+                            v_cache=value_cache,
+                            out=output[split_decode_num_tokens:num_actual_tokens],
+                            cu_seqlens_q=attn_metadata.split_prefill_query_start_loc,
+                            max_seqlen_q=max_seqlen_q,
+                            cache_seqlens=attn_metadata.seq_lens[num_decodes:],
+                            block_table=attn_metadata.split_prefill_block_table,
                             softmax_scale=self.scale,
                             causal=attn_metadata.causal,
-                            alibi_slopes=self.alibi_slopes,
                             window_size=sliding_window_size,
-                            block_table=attn_metadata.split_prefill_block_table,
                             softcap=self.logits_soft_cap,
-                            s_aux=self.sinks,
+                            q_descale=q_descale[num_decodes:]
+                            if q_descale is not None
+                            else None,
+                            k_descale=k_descale[num_decodes:]
+                            if k_descale is not None
+                            else None,
+                            v_descale=v_descale[num_decodes:]
+                            if v_descale is not None
+                            else None,
+                            num_splits=1 if self.batch_invariant_enabled else 0,
+                            fa_version=self.vllm_flash_attn_version,
                         )
-                    )
+                    else:
+                        output[split_decode_num_tokens:num_actual_tokens] = (
+                            flash_attn_varlen_func(
+                                q=query[split_decode_num_tokens:num_actual_tokens],
+                                k=key_cache,
+                                v=value_cache,
+                                cu_seqlens_q=(
+                                    attn_metadata.split_prefill_query_start_loc
+                                ),
+                                cu_seqlens_k=attn_metadata.split_prefill_cu_seqlens_k,
+                                max_seqlen_q=attn_metadata.max_query_len,
+                                max_seqlen_k=attn_metadata.split_prefill_max_seq_len,
+                                softmax_scale=self.scale,
+                                causal=attn_metadata.causal,
+                                alibi_slopes=self.alibi_slopes,
+                                window_size=sliding_window_size,
+                                block_table=attn_metadata.split_prefill_block_table,
+                                softcap=self.logits_soft_cap,
+                                s_aux=self.sinks,
+                                fa_version=self.vllm_flash_attn_version,
+                            )
+                        )
                 if attn_metadata.split_decode_num_reqs > 0:
                     decode_query = query[:split_decode_num_tokens]
+                    num_decodes = attn_metadata.split_decode_num_reqs
+                    decode_q_descale = (
+                        q_descale[:num_decodes] if q_descale is not None else None
+                    )
+                    decode_k_descale = (
+                        k_descale[:num_decodes]
+                        if self.vllm_flash_attn_version == 3 and k_descale is not None
+                        else None
+                    )
+                    decode_v_descale = (
+                        v_descale[:num_decodes]
+                        if self.vllm_flash_attn_version == 3 and v_descale is not None
+                        else None
+                    )
                     # Use flash_attn_with_kvcache for normal decoding.
                     if attn_metadata.split_decode_bucket_req_bounds is not None:
                         self._forward_decode_with_query_len_bucketing(
@@ -284,6 +330,9 @@ class FlashAttentionDiffKVImpl(FlashAttentionImpl):
                             value_cache,
                             output,
                             attn_metadata,
+                            q_descale=decode_q_descale,
+                            k_descale=decode_k_descale,
+                            v_descale=decode_v_descale,
                         )
                     else:
                         decode_query = reshape_query_for_spec_decode(
@@ -303,6 +352,10 @@ class FlashAttentionDiffKVImpl(FlashAttentionImpl):
                             softcap=self.logits_soft_cap,
                             s_aux=self.sinks,
                             num_splits=1 if self.batch_invariant_enabled else 0,
+                            fa_version=self.vllm_flash_attn_version,
+                            q_descale=decode_q_descale,
+                            k_descale=decode_k_descale,
+                            v_descale=decode_v_descale,
                         )
                         output[:split_decode_num_tokens] = (
                             reshape_attn_output_for_spec_decode(output_unreshape)
@@ -310,28 +363,50 @@ class FlashAttentionDiffKVImpl(FlashAttentionImpl):
                 return output
             # └------------------------- Metax Modification -------------------------┘
             else:
-                # Fallback for legacy metadata paths: keep it GPU-only.
-                # TODO(hank): Currently we manually process it on forward. Move it to attention_metadata
-                cu_seqlens_k = F.pad(
-                    attn_metadata.seq_lens,
-                    (1, 0),
-                    value=0,
-                ).cumsum(dim=0, dtype=torch.int32)
+                if self.vllm_flash_attn_version == 3:
+                    flash_attn_with_kvcache(
+                        q=query[:num_actual_tokens],
+                        k_cache=key_cache,
+                        v_cache=value_cache,
+                        out=output[:num_actual_tokens],
+                        cu_seqlens_q=cu_seqlens_q,
+                        max_seqlen_q=max_seqlen_q,
+                        cache_seqlens=attn_metadata.seq_lens,
+                        block_table=block_table,
+                        softmax_scale=self.scale,
+                        causal=attn_metadata.causal,
+                        window_size=sliding_window_size,
+                        softcap=self.logits_soft_cap,
+                        q_descale=q_descale,
+                        k_descale=k_descale,
+                        v_descale=v_descale,
+                        num_splits=1 if self.batch_invariant_enabled else 0,
+                        fa_version=self.vllm_flash_attn_version,
+                    )
+                else:
+                    # Fallback for legacy metadata paths: keep it GPU-only.
+                    # TODO(hank): Currently we manually process it on forward. Move it to attention_metadata
+                    cu_seqlens_k = F.pad(
+                        attn_metadata.seq_lens,
+                        (1, 0),
+                        value=0,
+                    ).cumsum(dim=0, dtype=torch.int32)
 
-                output[:num_actual_tokens] = flash_attn_varlen_func(
-                    q=query[:num_actual_tokens],
-                    k=key_cache,
-                    v=value_cache,
-                    cu_seqlens_q=cu_seqlens_q,
-                    max_seqlen_q=max_seqlen_q,
-                    cu_seqlens_k=cu_seqlens_k,
-                    max_seqlen_k=max_seqlen_k,
-                    softmax_scale=self.scale,
-                    causal=attn_metadata.causal,
-                    alibi_slopes=self.alibi_slopes,
-                    window_size=sliding_window_size,
-                    block_table=block_table,
-                    softcap=self.logits_soft_cap,
-                    s_aux=self.sinks,
-                )
+                    output[:num_actual_tokens] = flash_attn_varlen_func(
+                        q=query[:num_actual_tokens],
+                        k=key_cache,
+                        v=value_cache,
+                        cu_seqlens_q=cu_seqlens_q,
+                        max_seqlen_q=max_seqlen_q,
+                        cu_seqlens_k=cu_seqlens_k,
+                        max_seqlen_k=max_seqlen_k,
+                        softmax_scale=self.scale,
+                        causal=attn_metadata.causal,
+                        alibi_slopes=self.alibi_slopes,
+                        window_size=sliding_window_size,
+                        block_table=block_table,
+                        softcap=self.logits_soft_cap,
+                        s_aux=self.sinks,
+                        fa_version=self.vllm_flash_attn_version,
+                    )
                 return output

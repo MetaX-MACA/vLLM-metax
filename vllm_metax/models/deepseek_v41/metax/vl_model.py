@@ -61,6 +61,7 @@ from .model import (
     _make_deepseek_v4_weights_mapper,
 )
 import vllm_metax.envs as mx_envs
+from vllm.platforms import current_platform
 
 
 class DeepseekV4VLImagePixelInputs(TensorSchema):
@@ -117,9 +118,9 @@ def _make_deepseek_v4_vl_weights_mapper(
 # the FP8 catalog (MXFP4 experts, block-FP8 linears), the others the int8/INT4
 # (W4A8) export. Used for the class-level mapper below, which is built before a
 # live VllmConfig exists.
-_DEFAULT_EXPERT_DTYPE = "fp4" if mx_envs.VLLM_METAX_SUPPORTS_FP8 else "int8"
+_DEFAULT_EXPERT_DTYPE = "fp4" if current_platform.supports_fp8() else "int8"
 _DEFAULT_LINEAR_SCALE_NAME = (
-    "weight_scale_inv" if mx_envs.VLLM_METAX_SUPPORTS_FP8 else "weight_scale"
+    "weight_scale_inv" if current_platform.supports_fp8() else "weight_scale"
 )
 
 

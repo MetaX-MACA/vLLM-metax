@@ -8,6 +8,7 @@
 # -----------------------------------------------
 
 import torch
+from vllm.platforms import current_platform
 
 from vllm.model_executor.kernels.linear.scaled_mm.cutlass import (
     CutlassFp8BlockScaledMMKernel,
@@ -56,6 +57,11 @@ class MctlassFp8BlockScaledMMKernel(CutlassFp8BlockScaledMMKernel):
 
     @classmethod
     def is_supported(cls, compute_capability=None):
+        if not current_platform.supports_fp8():
+            return (
+                False,
+                "MCTlass block-FP8 requires MetaX ISA >= 16 (capability >= 8.9)",
+            )
         return True, None
 
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:

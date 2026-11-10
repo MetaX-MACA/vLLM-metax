@@ -41,6 +41,7 @@ from vllm_metax.model_executor.layers.online_rotation import (
     get_online_rotation_module_config,
 )
 from vllm_metax.model_executor.kernels.online_rotate import fused_engram_gate
+from vllm.platforms import current_platform
 
 logger = init_logger(__name__)
 
@@ -242,7 +243,7 @@ def maca_can_share_engram_tables(layout: EngramLayout, block_size: int = 32) -> 
     Same contract as the upstream check, but the INT8 tables store FP32 block
     scales (4 bytes per 32 columns) instead of UE8M0 bytes.
     """
-    if mx_envs.VLLM_METAX_SUPPORTS_FP8:
+    if current_platform.supports_fp8():
         return can_share_engram_tables(layout, block_size)
     if get_engram_dp_size() == 1:
         logger.warning_once(
@@ -310,12 +311,11 @@ class MacaEngram(BaseEngram):
     ) -> ParallelEngramEmbedding:
         engram_config = get_current_vllm_config().engram_config
         assert engram_config is not None
-        use_fp8 = mx_envs.VLLM_METAX_SUPPORTS_FP8
+        use_fp8 = current_platform.supports_fp8()
         embedding_cls = ParallelEngramEmbedding if use_fp8 else MacaInt8EngramEmbedding
         logger.info_once(
-            "Engram n-gram tables use %s (VLLM_METAX_SUPPORTS_FP8=%d)",
+            "Engram n-gram tables use %s ",
             embedding_cls.__name__,
-            int(use_fp8),
         )
         return embedding_cls(
             layout.num_embeddings[layer_hash_index],

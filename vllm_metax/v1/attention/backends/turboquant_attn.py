@@ -353,6 +353,7 @@ class TurboQuantAttentionImpl(AttentionImpl["TurboQuantMetadata"]):
             max_seqlen_k=max_seqlen_k,
             softmax_scale=self.scale,
             causal=True,
+            fa_version=2 if self.fa_version is None else self.fa_version,
         )
 
     def _ensure_on_device(self, layer, device):

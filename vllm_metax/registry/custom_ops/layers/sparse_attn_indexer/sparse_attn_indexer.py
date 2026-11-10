@@ -5,7 +5,6 @@
 
 import torch
 
-import vllm_metax.envs as mx_envs
 from vllm.config import get_current_vllm_config
 from vllm.distributed import get_dcp_group
 from vllm.logger import init_logger
@@ -125,8 +124,10 @@ class MacaSparseAttnIndexer(SparseAttnIndexer):
             sparse_attn_indexer_impl = torch.ops.vllm.mx_sparse_attn_indexer_bf16
         elif q_values.dtype is torch.int8:
             sparse_attn_indexer_impl = torch.ops.vllm.mx_sparse_attn_indexer_int8
-        elif mx_envs.VLLM_METAX_SUPPORTS_FP8:
-            # The consolidated FP8/FP4 implementation dispatches by q_scale.
+        elif (
+            current_platform.supports_fp8()
+            and q_values.dtype == current_platform.fp8_dtype()
+        ):
             sparse_attn_indexer_impl = torch.ops.vllm.mx_sparse_attn_indexer
         else:
             raise NotImplementedError(

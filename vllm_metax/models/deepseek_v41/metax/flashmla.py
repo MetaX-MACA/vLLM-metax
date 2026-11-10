@@ -267,7 +267,7 @@ class DeepseekV4FlashMLAAttention(DeepseekV4Attention):
             head_dim_v=512,
             tile_scheduler_metadata=tile_metadata,
             cache_seqlens=None,
-            is_fp8_kvcache=True,
+            is_fp8_kvcache=True,  # NOTE(metax): int8_kvcache is treated as fp8 for the kernel's dequantization path
             indices=swa_indices,
             topk_length=swa_lens,
             softmax_scale=self.scale,

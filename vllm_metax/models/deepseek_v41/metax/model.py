@@ -1527,7 +1527,7 @@ class DeepseekV41LLMForCausalLM(
     # Default mapper assumes the original FP4-expert checkpoint layout.
     # Overridden per-instance in __init__ when expert_dtype != "fp4".
     hf_to_vllm_mapper = _make_deepseek_v4_weights_mapper(
-        "fp4" if mx_envs.VLLM_METAX_SUPPORTS_FP8 else "int8"
+        "fp4" if current_platform.supports_fp8() else "int8"
     )
 
     packed_modules_mapping = {
@@ -1545,7 +1545,7 @@ class DeepseekV41LLMForCausalLM(
         config = vllm_config.model_config.hf_config
         self.config = config
         expert_dtype = getattr(
-            config, "expert_dtype", "fp4" if mx_envs.VLLM_METAX_SUPPORTS_FP8 else "int8"
+            config, "expert_dtype", "fp4" if current_platform.supports_fp8() else "int8"
         )
         self.hf_to_vllm_mapper = _make_deepseek_v4_weights_mapper(
             expert_dtype, _linear_scale_param_name(vllm_config, expert_dtype)

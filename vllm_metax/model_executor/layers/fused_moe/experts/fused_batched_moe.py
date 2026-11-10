@@ -830,7 +830,7 @@ class BatchedTritonExperts(mk.FusedMoEExpertsModular):
         weight_key: QuantKey | None,
         activation_key: QuantKey | None,
     ) -> bool:
-        device_supports_fp8 = "fp8" in current_platform.supported_quantization
+        device_supports_fp8 = current_platform.supports_fp8()
 
         supported: list[tuple[QuantKey | None, QuantKey | None]] = [(None, None)]
         if device_supports_fp8:

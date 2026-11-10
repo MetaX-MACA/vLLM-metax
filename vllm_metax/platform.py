@@ -146,11 +146,12 @@ class MacaPlatformBase(Platform):
         "gguf",
         "mxfp8",
         "modelopt_mxfp8",
+        # Registration is independent of the executing device. Reject unsupported
+        # hardware in verify_quantization before constructing the model.
+        "fp8",
+        "deepseek_v4_fp8",
+        "mxfp4",
     ]
-    if mx_envs.VLLM_METAX_SUPPORTS_FP8:
-        supported_quantization.append("fp8")
-        supported_quantization.append("deepseek_v4_fp8")
-        supported_quantization.append("mxfp4")
 
     @classmethod
     def set_device(cls, device: torch.device) -> None:
@@ -330,9 +331,6 @@ class MacaPlatformBase(Platform):
                 "vllm::mx_sparse_attn_indexer_int8"
             )
             compilation_config._attention_ops.append("vllm::mx_deepseek_v4_attention")
-            compilation_config._attention_ops.append(
-                "vllm::mx_sparse_attn_indexer_kpool"
-            )
 
         # -------------------------------------------------------
         # Disable cascade attention for Maca platform currently
@@ -574,7 +572,17 @@ class MacaPlatformBase(Platform):
 
     @classmethod
     def supports_fp8(cls) -> bool:
-        return mx_envs.VLLM_METAX_SUPPORTS_FP8
+        return cls.has_device_capability(89)
+
+    @classmethod
+    def verify_quantization(cls, quant: str) -> None:
+        super().verify_quantization(quant)
+        if quant in {"fp8", "deepseek_v4_fp8"} and not cls.supports_fp8():
+            capability = cls.get_device_capability()
+            raise ValueError(
+                f"{quant} quantization requires MetaX FP8 support "
+                f"(device capability >= 8.9), but got {capability}."
+            )
 
     @classmethod
     def use_custom_allreduce(cls) -> bool:
@@ -737,8 +745,15 @@ class MxsmlMacaPlatform(MacaPlatformBase):
     def get_device_capability(cls, device_id: int = 0) -> DeviceCapability | None:
         try:
             physical_device_id = cls.device_id_to_physical_device_id(device_id)
-            handle = pymxsml.nvmlDeviceGetHandleByIndex(physical_device_id)
-            major, minor = pymxsml.nvmlDeviceGetCudaComputeCapability(handle)
+            isa_version = pymxsml.mxSmlGetDeviceIsaVersion(physical_device_id)
+            if isa_version >= 16:
+                major, minor = 8, 9
+            elif 15 <= isa_version < 16:
+                major, minor = 8, 6
+            elif 10 <= isa_version < 11:
+                major, minor = 8, 0
+            else:
+                return None
             return DeviceCapability(major=major, minor=minor)
         except RuntimeError:
             return None

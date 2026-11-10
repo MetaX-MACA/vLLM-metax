@@ -27,6 +27,7 @@ def run_split_fa2_dcp_context_attention(
     num_context_prefill_reqs: int,
     num_decode_tokens: int,
     num_context_prefill_tokens: int,
+    fa_version: int = 2,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     dcp_context_out.zero_()
     context_lse = torch.full(
@@ -37,7 +38,7 @@ def run_split_fa2_dcp_context_attention(
     )
 
     if num_decode_tokens > 0:
-        decode_context_out, decode_context_lse, _ = flash_attn_varlen_func(
+        decode_context_out, decode_context_lse = flash_attn_varlen_func(
             q=query_across_dcp[:num_decode_tokens],
             k=key_cache,
             v=value_cache,
@@ -51,7 +52,8 @@ def run_split_fa2_dcp_context_attention(
             window_size=sliding_window_size,
             block_table=block_table[:num_decode_reqs],
             softcap=softcap,
-            return_attn_probs=True,
+            return_softmax_lse=True,
+            fa_version=fa_version,
         )
         dcp_context_out[:num_decode_tokens].copy_(decode_context_out)
         context_lse[:, :num_decode_tokens] = decode_context_lse
@@ -74,7 +76,7 @@ def run_split_fa2_dcp_context_attention(
             ]
             - dcp_context_cu_seqlens_k[num_decode_reqs]
         )
-        prefill_context_out, prefill_context_lse, _ = flash_attn_varlen_func(
+        prefill_context_out, prefill_context_lse = flash_attn_varlen_func(
             q=query_across_dcp[prefill_start:prefill_end],
             k=key_cache,
             v=value_cache,
@@ -88,7 +90,8 @@ def run_split_fa2_dcp_context_attention(
             window_size=sliding_window_size,
             block_table=block_table[prefill_req_slice],
             softcap=softcap,
-            return_attn_probs=True,
+            return_softmax_lse=True,
+            fa_version=fa_version,
         )
         dcp_context_out[prefill_start:prefill_end].copy_(prefill_context_out)
         context_lse[:, prefill_start:prefill_end] = prefill_context_lse

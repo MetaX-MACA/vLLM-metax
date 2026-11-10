@@ -49,7 +49,6 @@ from vllm.v1.kv_cache_interface import (
     KVCacheSpec,
     MLAAttentionSpec,
 )
-import vllm_metax.envs as mx_envs
 
 logger = init_logger(__name__)
 
@@ -73,7 +72,7 @@ def dsa_indexer_uses_fp4(vllm_config: VllmConfig) -> bool:
 def dsa_dsv41_indexer_use(vllm_config: VllmConfig) -> tuple[bool, bool]:
     """Whether the DeepSeek sparse indexer should use the MXFP4 K cache."""
     kv_dtype = vllm_config.attention_config.resolve_indexer_kv_dtype(
-        "fp8" if mx_envs.VLLM_METAX_SUPPORTS_FP8 else "int8"
+        "fp8" if current_platform.supports_fp8() else "int8"
     )
     if kv_dtype not in DSA_INDEXER_KV_DTYPES:
         raise ValueError(

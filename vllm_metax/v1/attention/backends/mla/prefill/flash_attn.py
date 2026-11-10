@@ -5,6 +5,7 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import torch
@@ -363,12 +364,20 @@ class MacaFlashAttnPrefillBackend(MLAPrefillBackend):
             "Ensure FlashAttnPrefillBackend.is_available() is checked first."
         )
         qk_head_dim = qk_nope_head_dim + qk_rope_head_dim
-        self.flash_attn_varlen_func = flash_attn_varlen_func
-        self.vllm_flash_attn_version = get_flash_attn_version(head_size=qk_head_dim)
-        # if self.vllm_flash_attn_version is not None:
-        #     self.flash_attn_varlen_func = functools.partial(
-        #         flash_attn_varlen_func, fa_version=self.vllm_flash_attn_version
-        #     )
+        # NOTE(metax): Select against the dimensions actually sent to FlashAttention.
+        effective_v_head_dim = (
+            v_head_dim if (qk_head_dim, v_head_dim) == (192, 128) else qk_head_dim
+        )
+        self.vllm_flash_attn_version = get_flash_attn_version(
+            head_size=qk_head_dim, head_size_v=effective_v_head_dim
+        )
+        if self.vllm_flash_attn_version is None:
+            raise RuntimeError(
+                "No compatible MetaX FlashAttention version for MLA prefill"
+            )
+        self.flash_attn_varlen_func = partial(
+            flash_attn_varlen_func, fa_version=self.vllm_flash_attn_version
+        )
 
         # Determine if we need to pad V
         # For MLA the v head dim is smaller than qk head dim so we pad out
@@ -387,8 +396,8 @@ class MacaFlashAttnPrefillBackend(MLAPrefillBackend):
             or (v_head_dim == 128 and qk_head_dim == 192)
         )
 
-        # Track whether we're using vllm's FA or upstream (for ROCm)
-        self._is_vllm_fa = current_platform.is_cuda() or current_platform.is_xpu()
+        # The MetaX adapter implements the vLLM output/LSE/out contract.
+        self._is_vllm_fa = True
 
     def supports_quant_output(self, quant_key: "QuantKey") -> bool:
         device_capability = current_platform.get_device_capability()
@@ -417,17 +426,9 @@ class MacaFlashAttnPrefillBackend(MLAPrefillBackend):
                 v, [0, q.shape[-1] - v.shape[-1]], value=0
             )
 
-        if self._is_vllm_fa:
-            kwargs["return_softmax_lse"] = return_softmax_lse
-            kwargs["out"] = out
-            kwargs["output_scale"] = output_scale
-            if envs.VLLM_BATCH_INVARIANT:
-                kwargs["num_splits"] = 1
-        else:
-            # ROCm leverages the upstream flash_attn, which takes a parameter
-            # called "return_attn_probs" instead of return_softmax_lse
-            kwargs["return_attn_probs"] = return_softmax_lse
-            assert out is None and output_scale is None
+        kwargs["return_softmax_lse"] = return_softmax_lse
+        kwargs["out"] = out
+        kwargs["output_scale"] = output_scale
 
         attn_out = _FA4_MLA_PREFILL_KERNEL(
             q=q,

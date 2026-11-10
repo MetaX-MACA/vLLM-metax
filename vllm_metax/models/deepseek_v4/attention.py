@@ -957,13 +957,11 @@ class MacaDeepseekV4Indexer(nn.Module):
                 f"MetaX DeepSeek V4 indexer does not support indexer_kv_dtype={kv_dtype!r}; "
                 "use 'auto' (INT8) or 'fp8'."
             )
-        # NOTE(MetaX): The FP8 sparse-indexer op is gated by this flag as well
-        # as device capability; reject the opt-in before model construction.
-        if kv_dtype == "fp8" and not (
-            current_platform.supports_fp8() and mx_envs.VLLM_METAX_SUPPORTS_FP8
-        ):
+        # Reject explicit FP8 requests on unsupported hardware.
+        if kv_dtype == "fp8" and not current_platform.supports_fp8():
             raise ValueError(
-                "MetaX DeepSeek V4 FP8 indexer requires enabled FP8 support."
+                "MetaX DeepSeek V4 FP8 indexer requires hardware FP8 support "
+                "(device capability >= 8.9)."
             )
         self.use_fp4_kv = False
         self.use_fp8_kv = kv_dtype == "fp8"

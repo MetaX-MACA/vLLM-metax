@@ -31,6 +31,8 @@ from vllm_metax.v1.attention.backends.fa_utils import (
     is_fa_version_supported,
     is_flash_attn_varlen_func_available,
     uses_fa4_hd256_kernel,
+    FA2_SUPPORTED_HDIM,
+    FA3_SUPPORTED_HDIM_FP8,
 )
 from vllm.v1.attention.backends.utils import (
     fill_mm_prefix_query_ranges,
@@ -92,6 +94,7 @@ from vllm.v1.worker.cp_utils import (
 from vllm_metax.v1.attention.backends.cp_utils import (
     run_split_fa2_dcp_context_attention,
 )
+from vllm_metax.utils.math_util import is_power_of_2
 
 # --------------------------------------------------------------
 # Note: used for prefill decode split with mtp on maca
@@ -111,6 +114,8 @@ class MacaFlashAttentionBackend(AttentionBackend):
         "auto",
         "float16",
         "bfloat16",
+        "fp8",
+        "fp8_e4m3",
     ]
     head_size_v: int | None = None
 
@@ -118,8 +123,14 @@ class MacaFlashAttentionBackend(AttentionBackend):
     def get_supported_kernel_block_sizes(
         kv_cache_spec: KVCacheSpec | None = None,
     ) -> list[int | MultipleOf]:
-        # NOTE(metax): Supported page sizes are fixed by the installed FA2 kernels.
-        return [16, 32, 64, 128, 256]
+        # NOTE(metax): Exact sizes, not MultipleOf: e.g. 24 is unsupported.
+        if kv_cache_spec is not None and is_power_of_2(kv_cache_spec.block_size):
+            return [kv_cache_spec.block_size]
+        return [1, 2, 4, 8, 16, 32, 64, 128, 256]
+
+    @classmethod
+    def supports_block_size(cls, block_size: int | None) -> bool:
+        return block_size is None or is_power_of_2(block_size)
 
     forward_includes_kv_cache_update: bool = False
 
@@ -170,13 +181,9 @@ class MacaFlashAttentionBackend(AttentionBackend):
 
     @classmethod
     def supports_head_size(cls, head_size: int) -> bool:
-        if head_size % 8 != 0:
-            return False
-        if head_size <= 512:  # Maca support 512 in fa2
-            return True
-        if is_fa_version_supported(4):
-            return head_size <= 512
-        return False
+        return (is_fa_version_supported(2) and head_size in FA2_SUPPORTED_HDIM) or (
+            is_fa_version_supported(3) and head_size in FA3_SUPPORTED_HDIM_FP8
+        )
 
     @classmethod
     def supports_kv_cache_dtype(cls, kv_cache_dtype: CacheDType | None) -> bool:
@@ -202,7 +209,7 @@ class MacaFlashAttentionBackend(AttentionBackend):
 
     @classmethod
     def supports_compute_capability(cls, capability: DeviceCapability) -> bool:
-        return True
+        return capability >= DeviceCapability(8, 0)
 
     @classmethod
     def supports_combination(
@@ -217,30 +224,38 @@ class MacaFlashAttentionBackend(AttentionBackend):
         use_mm_prefix: bool,
         device_capability: DeviceCapability,
     ) -> str | None:
+        if use_mm_prefix:
+            return (
+                "MetaX FlashAttention does not support mm_prefix attention masks, "
+                "please switch to triton attention backend"
+            )
+
         if has_sink and (dtype != torch.bfloat16 or head_size not in (64, 192)):
             return "MetaX FlashAttention sinks require BF16 and head_size 64 or 192"
+
         if (
-            use_mm_prefix
-            and kv_cache_dtype is not None
-            and is_quantized_kv_cache(kv_cache_dtype)
-            and device_capability == DeviceCapability(9, 0)
-        ):
-            return "SM90 FP8 KV with mm_prefix requires Triton"
-        if (
-            kv_cache_dtype is not None
-            and is_quantized_kv_cache(kv_cache_dtype)
-            and not flash_attn_supports_kv_cache_dtype(
-                kv_cache_dtype,
+            get_flash_attn_version(
+                kv_cache_dtype=kv_cache_dtype,
                 head_size=head_size,
-                head_size_v=head_size,
+                head_size_v=cls.head_size_v or head_size,
                 has_sinks=has_sink,
                 kv_cache_block_size=block_size,
-                supports_fa4_hd256=True,
+                device_capability=device_capability,
             )
+            is None
         ):
-            return "FP8 KV cache requires FA3"
-        if use_mm_prefix:
-            return "MetaX FlashAttention does not support mm_prefix attention masks"
+            config = get_current_vllm_config_or_none()
+            if (
+                config is not None
+                and config.attention_config.flash_attn_version == 2
+                and kv_cache_dtype in ("fp8", "fp8_e4m3")
+            ):
+                return (
+                    "FP8 KV cache requires FA3, but flash_attn_version=2 "
+                    "was explicitly requested."
+                )
+            return "No MetaX FlashAttention version supports these dimensions, dtype, features and block size"
+
         return None
 
 
@@ -535,14 +550,14 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         self.block_size = kv_cache_spec.block_size
 
         self.max_num_splits = 0  # No upper bound on the number of splits.
-        self.aot_schedule = get_flash_attn_version() == 3
+        # NOTE(metax): still we don't support aot on FA3
+        self.aot_schedule = False
 
         head_size_v = getattr(kv_cache_spec, "head_size_v", None)
         get_flash_attn_version(
             head_size=self.headdim,
             head_size_v=head_size_v,
             kv_cache_block_size=self.block_size,
-            supports_fa4_hd256=True,
         )
         self.fa4_hd256 = False
 
@@ -1064,6 +1079,7 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
 class FlashAttentionImpl(AttentionImpl):
     can_return_lse_for_decode: bool = True
     supports_dcp: bool = True
+    head_size_v: int | None = None
 
     def __init__(
         self,
@@ -1111,10 +1127,33 @@ class FlashAttentionImpl(AttentionImpl):
         self.vllm_flash_attn_version = get_flash_attn_version(
             requires_alibi=alibi_slopes is not None,
             head_size=head_size,
+            head_size_v=self.head_size_v or head_size,
             has_sinks=sinks is not None,
-            requires_softcap=bool(self.logits_soft_cap),
-            supports_fa4_hd256=True,
+            kv_cache_dtype=kv_cache_dtype,
         )
+        if self.vllm_flash_attn_version is None:
+            if (
+                vllm_config is not None
+                and vllm_config.attention_config.flash_attn_version == 2
+                and kv_cache_dtype in ("fp8", "fp8_e4m3")
+            ):
+                raise ValueError(
+                    "FP8 KV cache requires FA3, but flash_attn_version=2 "
+                    "was explicitly requested."
+                )
+            raise ValueError(
+                "No compatible MetaX FlashAttention version for this layer"
+            )
+        if (
+            is_quantized_kv_cache(kv_cache_dtype)
+            and vllm_config is not None
+            and vllm_config.parallel_config.decode_context_parallel_size > 1
+        ):
+            # NOTE(metax): DCP mixes FP8 Q/cache with unquantized new K/V;
+            # its scale and mixed-dtype contracts are not implemented yet.
+            raise NotImplementedError(
+                "MetaX FlashAttention FP8 KV with DCP is not implemented"
+            )
         self.fa4_hd256 = self.vllm_flash_attn_version == 4 and uses_fa4_hd256_kernel(
             head_size
         )
@@ -1139,10 +1178,8 @@ class FlashAttentionImpl(AttentionImpl):
             self.kv_cache_dtype,
             requires_alibi=alibi_slopes is not None,
             head_size=head_size,
-            head_size_v=head_size,
+            head_size_v=self.head_size_v or head_size,
             has_sinks=sinks is not None,
-            requires_softcap=bool(self.logits_soft_cap),
-            supports_fa4_hd256=True,
         ):
             raise NotImplementedError(
                 f"FlashAttention does not support {self.kv_cache_dtype}"
@@ -1155,22 +1192,14 @@ class FlashAttentionImpl(AttentionImpl):
                 raise ValueError(
                     "MetaX FlashAttention requires BF16 sinks and head_size 64 or 192"
                 )
-            assert flash_attn_supports_sinks()
+            assert flash_attn_supports_sinks(self.vllm_flash_attn_version)
             assert self.sinks.shape[0] == num_heads, (
                 "Sinks must have the same number of heads as the number of "
                 "heads in the layer"
             )
 
-        # FA4's SM90 FP8-KV path consumes native FP16/BF16 Q and dequantizes
-        # FP8 K/V in-kernel. Other FA4 paths (notably SM100) still require Q,
-        # K, and V to have the same FP8 dtype.
-        uses_sm90_fa4_fp8_kv_dequant = (
-            self.vllm_flash_attn_version == 4
-            and current_platform.is_device_capability_family(90)
-            and self.kv_cache_dtype in ("fp8", "fp8_e4m3")
-        )
-        self.supports_quant_query_input = flash_attn_supports_quant_query_input() and (
-            not uses_sm90_fa4_fp8_kv_dequant
+        self.supports_quant_query_input = flash_attn_supports_quant_query_input(
+            self.vllm_flash_attn_version
         )
 
         dcp_a2a = (
@@ -1195,7 +1224,11 @@ class FlashAttentionImpl(AttentionImpl):
         value_cache: torch.Tensor,
         output: torch.Tensor,
         attn_metadata: FlashAttentionMetadata,
+        q_descale: torch.Tensor | None = None,
+        k_descale: torch.Tensor | None = None,
+        v_descale: torch.Tensor | None = None,
     ) -> None:
+        assert self.vllm_flash_attn_version is not None
         assert attn_metadata.split_decode_seq_lens is not None
         assert attn_metadata.split_decode_block_table is not None
         assert attn_metadata.split_decode_bucket_query_lens is not None
@@ -1239,6 +1272,16 @@ class FlashAttentionImpl(AttentionImpl):
                 softcap=self.logits_soft_cap,
                 s_aux=self.sinks,
                 num_splits=1 if self.batch_invariant_enabled else 0,
+                fa_version=self.vllm_flash_attn_version,
+                q_descale=q_descale[req_start:req_end]
+                if q_descale is not None
+                else None,
+                k_descale=k_descale[req_start:req_end]
+                if k_descale is not None
+                else None,
+                v_descale=v_descale[req_start:req_end]
+                if v_descale is not None
+                else None,
             )
             decode_output[token_start:token_end] = reshape_attn_output_for_spec_decode(
                 bucket_output_unreshape
@@ -1386,6 +1429,10 @@ class FlashAttentionImpl(AttentionImpl):
                 list(window) if window is not None else None
             )
 
+            if is_dynamic_causal:
+                raise NotImplementedError(
+                    "MetaX FlashAttention does not support per-sequence causal tensors"
+                )
             mm_prefix_query_ranges = attn_metadata.mm_prefix_query_range_tensor
             mm_mask_mod = None  # noqa: F841
             mm_aux = None  # noqa: F841
@@ -1419,26 +1466,72 @@ class FlashAttentionImpl(AttentionImpl):
                 # For handling prefill decode split
                 split_decode_num_tokens = attn_metadata.split_decode_num_tokens
                 if attn_metadata.split_prefill_num_reqs > 0:
-                    output[split_decode_num_tokens:num_actual_tokens] = (
-                        flash_attn_varlen_func(
+                    if self.vllm_flash_attn_version == 3:
+                        # NOTE(metax): FA3 varlen cannot read paged KV, including cached prefixes.
+                        num_decodes = attn_metadata.split_decode_num_reqs
+                        flash_attn_with_kvcache(
                             q=query[split_decode_num_tokens:num_actual_tokens],
-                            k=key_cache,
-                            v=value_cache,
-                            cu_seqlens_q=(attn_metadata.split_prefill_query_start_loc),
-                            cu_seqlens_k=attn_metadata.split_prefill_cu_seqlens_k,
-                            max_seqlen_q=attn_metadata.max_query_len,
-                            max_seqlen_k=attn_metadata.split_prefill_max_seq_len,
+                            k_cache=key_cache,
+                            v_cache=value_cache,
+                            out=output[split_decode_num_tokens:num_actual_tokens],
+                            cu_seqlens_q=attn_metadata.split_prefill_query_start_loc,
+                            max_seqlen_q=max_seqlen_q,
+                            cache_seqlens=attn_metadata.seq_lens[num_decodes:],
+                            block_table=attn_metadata.split_prefill_block_table,
                             softmax_scale=self.scale,
                             causal=attn_metadata.causal,
-                            alibi_slopes=self.alibi_slopes,
                             window_size=sliding_window_size,
-                            block_table=attn_metadata.split_prefill_block_table,
                             softcap=self.logits_soft_cap,
-                            s_aux=self.sinks,
+                            q_descale=q_descale[num_decodes:]
+                            if q_descale is not None
+                            else None,
+                            k_descale=k_descale[num_decodes:]
+                            if k_descale is not None
+                            else None,
+                            v_descale=v_descale[num_decodes:]
+                            if v_descale is not None
+                            else None,
+                            num_splits=1 if self.batch_invariant_enabled else 0,
+                            fa_version=self.vllm_flash_attn_version,
                         )
-                    )
+                    else:
+                        output[split_decode_num_tokens:num_actual_tokens] = (
+                            flash_attn_varlen_func(
+                                q=query[split_decode_num_tokens:num_actual_tokens],
+                                k=key_cache,
+                                v=value_cache,
+                                cu_seqlens_q=(
+                                    attn_metadata.split_prefill_query_start_loc
+                                ),
+                                cu_seqlens_k=attn_metadata.split_prefill_cu_seqlens_k,
+                                max_seqlen_q=attn_metadata.max_query_len,
+                                max_seqlen_k=attn_metadata.split_prefill_max_seq_len,
+                                softmax_scale=self.scale,
+                                causal=attn_metadata.causal,
+                                alibi_slopes=self.alibi_slopes,
+                                window_size=sliding_window_size,
+                                block_table=attn_metadata.split_prefill_block_table,
+                                softcap=self.logits_soft_cap,
+                                s_aux=self.sinks,
+                                fa_version=self.vllm_flash_attn_version,
+                            )
+                        )
                 if attn_metadata.split_decode_num_reqs > 0:
                     decode_query = query[:split_decode_num_tokens]
+                    num_decodes = attn_metadata.split_decode_num_reqs
+                    decode_q_descale = (
+                        q_descale[:num_decodes] if q_descale is not None else None
+                    )
+                    decode_k_descale = (
+                        k_descale[:num_decodes]
+                        if self.vllm_flash_attn_version == 3 and k_descale is not None
+                        else None
+                    )
+                    decode_v_descale = (
+                        v_descale[:num_decodes]
+                        if self.vllm_flash_attn_version == 3 and v_descale is not None
+                        else None
+                    )
                     # Use flash_attn_with_kvcache for normal decoding.
                     if attn_metadata.split_decode_bucket_req_bounds is not None:
                         self._forward_decode_with_query_len_bucketing(
@@ -1447,6 +1540,9 @@ class FlashAttentionImpl(AttentionImpl):
                             value_cache,
                             output,
                             attn_metadata,
+                            q_descale=decode_q_descale,
+                            k_descale=decode_k_descale,
+                            v_descale=decode_v_descale,
                         )
                     else:
                         decode_query = reshape_query_for_spec_decode(
@@ -1466,6 +1562,10 @@ class FlashAttentionImpl(AttentionImpl):
                             softcap=self.logits_soft_cap,
                             s_aux=self.sinks,
                             num_splits=1 if self.batch_invariant_enabled else 0,
+                            fa_version=self.vllm_flash_attn_version,
+                            q_descale=decode_q_descale,
+                            k_descale=decode_k_descale,
+                            v_descale=decode_v_descale,
                         )
                         output[:split_decode_num_tokens] = (
                             reshape_attn_output_for_spec_decode(output_unreshape)
@@ -1473,30 +1573,52 @@ class FlashAttentionImpl(AttentionImpl):
                 return output
             # └------------------------- Metax Modification -------------------------┘
             else:
-                # Fallback for legacy metadata paths: keep it GPU-only.
-                # TODO(hank): Currently we manually process it on forward. Move it to attention_metadata
-                cu_seqlens_k = F.pad(
-                    attn_metadata.seq_lens,
-                    (1, 0),
-                    value=0,
-                ).cumsum(dim=0, dtype=torch.int32)
+                if self.vllm_flash_attn_version == 3:
+                    flash_attn_with_kvcache(
+                        q=query[:num_actual_tokens],
+                        k_cache=key_cache,
+                        v_cache=value_cache,
+                        out=output[:num_actual_tokens],
+                        cu_seqlens_q=cu_seqlens_q,
+                        max_seqlen_q=max_seqlen_q,
+                        cache_seqlens=attn_metadata.seq_lens,
+                        block_table=block_table,
+                        softmax_scale=self.scale,
+                        causal=attn_metadata.causal,
+                        window_size=sliding_window_size,
+                        softcap=self.logits_soft_cap,
+                        q_descale=q_descale,
+                        k_descale=k_descale,
+                        v_descale=v_descale,
+                        num_splits=1 if self.batch_invariant_enabled else 0,
+                        fa_version=self.vllm_flash_attn_version,
+                    )
+                else:
+                    # Fallback for legacy metadata paths: keep it GPU-only.
+                    # TODO(hank): Currently we manually process it on forward. Move it to attention_metadata
+                    cu_seqlens_k = F.pad(
+                        attn_metadata.seq_lens,
+                        (1, 0),
+                        value=0,
+                    ).cumsum(dim=0, dtype=torch.int32)
 
-                output[:num_actual_tokens] = flash_attn_varlen_func(
-                    q=query[:num_actual_tokens],
-                    k=key_cache,
-                    v=value_cache,
-                    cu_seqlens_q=cu_seqlens_q,
-                    max_seqlen_q=max_seqlen_q,
-                    cu_seqlens_k=cu_seqlens_k,
-                    max_seqlen_k=max_seqlen_k,
-                    softmax_scale=self.scale,
-                    causal=causal,
-                    alibi_slopes=self.alibi_slopes,
-                    window_size=sliding_window_size,
-                    block_table=block_table,
-                    softcap=self.logits_soft_cap,
-                    s_aux=self.sinks,
-                )
+                    output[:num_actual_tokens] = flash_attn_varlen_func(
+                        q=query[:num_actual_tokens],
+                        k=key_cache,
+                        v=value_cache,
+                        cu_seqlens_q=cu_seqlens_q,
+                        max_seqlen_q=max_seqlen_q,
+                        cu_seqlens_k=cu_seqlens_k,
+                        max_seqlen_k=max_seqlen_k,
+                        softmax_scale=self.scale,
+                        causal=causal,
+                        alibi_slopes=self.alibi_slopes,
+                        window_size=sliding_window_size,
+                        block_table=block_table,
+                        softcap=self.logits_soft_cap,
+                        s_aux=self.sinks,
+                        fa_version=self.vllm_flash_attn_version,
+                    )
                 return output
 
     def do_kv_cache_update(
@@ -1561,7 +1683,7 @@ class FlashAttentionImpl(AttentionImpl):
             list(self.sliding_window) if self.sliding_window is not None else None
         )
         if attn_metadata.max_dcp_context_kv_len == 0:
-            query_attn_out, _, _ = flash_attn_varlen_func(
+            query_attn_out, _ = flash_attn_varlen_func(
                 q=query,
                 k=key,
                 v=value,
@@ -1576,6 +1698,7 @@ class FlashAttentionImpl(AttentionImpl):
                 softcap=self.logits_soft_cap,
                 return_attn_probs=True,
                 s_aux=self.sinks,
+                fa_version=self.vllm_flash_attn_version,
             )
             output.copy_(query_attn_out)
             return output
@@ -1636,24 +1759,44 @@ class FlashAttentionImpl(AttentionImpl):
                 num_context_prefills,
                 num_decode_tokens,
                 num_context_prefill_tokens,
+                fa_version=self.vllm_flash_attn_version,
             )
         else:
-            context_result, context_lse, _ = flash_attn_varlen_func(
-                q=query_across_dcp,
-                k=key_cache,
-                v=value_cache,
-                cu_seqlens_q=cu_seqlens_q,
-                max_seqlen_q=max_seqlen_q,
-                cu_seqlens_k=attn_metadata.dcp_context_cu_seqlens_k,
-                max_seqlen_k=attn_metadata.max_dcp_context_kv_len,
-                softmax_scale=self.scale,
-                causal=False,
-                alibi_slopes=self.alibi_slopes,
-                window_size=sliding_window_size,
-                block_table=block_table,
-                softcap=self.logits_soft_cap,
-                return_attn_probs=True,
-            )
+            if self.vllm_flash_attn_version == 3:
+                assert attn_metadata.dcp_context_kv_lens is not None
+                context_result, context_lse = flash_attn_with_kvcache(
+                    q=query_across_dcp,
+                    k_cache=key_cache,
+                    v_cache=value_cache,
+                    cu_seqlens_q=cu_seqlens_q,
+                    max_seqlen_q=max_seqlen_q,
+                    cache_seqlens=attn_metadata.dcp_context_kv_lens,
+                    block_table=block_table,
+                    softmax_scale=self.scale,
+                    causal=False,
+                    window_size=sliding_window_size,
+                    softcap=self.logits_soft_cap,
+                    return_softmax_lse=True,
+                    fa_version=3,
+                )
+            else:
+                context_result, context_lse = flash_attn_varlen_func(
+                    q=query_across_dcp,
+                    k=key_cache,
+                    v=value_cache,
+                    cu_seqlens_q=cu_seqlens_q,
+                    max_seqlen_q=max_seqlen_q,
+                    cu_seqlens_k=attn_metadata.dcp_context_cu_seqlens_k,
+                    max_seqlen_k=attn_metadata.max_dcp_context_kv_len,
+                    softmax_scale=self.scale,
+                    causal=False,
+                    alibi_slopes=self.alibi_slopes,
+                    window_size=sliding_window_size,
+                    block_table=block_table,
+                    softcap=self.logits_soft_cap,
+                    return_attn_probs=True,
+                    fa_version=self.vllm_flash_attn_version,
+                )
             # MetaX FlashAttention has no ``out=`` argument. Keep the DCP
             # context result in the preallocated workspace so its address is
             # stable when the forward pass is captured by a full CUDA graph.
@@ -1668,7 +1811,7 @@ class FlashAttentionImpl(AttentionImpl):
         )
         context_lse_cor = context_lse_cor.transpose(0, 1).contiguous()
 
-        query_attn_out, query_lse, _ = flash_attn_varlen_func(
+        query_attn_out, query_lse = flash_attn_varlen_func(
             q=query,
             k=key,
             v=value,
@@ -1683,6 +1826,7 @@ class FlashAttentionImpl(AttentionImpl):
             softcap=self.logits_soft_cap,
             return_attn_probs=True,
             s_aux=self.sinks,
+            fa_version=self.vllm_flash_attn_version,
         )
         assert context_attn_out_cor.shape == query_attn_out.shape
         assert context_lse_cor.shape == query_lse.shape
@@ -1754,11 +1898,7 @@ class FlashAttentionImpl(AttentionImpl):
             window_size=sliding_window_size,
             softcap=self.logits_soft_cap,
             s_aux=self.sinks,
-            # fa_version=self.vllm_flash_attn_version,
-            # q_descale=layer._q_scale.expand(descale_shape),
-            # k_descale=layer._k_scale.expand(descale_shape),
-            # v_descale=layer._v_scale.expand(descale_shape),
-            # num_splits=1 if self.batch_invariant_enabled else 0,
+            fa_version=self.vllm_flash_attn_version,
         )
 
         return output

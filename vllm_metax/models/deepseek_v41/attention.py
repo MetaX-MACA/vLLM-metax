@@ -175,7 +175,7 @@ def _resolve_dsv4_kv_cache_dtype(
     Plain-row backends store each token's KV row in its element dtype: bf16 or
     per-tensor FP8 E4M3.
     """
-    if kv_cache_dtype == "auto" and not mx_envs.VLLM_METAX_SUPPORTS_FP8:
+    if kv_cache_dtype == "auto" and not current_platform.supports_fp8():
         kv_cache_dtype = "int8"
         logger.info_once("Using DeepSeek's int8 KV cache format.")
         return kv_cache_dtype, torch.int8
