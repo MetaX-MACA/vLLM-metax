@@ -18,6 +18,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # CUDA by default, can be overridden by using -DVLLM_TARGET_DEVICE=... (used by setup.py)
 set(VLLM_TARGET_DEVICE "cuda" CACHE STRING "Target device backend for vLLM")
+if (VLLM_TARGET_DEVICE STREQUAL "rocm" OR "$ENV{VLLM_KERNEL_SYMBOL_MAP}" STREQUAL "1")
+  set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+endif()
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Target device: ${VLLM_TARGET_DEVICE}")
 

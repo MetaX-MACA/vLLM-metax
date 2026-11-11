@@ -304,7 +304,7 @@ def get_maca_version() -> tuple[Version, str] | None:
 
 
 def fixed_version_scheme(version: ScmVersion) -> str:
-    return "0.32.0"
+    return "0.33.0"
 
 
 def always_hash(version: ScmVersion) -> str:

@@ -580,10 +580,6 @@ void situ_and_mul_quant(
     int64_t group_size = 0,
     std::optional<torch::stable::Tensor> num_valid_tokens = std::nullopt,
     int64_t topk = 1);
-void masked_situ_and_mul(torch::stable::Tensor& out,
-                         torch::stable::Tensor& input,
-                         const torch::stable::Tensor& expert_num_tokens,
-                         double beta = 1.0, double linear_beta = -1.0);
 void masked_moe_activation(torch::stable::Tensor& out,
                            torch::stable::Tensor& input,
                            const torch::stable::Tensor& valid_token_counts,
@@ -656,7 +652,7 @@ void reshape_and_cache(torch::stable::Tensor& key, torch::stable::Tensor& value,
                        torch::stable::Tensor& slot_mapping,
                        const std::string& kv_cache_dtype,
                        torch::stable::Tensor& k_scale,
-                       torch::stable::Tensor& v_scale);
+                       torch::stable::Tensor& v_scale, bool interleaved_v);
 
 void reshape_and_cache_flash(
     torch::stable::Tensor& key, torch::stable::Tensor& value,
@@ -669,7 +665,7 @@ void concat_and_cache_mla(torch::stable::Tensor& kv_c,
                           torch::stable::Tensor& kv_cache,
                           torch::stable::Tensor& slot_mapping,
                           const std::string& kv_cache_dtype,
-                          torch::stable::Tensor& scale);
+                          torch::stable::Tensor& scale, bool skip_scale);
 
 void concat_and_cache_mla_grouped(
     torch::stable::Tensor& kv_c, torch::stable::Tensor& k_pe,

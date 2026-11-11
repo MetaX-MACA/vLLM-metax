@@ -160,6 +160,9 @@ view_seperator = "view_seperator"
 inverse_std_variences = "inverse_std_variences"
 
 [tool.typos.default.extend-words]
+certifi = "certifi"
+MoNE = "MoNE"
+mone = "mone"
 iy = "iy"
 indx = "indx"
 # intel cpu features

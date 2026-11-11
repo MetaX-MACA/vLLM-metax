@@ -8,7 +8,7 @@ accelerate==1.0.1
     # via peft
 aiohappyeyeballs==2.7.1
     # via aiohttp
-aiohttp==3.14.3
+aiohttp==3.14.5
     # via
     #   -r requirements/common.txt
     #   aiohttp-cors
@@ -99,8 +99,9 @@ cachetools==5.5.2
     #   google-auth
 cbor2==6.1.4
     # via -r requirements/common.txt
-certifi==2024.8.30
+certifi==2026.10.23
     # via
+    #   -r requirements/common.txt
     #   httpcore
     #   httpx
     #   requests
@@ -528,8 +529,9 @@ msgspec==0.21.1
     # via -r requirements/common.txt
 mteb==2.18.16
     # via -r requirements/test.in
-multidict==6.7.1
+multidict==7.2.1
     # via
+    #   -r requirements/common.txt
     #   aiohttp
     #   yarl
 multiprocess==0.70.16
@@ -658,6 +660,7 @@ optuna==3.6.1
     # via genai-perf
 orjson==3.11.9
     # via
+    #   -r requirements/common.txt
     #   -r requirements/test.in
     #   genai-perf
 oss-harmony==0.0.12
@@ -1342,7 +1345,7 @@ xxhash==3.5.0
     # via
     #   datasets
     #   evaluate
-yarl==1.17.1
+yarl==1.25.1
     # via aiohttp
 zipp==3.23.0
     # via importlib-metadata
