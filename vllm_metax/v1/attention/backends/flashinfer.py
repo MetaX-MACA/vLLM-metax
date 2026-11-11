@@ -71,7 +71,10 @@ from vllm.v1.attention.ops.dcp import cp_lse_ag_out_rs, dcp_a2a_lse_reduce
 # --------------------------------------------------------------
 # Note: use Maca's merge_attn_states to get cuda kernel invoked
 # --------------------------------------------------------------
-from vllm_metax.v1.attention.ops.merge_attn_states import merge_attn_states
+from vllm_metax.v1.attention.ops.merge_attn_states import (
+    merge_attn_states,
+    prepare_merge_attn_lse,
+)
 from vllm.v1.kv_cache_interface import AttentionSpec
 from vllm.v1.kv_cache_layout import KVCacheLayout
 from vllm.v1.kv_cache_interface import (
@@ -306,7 +309,9 @@ class BatchDCPPrefillWrapper:
             return_lse=True,
         )
         # MetaX FlashInfer returns log2 LSE; merge_attn_states consumes ln.
-        lse_context = log2_lse_to_ln(lse_context.transpose(0, 1).contiguous())
+        lse_context = log2_lse_to_ln(
+            prepare_merge_attn_lse(lse_context.transpose(0, 1))
+        )
 
         output_query, lse_query = self._new_tokens.run(
             prefill_query,
@@ -314,7 +319,7 @@ class BatchDCPPrefillWrapper:
             value,
             return_lse=True,
         )
-        lse_query = log2_lse_to_ln(lse_query.transpose(0, 1).contiguous())
+        lse_query = log2_lse_to_ln(prepare_merge_attn_lse(lse_query.transpose(0, 1)))
 
         merge_attn_states(
             out,

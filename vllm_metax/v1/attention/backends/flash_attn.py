@@ -47,7 +47,10 @@ from vllm.v1.attention.ops.dcp import (
 # --------------------------------------------------------------
 # Note: use Maca's merge_attn_states to get cuda kernel invoked
 # --------------------------------------------------------------
-from vllm_metax.v1.attention.ops.merge_attn_states import merge_attn_states
+from vllm_metax.v1.attention.ops.merge_attn_states import (
+    merge_attn_states,
+    prepare_merge_attn_lse,
+)
 from vllm.v1.worker.workspace import current_workspace_manager
 
 if is_flash_attn_varlen_func_available():
@@ -1793,7 +1796,7 @@ class FlashAttentionImpl(AttentionImpl):
             get_dcp_group(),
             return_lse=True,
         )
-        context_lse_cor = context_lse_cor.transpose(0, 1).contiguous()
+        context_lse_cor = prepare_merge_attn_lse(context_lse_cor.transpose(0, 1))
 
         query_attn_out, query_lse = flash_attn_varlen_func(
             q=query,
