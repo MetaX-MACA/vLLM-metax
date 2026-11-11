@@ -34,11 +34,11 @@ from vllm.model_executor.layers.linear import (
 from vllm.model_executor.models.utils import maybe_prefix
 from vllm.platforms import current_platform
 
-from ..common.hyperconnection import (
+from vllm_metax.models.qwen4_exp.common.hyperconnection import (
     GroupedGemmaRMSNorm,
     HyperConnectionConfig,
 )
-from .ops.hc import (
+from vllm_metax.models.qwen4_exp.metax.ops.hc import (
     grouped_gemma_rmsnorm,
     hc_combine,
     hc_combine_norm,

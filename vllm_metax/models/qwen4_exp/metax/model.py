@@ -83,12 +83,15 @@ from vllm.tokenizers.registry import cached_tokenizer_from_config
 from vllm.v1.attention.backends.registry import MambaAttentionBackendEnum
 from vllm.v1.kv_cache_interface import MambaSpec
 
-from .hyperconnection import GatedResidual, HyperConnectionConfig
-from vllm.models.qwen4_exp.nvidia.low_latency_gemm import (
+from vllm_metax.models.qwen4_exp.metax.hyperconnection import (
+    GatedResidual,
+    HyperConnectionConfig,
+)
+from vllm_metax.models.qwen4_exp.metax.low_latency_gemm import (
     enable_qwen4_exp_low_latency_gemm,
 )
-from .ple_layer import Qwen4ExpPLELayer
-from .qsa import Qwen4ExpQSAAttention
+from vllm_metax.models.qwen4_exp.metax.ple_layer import Qwen4ExpPLELayer
+from vllm_metax.models.qwen4_exp.metax.qsa import Qwen4ExpQSAAttention
 
 # Transformers v5.18 renamed `qwen_sparse_attention` to `indexed_attention`
 # TODO: Delete qwen_... once Transformers 5.18.0 is the minimum required version.
@@ -750,7 +753,7 @@ class Qwen4ExpForCausalLM(
 
     @staticmethod
     def get_model_state_cls():
-        from .model_state import Qwen4ExpModelState
+        from vllm_metax.models.qwen4_exp.metax.model_state import Qwen4ExpModelState
 
         return Qwen4ExpModelState
 
@@ -955,7 +958,7 @@ class Qwen4ExpForConditionalGeneration(
 
     @staticmethod
     def get_model_state_cls():
-        from .model_state import Qwen4ExpModelState
+        from vllm_metax.models.qwen4_exp.metax.model_state import Qwen4ExpModelState
 
         return Qwen4ExpModelState
 

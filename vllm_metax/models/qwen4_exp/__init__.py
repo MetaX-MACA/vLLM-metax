@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """Qwen4Exp implementation for the MetaX model registry."""
 
-from .common.hyperconnection import (
+from vllm_metax.models.qwen4_exp.common.hyperconnection import (
     GatedResidual,
     GroupedGemmaRMSNorm,
     HyperConnectionBase,
@@ -23,11 +23,11 @@ __all__ = [
 
 def __getattr__(name: str):
     if name == "Qwen4ExpMTP":
-        from .metax.mtp import Qwen4ExpMTP
+        from vllm_metax.models.qwen4_exp.metax.mtp import Qwen4ExpMTP
 
         return Qwen4ExpMTP
     if name in {"Qwen4ExpForCausalLM", "Qwen4ExpForConditionalGeneration"}:
-        from .metax import model
+        from vllm_metax.models.qwen4_exp.metax import model
 
         return getattr(model, name)
     raise AttributeError(name)

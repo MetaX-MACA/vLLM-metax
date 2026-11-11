@@ -16,16 +16,16 @@ from vllm.model_executor.layers.linear import ReplicatedLinear
 from vllm.model_executor.layers.quantization import QuantizationConfig
 from vllm.model_executor.layers.rotary_embedding.mrope import triton_mrope
 
-from ..common.qsa_cache import (
+from vllm_metax.models.qwen4_exp.common.qsa_cache import (
     QSACompressedKeyCache,
     QSAForwardMetadata,
     QSAKeyStateCache,
     canonical_qsa_rope_positions,
 )
-from .ops.qsa_prepare import qsa_prepare
+from vllm_metax.models.qwen4_exp.metax.ops.qsa_prepare import qsa_prepare
 
 if TYPE_CHECKING:
-    from .qsa import Qwen4ExpQSAAttention
+    from vllm_metax.models.qwen4_exp.metax.qsa import Qwen4ExpQSAAttention
 
 
 def apply_qsa_rope(
@@ -273,9 +273,14 @@ class QSAIndexer(nn.Module):
                 return out, None
             return result, None
 
-        from .ops.qsa import qsa_compress_groups_with_ratio, qsa_store_cache_rows
-        from .ops.qsa_indexer import expand_qsa_block_indices
-        from .ops.qsa_indexer_fallback import (
+        from vllm_metax.models.qwen4_exp.metax.ops.qsa import (
+            qsa_compress_groups_with_ratio,
+            qsa_store_cache_rows,
+        )
+        from vllm_metax.models.qwen4_exp.metax.ops.qsa_indexer import (
+            expand_qsa_block_indices,
+        )
+        from vllm_metax.models.qwen4_exp.metax.ops.qsa_indexer_fallback import (
             qsa_select_paged_decode,
             qsa_select_paged_prefill,
         )

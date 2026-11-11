@@ -576,6 +576,10 @@ def _select_config(
         BLOCK_N, target_splits, num_warps = 64, 4, 2
     else:
         BLOCK_N, target_splits, num_warps = 64, 1, 2
+    if _is_maca():
+        # NOTE(metax): C500 exposes 64 KiB shared memory per program. The
+        # software-pipelined 256-dim attention tile needs a narrower N tile.
+        BLOCK_N = min(BLOCK_N, 16)
     num_tiles = triton.cdiv(num_columns, BLOCK_N)
     # Never more splits than tiles, never empty.
     num_splits = min(target_splits, num_tiles)
@@ -725,7 +729,7 @@ def qsa_sparse_paged_attention(
         BLOCK_N=block_n,
         IS_FP8=is_fp8,
         num_warps=partial_warps,
-        num_stages=2,
+        num_stages=1 if _is_maca() else 2,
     )
     if num_splits == 1:
         return out
@@ -869,7 +873,7 @@ def warmup_qsa_sparse_paged_attention(
             BLOCK_N=block_n,
             IS_FP8=is_fp8,
             num_warps=warps,
-            num_stages=2,
+            num_stages=1 if _is_maca() else 2,
             grid=(num_rows, num_kv_heads, num_splits),
         )
         if num_splits > 1:

@@ -11,6 +11,7 @@ from vllm.model_executor.warmup.jit_warmup_triton_helper import (
 )
 from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
+from vllm.utils.math_utils import round_up
 
 _TOPK_WORKSPACE_BYTES = 1024 * 1024
 _DECODE_BLOCK_N = 64
@@ -365,7 +366,8 @@ def warmup_qsa_mqa_paged_decode(
             BLOCK_N=_DECODE_BLOCK_N,
             TILES_PER_PROG=tiles_per_program,
             STAGES=2,
-            num_warps=2,
+            # tuned on GB300
+            num_warps=1 if k_cache.dtype == torch.float8_e4m3fn else 2,
             grid=(
                 num_requests,
                 triton.cdiv(columns, _DECODE_BLOCK_N * tiles_per_program),
@@ -529,6 +531,7 @@ def qsa_select_paged_decode(
     assert token_topk % compress_ratio == 0
     assert block_indices.shape == (q.shape[0], token_topk // compress_ratio)
     assert decode_query_len > 0 and q.shape[0] % decode_query_len == 0
+    assert q.dtype == k_cache.dtype, "Q and the compressed K cache must match"
     num_requests = q.shape[0] // decode_query_len
     assert page_table.shape[0] == num_requests
     assert visible_blocks.shape == (q.shape[0],)
@@ -602,11 +605,12 @@ def qsa_select_paged_prefill(
     """
     assert token_topk % compress_ratio == 0
     assert block_indices.shape == (q.shape[0], token_topk // compress_ratio)
+    assert q.dtype == k_cache.dtype, "Q and the compressed K cache must match"
     rows = q.shape[0]
     # No row scores beyond cdiv(max_seq_len, compress_ratio) compressed
     # columns. Round up to 64 to keep the logits row stride
     # cooperative_topk-compatible.
-    logits_width = triton.cdiv(triton.cdiv(max_seq_len, compress_ratio), 64) * 64
+    logits_width = round_up(triton.cdiv(max_seq_len, compress_ratio), 64)
     logits_width = min(max(64, logits_width), page_table.shape[1] * k_cache.shape[1])
 
     # chunk the inputs to keep temp logits below VLLM_SPARSE_INDEXER_MAX_LOGITS_MB

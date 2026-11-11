@@ -63,9 +63,9 @@ from vllm.v1.kv_cache_interface import (
     get_kv_quant_mode,
 )
 
-from ..common.qsa_cache import QSAForwardMetadata
-from . import model
-from .indexer_qsa import QSAIndexer
+from vllm_metax.models.qwen4_exp.common.qsa_cache import QSAForwardMetadata
+from vllm_metax.models.qwen4_exp.metax import model
+from vllm_metax.models.qwen4_exp.metax.indexer_qsa import QSAIndexer
 
 
 class Qwen4ExpQSAQKVIndexerLinear(MergedColumnParallelLinear):
@@ -335,7 +335,7 @@ class Qwen4ExpQSAFlashAttentionImpl(FlashAttentionImpl):
                 "Qwen4Exp QSA requires BF16 Q and BF16 or FP8-e4m3 K/V"
             )
 
-        from .ops.qsa import qsa_sparse_paged_attention
+        from vllm_metax.models.qwen4_exp.metax.ops.qsa import qsa_sparse_paged_attention
 
         qsa_sparse_paged_attention(
             query[:num_tokens],
@@ -541,7 +541,9 @@ class Qwen4ExpQSAAttention(Qwen3NextAttention, AttentionLayerBase):
             raise ValueError(f"Duplicate layer name: {self.layer_name}")
         static_context[self.layer_name] = self
         if vllm_config.kernel_config.enable_jit_warmup:
-            from .warmup import qsa_sparse_attention_warmup
+            from vllm_metax.models.qwen4_exp.metax.warmup import (
+                qsa_sparse_attention_warmup,
+            )
 
             # NOTE(metax): Both runners activate the registry during model load.
             # The provider reads the bound cache layout later, at warmup time.

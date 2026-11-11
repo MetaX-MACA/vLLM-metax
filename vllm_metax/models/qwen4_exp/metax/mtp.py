@@ -54,11 +54,14 @@ from vllm.models.common.ops.sequence_parallel import (
 )
 from vllm.sequence import IntermediateTensors
 
-from .hyperconnection import GatedResidual, HyperConnectionConfig
-from vllm.models.qwen4_exp.nvidia.low_latency_gemm import (
+from vllm_metax.models.qwen4_exp.metax.hyperconnection import (
+    GatedResidual,
+    HyperConnectionConfig,
+)
+from vllm_metax.models.qwen4_exp.metax.low_latency_gemm import (
     enable_qwen4_exp_low_latency_gemm,
 )
-from .model import (
+from vllm_metax.models.qwen4_exp.metax.model import (
     _EXTRA_WEIGHTS_MAPPER,
     _QWEN4_EXP_IGNORED_MISSING_SUFFIXES,
     Qwen4ExpDecoderLayer,

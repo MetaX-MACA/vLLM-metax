@@ -19,7 +19,7 @@ from vllm.model_executor.layers.quantization.utils.fp8_utils import is_fp8
 from vllm.model_executor.models.utils import AutoWeightsLoader
 from vllm.models.common.ops.sequence_parallel import sp_reduce_scatter, sp_shard
 
-from ..common.ngram_embedding import (
+from vllm_metax.models.qwen4_exp.common.ngram_embedding import (
     Qwen4ExpPLEDeviceEmbedding,
     Qwen4ExpPLEEmbedding,
     Qwen4ExpPLEEmbeddingMethod,
@@ -27,7 +27,7 @@ from ..common.ngram_embedding import (
     Qwen4ExpPLEPinnedHostEmbedding,
     Qwen4ExpPLEUnquantizedEmbeddingMethod,
 )
-from ..common.ops.ple import ple_ngram_ids
+from vllm_metax.models.qwen4_exp.common.ops.ple import ple_ngram_ids
 
 logger = init_logger(__name__)
 

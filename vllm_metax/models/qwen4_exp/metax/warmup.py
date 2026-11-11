@@ -10,7 +10,7 @@ import torch
 from vllm.model_executor.warmup.jit_warmup import VllmJitKernel
 
 if TYPE_CHECKING:
-    from .qsa import Qwen4ExpQSAAttention
+    from vllm_metax.models.qwen4_exp.metax.qsa import Qwen4ExpQSAAttention
 
 
 class QSASparseAttentionWarmup(VllmJitKernel["QSASparseAttentionWarmup.CompileKey"]):
@@ -43,7 +43,9 @@ class QSASparseAttentionWarmup(VllmJitKernel["QSASparseAttentionWarmup.CompileKe
         ]
 
     def compile(self, compile_key: CompileKey) -> None:
-        from .ops.qsa import warmup_qsa_sparse_paged_attention
+        from vllm_metax.models.qwen4_exp.metax.ops.qsa import (
+            warmup_qsa_sparse_paged_attention,
+        )
 
         # NOTE(metax): Preserve the bound allocation's physical strides without
         # allocating another KV cache during warmup.
