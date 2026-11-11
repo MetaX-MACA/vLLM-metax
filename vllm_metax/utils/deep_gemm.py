@@ -754,12 +754,32 @@ def fp8_fp4_mqa_logits(
     weights: torch.Tensor,
     cu_seqlen_ks: torch.Tensor,
     cu_seqlen_ke: torch.Tensor,
-    clean_logits: bool,
+    max_seqlen_k: int,
 ) -> torch.Tensor:
-    """Dense MQA logits with one interface for FP8 and MXFP4.
+    """Compute MQA logits for a single sequence without KV paging.
 
-    MetaX DeepGEMM dispatches on ``q[1]``: ``None`` selects FP8 and an
-    int32 packed E8M0 tensor selects MXFP4.
+    Unified FP8/FP4 dispatch — the underlying DeepGEMM kernel takes
+    ``q = (values, scales_or_None)``. SM100 takes MXFP8 or MXFP4 with packed
+    UE8M0 block scales; SM90/SM120 also take FP8 Q with ``q_scale=None``
+    (per-token scale folded into ``weights``).
+
+    Args:
+        q: Tuple ``(q_values, q_scale)``, q_values of shape [M, H, D] (packed
+            to D/2 bytes for MXFP4) and q_scale int32 [M, H] or None.
+        kv: Tuple ``(k_values, k_scales)`` of shape [N, D] and [N]; k_scales
+            is int32 packed UE8M0 with MX scales, fp32 otherwise.
+        weights: Tensor of shape [M, H], bf16 on SM100 and fp32 elsewhere.
+        cu_seqlen_ks: Start indices (inclusive) for valid K per query
+            position, shape [M], dtype int32.
+        cu_seqlen_ke: End indices (exclusive) for valid K per query
+            position, shape [M], dtype int32.
+        max_seqlen_k: Upper bound on ``cu_seqlen_ke - cu_seqlen_ks``.
+
+    Returns:
+        Compressed logits of shape [M, max_seqlen_k]: row ``i`` holds K
+        positions ``[cu_seqlen_ks[i], cu_seqlen_ke[i])`` starting at column
+        zero, and the tail is not cleaned. bf16 on SM100, fp32 elsewhere.
+
     """
     _lazy_init()
     if _fp8_fp4_mqa_logits_impl is None:
@@ -770,7 +790,8 @@ def fp8_fp4_mqa_logits(
         weights,
         cu_seqlen_ks,
         cu_seqlen_ke,
-        clean_logits=clean_logits,
+        clean_logits=False,
+        max_seqlen_k=max_seqlen_k,
         logits_dtype=torch.float32,
         backend="maca_c",
     )
@@ -784,11 +805,13 @@ def fp8_fp4_paged_mqa_logits(
     block_tables: torch.Tensor,
     schedule_metadata: torch.Tensor,
     max_model_len: int,
-    clean_logits: bool,
     indices: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Paged dense MQA logits with unified FP8/MXFP4 dispatch."""
-    del indices  # Retained for the existing vLLM call signature.
+    # NOTE(metax): the installed DeepGEMM MACA entry has no varlen indices
+    # argument; keep the target public signature and consume its metadata
+    # through the schedule table instead.
+    del indices
     _lazy_init()
     if _fp8_fp4_paged_mqa_logits_impl is None:
         return _missing()
@@ -800,7 +823,7 @@ def fp8_fp4_paged_mqa_logits(
         block_tables,
         schedule_metadata,
         max_model_len,
-        clean_logits=clean_logits,
+        clean_logits=False,
         logits_dtype=torch.float32,
         backend="maca_c",
     )
@@ -973,6 +996,23 @@ def transform_sf_into_required_layout(*args, **kwargs):
     )
 
 
+@functools.cache
+def mqa_logits_use_mx_scales() -> bool:
+    """Whether the target MQA kernels require MX-scaled inputs.
+
+    MACA keeps the installed DeepGEMM FP8/INT8 contracts; the target's SM100
+    MX-scale path is not a CUDA capability proxy for MACA.
+    """
+    return False
+
+
+def mqa_logits_mx_inputs(
+    q: torch.Tensor, q_scale: torch.Tensor | None, weights: torch.Tensor
+) -> tuple[torch.Tensor | None, torch.Tensor]:
+    """Return unchanged inputs on MACA for the target MQA call contract."""
+    return q_scale, weights
+
+
 def m_grouped_fp8_gemm_nt_contiguous(*args, **kwargs):
     _lazy_init()
     if _grouped_impl is None:
@@ -1019,6 +1059,8 @@ __all__ = [
     "fp8_paged_mqa_logits",
     "fp8_fp4_mqa_logits",
     "fp8_fp4_paged_mqa_logits",
+    "mqa_logits_mx_inputs",
+    "mqa_logits_use_mx_scales",
     "has_deep_gemm_sparse_mqa",
     "get_sparse_mqa_logits_metadata",
     "get_paged_sparse_mqa_logits_metadata",

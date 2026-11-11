@@ -15,7 +15,7 @@ from vllm.model_executor.layers.quantization.utils.quant_utils import (
 
 from vllm_metax.registry.quant_config.fp8 import MacaFp8Config
 
-from vllm.models.deepseek_v41.quant_config import (
+from vllm_metax.registry.quant_config._deepseek_v41_base import (
     DeepseekV4FP8Config as DeepseekV41FP8Config,
 )
 from vllm.model_executor.layers.quantization import register_quantization_config

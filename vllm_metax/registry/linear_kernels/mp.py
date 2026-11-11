@@ -16,7 +16,7 @@ from vllm.platforms import PlatformEnum, current_platform
 
 import torch
 
-from vllm_metax import _custom_ops as mx_ops
+import vllm_metax._custom_ops as mx_ops
 
 
 def _allocate_gptq_workspaces(

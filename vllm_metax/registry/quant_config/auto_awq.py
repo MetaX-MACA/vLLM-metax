@@ -22,9 +22,10 @@ from vllm.model_executor.layers.quantization.auto_awq import (
 from vllm.model_executor.layers.quantization.auto_awq import is_layer_skipped
 from vllm.model_executor.layers.quantization.base_config import QuantizeMethodBase
 from vllm.model_executor.layers.vocab_parallel_embedding import ParallelLMHead
+from vllm.model_executor.utils import replace_parameter
 from vllm.utils.torch_utils import direct_register_custom_op
 
-from vllm_metax import _custom_ops as mx_ops
+import vllm_metax._custom_ops as mx_ops
 from vllm import _custom_ops as ops
 from vllm.model_executor.layers.quantization import register_quantization_config
 
@@ -76,16 +77,32 @@ class AutoAWQLinearMethod(vllm_AutoAWQLinearMethod):
     """
 
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
-        layer.qweight = torch.nn.Parameter(layer.qweight.data, requires_grad=False)
-        layer.qzeros = torch.nn.Parameter(layer.qzeros.data, requires_grad=False)
-        layer.scales = torch.nn.Parameter(layer.scales.data, requires_grad=False)
+        replace_parameter(
+            layer,
+            "qweight",
+            torch.nn.Parameter(layer.qweight.data, requires_grad=False),
+        )
+        replace_parameter(
+            layer,
+            "qzeros",
+            torch.nn.Parameter(layer.qzeros.data, requires_grad=False),
+        )
+        replace_parameter(
+            layer,
+            "scales",
+            torch.nn.Parameter(layer.scales.data, requires_grad=False),
+        )
         # ┌------------------------  Metax Modification -------------------------┐
         # warmup
         if self.quant_config.group_size % 32:
             pass
         else:
             qweight = mx_ops.awq_to_gptq_4bit(layer.qweight)
-            layer.qweight = torch.nn.Parameter(qweight, requires_grad=False)
+            replace_parameter(
+                layer,
+                "qweight",
+                torch.nn.Parameter(qweight, requires_grad=False),
+            )
         # └------------------------- Metax Modification -------------------------┘
 
     def apply(
