@@ -76,7 +76,7 @@ class MacaSparseAttnIndexer(SparseAttnIndexer):
         self.dcp_world_size = parallel_config.decode_context_parallel_size
         self.dcp_rank = get_dcp_group().rank_in_group if self.dcp_world_size > 1 else 0
         self.use_pcp = parallel_config.prefill_context_parallel_size > 1
-        self._cp_kv_cache_interleave_size: int | None = None
+        self.pcp_shard_decode_requests = parallel_config.pcp_shard_decode_requests
         if current_platform.is_maca() and not has_deep_gemm():
             raise RuntimeError(
                 "Sparse Attention Indexer CUDA op requires DeepGEMM support in "
@@ -152,11 +152,12 @@ class MacaSparseAttnIndexer(SparseAttnIndexer):
             self.topk_indices_buffer,
             self.skip_k_cache_insert,
             self.use_pcp,
+            self.pcp_shard_decode_requests,
             _encode_layer_name(self.dense_mha_metadata_layer_name),
             self.use_fp4_cache,
             self.dcp_rank,
             self.dcp_world_size,
-            self.cp_kv_cache_interleave_size,
+            self._parallel_config.cp_kv_cache_interleave_size,
             False,
             candidate_blocks=self.candidate_blocks,
             candidate_block_size=self.candidate_block_size,

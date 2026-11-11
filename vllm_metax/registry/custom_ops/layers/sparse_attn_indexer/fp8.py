@@ -30,6 +30,7 @@ from vllm.v1.attention.ops.pcp import maybe_gather_indexer_k
 from vllm.v1.worker.workspace import current_workspace_manager
 from vllm.model_executor.layers.sparse_attn_indexer import (
     _gather_workspace_shapes,
+    as_fp32_logits,
     kv_cache_as_quant_view,
     _merge_dcp_topk_global,
 )
@@ -65,6 +66,7 @@ def sparse_attn_indexer(
     topk_indices_buffer: torch.Tensor,
     skip_k_cache_insert: bool,
     use_pcp: bool,
+    pcp_shard_decode_requests: bool,
     dense_mha_metadata_layer_name: LayerNameType,
     use_fp4_cache: bool = False,
     dcp_rank: int = 0,
@@ -134,6 +136,7 @@ def sparse_attn_indexer(
             topk_indices_buffer,
             skip_k_cache_insert,
             use_pcp,
+            pcp_shard_decode_requests,
             dense_mha_metadata_layer_name,
             use_fp4_cache,
             candidate_blocks=candidate_blocks,
@@ -172,6 +175,7 @@ def sparse_attn_indexer(
             slot_mapping,
             num_decode_tokens,
             use_pcp,
+            pcp_shard_decode_requests=pcp_shard_decode_requests,
         )
         # scale_fmt can be None, but the function expects str
         assert scale_fmt is not None
@@ -298,13 +302,18 @@ def sparse_attn_indexer(
                     q_slice_cast = q_slice
                     k_quant_cast = k_quant
                     k_scale_cast = k_scale.view(torch.float32).squeeze(-1)
-                logits = fp8_fp4_mqa_logits(
-                    (q_slice_cast, q_scale_slice),
-                    (k_quant_cast, k_scale_cast),
-                    weights[chunk.token_start : chunk.token_end],
-                    cu_seqlen_ks,
-                    cu_seqlen_ke,
-                    clean_logits=False,
+                row_starts = None
+                row_ends = cu_seqlen_ke - cu_seqlen_ks
+                logits = as_fp32_logits(
+                    fp8_fp4_mqa_logits(
+                        (q_slice_cast, q_scale_slice),
+                        (k_quant_cast, k_scale_cast),
+                        weights[chunk.token_start : chunk.token_end],
+                        cu_seqlen_ks,
+                        cu_seqlen_ke,
+                        chunk.max_seqlen_k,
+                    ),
+                    row_ends,
                 )
                 num_rows = logits.shape[0]
                 if candidate_blocks is not None:
@@ -317,8 +326,8 @@ def sparse_attn_indexer(
                     if candidate_write:
                         _select_candidate_blocks(
                             logits,
-                            cu_seqlen_ks,
-                            cu_seqlen_ke,
+                            row_starts,
+                            row_ends,
                             chunk_candidates.shape[1],
                             candidate_block_size,
                             chunk_candidates,
@@ -326,15 +335,15 @@ def sparse_attn_indexer(
                     else:
                         _apply_candidate_mask(
                             logits,
-                            cu_seqlen_ks,
-                            cu_seqlen_ke,
+                            row_starts,
+                            row_ends,
                             chunk_candidates,
                             candidate_block_size,
                         )
                 ops.top_k_per_row_prefill(
                     logits,
-                    cu_seqlen_ks,
-                    cu_seqlen_ke,
+                    torch.zeros_like(row_ends) if row_starts is None else row_starts,
+                    row_ends,
                     topk_indices,
                     num_rows,
                     logits.stride(0),
@@ -352,7 +361,7 @@ def sparse_attn_indexer(
                     dcp_rank,
                     dcp_world_size,
                     cp_kv_cache_interleave_size,
-                    row_starts=chunk.cu_seqlen_ks,
+                    row_starts=row_starts,
                 )
 
     if has_decode:
@@ -420,7 +429,6 @@ def sparse_attn_indexer(
             decode_metadata.block_table,
             decode_metadata.schedule_metadata,
             max_model_len=max_model_len,
-            clean_logits=False,
             indices=decode_metadata.indices,
         )
         num_rows = logits.shape[0]
@@ -506,6 +514,7 @@ def sparse_attn_indexer_fake(
     topk_indices_buffer: torch.Tensor | None,
     skip_k_cache_insert: bool,
     use_pcp: bool,
+    pcp_shard_decode_requests: bool,
     dense_mha_metadata_layer_name: LayerNameType,
     use_fp4_cache: bool = False,
     dcp_rank: int = 0,

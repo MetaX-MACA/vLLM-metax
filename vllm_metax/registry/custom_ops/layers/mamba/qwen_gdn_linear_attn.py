@@ -3,6 +3,7 @@
 
 import inspect
 import os
+
 import torch
 
 from vllm.model_executor.layers.mamba.gdn.qwen_gdn_linear_attn import (
@@ -26,6 +27,7 @@ class MacaChunkGatedDeltaRule(ChunkGatedDeltaRule):
         chunk_offsets: torch.Tensor | None = None,
         use_qk_l2norm_in_kernel: bool = True,
         core_attn_out: torch.Tensor | None = None,
+        aiter_prefill_metadata: object | None = None,
     ):
         if os.getenv("MACA_VLLM_USE_EXTERNAL_FLA", "0") == "1":
             from fla.ops.gated_delta_rule import (
@@ -86,4 +88,5 @@ class MacaChunkGatedDeltaRule(ChunkGatedDeltaRule):
                 chunk_indices=chunk_indices,
                 chunk_offsets=chunk_offsets,
                 use_qk_l2norm_in_kernel=use_qk_l2norm_in_kernel,
+                aiter_prefill_metadata=aiter_prefill_metadata,
             )
