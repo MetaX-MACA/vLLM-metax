@@ -7,8 +7,8 @@
 #     Returning no table keeps existing linear methods and projection-overlap
 #     settings intact instead of installing NVIDIA plans during weight loading.
 #
-# Affected versions: vLLM 0.32.0 (5df63a7203cd), reviewed 2026-11-04.
-#     Earlier affected releases have not been established.
+# Affected versions: vLLM 0.33.0
+#     (4ba787ec9959e566d3b587a796dff07673324da5).
 #
 # Remove at: upstream gates the low-latency dispatch on a real CUDA backend
 #     rather than device-capability aliases, or MACA provides equivalent

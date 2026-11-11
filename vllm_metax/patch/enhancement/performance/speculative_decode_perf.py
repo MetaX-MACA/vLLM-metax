@@ -6,7 +6,8 @@
 # Note: Optimize speculative decode batch reordering for MetaX query-length
 #       bucketing.
 #
-# Affected versions: vLLM 0.30.0 (ced6857afa0e), reviewed 2026-10-12.
+# Affected versions: vLLM 0.33.0
+#     (4ba787ec9959e566d3b587a796dff07673324da5).
 #
 # Remove at: Upstream batch reordering supports decode query-length buckets required by
 #     the MetaX attention backend.
@@ -187,6 +188,7 @@ def _metax_reorder_batch_to_split_decodes_and_prefills(
     "GPUModelRunner._may_reorder_batch",
 )
 def _may_reorder_batch(self, scheduler_output: "SchedulerOutput") -> None:
+    """Reorder requests for the selected attention backend's batch contract."""
     if (
         len(self.kv_cache_config.kv_cache_groups) == 0
         or self.reorder_batch_threshold is None

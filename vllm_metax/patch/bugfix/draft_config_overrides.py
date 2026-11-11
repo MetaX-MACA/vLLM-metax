@@ -8,8 +8,8 @@
 #     Recognize JoyAI draft configs while preserving joyai_dense_mtp so the
 #     decoder selects its dense MTP layer after the model-type rewrite.
 #
-# Affected versions: vLLM 0.30.0 (ced6857afa0e), reviewed 2026-10-12.
-#     JoyAI draft identity reviewed against vLLM 9eba576dde on 2026-10-19.
+# Affected versions: vLLM 0.33.0
+#     (4ba787ec9959e566d3b587a796dff07673324da5).
 #
 # Remove at: Upstream supports inheriting dictionary HF overrides when constructing
 #     draft model configs and preserves JoyAI's dense MTP identity.
@@ -49,8 +49,13 @@ def _update_nested_hf_config(target, updates: Mapping[str, Any]) -> None:
 
 
 @patch("vllm.config.speculative", "SpeculativeConfig.hf_config_override")
-def hf_config_override(hf_config: PretrainedConfig) -> PretrainedConfig:
+def hf_config_override(
+    hf_config: PretrainedConfig,
+    transformers_mtp_overrides: dict[str, Any] | None = None,
+) -> PretrainedConfig:
     """Preserve standalone DSpark and JoyAI dense-MTP checkpoint identity."""
+    if transformers_mtp_overrides is not None:
+        return _original_hf_config_override(hf_config, transformers_mtp_overrides)
     if "DSparkMiniMaxDraftModel" in (getattr(hf_config, "architectures", None) or []):
         quantization = getattr(hf_config, "quantization_config", None)
         hf_config = getattr(hf_config, "text_config", hf_config)
@@ -81,8 +86,13 @@ def hf_config_override(hf_config: PretrainedConfig) -> PretrainedConfig:
 class _DraftHfOverrides:
     """Picklable dictionary overrides followed by upstream's draft rewrite."""
 
-    def __init__(self, target_hf_overrides: Mapping[str, Any]) -> None:
+    def __init__(
+        self,
+        target_hf_overrides: Mapping[str, Any],
+        transformers_mtp_overrides: dict[str, Any] | None = None,
+    ) -> None:
         self.target_hf_overrides = copy.deepcopy(dict(target_hf_overrides))
+        self.transformers_mtp_overrides = copy.deepcopy(transformers_mtp_overrides)
 
     def __call__(self, hf_config: PretrainedConfig) -> PretrainedConfig:
         for key, value in self.target_hf_overrides.items():
@@ -91,16 +101,24 @@ class _DraftHfOverrides:
                 _update_nested_hf_config(nested, value)
             else:
                 setattr(hf_config, key, copy.deepcopy(value))
-        return SpeculativeConfig.hf_config_override(hf_config)
+        return SpeculativeConfig.hf_config_override(
+            hf_config, self.transformers_mtp_overrides
+        )
 
 
 @patch("vllm.config.speculative", "SpeculativeConfig.compose_draft_hf_overrides")
-def compose_draft_hf_overrides(target_hf_overrides):
+def compose_draft_hf_overrides(
+    target_hf_overrides,
+    transformers_mtp_overrides: dict[str, Any] | None = None,
+):
     # /-------------------- MetaX Modification --------------------\
     # The patched static method's module export is a staticmethod descriptor,
     # so returning its underlying function is not pickle-safe. Use the existing
     # callable object for empty overrides too (the default for draft configs).
     if target_hf_overrides is None or isinstance(target_hf_overrides, Mapping):
-        return _DraftHfOverrides(target_hf_overrides or {})
+        return _DraftHfOverrides(
+            target_hf_overrides or {},
+            transformers_mtp_overrides,
+        )
     # \-------------------- MetaX Modification --------------------/
-    return _original_compose(target_hf_overrides)
+    return _original_compose(target_hf_overrides, transformers_mtp_overrides)

@@ -12,7 +12,6 @@
 #     model-specific restrictions are resolved.
 # -----------------------------------------------------------------------------
 
-from . import deepseek_v4  # noqa: F401
 from . import joyai  # noqa: F401
 from . import kimi_k3  # noqa: F401
 from . import qwen  # noqa: F401

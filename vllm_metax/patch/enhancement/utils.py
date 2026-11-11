@@ -6,7 +6,8 @@
 #     MetaX's per-token INT8 quantizer, the W4A8 descriptor used by MetaX MoE
 #     experts, and the string dtype that descriptor carries.
 #
-# Affected versions: vLLM 0.30.0 (ced6857afa0e), reviewed 2026-10-12.
+# Affected versions: vLLM 0.33.0
+#     (4ba787ec9959e566d3b587a796dff07673324da5).
 #
 # Remove at: Upstream supports MetaX per-token INT8 quantization and the W4A8 descriptor
 #     used by MetaX MoE experts, including its string-valued dtype dispatch.
@@ -87,6 +88,7 @@ def moe_kernel_quantize_input(
     per_act_token_quant: bool,
     block_shape: list[int] | None = None,
     is_scale_swizzled: bool = True,
+    is_scale_transposed: bool = False,
     quantization_emulation: bool = False,
     mx_alignment: int = 0,
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
@@ -115,8 +117,9 @@ def moe_kernel_quantize_input(
         A_scale,
         quant_dtype,
         per_act_token_quant,
-        block_shape,
-        is_scale_swizzled,
-        quantization_emulation,
-        mx_alignment,
+        block_shape=block_shape,
+        is_scale_swizzled=is_scale_swizzled,
+        is_scale_transposed=is_scale_transposed,
+        quantization_emulation=quantization_emulation,
+        mx_alignment=mx_alignment,
     )

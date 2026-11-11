@@ -7,8 +7,8 @@
 #     through _sample_random, preserving target sequence-length handling and
 #     fused-sampler eligibility. For all-zero temperatures, pass all_greedy=True.
 #
-# Affected versions: Reviewed vLLM 0.32.0 (5df63a7203cd), MCOPLIB 0.4.14.
-#     The former Sampler.sample override omits the new sequence-length argument.
+# Affected versions: Reviewed vLLM 0.33.0
+#     (4ba787ec9959e566d3b587a796dff07673324da5), MCOPLIB 0.4.14.
 #
 # Remove at: vLLM provides an equivalent optimized sampler or a sampling-kernel
 #     extension point for MetaX.
@@ -41,6 +41,7 @@ def _sample_random(
     pos: torch.Tensor,
     top_k: torch.Tensor | None,
     top_p: torch.Tensor | None,
+    has_topp_only_rows: bool,
     use_fused_sampler: bool,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     if use_fused_sampler:
@@ -49,7 +50,12 @@ def _sample_random(
         else:  # Use XPU sampler
             sampled, _ = xpu_sample(processed_logits, top_k, top_p)
     else:
-        processed_logits = apply_top_k_top_p(processed_logits, top_k, top_p)
+        processed_logits = apply_top_k_top_p(
+            processed_logits,
+            top_k,
+            top_p,
+            has_topp_only_rows=has_topp_only_rows,
+        )
         # NOTE(metax): MCOPLIB accepts an all-greedy argmax fast path.
         sampled = gumbel_sample(
             processed_logits,

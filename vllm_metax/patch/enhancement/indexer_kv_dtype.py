@@ -4,7 +4,8 @@
 # -----------------------------------------------------------------------------
 # Note: This patch is to add int8 to vllm.config.attention.IndexerKVDType
 #
-# Affected versions: vLLM 0.30.0 (ced6857afa0e), reviewed 2026-10-12.
+# Affected versions: vLLM 0.33.0
+#     (4ba787ec9959e566d3b587a796dff07673324da5).
 #
 # Remove at: Upstream includes int8 in vllm.config.attention.IndexerKVDType
 # -----------------------------------------------------------------------------

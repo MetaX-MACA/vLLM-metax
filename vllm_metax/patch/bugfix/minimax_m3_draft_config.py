@@ -3,11 +3,12 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # -----------------------------------------------------------------------------
 # Note: MiniMax DSpark ships a separate checkpoint with its own quantization.
-#     Initialize it explicitly: v0.32's generic DSpark branch otherwise selects
+#     Initialize it explicitly: v0.33's generic DSpark branch otherwise selects
 #     the target checkpoint and rewrites unknown draft architectures to DeepSeek.
 #     Other models and speculative methods retain the original __post_init__.
 #
-# Affected versions: vLLM 0.32.0 (5df63a7203cd), reviewed 2026-11-04.
+# Affected versions: vLLM 0.33.0
+#     (4ba787ec9959e566d3b587a796dff07673324da5).
 #
 # Remove at: SpeculativeConfig recognizes DSparkMiniMaxDraftModel and resolves
 #     its bundled draft directory without inheriting target quantization.
@@ -63,7 +64,9 @@ def _init_minimax_dspark(self: SpeculativeConfig) -> SpeculativeConfig:
         quantization=self.quantization,
         enforce_eager=target.enforce_eager,
         max_logprobs=target.max_logprobs,
-        hf_overrides=SpeculativeConfig.compose_draft_hf_overrides(target.hf_overrides),
+        hf_overrides=SpeculativeConfig.compose_draft_hf_overrides(
+            target.hf_overrides, None
+        ),
         config_format=target.config_format,
     )
     if _ARCH not in draft.architectures:
@@ -108,9 +111,10 @@ def _init_minimax_dspark(self: SpeculativeConfig) -> SpeculativeConfig:
         )
 
     self.draft_tensor_parallel_size = SpeculativeConfig._verify_and_get_draft_tp(
-        self.target_parallel_config,
-        self.draft_tensor_parallel_size,
-        hf_config,
+        self.target_parallel_config, self.draft_tensor_parallel_size
+    )
+    SpeculativeConfig._maybe_override_draft_max_position_embeddings(
+        draft.hf_config, target.max_model_len
     )
     draft.max_model_len = SpeculativeConfig._maybe_override_draft_max_model_len(
         self.max_model_len, draft.max_model_len, target.max_model_len

@@ -7,7 +7,8 @@
 #       rotary type. Preserve None entries for layers without RoPE. A stored
 #       length of 32768 with factor=4 remains 32768, rather than 131072.
 #
-# Affected versions: vLLM 0.30.0 (ced6857afa0e), reviewed 2026-10-12.
+# Affected versions: vLLM 0.33.0
+#     (4ba787ec9959e566d3b587a796dff07673324da5).
 #
 # Remove at: Upstream maximum-length derivation recognizes telechat3-yarn as YaRN.
 # -----------------------------------------------------------------------------

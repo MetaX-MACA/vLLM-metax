@@ -4,7 +4,8 @@
 # -----------------------------------------------------------------------------
 # Note: Add `MACA_VISIBLE_DEVICES` handling alongside `CUDA_VISIBLE_DEVICES`.
 #
-# Affected versions: vLLM 0.30.0 (ced6857afa0e), reviewed 2026-10-12.
+# Affected versions: vLLM 0.33.0
+#     (4ba787ec9959e566d3b587a796dff07673324da5).
 #
 # Remove at: Upstream worker launch propagates MACA_VISIBLE_DEVICES natively and
 #     preserves explicitly supplied visibility settings.

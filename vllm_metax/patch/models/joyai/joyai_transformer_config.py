@@ -5,7 +5,8 @@
 # Note: Register the JoyAI architecture converter because upstream does not recognize
 #     joyai_llm_flash as an MLA model.
 #
-# Affected versions: vLLM 0.30.0 (ced6857afa0e), reviewed 2026-10-12.
+# Affected versions: vLLM 0.33.0
+#     (4ba787ec9959e566d3b587a796dff07673324da5).
 #
 # Remove at: Upstream registers joyai_llm_flash as an MLA architecture.
 # -----------------------------------------------------------------------------

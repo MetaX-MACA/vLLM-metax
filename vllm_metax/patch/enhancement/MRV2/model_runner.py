@@ -7,7 +7,8 @@
 #     main stream so an extra output copy stream is not introduced. The patch
 #     is installed only when VLLM_METAX_DISABLE_ASYNC_OUTPUT is truthy.
 #
-# Affected versions: vLLM v0.30.0, verified 2026-10-23.
+# Affected versions: vLLM v0.33.0
+#     (4ba787ec9959e566d3b587a796dff07673324da5).
 #
 # Remove at: The upstream model runner supports disabling the target output
 #     copy stream without monkey patching, or the MetaX output-copy issue is
@@ -22,17 +23,13 @@ from typing import TYPE_CHECKING, Any
 
 import torch
 
-import vllm.envs as envs
-from vllm.model_executor.layers.fused_moe.all2all_utils import (
-    get_ep_all2all_manager,
-)
 from vllm.v1.outputs import (
     AsyncModelRunnerOutput,
     ModelRunnerOutput,
 )
+from vllm.v1.worker.gpu.async_utils import AsyncOutput
 from vllm.v1.worker.gpu.model_runner import GPUModelRunner
 from vllm.v1.worker.gpu.sample.output import SamplerOutput
-from vllm.v1.worker.utils import raise_if_nan_logits
 from vllm_metax.patch.utils import patch
 import vllm_metax.envs as mx_envs
 
@@ -40,20 +37,7 @@ if TYPE_CHECKING:
     from vllm.distributed.aux_output_connector.worker import PendingAuxOutput
 
 _original_gpu_model_runner_init = GPUModelRunner.__init__
-
-
-def _copy_prompt_logprobs(value: Any) -> Any:
-    if value is None:
-        return None
-    cu_num_generated_tokens_tensor = value.cu_num_generated_tokens_tensor
-    if cu_num_generated_tokens_tensor is not None:
-        cu_num_generated_tokens_tensor = cu_num_generated_tokens_tensor.cpu()
-    return value._replace(
-        logprob_token_ids=value.logprob_token_ids.cpu(),
-        logprobs=value.logprobs.cpu(),
-        selected_token_ranks=value.selected_token_ranks.cpu(),
-        cu_num_generated_tokens_tensor=cu_num_generated_tokens_tensor,
-    )
+_original_async_output = AsyncOutput
 
 
 class SynchronousAsyncOutput(AsyncModelRunnerOutput):
@@ -69,70 +53,24 @@ class SynchronousAsyncOutput(AsyncModelRunnerOutput):
         check_ep_fault: bool,
         pending_aux_output: PendingAuxOutput | None,
     ) -> None:
-        self.model_runner_output = model_runner_output
-        self.sampler_output = sampler_output
-        self.num_sampled_tokens = num_sampled_tokens
-        self.main_stream = main_stream
-        self.check_ep_fault = check_ep_fault
-        self.pending_aux_output = pending_aux_output
-        # copy_stream is accepted only for compatibility with the upstream
-        # AsyncOutput constructor and is intentionally unused.
+        # The target implementation owns the complete v0.33 output conversion
+        # and fault handling. Reusing the main stream removes the extra copy
+        # stream without freezing those evolving behaviors in this patch.
+        self._delegate = _original_async_output(
+            model_runner_output=model_runner_output,
+            sampler_output=sampler_output,
+            num_sampled_tokens=num_sampled_tokens,
+            main_stream=main_stream,
+            copy_stream=main_stream,
+            check_ep_fault=check_ep_fault,
+            pending_aux_output=pending_aux_output,
+        )
 
     def get_output(self) -> ModelRunnerOutput:
-        # /-------------------- MetaX Modification --------------------\
-        # Use the model main stream instead of a dedicated copy stream.
-        self.main_stream.synchronize()
-        # \-------------------- MetaX Modification --------------------/
+        return self._delegate.get_output()
 
-        sampled_token_ids = self.sampler_output.sampled_token_ids.cpu().tolist()
-        num_sampled_tokens = self.num_sampled_tokens.cpu().numpy()
-        for token_ids, num_tokens in zip(
-            sampled_token_ids, num_sampled_tokens, strict=False
-        ):
-            del token_ids[int(num_tokens) :]
-        self.model_runner_output.sampled_token_ids = sampled_token_ids
-
-        if self.sampler_output.sampling_mask_tensors is not None:
-            self.model_runner_output.sampling_masks = (
-                self.sampler_output.sampling_mask_tensors.tolists()
-            )
-
-        if self.sampler_output.num_nans is not None:
-            self.model_runner_output.num_nans_in_logits = dict(
-                zip(
-                    self.model_runner_output.req_ids,
-                    self.sampler_output.num_nans.cpu().tolist(),
-                    strict=False,
-                )
-            )
-            if envs.VLLM_RAISE_ON_LOGIT_NANS:
-                raise_if_nan_logits(self.model_runner_output.num_nans_in_logits)
-
-        if self.sampler_output.logprobs_tensors is not None:
-            self.model_runner_output.logprobs = (
-                self.sampler_output.logprobs_tensors.tolists()
-            )
-
-        self.model_runner_output.prompt_logprobs_dict = {
-            req_id: _copy_prompt_logprobs(value)
-            for req_id, value in self.model_runner_output.prompt_logprobs_dict.items()
-        }
-        if self.pending_aux_output is not None:
-            self.model_runner_output.aux_output_connector_output = (
-                self.pending_aux_output.process_output()
-            )
-
-        if self.check_ep_fault:
-            has_fault = get_ep_all2all_manager().query_fault()
-            if has_fault.item():
-                mask = get_ep_all2all_manager().query_active_mask()
-                raise RuntimeError(
-                    "Fault detected in EP all2all communication: "
-                    "one or more ranks timed out during dispatch/combine. "
-                    f"Mask: {mask.cpu().tolist()}"
-                )
-
-        return self.model_runner_output
+    def get_kv_connector_output(self):
+        return self._delegate.get_kv_connector_output()
 
 
 @functools.wraps(_original_gpu_model_runner_init)

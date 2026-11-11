@@ -6,7 +6,8 @@
 #       but W8A8 still omits them. Keep only the W8A8 compatibility extension
 #       for MiniMax M3 and other clamped-SwiGLU models.
 #
-# Affected versions: vLLM 0.30.0 (ced6857afa0e), reviewed 2026-10-12.
+# Affected versions: vLLM 0.33.0
+#     (4ba787ec9959e566d3b587a796dff07673324da5).
 #
 # Remove at: Upstream int8_w8a8_moe_quant_config forwards gemm1_alpha, gemm1_beta and
 #     gemm1_clamp_limit.

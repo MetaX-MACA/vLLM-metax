@@ -21,7 +21,8 @@
 #       logits, request state, resample blocks and sampled output slots.
 #
 # Affected versions: Historical MACA reproductions on vLLM 0.29.0/0.30.0;
-#     source and launch contracts reviewed on v0.32.0 (5df63a7203), 2026-11-03.
+#     source and launch contracts reviewed on v0.33.0
+#     (4ba787ec9959e566d3b587a796dff07673324da5).
 #     This review does not establish native GPU numerical correctness.
 #
 # Remove at: MACA runs `_resample_kernel` reliably with
@@ -32,6 +33,7 @@
 
 import torch
 from vllm.triton_utils import tl, triton
+from vllm.v1.spec_decode.fly import compute_fly_entropy
 from vllm.v1.worker.gpu.spec_decode.rejection_sampler_utils import (
     _compute_cumulative_log_p_kernel,
     _compute_local_logits_stats_kernel,
@@ -167,6 +169,9 @@ def rejection_sample(
     watermarking: torch.Tensor | None = None,
     watermarking_skip_mask: torch.Tensor | None = None,
     watermark_key: int | None = None,
+    fly_window_size: int = 0,
+    fly_entropy_threshold: float = 0.3,
+    fly_entropy_top_k: int = 3,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     assert target_logits.ndim == 2 and target_logits.stride(-1) == 1
     assert draft_logits is None or (
@@ -216,6 +221,14 @@ def rejection_sample(
         # In some cases (e.g. MiMo v2.5 Pro + DFlash) the target model's
         # vocab size is larger than the draft's due to padding.
         vocab_size = min(vocab_size, draft_logits.size(-1))
+    fly_entropy = None
+    if fly_window_size > 0:
+        assert synthetic_conditional_rates is None and not use_block_verification
+        fly_entropy = compute_fly_entropy(
+            target_logits[:, :vocab_size],
+            fly_entropy_top_k,
+            from_logits=True,
+        )
 
     # Compute the per-vocab-block logits stats, such as target argmax
     # (for greedy requests), and target max + softmax exponential
@@ -379,11 +392,14 @@ def rejection_sample(
         cumulative_log_p,
         local_residual_mass,
         local_residual_mass.stride(0) if local_residual_mass is not None else 0,
+        fly_entropy,
+        fly_entropy_threshold,
         vocab_num_blocks,
         PADDED_VOCAB_NUM_BLOCKS=padded_vocab_num_blocks,
         HAS_DRAFT_LOGITS=has_draft_logits,
         SYNTHETIC_MODE=synthetic_conditional_rates is not None,
         USE_BLOCK_VERIFICATION=use_block_verification,
+        FLY_WINDOW_SIZE=fly_window_size,
         num_warps=1,
     )
 
