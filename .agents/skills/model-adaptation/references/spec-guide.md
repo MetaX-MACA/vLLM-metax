@@ -12,8 +12,13 @@ Use these sections, with concrete values or explicit unknown/unverified entries:
 2. **Difference matrix:** upstream CUDA contract, MACA contract, reason, exact local
    implementation and eventual removal condition. Include deliberate no-difference
    decisions where they determine a shared contract.
-3. **Local model dependencies:** copied model modules and helpers, local import mapping,
-   public framework API boundaries, direct/indirect/dynamic concrete-model import audit evidence; permitted public framework boundaries.
+3. **Local model dependencies:** the complete `vllm.models.<model>` directory mirrored
+   into `vllm_metax.models.<model>` after excluding non-NVIDIA vendor/platform
+   implementations, the local `nvidia/ -> metax/` mapping, rewritten
+   imports/lazy references/registry strings, removed vendor directories, public
+   framework API boundaries, and direct/indirect/dynamic concrete-model import audit
+   evidence. State that unchanged non-vendor files remain part of the local mirror and
+   which shared upstream framework APIs are used from outside the model directory.
 4. **Weights and compute:** checkpoint/runtime/activation dtypes, quantization groups,
    scale formats and orientation, fused mappings, TP sharding, loading order, post-load
    transforms, MoE experts and actual component/kernel dispatch.

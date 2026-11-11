@@ -28,6 +28,13 @@ indexer entry point; wrapper transformations can differ from raw component contr
 | Outputs | Tensor vs tuple, output and LSE shapes/dtypes, LSE logarithm base, padding, aliasing, in-place writes and empty-row behavior. |
 | Supported combinations | Joint restrictions on dtype, QK/V dimensions, sinks, block size, quantization, native MTP, DCP, variable lengths and graph capture. |
 
+Treat every API change in target attention, MLA, indexer, PCP/DCP and DeepGEMM wrappers
+as upstream-owned. Port the target signature and argument meaning first, including
+parameters that carry metadata-routing or lifecycle state, then adapt installed MetaX
+components inside the wrapper and migrate all local callers. Keep compatibility inside
+the implementation boundary rather than changing the public API; if a target API cannot
+be supported, record the exact component limitation and reject it explicitly.
+
 Challenge claims such as "FA2 cannot do DiffKV", "all sinks supported", "FP8/FP4 share
 this API", "cache is contiguous" and "DCP supported" with executable restrictions and
 discriminating calls. An absent Python signature can be an extension-interface detail;

@@ -214,6 +214,9 @@ def run_dummy_smoke(context, spec, port):
             passed = bool(content.strip()) and client.last_completion_tokens >= 2
             if any(word in content for word in CRITICAL_WORDS):
                 passed = False
+            completion_tokens = client.last_completion_tokens
+        if kind == "embedding":
+            completion_tokens = None
         context.check()
         return CaseResult(
             kind,
@@ -223,6 +226,7 @@ def run_dummy_smoke(context, spec, port):
             ""
             if passed
             else "Dummy execution smoke failed; no semantic accuracy claim",
+            completion_tokens,
         )
 
     try:
@@ -231,7 +235,9 @@ def run_dummy_smoke(context, spec, port):
         with (context.work_dir / "dummy_smoke.log").open("w") as stream:
             for result in results:
                 stream.write(
-                    f"{result.suite}:{result.index} passed={result.passed} response={result.response}\n"
+                    f"{result.suite}:{result.index} passed={result.passed} "
+                    f"completion_tokens={result.completion_tokens} "
+                    f"response={result.response}\n"
                 )
         return results
     finally:

@@ -47,6 +47,8 @@ class CaseResult:
     response: str
     # Explanation of a failed scoring decision; empty on success.
     reason: str = ""
+    # Actual generated token count when the backend reports usage.
+    completion_tokens: int | None = None
 
 
 @dataclass

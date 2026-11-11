@@ -48,6 +48,12 @@ plugin entry point -> package imports -> decorator/table mutation
   module/source through kernel invocation. A MetaX-named oracle can still return
   upstream experts and bypass the approved kernel provider, local tuning or communication
   adaptations. Verify actual callable origins against the selected provider.
+- Treat target CustomOp schemas, constructors, factories and registered signatures as
+  upstream-owned contracts. Port added, removed or reordered parameters through the real
+  implementation, fake implementation, schema registration, bound layer fields and all
+  callers before adapting internal behavior. Do not preserve a stale public parameter as
+  compatibility unless the installed MetaX component requires it; record that constraint,
+  the narrow adapter boundary and its removal condition.
 - Distinguish shared and separately defined enums. Matching member names or values
   do not make members of different Enum classes interchangeable in backend dispatch.
 

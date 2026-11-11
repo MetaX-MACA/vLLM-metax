@@ -51,6 +51,26 @@ touched module, not just changed symbols or an old adaptation diff.
   other changed production files and direct consumers. Record moved, local-only,
   target-only, unchanged and removed units; a final tree diff alone misses semantics.
 
+## Upstream API changes take precedence
+
+Treat target-upstream API changes as mandatory source contracts. Compare added, removed
+and renamed functions, parameters, fields and symbols; positional/keyword order,
+defaults, return and error contracts, schemas, metadata and lifecycle changes, including
+same-family wrappers, CustomOps, fake implementations and callers.
+
+Port the target public API shape into the corresponding `vllm_metax` module first. Then
+adapt the local implementation and update every local caller to the target meaning. Do
+not retain a removed or superseded public parameter merely to keep stale local callers
+working, and do not create a MetaX-specific public compatibility layer when the
+installation boundary can be adapted inside the implementation.
+
+If the installed MetaX component cannot accept the target API, record the exact
+incompatibility, affected symbols/callers and why direct compatibility is impossible.
+Use the narrowest internal adapter, translation or explicit rejection; never silently
+drop an input or reinterpret a parameter with different output semantics. Add
+signature/schema/AST and actual-call forwarding checks for the migrated API. The
+adapter's reason and removal condition belong in the mapping or review record.
+
 ## Complete inventory, dependencies and ownership
 
 Before adaptation, initialize the complete file inventory in the run. Perform and

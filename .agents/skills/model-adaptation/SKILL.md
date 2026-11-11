@@ -30,7 +30,41 @@ Public framework APIs and shared utilities/interfaces remain upstream. For examp
 `vllm.model_executor.models.utils`, `interfaces` and the common model registry are
 permitted when used as shared APIs; the word `models` in a module path alone is not a
 violation. Classify unfamiliar modules by their actual implementation and side effects.
-Do not indiscriminately copy framework protocols/classes and change their identity.
+
+For a model whose implementation lives under `vllm.models.<model>`, mirror the entire
+model-owned directory into `vllm_metax.models.<model>`. Do not deduplicate non-vendor
+files by hash or AST. Copy the model entry, `common/`, `nvidia/` and model-private
+configuration/processors. Exclude non-NVIDIA vendor/platform implementations, including
+`amd/`, `xpu/`, `cpu/` and equivalent directories. Rename the copied `nvidia/` directory
+to `metax/`, then rewrite all imports, lazy references, registry strings and dynamic
+module paths from the upstream `nvidia` prefix to the local `metax` prefix. Apply every
+MACA adaptation in that renamed implementation.
+
+The local mirror is the default ownership unit for a registered model:
+
+1. `vllm/models/<model>/` maps wholly to `vllm_metax/models/<model>/`.
+2. `vllm/models/<model>/nvidia/` maps wholly to
+   `vllm_metax/models/<model>/metax/`.
+3. Non-NVIDIA vendor/platform directories are excluded from the mirror; do not keep
+   local copies of `amd/`, `xpu/`, `cpu/` or equivalent platform-specific branches.
+4. Rewrite imports inside the mirror to local `vllm_metax` modules.
+5. Keep framework APIs outside the model directory upstream when they are shared
+   utilities/interfaces rather than concrete model implementations.
+6. A local registration must point to the local mirrored model entry, and the actual
+   worker must load the local implementation.
+
+An unchanged non-vendor file inside the mirrored model directory is still retained. Its
+lack of a MACA diff is recorded as a deliberate no-difference decision, not grounds for
+deletion. An existing separate local `nvidia/` tree or a minimal wrapper-only adaptation
+should be migrated into the complete mirrored `metax/` tree. Existing `amd/`, `xpu/`,
+`cpu/` and equivalent local vendor paths should be removed once their consumers are
+rewritten to the NVIDIA-derived local implementation.
+
+The import auditor must not treat `vllm.models.<model>` as a permitted boundary for a
+model that has a local mirror. It may permit only explicitly reviewed shared framework
+APIs outside the model family. Thus `vllm.models.qwen4_exp.common...`,
+`vllm.models.deepseek_v4...`, and similar same-family imports from the corresponding
+local model are prohibited.
 
 Run [audit_imports.py](scripts/audit_imports.py) on model entries and their reachable
 local helpers without importing the plugin. It reports concrete implementation imports,
@@ -49,9 +83,10 @@ spec but is not its canonical location. Follow [spec-guide.md](references/spec-g
 Keep it current with the final implementation and verified/unverified scope.
 
 For every model record exact target/prior identities, the CUDA-to-MACA difference
-matrix, local import/dependency ownership, weight mapping and post-load transforms,
-execution paths, capability limits and acceptance evidence. Do not leave a spec as an
-unverified list of upstream defaults.
+matrix, the complete local mirror contents, `nvidia/ -> metax/` import mapping, local
+import/dependency ownership, weight mapping and post-load transforms, execution paths,
+capability limits and acceptance evidence. Do not leave a spec as an unverified list of
+upstream defaults.
 
 For DSv4 and other private-attention/indexer models, explicitly specify both upstream
 and MetaX attention **and indexer** cache quantization, physical block byte layout,
