@@ -48,6 +48,8 @@ class MCCLLibrary:
     exported_functions = [
         # const char* ncclGetErrorString(ncclResult_t result)
         Function("mcclGetErrorString", ctypes.c_char_p, [ncclResult_t]),
+        # const char* ncclGetLastError(ncclComm_t comm)
+        Function("mcclGetLastError", ctypes.c_char_p, [ncclComm_t]),
         # ncclResult_t  ncclGetVersion(int *version);
         Function("mcclGetVersion", ncclResult_t, [ctypes.POINTER(ctypes.c_int)]),
         # ncclResult_t ncclGetUniqueId(ncclUniqueId* uniqueId);
@@ -285,6 +287,9 @@ class MCCLLibrary:
                     # ordinary collectives usable and report the real capability.
                     if func.name in ("mcclCommSuspend", "mcclCommResume"):
                         continue
+                    if func.name == "mcclGetLastError":
+                        # Only used to enrich error messages.
+                        continue
                     raise
             MCCLLibrary.path_to_dict_mapping[so_file] = _funcs
         self._funcs = MCCLLibrary.path_to_dict_mapping[so_file]
@@ -295,9 +300,20 @@ class MCCLLibrary:
     def ncclGetErrorString(self, result: ncclResult_t) -> str:
         return self._funcs["mcclGetErrorString"](result).decode("utf-8")
 
+    def ncclGetLastError(self) -> str | None:
+        # MCCL does not clear this after later successful calls, so only read it
+        # right after a call has failed.
+        if "mcclGetLastError" not in self._funcs:
+            return None
+        message = self._funcs["mcclGetLastError"](None)
+        return message.decode("utf-8", errors="replace") if message else None
+
     def NCCL_CHECK(self, result: ncclResult_t) -> None:
         if result != 0:
             error_str = self.ncclGetErrorString(result)
+            last_error = self.ncclGetLastError()
+            if last_error:
+                error_str += f"\nLast error:\n{last_error}"
             raise RuntimeError(f"NCCL error: {error_str}")
 
     def ncclGetRawVersion(self) -> int:

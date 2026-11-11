@@ -7,7 +7,7 @@ from collections.abc import Callable
 from datetime import timedelta
 from functools import cache, lru_cache, wraps
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, NamedTuple, TypeVar
 
 import torch
 from torch.distributed import PrefixStore, ProcessGroup
@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from vllm.config import VllmConfig
     from vllm.config.cache import CacheDType
     from vllm.config.kernel import IrOpPriorityConfig
+    from vllm.v1.attention.backend import AttentionBackend
     from vllm.v1.attention.selector import AttentionSelectorConfig
 else:
     VllmConfig = None
@@ -109,6 +110,17 @@ def _get_backend_priorities(
             AttentionBackendEnum.FLEX_ATTENTION,
             AttentionBackendEnum.TURBOQUANT,
         ]
+
+
+def _backend_cls_path(backend_cls: type["AttentionBackend"]) -> str:
+    module, qualname = backend_cls.full_cls_name()
+    return f"{module}.{qualname}"
+
+
+class _BackendCandidate(NamedTuple):
+    backend_class: type["AttentionBackend"]
+    backend: AttentionBackendEnum
+    priority: int
 
 
 def with_mxsml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
@@ -392,15 +404,15 @@ class MacaPlatformBase(Platform):
         attn_selector_config: "AttentionSelectorConfig",
         num_heads: int | None = None,
     ) -> tuple[
-        list[tuple["AttentionBackendEnum", int]],
+        list[_BackendCandidate],
         dict["AttentionBackendEnum", tuple[int, list[str]]],
     ]:
         valid_backends_priorities = []
         invalid_reasons: dict[AttentionBackendEnum, tuple[int, list[str]]] = {}
 
         backend_priorities = _get_backend_priorities(
-            attn_selector_config.use_mla,
-            device_capability,
+            use_mla=attn_selector_config.use_mla,
+            device_capability=device_capability,
             num_heads=num_heads,
             kv_cache_dtype=attn_selector_config.kv_cache_dtype,
             use_non_causal=attn_selector_config.use_non_causal,
@@ -414,15 +426,17 @@ class MacaPlatformBase(Platform):
                     device_capability=device_capability,
                     **attn_selector_config._asdict(),
                 )
-            except ImportError:
-                logger.info(
+            except (ImportError, OSError) as e:
+                logger.debug(
                     "Attention backend %s is unavailable", backend.name, exc_info=True
                 )
-                invalid_reasons_i = ["ImportError"]
+                invalid_reasons_i = [f"{type(e).__name__}: {e}"]
             if invalid_reasons_i:
                 invalid_reasons[backend] = (priority, invalid_reasons_i)
             else:
-                valid_backends_priorities.append((backend, priority))
+                valid_backends_priorities.append(
+                    _BackendCandidate(backend_class, backend, priority)
+                )
 
         return valid_backends_priorities, invalid_reasons
 
@@ -456,7 +470,7 @@ class MacaPlatformBase(Platform):
                 )
             else:
                 logger.info("Using %s backend.", selected_backend)
-                return selected_backend.get_path()
+                return _backend_cls_path(backend_class)
 
         # No selected backend or the selected backend is invalid,
         # so we try finding a valid backend.
@@ -474,7 +488,7 @@ class MacaPlatformBase(Platform):
             + "}"
         )
         config_str = attn_selector_config.__repr__()
-        logger.info_once(
+        logger.debug_once(
             f"Some attention backends are not valid for {cls.device_name} with "
             f"{config_str}. Reasons: {reasons_str}."
         )
@@ -487,15 +501,16 @@ class MacaPlatformBase(Platform):
         # We have found some valid backends. Select the one with the
         # highest priority.
         logger.info(
-            "Valid backends: %s", [b[0].name for b in valid_backends_priorities]
+            "Valid backends: %s",
+            [candidate.backend.name for candidate in valid_backends_priorities],
         )
-        sorted_indices = sorted(
-            range(len(valid_backends_priorities)),
-            key=lambda i: valid_backends_priorities[i][1],
+        selected_candidate = min(
+            valid_backends_priorities,
+            key=lambda candidate: candidate.priority,
         )
-        selected_index = sorted_indices[0]
-        selected_backend = valid_backends_priorities[selected_index][0]
-        selected_priority = valid_backends_priorities[selected_index][1]
+        selected_backend_class = selected_candidate.backend_class
+        selected_backend = selected_candidate.backend
+        selected_priority = selected_candidate.priority
 
         # If the user specified --block-size (but not --attention-backend),
         # check whether that constraint precluded any higher-priority backends.
@@ -518,13 +533,16 @@ class MacaPlatformBase(Platform):
                     selected_backend.name,
                 )
         logger.info_once(
-            "Using %s attention backend out of potential backends: %s",
+            "Using %s attention backend out of potential backends: %s.",
             selected_backend.name,
-            tuple(b[0].name for b in valid_backends_priorities),
-            scope="local",
+            "["
+            + ", ".join(
+                f"'{candidate.backend.name}'" for candidate in valid_backends_priorities
+            )
+            + "]",
         )
 
-        return selected_backend.get_path()
+        return _backend_cls_path(selected_backend_class)
 
     @classmethod
     def get_supported_vit_attn_backends(cls) -> list["AttentionBackendEnum"]:
@@ -538,7 +556,7 @@ class MacaPlatformBase(Platform):
         cls,
         head_size: int,
         dtype: torch.dtype,
-        backend: "AttentionBackendEnum | None",
+        backend: "AttentionBackendEnum | None" = None,
     ) -> "AttentionBackendEnum":
         if backend is not None:
             assert backend in cls.get_supported_vit_attn_backends(), (
@@ -695,7 +713,7 @@ class MacaPlatformBase(Platform):
         # use vllm_c kernels where available when no codegen
         cc = vllm_config.compilation_config
         using_inductor = cc.backend == "inductor" and cc.mode != CompilationMode.NONE  # noqa: F841
-        default = ["vllm_c", "native"]
+        default = ["native"] if using_inductor else ["vllm_c", "native"]
 
         # Use oink if enabled for rms_norm
         # TODO(Laurawly/luka): remove this env var,
@@ -788,7 +806,10 @@ class MxsmlMacaPlatform(MacaPlatformBase):
     def get_device_total_memory(cls, device_id: int = 0) -> int:
         physical_device_id = cls.device_id_to_physical_device_id(device_id)
         handle = pymxsml.nvmlDeviceGetHandleByIndex(physical_device_id)
-        return int(pymxsml.nvmlDeviceGetMemoryInfo(handle).total)
+        try:
+            return int(pymxsml.nvmlDeviceGetMemoryInfo(handle).total)
+        except pymxsml.NVMLError:
+            return int(torch.cuda.get_device_properties(device_id).total_memory)
 
     @classmethod
     @with_mxsml_context

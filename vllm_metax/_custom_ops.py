@@ -190,6 +190,11 @@ def grouped_topk(
         bias: Bias tensor (e_score_correction_bias). Always fused in kernel.
         scoring_func: 0=none (no activation), 1=sigmoid
     """
+    if scores.shape[0] == 0:
+        return (
+            scores.new_empty((0, topk), dtype=torch.float32),
+            scores.new_empty((0, topk), dtype=torch.int32),
+        )
     return torch.ops._moe_C.grouped_topk(
         scores,
         num_expert_group,
