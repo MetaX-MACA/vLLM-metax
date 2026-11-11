@@ -89,15 +89,19 @@ from .metax.ops.kv_cache_int8 import (
 )
 import vllm_metax.envs as mx_envs
 
-logger = init_logger(__name__)
+# MetaX patch (bf16-kv route): force plain-row bf16 KV caches on xcore1002,
+# whose decode kernel reads bf16 rows only (fp8 is xcore1600-gated).
+import os as _os
 
+_FORCE_BF16_ROWS = bool(int(_os.environ.get("VLLM_METAX_FORCE_BF16_KV", "0")))
+
+logger = init_logger(__name__)
 
 def _replace_layer_index(prefix: str, layer_id: int) -> str:
     """Swap the layer index inside a ``...layers.<idx>...`` prefix."""
     new_prefix, n = re.subn(r"\.layers\.\d+\.", f".layers.{layer_id}.", prefix)
     assert n == 1, f"Cannot locate layer index in prefix {prefix}"
     return new_prefix
-
 
 def _indexer_k_cache_head_dim(index_head_dim: int, use_fp4_kv: bool) -> int:
     """Per-token byte width of the paged indexer K cache row."""
@@ -108,7 +112,6 @@ def _indexer_k_cache_head_dim(index_head_dim: int, use_fp4_kv: bool) -> int:
     # NOTE(yifan): FP8 indexer cache uses the same layout as V3.2:
     # head_dim bytes = 128 fp8 + 4 fp32 scale = 132.
     return index_head_dim + index_head_dim // 128 * 4
-
 
 def _indexer_wk_quant_config(
     quant_config: QuantizationConfig | None,
@@ -126,7 +129,6 @@ def _indexer_wk_quant_config(
     )
 
     return quant_config if isinstance(quant_config, CompressedTensorsConfig) else None
-
 
 @triton.jit
 def _fill_short_context_topk_indices(
@@ -146,7 +148,6 @@ def _fill_short_context_topk_indices(
         mask=offsets < TOP_K,
     )
 
-
 # Which packed fp8_ds_mla record a V4.1 layer writes. FlashMLA decodes
 # DeepSeek's V4.1 record -- all 512 dims (RoPE included) as fp8 e4m3 with one
 # UE8M0 scale per 32 dims, 512 data bytes + 16 scale bytes per token, pages
@@ -155,7 +156,6 @@ def _fill_short_context_topk_indices(
 # plus 7 UE8M0 scales of 64 dims and a pad byte (584 B, 576 B pages).
 def _use_v41_mxfp8_kv_record() -> bool:
     return current_platform.is_device_capability_family(100)
-
 
 def _resolve_dsv4_kv_cache_dtype(
     use_fp8_ds_mla_layout: bool,
@@ -204,7 +204,6 @@ def _resolve_dsv4_kv_cache_dtype(
         return kv_cache_dtype, torch.float8_e4m3fn
     # auto / bfloat16 -> plain bf16 KV row.
     return kv_cache_dtype, torch.bfloat16
-
 
 class DeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
     """DeepseekV4 MLA attention layer.
@@ -295,6 +294,8 @@ class DeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
 
     def _uses_fp8_ds_mla_layout(self) -> bool:
         """Return whether this instance stores fp8 KV in fp8_ds_mla layout."""
+        if _FORCE_BF16_ROWS:
+            return False
         return self.use_fp8_ds_mla_layout
 
     def _indexer_cls(
@@ -535,6 +536,10 @@ class DeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
 
         # Resolve the kv-cache dtype from this backend's block format. The same
         # resolution drives the SWA cache tensor dtype below.
+        if _FORCE_BF16_ROWS and cache_config.cache_dtype == "auto":
+            # MetaX patch (bf16-kv): plain-row backends have no int8 packed
+            # decode kernel; use bf16 rows instead.
+            cache_config.cache_dtype = "bfloat16"
         self.kv_cache_dtype, self.kv_cache_torch_dtype = _resolve_dsv4_kv_cache_dtype(
             self._uses_fp8_ds_mla_layout(),
             cache_config.cache_dtype,
@@ -722,7 +727,28 @@ class DeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
             slot_mapping = cast(
                 Any, attn_metadata[self.swa_cache_layer.prefix]
             ).slot_mapping
-            if cache.dtype == torch.int8:
+            if cache.dtype == torch.bfloat16:
+                # MetaX patch (bf16-kv): plain torch rope + paged scatter.
+                from vllm_metax.models.deepseek_v41.metax.ops.kv_cache_bf16 import (
+                    NOPE_DIM,
+                    _rope,
+                )
+
+                group_start = (positions - (self.compress_ratio - 1)).clamp_min(0)
+                if self.compress_ratio == 1:
+                    group_start = positions
+                cos_sin = self.rotary_emb.cos_sin_cache[group_start].float()
+                cos, sin = cos_sin.chunk(2, dim=-1)
+                kvf = kv.float()
+                nope = kvf[..., :NOPE_DIM]
+                rot = kvf[..., NOPE_DIM:]
+                row = torch.cat((nope, _rope(rot, cos, sin)), dim=-1).to(torch.bfloat16)
+                assert cache.ndim == 3
+                bs = cache.shape[1]
+                valid = slot_mapping >= 0
+                slots = slot_mapping[valid]
+                cache[slots // bs, slots % bs] = row[valid]
+            elif cache.dtype == torch.int8:
                 fused_deepseek_v4_kv_rope_insert_int8(
                     kv,
                     cache,
@@ -1160,6 +1186,15 @@ class DeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
                 block_size,
                 False,
             )
+            # MetaX patch (bf16-kv): the metax decode kernel requires
+            # h_q in {64,128}; pad the in-place-rewritten q to match the
+            # pre-allocated padded output buffer.
+            if self.n_local_heads < self.padded_heads:
+                return F.pad(
+                    q,
+                    (0, 0, 0, self.padded_heads - self.n_local_heads),
+                    value=0.0,
+                )
             return q
 
         # per-tensor fp8 (torch.float8_e4m3fn)
@@ -1234,7 +1269,6 @@ class DeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
         source = self._static_forward_context[self.compressed_cache_prefix]
         return source.kv_cache
 
-
 class DeepseekV4IndexerCache(torch.nn.Module, AttentionLayerBase):
     def __init__(
         self,
@@ -1301,7 +1335,6 @@ class DeepseekV4IndexerCache(torch.nn.Module, AttentionLayerBase):
         if self.sparse_logits:
             return DeepseekV41SparseIndexerBackend
         return DeepseekV41IndexerBackend
-
 
 class DeepseekV4Indexer(nn.Module):
     """DeepSeek V4.1 sparse-attention indexer.
