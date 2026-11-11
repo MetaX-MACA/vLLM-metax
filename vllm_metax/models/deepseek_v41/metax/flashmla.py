@@ -3,6 +3,10 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 from typing import TYPE_CHECKING, ClassVar, cast
+import typing
+
+import triton
+import triton.language as tl
 
 import torch
 
@@ -36,18 +40,15 @@ if TYPE_CHECKING:
         DeepseekSparseSWAMetadata,
     )
 
-
 class DeepseekSparseSWAFlashMLAMetadataBuilder(DeepseekV41SparseSWAMetadataBuilder):
     """SWA metadata for the FlashMLA decode path, which allows varlen decode."""
 
     _cudagraph_support: ClassVar[AttentionCGSupport] = AttentionCGSupport.ALWAYS
 
-
 class DeepseekSparseSWAFlashMLABackend(DeepseekSparseSWABackend):
     @staticmethod
     def get_builder_cls() -> type[DeepseekSparseSWAFlashMLAMetadataBuilder]:
         return DeepseekSparseSWAFlashMLAMetadataBuilder
-
 
 class DeepseekV4FlashMLAAttention(DeepseekV4Attention):
     """FlashMLA sparse MLA attention layer for DeepSeek V4.1 (CUDA)."""
@@ -123,7 +124,6 @@ class DeepseekV4FlashMLAAttention(DeepseekV4Attention):
         # Get SWA and indexer metadata from forward context
         forward_context = get_forward_context()
         attn_metadata = forward_context.attn_metadata
-
         if attn_metadata is None:
             # Warmup dummy run: no real metadata. Reserve the same bf16
             # gather workspace _forward_prefill would; the dequantize / topk
@@ -196,7 +196,6 @@ class DeepseekV4FlashMLAAttention(DeepseekV4Attention):
                 swa_only=swa_only,
                 output=output[:num_decode_tokens],
             )
-
     def _forward_decode(
         self,
         q: torch.Tensor,
@@ -267,7 +266,8 @@ class DeepseekV4FlashMLAAttention(DeepseekV4Attention):
             head_dim_v=512,
             tile_scheduler_metadata=tile_metadata,
             cache_seqlens=None,
-            is_fp8_kvcache=True,
+            # MetaX patch (bf16-kv): plain bf16 rows decode without the fp8 flag
+            is_fp8_kvcache=(swa_cache.dtype != torch.bfloat16),
             indices=swa_indices,
             topk_length=swa_lens,
             softmax_scale=self.scale,
@@ -392,8 +392,6 @@ class DeepseekV4FlashMLAAttention(DeepseekV4Attention):
                 topk_length=combined_lens,
                 out=output[query_start:query_end],
             )
-
-
 def _dequantize_and_gather_k_cache(
     out: torch.Tensor,
     k_cache: torch.Tensor,
@@ -413,4 +411,119 @@ def _dequantize_and_gather_k_cache(
 
         dequantize_and_gather_k_cache_int8(out, k_cache, **kwargs)  # type: ignore[arg-type]
         return
+    if k_cache.dtype == torch.bfloat16:
+        # MetaX patch (bf16-kv): plain-row bf16 cache — plain paged gather,
+        # no dequantization. Core cutedsl/triton kernels parse packed
+        # records only.
+        _gather_bf16_plain_rows(out, k_cache, **kwargs)  # type: ignore[arg-type]
+        return
     dequantize_and_gather_k_cache(out, k_cache, **kwargs)  # type: ignore[arg-type]
+
+@torch.library.custom_op(
+    "vllm_metax::gather_bf16_plain_rows",
+    mutates_args={"out"},
+)
+def _gather_bf16_plain_rows_op(
+    out: torch.Tensor,
+    k_cache: torch.Tensor,
+    seq_lens: torch.Tensor,
+    gather_lens: typing.Optional[torch.Tensor],
+    block_table: torch.Tensor,
+    block_size: int,
+    offset: int,
+) -> None:
+    """Gather bf16 plain-row paged cache rows into out in order (triton)."""
+    # MetaX patch (bf16-kv): pure triton gather - no aten view/indexing ops
+    # on inference tensors (those clone pool-sized buffers via
+    # ADInplaceOrView dispatch under the custom-op wrapper).
+    if gather_lens is not None:
+        n_per = torch.minimum(seq_lens, gather_lens.to(seq_lens.dtype))
+    else:
+        n_per = seq_lens
+    max_n = int(n_per.max().item()) if n_per.numel() else 0
+    if max_n <= 0:
+        return
+    num_reqs = seq_lens.shape[0]
+    head_dim = out.shape[-1]
+    block_rows = 128
+    grid = (num_reqs, (max_n + block_rows - 1) // block_rows)
+    _gather_bf16_triton[grid](
+        out,
+        k_cache,
+        seq_lens,
+        gather_lens if gather_lens is not None else seq_lens,
+        block_table,
+        block_table.stride(0),
+        out.stride(0),
+        k_cache.stride(0),
+        k_cache.stride(1),
+        block_size,
+        offset,
+        HEAD_DIM=head_dim,
+        BLOCK_ROWS=block_rows,
+        HAS_GATHER=gather_lens is not None,
+        num_warps=8,
+    )
+@triton.jit
+def _gather_bf16_triton(
+    out_ptr,
+    cache_ptr,
+    seq_lens_ptr,
+    gather_lens_ptr,
+    block_table_ptr,
+    stride_bt,          # block_table stride per request (elements)
+    stride_out_req,     # out stride per request (elements)
+    stride_cache_block, # k_cache stride per block (elements)
+    stride_cache_row,   # k_cache stride per row within block (elements)
+    block_size,
+    offset,
+    HEAD_DIM: tl.constexpr,
+    BLOCK_ROWS: tl.constexpr,
+    HAS_GATHER: tl.constexpr,
+):
+    req = tl.program_id(0)
+    chunk = tl.program_id(1) * BLOCK_ROWS
+    seq = tl.load(seq_lens_ptr + req)
+    n = seq
+    if HAS_GATHER:
+        g = tl.load(gather_lens_ptr + req)
+        n = tl.minimum(seq, g)
+    rows = chunk + tl.arange(0, BLOCK_ROWS)
+    rmask = rows < n
+    t = (seq - n) + rows
+    tout = offset + rows
+    blk = t // block_size
+    boff = t % block_size
+    bt = tl.load(
+        block_table_ptr + req.to(tl.int64) * stride_bt + blk,
+        mask=rmask,
+        other=0,
+    )
+    src = (
+        bt.to(tl.int64) * stride_cache_block.to(tl.int64)
+        + boff.to(tl.int64) * stride_cache_row.to(tl.int64)
+    )
+    cols = tl.arange(0, HEAD_DIM)
+    m2 = rmask[:, None]
+    val = tl.load(cache_ptr + src[:, None] + cols[None, :], mask=m2, other=0.0)
+    dst = (
+        req.to(tl.int64) * stride_out_req
+        + tout.to(tl.int64)[:, None] * HEAD_DIM
+        + cols[None, :]
+    )
+    tl.store(out_ptr + dst, val, mask=m2)
+
+def _gather_bf16_plain_rows(
+    out: torch.Tensor,
+    k_cache: torch.Tensor,
+    *,
+    seq_lens: torch.Tensor,
+    gather_lens: torch.Tensor | None,
+    block_table: torch.Tensor,
+    block_size: int,
+    offset: int,
+    **_ignored: object,
+) -> None:
+    torch.ops.vllm_metax.gather_bf16_plain_rows(
+        out, k_cache, seq_lens, gather_lens, block_table, block_size, offset
+    )
