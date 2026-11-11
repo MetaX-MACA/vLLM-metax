@@ -1156,9 +1156,11 @@ def invoke_fused_moe_triton_kernel(
                 C.stride(2),
                 A_scale.stride(0) if A_scale is not None and A_scale.ndim == 2 else 0,
                 A_scale.stride(1) if A_scale is not None and A_scale.ndim == 2 else 0,
-                B_scale.stride(0) if B_scale is not None and B_scale.ndim >= 2 else 0,
+                B_scale.stride(0) if B_scale is not None else 0,
                 B_scale.stride(2) if B_scale is not None and B_scale.ndim == 3 else 0,
-                B_scale.stride(1) if B_scale is not None and B_scale.ndim >= 2 else 0,
+                B_scale.stride(1)
+                if B_scale is not None and B_scale.ndim >= 2 and B_scale.size(1) > 1
+                else 0,
                 B_bias.stride(0) if B_bias is not None else 0,
                 B_bias.stride(1) if B_bias is not None else 0,
                 0 if block_shape is None else block_shape[0],
@@ -1204,9 +1206,11 @@ def invoke_fused_moe_triton_kernel(
                 C.stride(2),
                 A_scale.stride(0) if A_scale is not None and A_scale.ndim == 2 else 0,
                 A_scale.stride(1) if A_scale is not None and A_scale.ndim == 2 else 0,
-                B_scale.stride(0) if B_scale is not None and B_scale.ndim >= 2 else 0,
+                B_scale.stride(0) if B_scale is not None else 0,
                 B_scale.stride(2) if B_scale is not None and B_scale.ndim == 3 else 0,
-                B_scale.stride(1) if B_scale is not None and B_scale.ndim >= 2 else 0,
+                B_scale.stride(1)
+                if B_scale is not None and B_scale.ndim >= 2 and B_scale.size(1) > 1
+                else 0,
                 B_bias.stride(0) if B_bias is not None else 0,
                 B_bias.stride(1) if B_bias is not None else 0,
                 0 if block_shape is None else block_shape[0],
@@ -1991,6 +1995,11 @@ def dispatch_fused_experts_func(inplace: bool) -> Callable[..., torch.Tensor]:
     return torch_vllm_outplace_fused_experts
 
 
+def _weights_host_resident(*weights: torch.Tensor) -> bool:
+    """Whether any expert weight is consumed from host memory in place."""
+    return any(getattr(w, "_vllm_is_uva_offloaded", False) for w in weights)
+
+
 def _prepare_expert_assignment(
     topk_ids: torch.Tensor,
     config: dict[str, Any],
@@ -2007,6 +2016,7 @@ def _prepare_expert_assignment(
     use_int4_w4a8: bool = False,
     block_shape: list[int] | None = None,
     ignore_invalid_experts: bool = False,
+    weights_host_resident: bool = False,
 ) -> tuple[torch.Tensor | None, torch.Tensor, torch.Tensor]:
     """Prepare expert assignments for the aligned and low-latency Triton paths."""
     # Same as upstreams _prepare_expert_assignment
@@ -2014,6 +2024,7 @@ def _prepare_expert_assignment(
     # MCTLASS uses aligned assignments; the naive path is Triton-only.
     naive_block_assignment = (
         expert_map is None
+        and not weights_host_resident
         and num_tokens * top_k_num * 4 <= global_num_experts
         and not (
             (use_int8_w8a16 or use_int4_w4a16)
@@ -2074,7 +2085,7 @@ def fused_experts(
         use_fp8_w8a8=quant_config.use_fp8_w8a8,
         use_int8_w8a8=quant_config.use_int8_w8a8,
         use_int8_w8a16=quant_config.use_int8_w8a16,
-        use_int4_w4a8=quant_config.use_int4_w4a8,
+        use_int4_w4a8=getattr(quant_config, "use_int4_w4a8", False),
         use_int4_w4a16=quant_config.use_int4_w4a16,
         use_mxfp4_w4a16=quant_config.use_mxfp4_w4a16,
         ocp_mx_scheme=quant_config.ocp_mx_scheme,
@@ -2288,6 +2299,7 @@ def fused_experts_impl(
         use_int4_w4a8=use_int4_w4a8,
         block_shape=block_shape,
         ignore_invalid_experts=True,
+        weights_host_resident=_weights_host_resident(w1, w2),
     )
     # NOTE(metax): Invalid routes were dropped; processed blocks are nonnegative.
     # Unused -1 tail blocks lie beyond num_tokens_post_padded.
@@ -2354,6 +2366,7 @@ def fused_experts_impl(
                 use_int4_w4a8=use_int4_w4a8,
                 block_shape=block_shape,
                 ignore_invalid_experts=True,
+                weights_host_resident=_weights_host_resident(w1, w2),
             )
         )
     if expert_map is not None or staged_configs[1].get("SPLIT_K", 1) > 1:
