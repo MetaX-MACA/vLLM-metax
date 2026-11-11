@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-# NOTE(metax): Keep model-private imports within the MetaX NVIDIA-derived model.
 """Encoder CUDA graph support for the MiniMax M3 vision tower.
 
 Mixin implementing the SupportsEncoderCudaGraph protocol for any host class

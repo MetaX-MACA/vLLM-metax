@@ -33,12 +33,12 @@ from vllm.model_executor.models.utils import (
 )
 from vllm.sequence import IntermediateTensors
 
-from .model import (
+from vllm_metax.models.minimax_m3.metax.model import (
     MiniMAXGemmaRMSNorm,
     MiniMaxM3DecoderLayer,
 )
 
-from .weight_loading import (
+from vllm_metax.models.minimax_m3.metax.weight_loading import (
     _has_hybrid_quant_config,
     _load_hybrid_weights,
     hybrid_weight_loading,

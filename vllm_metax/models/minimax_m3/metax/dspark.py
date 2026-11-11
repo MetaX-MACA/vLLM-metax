@@ -28,7 +28,6 @@ from vllm.model_executor.models.qwen3_dflash import (
     DFlashQwen3DecoderLayer,
     _get_dflash_fc_input_size,
     _resolve_layer_attention,
-    _add_global_draft_layer_exclusions,
 )
 from vllm.model_executor.models.qwen3_dspark import (
     DSparkConfidenceHead,
@@ -39,6 +38,7 @@ from vllm.model_executor.models.qwen3_dspark import (
 from vllm.model_executor.models.utils import (
     WeightsMapper,
     get_draft_quant_config,
+    map_draft_quant_config as map_draft_quant_config_layers,
     maybe_prefix,
 )
 
@@ -162,8 +162,12 @@ class MiniMaxM3DSparkModel(Qwen3DSparkModel):
         self.vocab_size = self.config.vocab_size
         # NOTE(metax): Map standalone MiniMax exclusions before constructing layers.
         self.quant_config = map_draft_quant_config(get_draft_quant_config(vllm_config))
-        _add_global_draft_layer_exclusions(
-            self.quant_config, start_layer_id, self.config.num_hidden_layers
+        map_draft_quant_config_layers(
+            self.quant_config,
+            self.hf_to_vllm_mapper,
+            prefix,
+            start_layer_id,
+            self.config.num_hidden_layers,
         )
 
         drafter_config = getattr(self.config, "eagle_config", {})

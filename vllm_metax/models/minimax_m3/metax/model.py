@@ -99,8 +99,8 @@ from vllm.v1.kv_cache_interface import (
 )
 
 
-from . import attention_ops as ops
-from .weight_loading import (
+from vllm_metax.models.minimax_m3.metax import attention_ops as ops
+from vllm_metax.models.minimax_m3.metax.weight_loading import (
     _has_hybrid_quant_config,
     _load_hybrid_weights,
     hybrid_weight_loading,

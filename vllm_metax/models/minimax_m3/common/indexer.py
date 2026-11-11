@@ -493,16 +493,62 @@ def select_indexer_impl_cls(
     topk_blocks: int,
     indexer_kv_dtype: IndexerKVDType = "bf16",
 ) -> type[MiniMaxM3IndexerImpl]:
-    """Select the portable Triton indexer without importing NVIDIA MSA kernels."""
-    # NOTE(metax): MACA has no CuTeDSL/fmha_sm100 runtime. Both prefill and
-    # decode use local Triton block scores and top-k regardless of CUDA capability.
-    if indexer_kv_dtype != "bf16":
+    """Pick the indexer impl off the platform, top-k count, and cache dtype.
+
+    On Blackwell (SM100) with ``topk_blocks == 16`` (the only width fmha_sm100's
+    ``sparse_topk_select`` kernel supports), the fmha_sm100 score + top-k path is
+    used for both bf16 and fp8 index caches. Everything else falls back to the
+    Triton indexer, with fp8 restricted to CUDA platforms that advertise fp8
+    support.
+    """
+    if get_current_vllm_config().attention_config.minimax_m3_indexer_cp:
+        raise ValueError(
+            "attention_config.minimax_m3_indexer_cp requires the ROCm "
+            "implementation, which is not retained in the MetaX model mirror."
+        )
+    if indexer_kv_dtype in ("mxfp4", "nvfp4"):
+        raise NotImplementedError(
+            f"indexer_kv_dtype={indexer_kv_dtype!r} needs the (not-yet-added) "
+            "CuteDSL indexer impl."
+        )
+    is_cuda = current_platform.is_cuda()
+    is_fp8 = indexer_kv_dtype in ("fp8", "fp8_e4m3")
+    if is_fp8 and not (is_cuda and current_platform.supports_fp8()):
+        raise NotImplementedError(
+            f"indexer_kv_dtype={indexer_kv_dtype!r} requires CUDA fp8 support."
+        )
+    # NOTE(metax): MACA has no CuTeDSL/fmha_sm100 runtime. CUDA capability
+    # aliases must not enable the NVIDIA MSA implementation.
+    is_sm100 = (
+        is_cuda
+        and not current_platform.is_maca()
+        and current_platform.is_device_capability_family(100)
+    )
+    use_msa = (
+        is_sm100
+        and topk_blocks == 16
+        and indexer_kv_dtype in ("bf16", "fp8", "fp8_e4m3")
+    )
+    if use_msa:
+        # Lazy import so AMD / non-SM100 never import fmha_sm100.
+        from vllm_metax.models.minimax_m3.metax.indexer_msa import (
+            MiniMaxM3IndexerMSAImpl,
+        )
+
+        logger.info_once(
+            "MiniMax M3 indexer: selected MSA (fmha_sm100 score + top-k) "
+            "[topk_blocks=%d, indexer_kv_dtype=%s]",
+            topk_blocks,
+            indexer_kv_dtype,
+        )
+        return MiniMaxM3IndexerMSAImpl
+    if indexer_kv_dtype not in ("bf16", "fp8", "fp8_e4m3"):
         raise NotImplementedError(
             f"indexer_kv_dtype={indexer_kv_dtype!r} is not supported by the "
-            "MACA MiniMax-M3 indexer; use 'bf16'."
+            "MiniMax-M3 Triton indexer."
         )
     logger.info_once(
-        "MiniMax M3 indexer: selected MetaX Triton [topk_blocks=%d, indexer_kv_dtype=%s]",
+        "MiniMax M3 indexer: selected Triton [topk_blocks=%d, indexer_kv_dtype=%s]",
         topk_blocks,
         indexer_kv_dtype,
     )
