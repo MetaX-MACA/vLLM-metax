@@ -29,13 +29,13 @@ from vllm.models.common.ops.fused_qk_rmsnorm import (
     _FUSED_Q_KV_RMSNORM_KERNEL,
     fused_q_kv_rmsnorm,
 )
-from vllm.models.deepseek_v4.common.ops import (
+from vllm_metax.models.deepseek_v4.common.ops import (
     fused_indexer_q_rope_quant,
 )
 from vllm_metax.models.deepseek_v4.common.ops import (
     fused_indexer_q_rope_int8_quant,
 )
-from vllm.models.deepseek_v4.common.ops.fused_indexer_q import MXFP4_BLOCK_SIZE
+from vllm_metax.models.deepseek_v4.common.ops.fused_indexer_q import MXFP4_BLOCK_SIZE
 
 if TYPE_CHECKING:
     from vllm_metax.v1.attention.backends.mla.sparse_swa import (
@@ -53,8 +53,10 @@ from vllm.logger import init_logger
 from vllm.model_executor.layers.attention_layer_base import AttentionLayerBase
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.quantization import QuantizationConfig
+from vllm.model_executor.model_loader.weight_utils import make_attention_sink
 from vllm.model_executor.models.utils import extract_layer_index
-from vllm.models.deepseek_v4.common.rope import build_deepseek_v4_rope
+from vllm.transformers_utils.deepseek_v4_utils import get_compress_ratios
+from vllm_metax.models.deepseek_v4.common.rope import build_deepseek_v4_rope
 from vllm_metax.models.deepseek_v4.compressor import MacaDeepseekCompressor
 from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
@@ -74,10 +76,9 @@ from vllm.v1.kv_cache_interface import (
     get_kv_quant_mode,
 )
 
-from vllm.models.deepseek_v4.attention import (
-    logger,
-)
 import vllm_metax.envs as mx_envs
+
+logger = init_logger(__name__)
 
 
 @triton.jit
@@ -192,6 +193,12 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
         """Return whether this instance stores fp8 KV in fp8_ds_mla layout."""
         return self.use_fp8_ds_mla_layout
 
+    def _get_indexer_cls(
+        self, vllm_config: VllmConfig
+    ) -> type["MacaDeepseekV4Indexer"]:
+        """Return the indexer that writes and scores the MACA index cache."""
+        return MacaDeepseekV4Indexer
+
     def __init__(
         self,
         vllm_config: VllmConfig,
@@ -230,7 +237,7 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
         # we do this for because MTP layer is not included
         # in the compress ratio list
         if layer_id < config.num_hidden_layers:
-            self.compress_ratio = max(1, config.compress_ratios[layer_id])
+            self.compress_ratio = max(1, get_compress_ratios(config)[layer_id])
         else:
             self.compress_ratio = 1
         self.eps = config.rms_norm_eps
@@ -240,10 +247,7 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
         self.padded_heads = self.get_padded_num_q_heads(self.n_local_heads)
         # Sink padded to the same head count, initialized to -inf (no sink
         # effect). Weight loading fills the first n_local_heads slots.
-        self.attn_sink = nn.Parameter(
-            torch.full((self.padded_heads,), -float("inf"), dtype=torch.float32),
-            requires_grad=False,
-        )
+        self.attn_sink = make_attention_sink(self.padded_heads, torch.float32)
 
         self.fused_wqa_wkv = MergedColumnParallelLinear(
             self.hidden_size,
@@ -304,7 +308,7 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
             indexer_aux_stream = (
                 aux_stream_list[2] if aux_stream_list is not None else None
             )
-            self.indexer = MacaDeepseekV4Indexer(
+            self.indexer = self._get_indexer_cls(vllm_config)(
                 vllm_config,
                 config=config,
                 hidden_size=self.hidden_size,
@@ -421,7 +425,7 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
                 "ROCM_FLASHMLA_SPARSE_DSV4",
                 "XPU_V4_MLA_SPARSE",
             ):
-                from vllm.models.deepseek_v4.common.ops.cache_utils import (
+                from vllm_metax.models.deepseek_v4.common.ops.cache_utils import (
                     _COMBINE_TOPK_SWA_INDICES_KERNEL,
                 )
 
@@ -433,28 +437,28 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
 
             backend_name = self.backend_cls.get_name()
             if current_platform.is_cuda():
-                from vllm.models.deepseek_v4.common.ops.fused_inv_rope_fp8_quant import (  # noqa: E501
+                from vllm_metax.models.deepseek_v4.common.ops.fused_inv_rope_fp8_quant import (  # noqa: E501
                     _FUSED_INV_ROPE_FP8_QUANT_KERNEL,
                 )
 
                 _FUSED_INV_ROPE_FP8_QUANT_KERNEL.register_warmup()
 
                 if self.compress_ratio == 128:
-                    from vllm.models.deepseek_v4.sparse_mla import (
+                    from vllm_metax.models.deepseek_v4.sparse_mla import (
                         _BUILD_C128A_TOPK_METADATA_KERNEL,
                     )
 
                     _BUILD_C128A_TOPK_METADATA_KERNEL.register_warmup()
 
                 if backend_name == "FLASHMLA_SPARSE_DSV4":
-                    from vllm.models.deepseek_v4.common.ops.cache_utils import (
+                    from vllm_metax.models.deepseek_v4.common.ops.cache_utils import (
                         _COMPUTE_GLOBAL_TOPK_INDICES_AND_LENS_KERNEL,
                         _DEQUANTIZE_AND_GATHER_K_CACHE_KERNEL,
                     )
 
                     _COMPUTE_GLOBAL_TOPK_INDICES_AND_LENS_KERNEL.register_warmup()
                     if has_cutedsl():
-                        from vllm.models.deepseek_v4.nvidia.ops.dequant_gather_k_cutedsl import (  # noqa: E501
+                        from vllm_metax.models.deepseek_v4.metax.ops.dequant_gather_k_cutedsl import (  # noqa: E501
                             _DEQUANT_GATHER_K_CACHE_CUTEDSL_KERNEL,
                         )
 
@@ -462,7 +466,7 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
                     else:
                         _DEQUANTIZE_AND_GATHER_K_CACHE_KERNEL.register_warmup()
                 elif backend_name == "FLASHINFER_MLA_SPARSE_DSV4":
-                    from vllm.models.deepseek_v4.common.ops.cache_utils import (
+                    from vllm_metax.models.deepseek_v4.common.ops.cache_utils import (
                         _BUILD_FLASHINFER_MIXED_SPARSE_INDICES_KERNEL,
                         _COMPUTE_GLOBAL_TOPK_INDICES_AND_LENS_KERNEL,
                     )
@@ -653,13 +657,12 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
         linear's internal re-quantization (apply_weights would quantize
         the fp8 input again).
         """
-        if qr_scale is None:
-            return self.wq_b(qr)
-        from vllm.models.deepseek_v4.amd.rocm import (
-            apply_pre_quantized_block_scaled_mm,
-        )
-
-        return apply_pre_quantized_block_scaled_mm(self.wq_b, qr, qr_scale)
+        if qr_scale is not None:
+            raise NotImplementedError(
+                "Pre-quantized ROCm Q projection is not retained in the "
+                "MetaX model mirror."
+            )
+        return self.wq_b(qr)
 
     def _run_parallel_input_projections(
         self, hidden_states: torch.Tensor
@@ -923,6 +926,15 @@ class MacaDeepseekV4IndexerCache(torch.nn.Module, AttentionLayerBase):
 
 
 class MacaDeepseekV4Indexer(nn.Module):
+    def _get_cache_cls(self) -> type[MacaDeepseekV4IndexerCache]:
+        return MacaDeepseekV4IndexerCache
+
+    def _get_compressor_cls(self) -> type[MacaDeepseekCompressor]:
+        return MacaDeepseekCompressor
+
+    def _get_attn_cls(self) -> type[MacaSparseAttnIndexer]:
+        return MacaSparseAttnIndexer
+
     def __init__(
         self,
         vllm_config: VllmConfig,
@@ -973,7 +985,7 @@ class MacaDeepseekV4Indexer(nn.Module):
             from vllm.utils.import_utils import has_cutedsl
 
             if current_platform.is_cuda() and has_cutedsl():
-                from vllm.models.deepseek_v4.nvidia.ops.fused_indexer_q_cutedsl import (  # noqa: E501
+                from vllm_metax.models.deepseek_v4.metax.ops.fused_indexer_q_cutedsl import (  # noqa: E501
                     _INDEXER_Q_FP8_KERNEL,
                     _INDEXER_Q_MXFP4_KERNEL,
                 )
@@ -1028,14 +1040,14 @@ class MacaDeepseekV4Indexer(nn.Module):
             k_cache_head_dim = (
                 self.head_dim + self.head_dim // self.quant_block_size * 4
             )
-        self.k_cache = MacaDeepseekV4IndexerCache(
+        self.k_cache = self._get_cache_cls()(
             head_dim=k_cache_head_dim,
             dtype=torch.uint8,
             prefix=f"{prefix}.k_cache",
             cache_config=cache_config,
             compress_ratio=self.compress_ratio,
         )
-        self.compressor = MacaDeepseekCompressor(
+        self.compressor = self._get_compressor_cls()(
             vllm_config=vllm_config,
             compress_ratio=self.compress_ratio,
             hidden_size=hidden_size,
@@ -1046,7 +1058,7 @@ class MacaDeepseekV4Indexer(nn.Module):
             use_fp4_cache=self.use_fp4_kv,
         )
 
-        self.indexer_op = MacaSparseAttnIndexer(
+        self.indexer_op = self._get_attn_cls()(
             self.k_cache,
             self.quant_block_size,
             self.scale_fmt,
@@ -1072,7 +1084,7 @@ class MacaDeepseekV4Indexer(nn.Module):
             from vllm.utils.import_utils import has_cutedsl
 
             if not has_cutedsl() and not current_platform.is_xpu():
-                from vllm.models.deepseek_v4.common.ops.fused_indexer_q import (
+                from vllm_metax.models.deepseek_v4.common.ops.fused_indexer_q import (
                     _FUSED_INDEXER_Q_ROPE_MXFP4_TRITON_KERNEL,
                     _FUSED_INDEXER_Q_ROPE_QUANT_TRITON_KERNEL,
                 )
@@ -1128,25 +1140,7 @@ class MacaDeepseekV4Indexer(nn.Module):
             q = q.view(-1, self.n_head, self.head_dim)
             # ----------------------------------------
             # Note: Metax use int8 quant in indexer
-            if self.use_fp8_kv:
-                return fused_indexer_q_rope_quant(
-                    positions,
-                    q,
-                    rotary_emb.cos_sin_cache,
-                    indexer_weights,
-                    self.softmax_scale,
-                    self.n_head**-0.5,
-                    use_fp4=self.use_fp4_kv,
-                )
-            else:
-                return fused_indexer_q_rope_int8_quant(
-                    positions,
-                    q,
-                    rotary_emb.cos_sin_cache,
-                    indexer_weights,
-                    self.softmax_scale,
-                    self.n_head**-0.5,
-                )
+            return self._q_rope_quant(positions, q, rotary_emb, indexer_weights)
 
         if not skip_compressor:
             # compressor returns None and writes K to the indexer KV cache; the
@@ -1166,6 +1160,33 @@ class MacaDeepseekV4Indexer(nn.Module):
             q, q_scale = q_quant, None
         return q, q_scale, weights
 
+    def _q_rope_quant(
+        self,
+        positions: torch.Tensor,
+        q: torch.Tensor,
+        rotary_emb: nn.Module,
+        indexer_weights: torch.Tensor,
+    ) -> tuple[torch.Tensor | tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
+        """RoPE and quantize the index Q; returns (q_quant, weights)."""
+        if self.use_fp8_kv:
+            return fused_indexer_q_rope_quant(
+                positions,
+                q,
+                rotary_emb.cos_sin_cache,
+                indexer_weights,
+                self.softmax_scale,
+                self.n_head**-0.5,
+                use_fp4=self.use_fp4_kv,
+            )
+        return fused_indexer_q_rope_int8_quant(
+            positions,
+            q,
+            rotary_emb.cos_sin_cache,
+            indexer_weights,
+            self.softmax_scale,
+            self.n_head**-0.5,
+        )
+
     def _wq_b_proj(
         self, qr: torch.Tensor, qr_scale: torch.Tensor | None = None
     ) -> torch.Tensor:
@@ -1175,12 +1196,15 @@ class MacaDeepseekV4Indexer(nn.Module):
         norm path hands over pre-quantized fp8 ``qr`` with per-1x128 scales,
         so the linear's internal re-quantization must be skipped.
         """
-        if qr_scale is None:
-            # ReplicatedLinear returns (output, bias); bias is None.
-            q, _ = self.wq_b(qr)
-            return q
-        from vllm.models.deepseek_v4.amd.rocm import (
-            apply_pre_quantized_block_scaled_mm,
-        )
+        if qr_scale is not None:
+            raise NotImplementedError(
+                "Pre-quantized ROCm Q projection is not retained in the "
+                "MetaX model mirror."
+            )
+        # ReplicatedLinear returns (output, bias); bias is None.
+        q, _ = self.wq_b(qr)
+        return q
 
-        return apply_pre_quantized_block_scaled_mm(self.wq_b, qr, qr_scale)
+
+# Compatibility name used by the local DeepSeek V4.1 subclass.
+DeepseekV4Attention = MacaDeepseekV4Attention

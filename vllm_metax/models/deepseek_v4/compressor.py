@@ -11,20 +11,20 @@ from vllm.config import CUDAGraphMode, VllmConfig
 from vllm.forward_context import get_forward_context
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.linear import MergedColumnParallelLinear
-from vllm.models.deepseek_v4.common.ops.fused_compress_quant_cache import (
+from vllm_metax.models.deepseek_v4.common.ops.fused_compress_quant_cache import (
     compress_norm_rope_store_two_stage_triton,
 )
-from vllm.models.deepseek_v4.common.ops.fused_indexer_q import MXFP4_BLOCK_SIZE
-from vllm_metax.models.deepseek_v4.common.ops.fused_compress_quant_cache import (
+from vllm_metax.models.deepseek_v4.common.ops.fused_indexer_q import MXFP4_BLOCK_SIZE
+from vllm_metax.models.deepseek_v4.common.ops.fused_compress_quant_cache_metax import (
     _FUSED_KV_COMPRESS_NORM_ROPE_INSERT_INDEXER_TRITON_KERNEL,
     compress_norm_rope_store_triton,
 )
-from vllm.models.deepseek_v4.common.ops.save_partial_states import (
+from vllm_metax.models.deepseek_v4.common.ops.save_partial_states import (
     _SAVE_PARTIAL_STATES_KERNEL,
 )
 from vllm.platforms import current_platform
 
-from vllm.models.deepseek_v4.compressor import (
+from vllm_metax.models.deepseek_v4.metax.compressor_base import (
     CompressorMetadata,
     CompressorStateCache,
 )
@@ -212,6 +212,33 @@ class MacaDeepseekCompressor(nn.Module):
             and state_metadata.c128_boundary is False
         ):
             return
+
+        self._compress_norm_rope_store(
+            state_metadata,
+            state_cache,
+            state_width,
+            positions,
+            rotary_emb,
+            attn_metadata,
+            pdl_kwargs,
+        )
+
+    def _compress_norm_rope_store(
+        self,
+        state_metadata: CompressorMetadata,
+        state_cache: torch.Tensor,
+        state_width: int,
+        positions: torch.Tensor,
+        rotary_emb,
+        attn_metadata: dict[str, Any],
+        pdl_kwargs: dict[str, Any],
+    ) -> None:
+        """Compress saved states and write the MACA cache layout."""
+        token_to_req_indices = state_metadata.token_to_req_indices
+        slot_mapping = state_metadata.slot_mapping
+        num_actual = slot_mapping.shape[0]
+        block_table = state_metadata.block_table
+        block_size = state_metadata.block_size
 
         # Fused: compress → RMSNorm → RoPE → cache-format quant → KV cache write.
         # RoPE requirements (kernel applies forward GPT-J style rotation):

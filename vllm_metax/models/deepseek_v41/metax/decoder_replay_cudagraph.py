@@ -13,7 +13,7 @@ from vllm.compilation.breakable_cudagraph import BreakableCUDAGraphWrapper
 from vllm.config import CUDAGraphMode, VllmConfig
 from vllm.config.kernel import NATIVE_MEGA_MOE_BACKENDS
 from vllm.forward_context import get_forward_context, override_forward_context
-from vllm.models.deepseek_v41.decoder_replay_layers import DecoderReplayLayers
+from vllm_metax.models.deepseek_v41.decoder_replay_layers import DecoderReplayLayers
 from vllm.v1.worker.gpu.cudagraph_utils import (
     BatchExecutionDescriptor,
     CudaGraphManager,

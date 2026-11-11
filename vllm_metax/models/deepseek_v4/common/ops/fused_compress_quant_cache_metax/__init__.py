@@ -20,7 +20,7 @@ from vllm.model_executor.warmup.jit_warmup_triton_helper import (
     TritonWarmupTensor,
     VllmTritonJitKernel,
 )
-from vllm.models.deepseek_v4.common.ops.fused_compress_quant_cache import (
+from vllm_metax.models.deepseek_v4.common.ops.fused_compress_quant_cache import (
     _fused_kv_compress_norm_rope_insert_sparse_attn,
     _fused_kv_compress_norm_rope_insert_indexer_attn,
     _fused_kv_compress_norm_rope_insert_indexer_mxfp4_attn,
@@ -28,8 +28,15 @@ from vllm.models.deepseek_v4.common.ops.fused_compress_quant_cache import (
 from vllm.triton_utils import triton
 from vllm.utils.math_utils import round_up
 
-from .bf16 import _fused_kv_compress_norm_rope_insert_sparse_attn_bf16
-from .int8 import _fused_kv_compress_norm_rope_insert_indexer_attn_int8
+from vllm_metax.models.deepseek_v4.common.ops.fused_compress_quant_cache_metax.bf16 import (
+    _fused_kv_compress_norm_rope_insert_sparse_attn_bf16,
+)
+from vllm_metax.models.deepseek_v4.common.ops.fused_compress_quant_cache_metax.int8 import (
+    _fused_kv_compress_norm_rope_insert_indexer_attn_int8,
+)
+from vllm_metax.models.deepseek_v4.common.ops.fused_compress_quant_cache import (
+    compress_norm_rope_store_two_stage_triton,
+)
 
 
 def compress_norm_rope_store_triton(

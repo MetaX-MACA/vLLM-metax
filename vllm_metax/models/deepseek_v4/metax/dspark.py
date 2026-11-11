@@ -53,10 +53,10 @@ from vllm.models.common.ops.sequence_parallel import (
     sp_padding_mask,
     sp_shard,
 )
-from vllm.models.deepseek_v4.common.eplb_util import collect_moe_layers
-from vllm.models.deepseek_v4.common.mm_preprocess import IMAGE_SENTINEL_BASE_ID
+from vllm_metax.models.deepseek_v4.common.eplb_util import collect_moe_layers
+from vllm_metax.models.deepseek_v4.common.mm_preprocess import IMAGE_SENTINEL_BASE_ID
 
-from .model import (
+from vllm_metax.models.deepseek_v4.metax.model import (
     DeepseekV4DecoderLayer,
     DeepseekV4MixtureOfExperts,
     DeepseekV4Model,

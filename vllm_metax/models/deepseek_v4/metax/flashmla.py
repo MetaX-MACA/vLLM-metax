@@ -9,23 +9,23 @@ import torch
 
 from vllm.forward_context import get_forward_context
 from vllm_metax.models.deepseek_v4.attention import MacaDeepseekV4Attention
-from vllm.models.deepseek_v4.common.ops import (
+from vllm_metax.models.deepseek_v4.common.ops import (
     combine_topk_swa_indices,
     compute_global_topk_indices_and_lens,
     dequantize_and_gather_k_cache,
 )
 from vllm_metax.models.deepseek_v4.common.ops import gather_k_cache
-from vllm.models.deepseek_v4.nvidia.ops.o_proj import (
+from vllm_metax.models.deepseek_v4.metax.ops.o_proj import (
     compute_fp8_einsum_recipe,
     deep_gemm_fp8_o_proj,
 )
-from vllm_metax.models.deepseek_v4.metax.ops.o_proj import (
+from vllm_metax.models.deepseek_v4.metax.ops.o_proj_metax import (
     deep_gemm_bf16_o_proj,
 )
-from vllm_metax.models.deepseek_v4.sparse_mla import (
+from vllm_metax.models.deepseek_v4.sparse_mla_metax import (
     MacaDeepseekV4FlashMLABackend,
 )
-from vllm.models.deepseek_v4.sparse_mla import (
+from vllm_metax.models.deepseek_v4.sparse_mla import (
     DeepseekV4FlashMLAMetadata,
 )
 from vllm.utils.math_utils import round_up

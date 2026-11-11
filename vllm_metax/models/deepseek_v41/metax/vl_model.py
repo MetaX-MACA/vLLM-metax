@@ -37,7 +37,7 @@ from vllm.model_executor.models.utils import (
     maybe_prefix,
 )
 from vllm.model_executor.models.vision import is_vit_use_data_parallel
-from vllm.models.deepseek_v4.common.vision import (
+from vllm_metax.models.deepseek_v4.common.vision import (
     DeepseekV4Aligner,
     DeepseekV4ViT,
     run_dp_sharded_vision_tower,
@@ -45,17 +45,17 @@ from vllm.models.deepseek_v4.common.vision import (
 from vllm.multimodal import MULTIMODAL_REGISTRY
 from vllm.utils.tensor_schema import TensorSchema, TensorShape
 
-from vllm.models.deepseek_v41.common.mm_preprocess import (
+from vllm_metax.models.deepseek_v41.common.mm_preprocess import (
     IMAGE_PLACEHOLDER,
     DeepseekV4VLDummyInputsBuilder,
     DeepseekV4VLMultiModalProcessor,
     DeepseekV4VLProcessingInfo,
 )
-from vllm.models.deepseek_v41.common.vl_cudagraph import (
+from vllm_metax.models.deepseek_v41.common.vl_cudagraph import (
     DeepseekV4VLEncoderCudaGraphMixin,
 )
-from vllm.models.deepseek_v41.decoder_replay_layers import DecoderReplayLayers
-from .model import (
+from vllm_metax.models.deepseek_v41.decoder_replay_layers import DecoderReplayLayers
+from vllm_metax.models.deepseek_v41.metax.model import (
     DeepseekV41LLMForCausalLM,
     _linear_scale_param_name,
     _make_deepseek_v4_weights_mapper,
@@ -309,7 +309,9 @@ class DeepseekV41ForCausalLM(
 
     @staticmethod
     def get_model_state_cls():
-        from vllm.models.deepseek_v41.nvidia.model_state import DeepseekV41ModelState
+        from vllm_metax.models.deepseek_v41.metax.model_state import (
+            DeepseekV41ModelState,
+        )
 
         return DeepseekV41ModelState
 

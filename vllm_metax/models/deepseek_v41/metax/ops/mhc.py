@@ -22,7 +22,7 @@ from vllm.model_executor.layers.fused_moe.moe_output import (
 from vllm.platforms import current_platform
 from vllm_metax.utils.deep_gemm import is_deep_gemm_supported
 
-from .mega_mhc import (
+from vllm_metax.models.deepseek_v41.metax.ops.mega_mhc import (
     can_use_mega_mhc,
     mhc_shifted_post_pre_deep_gemm,
 )

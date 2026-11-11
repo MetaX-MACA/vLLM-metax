@@ -7,8 +7,8 @@ from vllm_metax.registry.quant_config.deepseek_fp8 import (
     MacaDeepseekV41FP8Config as DeepseekV4FP8Config,
 )
 
-from .metax.dspark import DSparkDeepseekV4ForCausalLM
-from .metax.vl_model import DeepseekV41ForCausalLM
+from vllm_metax.models.deepseek_v41.metax.dspark import DSparkDeepseekV4ForCausalLM
+from vllm_metax.models.deepseek_v41.metax.vl_model import DeepseekV41ForCausalLM
 
 __all__ = [
     "DSparkDeepseekV4ForCausalLM",

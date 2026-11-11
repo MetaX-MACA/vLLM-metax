@@ -4,6 +4,7 @@
 import typing
 from collections.abc import Callable, Iterable
 from itertools import islice
+from typing import Any, NoReturn
 
 import regex as re
 import torch
@@ -33,18 +34,13 @@ from vllm.model_executor.layers.fused_moe import (
     FusedMoEFactory,
     fused_moe_make_expert_params_mapping,
 )
-from vllm.model_executor.layers.fused_moe.deep_gemm_mega_moe import (
-    DeepGemmMegaMoEBackend,
-    get_deep_gemm_mega_moe_backend,
-    ue8m0_uint8_to_float,
-)
 from vllm.model_executor.layers.fused_moe.router.base_router import (
     eplb_map_to_physical_and_record,
 )
 from vllm.model_executor.layers.fused_moe.router.fused_topk_bias_router import (
     fused_topk_bias,
 )
-from .gate_linear import MacaGateLinear as GateLinear
+from vllm_metax.models.deepseek_v4.metax.gate_linear import MacaGateLinear as GateLinear
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.linear import (
     MergedColumnParallelLinear,
@@ -82,18 +78,32 @@ from vllm.models.common.ops.sequence_parallel import (
     sp_shard,
 )
 from vllm_metax.models.deepseek_v4.attention import MacaDeepseekV4Attention
-from vllm.models.deepseek_v4.common.eplb_util import collect_moe_layers
+from vllm_metax.models.deepseek_v4.common.eplb_util import collect_moe_layers
 from vllm_metax.models.deepseek_v4.metax.flashmla import MacaDeepseekV4FlashMLAAttention
-from vllm.models.deepseek_v4.nvidia.ops.prepare_megamoe import prepare_megamoe_inputs
+from vllm.model_executor.layers.fused_moe.prepare_megamoe import (
+    prepare_megamoe_inputs,
+)
 from vllm.platforms import current_platform
 from vllm.sequence import IntermediateTensors
 from vllm.utils.math_utils import cdiv
 from vllm.v1.attention.backends.registry import AttentionBackendEnum
 from vllm.v1.worker.ubatching import dbo_current_ubatch_id
 
-from vllm.models.deepseek_v4.common.mm_preprocess import IMAGE_SENTINEL_BASE_ID
+from vllm_metax.models.deepseek_v4.common.mm_preprocess import IMAGE_SENTINEL_BASE_ID
 
 logger = init_logger(__name__)
+
+# NOTE(metax): DeepGEMM MegaMoE is unavailable on MACA and rejected before
+# construction. Keep import closure explicit without selecting the CUDA backend.
+DeepGemmMegaMoEBackend = Any
+
+
+def get_deep_gemm_mega_moe_backend(*args: Any, **kwargs: Any) -> NoReturn:
+    raise NotImplementedError("DeepGEMM MegaMoE is unavailable on MACA.")
+
+
+def ue8m0_uint8_to_float(_: torch.Tensor) -> NoReturn:
+    raise NotImplementedError("DeepGEMM MegaMoE is unavailable on MACA.")
 
 
 class MegaGateRoutingMetadata(typing.NamedTuple):
@@ -1077,7 +1087,7 @@ class DeepseekV4DecoderLayer(nn.Module):
             vllm_config,
             prefix=f"{prefix}.ffn",
             use_sequence_parallel=self.use_sequence_parallel,
-            num_hash_layers=config.num_hash_layers,
+            num_hash_layers=config.mlp_layer_types.count("hash_moe"),
         )
 
         self.attn_norm = RMSNorm(self.hidden_size, self.rms_norm_eps)
@@ -1354,7 +1364,7 @@ class DeepseekV4Model(nn.Module, EagleModelMixin):
             prefix=f"{prefix}.layers",
         )
         self.has_local_hash_moe = self.start_layer < min(
-            self.end_layer, config.num_hash_layers
+            self.end_layer, config.mlp_layer_types.count("hash_moe")
         )
 
         if get_pp_group().is_last_rank:

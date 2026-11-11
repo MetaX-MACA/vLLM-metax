@@ -75,37 +75,37 @@ from vllm.models.common.ops.sequence_parallel import (
     sp_reduce_scatter,
     sp_shard,
 )
-from vllm.models.deepseek_v4.nvidia.model import (
+from vllm_metax.models.deepseek_v4.metax.model import (
     DeepseekV4MoE as DeepseekV4MoEBase,
 )
-from vllm.models.deepseek_v4.nvidia.model import (
+from vllm_metax.models.deepseek_v4.metax.model import (
     MegaGateRoutingMetadata,
     make_deepseek_v4_expert_params_mapping,
     prepare_mega_gate_routing_metadata,
 )
-from vllm.models.deepseek_v41.attention import DeepseekV4Attention
-from vllm.models.deepseek_v41.decoder_replay_layers import DecoderReplayLayers
+from vllm_metax.models.deepseek_v41.attention import DeepseekV4Attention
+from vllm_metax.models.deepseek_v41.decoder_replay_layers import DecoderReplayLayers
 from vllm_metax.models.deepseek_v41.metax.flashmla import DeepseekV4FlashMLAAttention
 from vllm.platforms import current_platform
 from vllm.sequence import IntermediateTensors
 from vllm.utils.math_utils import cdiv
 from vllm.v1.worker.ubatching import dbo_current_ubatch_id
 
-from vllm.models.deepseek_v41.common.engram import (
+from vllm_metax.models.deepseek_v41.common.engram import (
     gather_engram_hashes,
     EngramBatch,
     EngramLayout,
     NgramHashState,
 )
-from .engram import (
+from vllm_metax.models.deepseek_v41.metax.engram import (
     MacaEngram as Engram,
     maca_can_share_engram_tables as can_share_engram_tables,
 )
-from vllm.models.deepseek_v41.common.mm_preprocess import (
+from vllm_metax.models.deepseek_v41.common.mm_preprocess import (
     IMAGE_SENTINEL_BASE_ID,
     image_sentinel_mask,
 )
-from .ops.mhc import (
+from vllm_metax.models.deepseek_v41.metax.ops.mhc import (
     MHC_OVERLAP_MAX_TOKENS,
     init_mhc_all_reduce,
     mhc_pre_delayed_overlap,
@@ -1606,7 +1606,9 @@ class DeepseekV41LLMForCausalLM(
 
     @staticmethod
     def get_model_state_cls():
-        from .model_state import DeepseekV41ModelState
+        from vllm_metax.models.deepseek_v41.metax.model_state import (
+            DeepseekV41ModelState,
+        )
 
         return DeepseekV41ModelState
 

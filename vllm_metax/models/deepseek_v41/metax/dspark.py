@@ -51,14 +51,14 @@ from vllm.models.common.ops.sequence_parallel import (
     sp_shard,
 )
 
-from .model import (
+from vllm_metax.models.deepseek_v41.metax.model import (
     DeepseekV4DecoderLayer,
     DeepseekV4Model,
     _linear_scale_param_name,
     _use_sequence_parallel,
     make_deepseek_v4_expert_params_mapping,
 )
-from .ops.kv_cache_int8 import (
+from vllm_metax.models.deepseek_v41.metax.ops.kv_cache_int8 import (
     fused_deepseek_v4_kv_rope_insert_int8,
 )
 

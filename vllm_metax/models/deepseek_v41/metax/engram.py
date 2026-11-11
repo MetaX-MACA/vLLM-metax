@@ -5,7 +5,7 @@
 
 vLLM 0.32 implements the FP8 Engram path (E4M3 rows with UE8M0 block scales)
 plus the host-offload / DP-shared storage helpers in
-``vllm.models.deepseek_v41.common.engram``. MACA runs the INT8 (W4A8)
+``vllm_metax.models.deepseek_v41.common.engram``. MACA runs the INT8 (W4A8)
 checkpoints, whose n-gram tables ship INT8 rows with one FP32 block scale per
 32 columns, so this module subclasses the upstream classes and swaps only the
 table layout and the lookup. Prefetch streams, DP gathering, huge pages and
@@ -23,14 +23,14 @@ from vllm.distributed.device_communicators.shm_broadcast import (
     check_shm_free_space,
 )
 from vllm.logger import init_logger
-from vllm.models.deepseek_v41.common.engram import (
+from vllm_metax.models.deepseek_v41.common.engram import (
     DPSharedEngramStorage,
     EngramLayout,
     ParallelEngramEmbedding,
     _allocate_huge_page_storage,
     can_share_engram_tables,
 )
-from vllm.models.deepseek_v41.common.engram import Engram as BaseEngram
+from vllm_metax.models.deepseek_v41.common.engram import Engram as BaseEngram
 from vllm.model_executor.layers.quantization import QuantizationConfig
 from vllm.triton_utils import tl, triton
 

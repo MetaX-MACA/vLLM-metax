@@ -7,12 +7,12 @@ from typing import TYPE_CHECKING, ClassVar, cast
 import torch
 
 from vllm.forward_context import get_forward_context
-from vllm.models.deepseek_v4.nvidia.ops.o_proj import (
+from vllm_metax.models.deepseek_v4.metax.ops.o_proj import (
     compute_fp8_einsum_recipe,
 )
 from vllm_metax.models.deepseek_v41.metax.ops.o_proj import deep_gemm_fp8_o_proj
 from vllm_metax.models.deepseek_v41.attention import DeepseekV4Attention
-from vllm.models.deepseek_v41.common.ops import (
+from vllm_metax.models.deepseek_v41.common.ops import (
     combine_topk_swa_indices,
     compute_global_topk_indices_and_lens,
     dequantize_and_gather_k_cache,
@@ -64,7 +64,7 @@ class DeepseekV4FlashMLAAttention(DeepseekV4Attention):
     def _o_proj(self, o: torch.Tensor, positions: torch.Tensor) -> torch.Tensor:
         o = o[:, : self.n_local_heads, :]
         if self.wo_a.weight.dtype == torch.bfloat16:
-            from vllm_metax.models.deepseek_v4.metax.ops.o_proj import (
+            from vllm_metax.models.deepseek_v4.metax.ops.o_proj_metax import (
                 deep_gemm_bf16_o_proj,
             )
 
