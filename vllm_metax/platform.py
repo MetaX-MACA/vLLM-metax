@@ -1095,6 +1095,12 @@ mx_envs.maybe_override_vllm_env(
     "disable CUDA graph memory estimate in the KV cache budget on Maca platform",
 )
 
+mx_envs.maybe_override_vllm_env(
+    "VLLM_TRITON_USE_TD",
+    "False",
+    "disable Triton tensor descriptor on Maca platform",
+)
+
 # --------------------------------------------------
 # Note: vllm_metax currently does not support third-party
 #       Triton kernels; Triton upgrade required.

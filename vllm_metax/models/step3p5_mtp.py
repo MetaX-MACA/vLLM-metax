@@ -31,7 +31,7 @@ from vllm.model_executor.models.utils import (
 # NOTE(MetaX): The draft layer must use the local Step3p5 decoder, which
 # forwards the SwiGLU limit required by MACA MoE experts. Recheck this import
 # if the upstream decoder adopts the same execution contract.
-from .step3p5 import Step3p5DecoderLayer
+from vllm_metax.models.step3p5 import Step3p5DecoderLayer
 
 logger = init_logger(__name__)
 
