@@ -241,6 +241,88 @@ class DSparkDeepseekV4Model(nn.Module):
         return hidden_states
 
 
+
+
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def _dspark_bf16_insert_triton(
+    kv_ptr,
+    cache_ptr,
+    slots_ptr,
+    positions_ptr,
+    cos_sin_ptr,
+    stride_cache_block,
+    stride_cache_row,
+    block_size,
+    HEAD_DIM: tl.constexpr,
+    RD: tl.constexpr,
+):
+    i = tl.program_id(0)
+    slot = tl.load(slots_ptr + i)
+    if slot >= 0:
+        pos = tl.load(positions_ptr + i)
+        ridx = tl.arange(0, RD // 2)
+        cs_base = pos.to(tl.int64) * RD
+        cos = tl.load(cos_sin_ptr + cs_base + ridx).to(tl.float32)
+        sin = tl.load(cos_sin_ptr + cs_base + RD // 2 + ridx).to(tl.float32)
+        base = i.to(tl.int64) * HEAD_DIM + HEAD_DIM - RD
+        even = tl.load(kv_ptr + base + 2 * ridx).to(tl.float32)
+        odd = tl.load(kv_ptr + base + 2 * ridx + 1).to(tl.float32)
+        e = even * cos - odd * sin
+        o = even * sin + odd * cos
+        blk = slot // block_size
+        off = slot % block_size
+        row_base = (
+            blk.to(tl.int64) * stride_cache_block
+            + off.to(tl.int64) * stride_cache_row
+        )
+        hidx = tl.arange(0, HEAD_DIM)
+        tl.store(
+            cache_ptr + row_base + hidx,
+            tl.load(kv_ptr + i.to(tl.int64) * HEAD_DIM + hidx),
+        )
+        tail = row_base + HEAD_DIM - RD
+        tl.store(cache_ptr + tail + 2 * ridx, e.to(cache_ptr.dtype.element_ty))
+        tl.store(cache_ptr + tail + 2 * ridx + 1, o.to(cache_ptr.dtype.element_ty))
+
+
+def _dspark_bf16_context_insert(
+    kv: torch.Tensor,
+    cache: torch.Tensor,
+    slot_mapping: torch.Tensor,
+    positions: torch.Tensor,
+    cos_sin_cache: torch.Tensor,
+    block_size: int,
+) -> None:
+    torch.ops.vllm_metax.dspark_bf16_context_insert(
+        kv, cache, slot_mapping, positions, cos_sin_cache, block_size
+    )
+
+
+@torch.library.custom_op(
+    "vllm_metax::dspark_bf16_context_insert", mutates_args={"cache"}
+)
+def _dspark_bf16_context_insert_op(
+    kv: torch.Tensor,
+    cache: torch.Tensor,
+    slot_mapping: torch.Tensor,
+    positions: torch.Tensor,
+    cos_sin_cache: torch.Tensor,
+    block_size: int,
+) -> None:
+    _dspark_bf16_insert_triton[(kv.shape[0],)](
+        kv, cache, slot_mapping, positions, cos_sin_cache,
+        cache.stride(0), cache.stride(1),
+        block_size,
+        HEAD_DIM=cache.shape[-1],
+        RD=cos_sin_cache.shape[-1],
+        num_warps=4,
+    )
+
+
 def _insert_context_kv(
     attn: nn.Module,
     kv: torch.Tensor,
@@ -273,6 +355,13 @@ def _insert_context_kv(
     # swa_bytes_per_token once the sliding-window and compressed records can
     # differ). block_size stays the layer's, so the op's size(1) check still
     # cross-checks the two rather than restating the tensor.
+    if cache.dtype == torch.bfloat16:
+        _dspark_bf16_context_insert(
+            kv, cache, slot_mapping, positions,
+            attn.rotary_emb.cos_sin_cache,
+            attn.swa_cache_layer.block_size,
+        )
+        return
     torch.ops._C.fused_deepseek_v4_kv_rope_insert(
         kv,
         cache,
