@@ -50,16 +50,10 @@ from vllm.v1.attention.backends.gdn_attn import GDNAttentionMetadata
 from vllm.v1.kv_cache_interface import MambaSpec
 from vllm.v1.worker.workspace import current_workspace_manager
 
-if current_platform.is_rocm():
-    from vllm.models.glm5next.amd.ops.third_party.kda import (
-        chunk_kda_with_fused_gate,
-        fused_recurrent_kda,
-    )
-else:
-    from vllm.models.glm5next.nvidia.ops.third_party.kda import (
-        chunk_kda_with_fused_gate,
-        fused_recurrent_kda,
-    )
+from vllm_metax.models.glm5next.metax.ops.third_party.kda import (
+    chunk_kda_with_fused_gate,
+    fused_recurrent_kda,
+)
 
 
 class _Glm5NextMergedColumnParallelLinear(MergedColumnParallelLinear):

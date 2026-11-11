@@ -10,7 +10,7 @@ in ``common/``); this module picks the right one for the current platform.
 from vllm.platforms import current_platform
 
 
-from .metax.sparse_indexer import (
+from vllm_metax.models.glm5next.metax.sparse_indexer import (
     MacaSparseAttnIndexerKpool,
 )
 

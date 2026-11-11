@@ -28,7 +28,7 @@ from vllm_metax.models.glm5next.common.sparse_indexer import (
     _scatter_decode_tokens_by_request,
     kv_cache_as_quant_view,
 )
-from vllm.models.glm5next.nvidia.ops import kpool_compress as kpool_ops
+from vllm_metax.models.glm5next.metax.ops import kpool_compress as kpool_ops
 from vllm.platforms import current_platform
 from vllm_metax.utils.deep_gemm import has_deep_gemm
 from vllm.utils.import_utils import has_cutedsl
@@ -41,20 +41,23 @@ from vllm_metax.v1.attention.backends.mla.indexer import (
 )
 from vllm.v1.attention.ops.common import pack_seq_triton, unpack_seq_triton
 from vllm.v1.worker.workspace import current_workspace_manager
-from .kpool_bf16 import (
+from vllm_metax.models.glm5next.metax.kpool_bf16 import (
     kpool_compress_insert_bf16,
     kpool_decode_update_and_maybe_write_cache_bf16,
 )
-from .kpool_int8 import (
+from vllm_metax.models.glm5next.metax.kpool_int8 import (
     kpool_compress_insert_int8,
     kpool_decode_update_and_maybe_write_cache_int8,
 )
-from .utils import gather_paged_k_bf16, _mqa_logits_by_dtype, _paged_mqa_logits_by_dtype
+from vllm_metax.models.glm5next.metax.utils import (
+    gather_paged_k_bf16,
+    _mqa_logits_by_dtype,
+    _paged_mqa_logits_by_dtype,
+)
 
 if current_platform.is_cuda_alike():
     from vllm import _custom_ops as ops
-from vllm_metax import _custom_ops as mx_ops
-from vllm.models.glm5next.nvidia.sparse_indexer import SparseAttnIndexerKpool
+import vllm_metax._custom_ops as mx_ops
 
 logger = init_logger(__name__)
 
@@ -739,6 +742,152 @@ def sparse_attn_indexer_kpool(
         topk_indices_buffer[: out.shape[0], : out.shape[-1]] = out
 
     return topk_indices_buffer
+
+
+class SparseAttnIndexerKpool(CustomOp):
+    """Sparse Attention Indexer Custom Op Layer. This layer is extracted as a
+    separate custom op since it involves heavy custom kernels like `mqa_logits`,
+    `paged_mqa_logits` and `top_k_per_row`, etc. Those kernels maybe requires
+    specific memory layout or implementation for different hardware backends to
+    achieve optimal performance.
+
+    For now, the default native path will use CUDA backend path. Other platform
+    may requires add the corresponding Custom Op name `sparse_attn_indexer` to
+    `custom_ops` in `CompilationConfig` to enable the platform specific path.
+    """
+
+    def __init__(
+        self,
+        k_cache,
+        quant_block_size: int,
+        scale_fmt: str | None,
+        topk_tokens: int,
+        head_dim: int,
+        max_pool_len: int,
+        max_total_seq_len: int,
+        topk_indices_buffer: torch.Tensor,
+        skip_k_cache_insert: bool = False,
+        use_fp4_cache: bool = False,
+        tail_cache=None,
+    ):
+        super().__init__()
+        self.k_cache = k_cache
+        self.tail_cache = tail_cache
+        self.quant_block_size = quant_block_size
+        self.scale_fmt = scale_fmt
+        self.topk_tokens = topk_tokens
+        self.head_dim = head_dim
+        self.max_pool_len = max_pool_len
+        self.max_total_seq_len = max_total_seq_len
+        self.topk_indices_buffer = topk_indices_buffer
+        self.skip_k_cache_insert = skip_k_cache_insert
+        self.use_fp4_cache = use_fp4_cache
+        if current_platform.is_cuda() and not has_deep_gemm():
+            raise RuntimeError(
+                "Sparse Attention Indexer CUDA op requires DeepGEMM to be installed."
+            )
+        _cfg = get_current_vllm_config_or_none()
+        self.topk_backend = (
+            _cfg.kernel_config.sparse_indexer_topk_backend
+            if _cfg is not None
+            else "auto"
+        )
+        _parallel = _cfg.parallel_config if _cfg is not None else None
+        self._parallel_config = _parallel
+        self.dcp_world_size = 1
+        self.dcp_rank = 0
+        if _parallel is not None and _parallel.decode_context_parallel_size > 1:
+            if _parallel.prefill_context_parallel_size > 1:
+                raise NotImplementedError(
+                    "SparseAttnIndexerKpool does not support PCP+DCP."
+                )
+            self.dcp_world_size = _parallel.decode_context_parallel_size
+            self.dcp_rank = get_dcp_group().rank_in_group
+            if current_platform.is_cuda() and has_cutedsl():
+                from vllm.model_executor.kernels.attention.dsa.dcp_indexer_cutedsl import (  # noqa: E501
+                    _PACK_DCP_TOPK_CANDIDATES_KERNEL,
+                    _STABLE_TOPK_FROM_GATHERED_CANDIDATES_KERNEL,
+                )
+
+                _PACK_DCP_TOPK_CANDIDATES_KERNEL.register_warmup()
+                _STABLE_TOPK_FROM_GATHERED_CANDIDATES_KERNEL.register_warmup()
+
+    @property
+    def cp_kv_cache_interleave_size(self) -> int:
+        if self.dcp_world_size == 1:
+            return 1
+        assert self._parallel_config is not None
+        return self._parallel_config.cp_kv_cache_interleave_size
+
+    def forward_native(
+        self,
+        hidden_states: torch.Tensor,
+        q_quant: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
+        k: torch.Tensor,
+        weights: torch.Tensor,
+        *,
+        gate_score: torch.Tensor | None = None,
+        compress_ape: torch.Tensor | None = None,
+        index_kpool: int = 1,
+        positions: torch.Tensor | None = None,
+    ):
+        return self.forward_cuda(
+            hidden_states,
+            q_quant,
+            k,
+            weights,
+            gate_score=gate_score,
+            compress_ape=compress_ape,
+            index_kpool=index_kpool,
+            positions=positions,
+        )
+
+    def forward_cuda(
+        self,
+        hidden_states: torch.Tensor,
+        q_quant: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
+        k: torch.Tensor,
+        weights: torch.Tensor,
+        *,
+        gate_score: torch.Tensor | None = None,
+        compress_ape: torch.Tensor | None = None,
+        index_kpool: int = 1,
+        positions: torch.Tensor | None = None,
+    ):
+        # FP8 path: single tensor (per-token scale is folded into `weights`).
+        # FP4 path: (values, scales) tuple with scales required by the kernel.
+        if isinstance(q_quant, tuple):
+            q_values, q_scale = q_quant
+        else:
+            q_values, q_scale = q_quant, None
+        return sparse_attn_indexer_kpool(
+            hidden_states,
+            self.k_cache.prefix,
+            self.k_cache.kv_cache,
+            q_values,
+            q_scale,
+            k,
+            weights,
+            self.quant_block_size,
+            self.scale_fmt,
+            self.topk_tokens,
+            self.head_dim,
+            self.max_pool_len,
+            self.max_total_seq_len,
+            self.topk_indices_buffer,
+            self.skip_k_cache_insert,
+            self.use_fp4_cache,
+            gate_score,
+            compress_ape,
+            index_kpool,
+            positions,
+            self.tail_cache.kv_cache if self.tail_cache is not None else None,
+            self.tail_cache.prefix if self.tail_cache is not None else None,
+            self.topk_backend,
+            self.dcp_rank,
+            self.dcp_world_size,
+            self.cp_kv_cache_interleave_size,
+        )
 
 
 @SparseAttnIndexerKpool.register_oot

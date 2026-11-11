@@ -25,7 +25,7 @@ from vllm.third_party.flash_linear_attention.ops.utils import FLA_CHUNK_SIZE, is
 from vllm.triton_utils import tl, triton
 from vllm.utils.math_utils import RCP_LN2, cdiv, next_power_of_2
 
-from .fused_recurrent import (
+from vllm_metax.models.glm5next.metax.ops.third_party.kda.fused_recurrent import (
     fused_recurrent_gated_delta_rule_fwd_kernel,
     token_stride,
 )

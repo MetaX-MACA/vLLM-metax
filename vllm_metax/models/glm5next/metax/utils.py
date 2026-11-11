@@ -9,12 +9,12 @@ from vllm_metax.utils.deep_gemm import (
     int8_mqa_logits,
     int8_paged_mqa_logits,
 )
-from .kpool_bf16 import (
+from vllm_metax.models.glm5next.metax.kpool_bf16 import (
     gather_paged_k_bf16,
     kpool_compress_insert_bf16,
     kpool_decode_update_and_maybe_write_cache_bf16,
 )
-from .kpool_int8 import (
+from vllm_metax.models.glm5next.metax.kpool_int8 import (
     kpool_compress_insert_int8,
     kpool_decode_update_and_maybe_write_cache_int8,
 )

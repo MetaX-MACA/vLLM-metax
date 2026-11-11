@@ -12,7 +12,7 @@ import torch
 
 from vllm.triton_utils import tl, triton
 
-from .ops.kpool_compress import _hadamard128
+from vllm_metax.models.glm5next.metax.ops.kpool_compress import _hadamard128
 
 
 @triton.jit
