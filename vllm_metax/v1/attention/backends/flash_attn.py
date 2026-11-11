@@ -237,23 +237,12 @@ class MacaFlashAttentionBackend(AttentionBackend):
             get_flash_attn_version(
                 kv_cache_dtype=kv_cache_dtype,
                 head_size=head_size,
-                head_size_v=cls.head_size_v or head_size,
                 has_sinks=has_sink,
                 kv_cache_block_size=block_size,
                 device_capability=device_capability,
             )
             is None
         ):
-            config = get_current_vllm_config_or_none()
-            if (
-                config is not None
-                and config.attention_config.flash_attn_version == 2
-                and kv_cache_dtype in ("fp8", "fp8_e4m3")
-            ):
-                return (
-                    "FP8 KV cache requires FA3, but flash_attn_version=2 "
-                    "was explicitly requested."
-                )
             return "No MetaX FlashAttention version supports these dimensions, dtype, features and block size"
 
         return None
@@ -553,10 +542,8 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         # NOTE(metax): still we don't support aot on FA3
         self.aot_schedule = False
 
-        head_size_v = getattr(kv_cache_spec, "head_size_v", None)
         get_flash_attn_version(
             head_size=self.headdim,
-            head_size_v=head_size_v,
             kv_cache_block_size=self.block_size,
         )
         self.fa4_hd256 = False
@@ -1079,7 +1066,6 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
 class FlashAttentionImpl(AttentionImpl):
     can_return_lse_for_decode: bool = True
     supports_dcp: bool = True
-    head_size_v: int | None = None
 
     def __init__(
         self,
@@ -1127,7 +1113,6 @@ class FlashAttentionImpl(AttentionImpl):
         self.vllm_flash_attn_version = get_flash_attn_version(
             requires_alibi=alibi_slopes is not None,
             head_size=head_size,
-            head_size_v=self.head_size_v or head_size,
             has_sinks=sinks is not None,
             kv_cache_dtype=kv_cache_dtype,
         )
@@ -1178,7 +1163,6 @@ class FlashAttentionImpl(AttentionImpl):
             self.kv_cache_dtype,
             requires_alibi=alibi_slopes is not None,
             head_size=head_size,
-            head_size_v=self.head_size_v or head_size,
             has_sinks=sinks is not None,
         ):
             raise NotImplementedError(
