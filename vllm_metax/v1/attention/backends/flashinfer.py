@@ -47,7 +47,6 @@ from vllm.utils.gpu_sync_debug import gpu_sync_allowed
 from vllm.utils.torch_utils import (
     PIN_MEMORY,
     canonicalize_singleton_dim_strides,
-    is_quantized_kv_cache,
 )
 from vllm.v1.attention.backend import (
     AttentionBackend,
@@ -72,7 +71,7 @@ from vllm.v1.attention.ops.dcp import cp_lse_ag_out_rs, dcp_a2a_lse_reduce
 # Note: use Maca's merge_attn_states to get cuda kernel invoked
 # --------------------------------------------------------------
 from vllm_metax.v1.attention.ops.merge_attn_states import merge_attn_states
-from vllm.v1.kv_cache_interface import AttentionSpec
+from vllm.v1.kv_cache_interface import AttentionSpec, is_quantized_kv_cache
 from vllm.v1.kv_cache_layout import KVCacheLayout
 from vllm.v1.kv_cache_interface import (
     KVQuantMode,
@@ -328,6 +327,8 @@ class BatchDCPPrefillWrapper:
 
 @register_backend(AttentionBackendEnum.FLASHINFER)
 class MacaFlashInferBackend(AttentionBackend):
+    supports_kv_cache_update_bypass: bool = True
+
     supported_dtypes: ClassVar[list[torch.dtype]] = [torch.float16, torch.bfloat16]
     supported_kv_cache_dtypes: ClassVar[list[CacheDType]] = [
         "auto",

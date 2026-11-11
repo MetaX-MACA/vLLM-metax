@@ -26,7 +26,6 @@ from vllm.utils.platform_utils import num_compute_units
 from vllm.utils.torch_utils import (
     async_tensor_h2d,
     current_stream,
-    is_quantized_kv_cache,
 )
 from vllm.v1.attention.backend import (
     AttentionBackend,
@@ -55,7 +54,7 @@ from vllm_metax.v1.attention.ops.flashmla import (
     flash_mla_with_kvcache,
     get_mla_metadata,
 )
-from vllm.v1.kv_cache_interface import AttentionSpec
+from vllm.v1.kv_cache_interface import AttentionSpec, is_quantized_kv_cache
 from vllm.v1.worker.workspace import current_workspace_manager
 from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
 
@@ -514,12 +513,6 @@ class FlashMLASparseMetadataBuilder(
                     "BF16 sparse CP supports at most 128 gathered query heads"
                 )
         elif parallel_config.decode_context_parallel_size > 1:
-            if parallel_config.dcp_comm_backend != "ag_rs":
-                raise NotImplementedError(
-                    "DCP for FlashMLA sparse is only validated with the "
-                    "default 'ag_rs' DCP comm backend; got "
-                    f"'{parallel_config.dcp_comm_backend}'"
-                )
             if self.pcp_dcp_kv_gather and cache_config.cache_dtype != "fp8_ds_mla":
                 raise NotImplementedError(
                     "PCP+DCP sparse prefill gathers the KV through the fp8_ds_mla "
@@ -1211,6 +1204,21 @@ class FlashMLASparseImpl(
         if cache is not None:
             assert isinstance(index_group, HiSparseMLAIndexGroup)
             num_decode_tokens = attn_metadata.num_decode_tokens
+            if num_decode_tokens < q.shape[0] and cache.all_context_pages_resident:
+                physical_topk, lengths = index_group.convert_logical_to_physical_topk(
+                    self.index_group_index,
+                    topk_indices,
+                    attn_metadata,
+                    block_stride_rows=None,
+                    return_valid_counts=True,
+                )
+                return self._bf16_flash_mla_kernel(
+                    q,
+                    index_group.physical_kv_cache(self.index_group_index),
+                    physical_topk,
+                    lengths,
+                    actual_num_heads,
+                )
             if num_decode_tokens > 0:
                 decode_topk, decode_lengths = (
                     index_group.convert_logical_to_physical_topk(

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, ClassVar, cast
 
 import torch
+from transformers import DeepseekV4Config
 
 from vllm.config import CacheConfig, VllmConfig, get_current_vllm_config
 from vllm.model_executor.layers.attention_layer_base import AttentionLayerBase
@@ -19,6 +20,7 @@ from vllm.model_executor.warmup.jit_warmup_triton_helper import (
     VllmTritonJitKernel,
 )
 from vllm.platforms import current_platform
+from vllm.transformers_utils.deepseek_v4_utils import get_compress_ratios
 from vllm.triton_utils import tl, triton
 from vllm.utils.math_utils import cdiv, next_power_of_2
 from vllm.v1.attention.backend import (
@@ -84,6 +86,7 @@ class DeepseekV4SWACache(torch.nn.Module, AttentionLayerBase):
         block_size: int = 64,
         packed_bytes_per_token: int = 584,
         packed_page_alignment: int = 576,
+        packed_block_stride_alignment: int | None = None,
         bounded_replay: bool = False,
     ):
         super().__init__()
@@ -98,6 +101,7 @@ class DeepseekV4SWACache(torch.nn.Module, AttentionLayerBase):
         self.dtype = dtype
         self.packed_bytes_per_token = packed_bytes_per_token
         self.packed_page_alignment = packed_page_alignment
+        self.packed_block_stride_alignment = packed_block_stride_alignment
         compilation_config = get_current_vllm_config().compilation_config
         if prefix in compilation_config.static_forward_context:
             raise ValueError(f"Duplicate layer name: {prefix}")
@@ -148,8 +152,11 @@ class DeepseekV4SWACache(torch.nn.Module, AttentionLayerBase):
             sliding_window=self.window_size,
             cache_dtype_str=self.cache_config.cache_dtype,
             state_content_bytes=state_content_bytes,
-            # FlashMLA packing stride; 512B for FlashInfer sparse (#44577).
+            # Packed page alignment; 512B for FlashInfer sparse (#44577).
             alignment=alignment,
+            block_stride_alignment=(
+                self.packed_block_stride_alignment if uses_fp8_ds_mla_layout else None
+            ),
             model_version="deepseek_v4",
             kv_quant_mode=get_kv_quant_mode(self.cache_config.cache_dtype),
         )
@@ -212,6 +219,9 @@ class DeepseekSparseSWAMetadata:
     # window attention may read (SWA bounded replay);
     # zeros when nothing replays.
     replay_start: torch.Tensor | None = None
+    # PCP cache writes use gathered slots; queries use rank-local slots.
+    cache_slot_mapping: torch.Tensor | None = None
+    cache_positions: torch.Tensor | None = None
 
     # Number of decode/prefill requests/tokens (batch is reordered: decodes first)
     num_decodes: int = 0
@@ -473,14 +483,12 @@ class DeepseekSparseSWAMetadataBuilder(AttentionMetadataBuilder):
         self.window_size = hf_config.sliding_window
 
         # V4 vision variant: image spans (up to vision_max_n_token tokens) are
-        # visible bidirectionally, so prefill index rows widen from
-        # window_size to window_size + max_image_tokens. The V4 config sets
-        # mm_prefix_clamp_sliding_window exactly for these in-kernel-widened
-        # ranges; V4.1 image tokens use the plain causal window, and text-only
-        # models keep max_image_tokens == 0 everywhere.
+        # visible bidirectionally. V4.1 image tokens use the plain causal
+        # window, and text-only models keep max_image_tokens == 0.
         self.max_image_tokens = (
             getattr(hf_config, "vision_max_n_token", 0)
-            if getattr(hf_config, "mm_prefix_clamp_sliding_window", False)
+            if isinstance(hf_config, DeepseekV4Config)
+            and getattr(hf_config, "vision_n_layers", 0) > 0
             else 0
         )
         self.prefill_index_width = self.window_size + self.max_image_tokens
@@ -488,7 +496,7 @@ class DeepseekSparseSWAMetadataBuilder(AttentionMetadataBuilder):
         # Detect which DeepseekV4 layer types this model uses so we only build a
         # FlashMLA tile-scheduler plan for types that will actually be called.
         # Models without compress_ratios (pure SWA) fall back to swaonly.
-        compress_ratios = getattr(hf_config, "compress_ratios", None) or [1]
+        compress_ratios = get_compress_ratios(hf_config) or [1]
         self._layer_types: set[str] = set()
         for ratio in compress_ratios:
             self._layer_types.add(_layer_type_for(int(ratio)))
@@ -569,7 +577,7 @@ class DeepseekSparseSWAMetadataBuilder(AttentionMetadataBuilder):
         self.decode_swa_indices_noncausal: torch.Tensor | None = None
         self._max_tokens = max_tokens
         # replay_start when no group replays: no lower bound.
-        self.no_replay_start = torch.zeros(
+        self.no_replay_start: torch.Tensor = torch.zeros(
             self.vllm_config.scheduler_config.max_num_seqs + 1,
             dtype=torch.int32,
             device=self.device,

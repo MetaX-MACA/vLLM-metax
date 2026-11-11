@@ -16,7 +16,6 @@ from vllm.platforms import current_platform
 from vllm.utils.torch_utils import (
     PIN_MEMORY,
     canonicalize_singleton_dim_strides,
-    is_quantized_kv_cache,
 )
 from vllm.v1.attention.backend import (
     AttentionBackend,
@@ -85,6 +84,7 @@ from vllm.v1.attention.backends.utils import (
 from vllm.v1.kv_cache_interface import (
     AttentionSpec,
     KVCacheSpec,
+    is_quantized_kv_cache,
 )
 from vllm.v1.worker.cp_utils import (
     should_skip_dcp_context_attention,
@@ -109,6 +109,8 @@ logger = init_logger(__name__)
 
 @register_backend(AttentionBackendEnum.FLASH_ATTN)
 class MacaFlashAttentionBackend(AttentionBackend):
+    supports_kv_cache_update_bypass: bool = True
+
     supported_dtypes: ClassVar[list[torch.dtype]] = [torch.float16, torch.bfloat16]
     supported_kv_cache_dtypes: ClassVar[list[CacheDType]] = [
         "auto",
