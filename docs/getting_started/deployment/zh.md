@@ -1,12 +1,12 @@
 # 部署与验证指南
 
-[English](/release/common/common_en.md){ .md-button }
+[English](/getting_started/deployment/en.md){ .md-button }
 
 本文介绍各版本通用的部署操作。版本依赖和已知问题见对应发布说明。
 
 ## 1. 获取镜像
 
-前往 [MetaX 开发者社区](https://developer.metax-tech.com/softnova/docker?chip_name=%E6%9B%A6%E4%BA%91C500%E7%B3%BB%E5%88%97&package_kind=AI&dimension=docker&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85&ai_frame=vllm-metax&arch=amd64&system=ubuntu)，选择所需版本，按页面提供的命令登录并拉取镜像。
+先从 [版本映射表](/getting_started/quickstart/zh.md#releases) 选择版本，再前往 [MetaX 开发者社区](https://developer.metax-tech.com/softnova/docker?chip_name=MXC500&package_kind=AI&dimension=docker&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85&ai_frame=vllm-metax)，按页面提供的命令登录并拉取镜像。
 
 ## 2. 启动容器
 
@@ -36,7 +36,7 @@ python -c 'import torch; print(torch.__version__); print(torch.cuda.is_available
 
 `torch.cuda.is_available()` 应返回 `True`。拓扑中的 `MX` 表示 MetaXLink，`SYS` 表示跨 PCIe / NUMA 的连接。
 
-## 4. 启动推理服务
+## 4. 启动推理服务 {#4-start-the-inference-service}
 
 以 Qwen3-8B 单卡推理为例，按实际情况调整模型路径、并行度和端口：
 
@@ -125,11 +125,11 @@ git clone --branch releases/v0.28.0 https://github.com/MetaX-MACA/vLLM-metax.git
 cd vLLM-metax
 ```
 
-按 [MACA 安装指南](/getting_started/installation/maca.md) 完成插件安装与 vLLM 的 `VLLM_TARGET_DEVICE=empty` 构建，依赖使用所选发布分支中的版本。
+按 [MACA 安装指南](/getting_started/installation/zh.md) 完成插件安装与 vLLM 的 `VLLM_TARGET_DEVICE=empty` 构建，依赖使用所选发布分支中的版本。
 
 ## 9. 相关文档
 
-- [版本映射](/getting_started/quickstart.md#releases)
+- [版本映射](/getting_started/quickstart/zh.md#releases)
 - [支持模型](/models/supported_models.md)
 - [msprobe 精度调测](/developing/msprobe/msprobe_guide.md)
 - [Patch 管理](/developing/patches/README.md)

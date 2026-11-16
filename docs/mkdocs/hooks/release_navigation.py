@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-"""Show one entry per release and keep the shared guide out of the sidebar."""
+"""Show one entry per release in the sidebar."""
 
 from pathlib import PurePosixPath
 
@@ -24,17 +24,17 @@ def on_nav(nav: Navigation, **kwargs) -> Navigation:
             if index is None:
                 continue
             directory = PurePosixPath(index.file.src_uri).parent
-            if directory.parent != PurePosixPath("release"):
+            if directory.parent not in (
+                PurePosixPath("release"),
+                PurePosixPath("getting_started"),
+            ):
                 continue
             if any(
                 PurePosixPath(child.file.src_uri).parent != directory for child in pages
             ):
                 continue
             names = {PurePosixPath(child.file.src_uri).name for child in pages}
-            if names not in (
-                {"README.md", "en.md", "zh.md"},
-                {"README.md", "common_en.md", "common_zh.md"},
-            ):
+            if names != {"README.md", "en.md", "zh.md"}:
                 continue
 
             for child in pages:
@@ -46,18 +46,6 @@ def on_nav(nav: Navigation, **kwargs) -> Navigation:
             # and the normal page TOC, including on mobile.
             index.pages = pages  # type: ignore[attr-defined]
             items[position] = index
-
-        # Keep common pages in nav.pages with their active ancestors, so links
-        # and language switches retain the sidebar without a separate guide row.
-        items[:] = [
-            item
-            for item in items
-            if not (
-                isinstance(item, Page)
-                and PurePosixPath(item.file.src_uri).parent
-                == PurePosixPath("release/common")
-            )
-        ]
 
     collapse(nav.items)
     return nav

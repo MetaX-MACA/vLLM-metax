@@ -21,7 +21,7 @@ This release updates the MetaX backend for MoE kernels, expert parallelism, mode
 
 Use the matching image. See [requirements](https://github.com/MetaX-MACA/vLLM-metax/tree/releases/v0.24.0/requirements) for source dependencies.
 
-For image deployment, environment checks, and service verification, see the [Deployment and Validation Guide](/release/common/common_en.md).
+For image deployment, environment checks, and service verification, see the [Deployment and Validation Guide](/getting_started/deployment/en.md).
 
 ## 3. Model updates and quantization
 
