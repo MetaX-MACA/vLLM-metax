@@ -10,4 +10,4 @@ Before writing the first line of codes, we strongly recommend you to take a look
 
 !!! Note
     If you want to develop or debug vllm-metax plugin, you may need to build and install the plugin from source.
-    Currently we recommended you to start from existed docker images on [*MetaX Develop Community*](https://developer.metax-tech.com/softnova/docker) and following the [**MACA**](../getting_started/installation/maca.md) installation guide.
+    Currently we recommended you to start from existed docker images on [*MetaX Develop Community*](https://developer.metax-tech.com/softnova/docker) and following the [**MACA**](../getting_started/installation/en.md) installation guide.

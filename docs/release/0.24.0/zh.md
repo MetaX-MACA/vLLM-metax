@@ -21,7 +21,7 @@
 
 使用配套镜像；源码依赖见 [requirements](https://github.com/MetaX-MACA/vLLM-metax/tree/releases/v0.24.0/requirements)。
 
-镜像部署、环境检查和服务验证见 [部署与验证指南](/release/common/common_zh.md)。
+镜像部署、环境检查和服务验证见 [部署与验证指南](/getting_started/deployment/zh.md)。
 
 ## 3. 模型更新与量化
 

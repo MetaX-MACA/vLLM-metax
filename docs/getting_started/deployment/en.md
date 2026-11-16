@@ -1,12 +1,12 @@
 # Deployment and Validation Guide
 
-[中文](/release/common/common_zh.md){ .md-button }
+[中文](/getting_started/deployment/zh.md){ .md-button }
 
 This guide covers deployment steps shared by all releases. See the corresponding release notes for dependencies and known issues.
 
 ## 1. Get the image
 
-Visit the [MetaX developer community](https://developer.metax-tech.com/softnova/docker?chip_name=%E6%9B%A6%E4%BA%91C500%E7%B3%BB%E5%88%97&package_kind=AI&dimension=docker&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85&ai_frame=vllm-metax&arch=amd64&system=ubuntu), select a version, and follow the provided commands to log in and pull the image.
+Pick a version from the [version mapping table](/getting_started/quickstart/en.md#releases), then visit the [MetaX developer community](https://developer.metax-tech.com/softnova/docker?chip_name=MXC500&package_kind=AI&dimension=docker&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85&ai_frame=vllm-metax), select it, and follow the provided commands to log in and pull the image.
 
 ## 2. Start a container
 
@@ -125,11 +125,11 @@ git clone --branch releases/v0.28.0 https://github.com/MetaX-MACA/vLLM-metax.git
 cd vLLM-metax
 ```
 
-Follow the [MACA Installation Guide](/getting_started/installation/maca.md) to install the plugin and build vLLM with `VLLM_TARGET_DEVICE=empty`. Use dependencies from the selected release branch.
+Follow the [MACA Installation Guide](/getting_started/installation/en.md) to install the plugin and build vLLM with `VLLM_TARGET_DEVICE=empty`. Use dependencies from the selected release branch.
 
 ## 9. Related documentation
 
-- [Release mapping](/getting_started/quickstart.md#releases)
+- [Release mapping](/getting_started/quickstart/en.md#releases)
 - [Supported models](/models/supported_models.md)
 - [Precision debugging with msprobe](/developing/msprobe/msprobe_guide.md)
 - [Patch management](/developing/patches/README.md)

@@ -3,12 +3,12 @@ nav:
   - User Guide:
     # - usage/README.md
     - Getting Started:
-      - getting_started/quickstart.md
-      - getting_started/installation/maca.md
+      - getting_started/quickstart/
+      - getting_started/installation/
+      - getting_started/deployment/
     - Models:
       - models/supported_models.md
     - Release Notes:
-      - release/common/
       - glob: release/[0-9]*/
         sort:
           direction: desc

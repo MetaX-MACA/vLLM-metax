@@ -3,7 +3,7 @@
 # --8<-- [start:prepare-env]
 
 !!! note
-    If using pip, all the build and installation steps are ***based on corresponding docker images***. You can find them on [QuickStart page](../quickstart.md).
+    If using pip, all the build and installation steps are ***based on corresponding docker images***. You can find them on [QuickStart page](../quickstart/en.md).
     We need to add `--no-build-isolation` flag during the whole package building since we need all the requirements that were pre-installed in released docker image.
 
 # --8<-- [end:prepare-env]
