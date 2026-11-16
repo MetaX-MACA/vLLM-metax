@@ -5,9 +5,34 @@ Use this file as the discovery entry point when the client does not automaticall
 discover `.agents/skills/`. Read the selected `SKILL.md` and follow its linked
 references; load only workflows relevant to the user's request.
 
+## Contribution and review responsibilities
+
+- Before opening or updating a code review change, search the review system for
+  open changes containing the issue number or short area keywords, and compare
+  related recent commits and branches. If an equivalent change is already open,
+  update or coordinate that change instead of opening a duplicate. If the
+  approach is materially different, explain the difference.
+- Do not submit a standalone change for a typo, isolated style fix or other
+  mechanical cleanup. Bundle low-value cleanup with substantive work unless the
+  user explicitly asks for the cleanup itself.
+- A person must own and be able to explain the change end-to-end. AI tools may
+  assist with the implementation and review, but they cannot be the accountable
+  author. The human owner must review every changed line and run the required
+  validation.
+- State in the code review description that AI assistance was used. Include
+  duplicate-work analysis when relevant, the validation commands and results,
+  and model evaluation evidence when the change affects model output, accuracy
+  or serving.
+- User-visible changes must update the corresponding documentation in the same
+  change. This includes CLI arguments, configuration fields, environment
+  variables, supported models, hardware requirements, defaults and deprecations.
+- If the requested work is duplicate or has no substantive purpose, stop and
+  explain what is missing rather than producing a change to satisfy the request.
+
 | Task | Skill |
 | --- | --- |
 | Full upgrade or coordinated component upgrade | [vllm-metax-upgrade](.agents/skills/vllm-metax-upgrade/SKILL.md) |
+| Cross-branch commit audit and source port | [vllm-metax-branch-port](.agents/skills/vllm-metax-branch-port/SKILL.md) |
 | Upgrade environment preparation | [environment-check](.agents/skills/environment-check/SKILL.md) |
 | Shared upgrade rules and tooling | [common-sense](.agents/skills/common-sense/SKILL.md) |
 | New or standalone model adaptation | [model-adaptation](.agents/skills/model-adaptation/SKILL.md) |
@@ -37,7 +62,63 @@ their containing file. Upgrade skills require their documented environment gate
 for compatibility work. Maintaining these workflows or their tooling does not
 itself start an upgrade or require that gate.
 
+## Repository-local guidance
+
+- Before editing a subtree, read the nearest `AGENTS.md` that applies to it.
+  Then read the relevant project skill and its linked references. Do not start a
+  domain-specific edit using only this root file.
+- If repository instructions conflict with the requested change, stop and explain
+  the conflict instead of silently choosing one rule.
+- Changes to this file or the project skills must keep referenced paths valid and
+  pass `markdownlint-cli2`. Do not weaken a validation gate to make an
+  implementation pass.
+
+## Development workflow
+
+- Run Python, build and test commands against the interpreter selected for the
+  supported MetaX image. Do not install dependencies into or validate the project
+  with a host system Python. Apply
+  [environment-check](.agents/skills/environment-check/SKILL.md) when preparing a
+  compatibility upgrade.
+- Both `python -m pip` and `uv pip --python <selected-python>` are supported entry
+  points. Do not mix packages from different virtual or Conda environments.
+- For native operators, csrc and build-contract work, read
+  [csrc-upgrade](.agents/skills/csrc-upgrade/SKILL.md). Keep the native kernel
+  provider and `USE_PRECOMPILED_KERNEL` setting consistent between build and
+  runtime; CUDA-only build assumptions do not apply to MACA.
+- Preserve the target-upstream organization and style wherever a MetaX difference
+  is not required. Add `NOTE(metax):` comments only for necessary platform
+  differences, and put substantial design rationale in the model specification
+  or durable review record rather than inline code.
+
+### Coding style
+
+- Match the surrounding code style and minimize comments. Prefer legible,
+  self-documenting code, and keep required comments and docstrings brief and
+  direct. Assume the reader is familiar with vLLM and MetaX.
+- Let Ruff and `pre-commit` determine Python formatting. The configured Ruff
+  policy ignores `E501`, so do not introduce unrelated rewrites solely to enforce
+  an arbitrary line width.
+- Use Google-style docstring sections (`Args:`, `Returns:` and `Raises:`) where
+  those sections are needed. Do not add reStructuredText fields such as
+  `:param:` or `:return:`.
+
+### Commit attribution
+
+The commit-message hook adds `Signed-off-by`. For AI-assisted work, also use an
+`Assisted-by:` trailer when available; otherwise disclose the assistance in the
+code review description.
+
 ## Running linters
+
+Before committing in a checkout, install the configured Git hooks:
+
+```bash
+pre-commit install --hook-type pre-commit --hook-type commit-msg
+```
+
+The `pre-commit` hook validates changed files, and the `commit-msg` hook adds the
+required sign-off trailer.
 
 ```bash
 # Run all pre-commit hooks on staged files:
@@ -50,7 +131,7 @@ pre-commit run --all-files
 pre-commit run ruff-check --all-files
 ```
 
-Final upgrade acceptance requires `pre-commit run --all-files` to pass on the final
-code. Fix all current hook failures, including pre-existing formatting issues, and
-rerun until it passes. If hooks modify source, refresh affected validation evidence
-before declaring the upgrade complete.
+Run the relevant hooks on every change. Final upgrade and release acceptance require
+`pre-commit run --all-files` to pass on the final code. Fix all hook failures reported
+by that run and rerun until it passes. If hooks modify source, refresh affected
+validation evidence before declaring the upgrade complete.
