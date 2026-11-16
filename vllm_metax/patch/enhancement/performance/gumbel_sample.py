@@ -6,6 +6,7 @@
 # Note: Use mcoplib's optimized Gumbel sampler and its all-greedy argmax path
 #     through _sample_random, preserving target sequence-length handling and
 #     fused-sampler eligibility. For all-zero temperatures, pass all_greedy=True.
+#     Source-kernel mode leaves the native sampler installed without MCOPLIB.
 #
 # Affected versions: Reviewed vLLM 0.33.0
 #     (4ba787ec9959e566d3b587a796dff07673324da5), MCOPLIB 0.4.14.
@@ -21,16 +22,20 @@ from vllm.v1.sample.ops.topk_topp_sampler import (
     xpu_sample,
 )
 
+import vllm_metax.envs as mx_envs
 from vllm_metax.patch.utils import patch
 
-try:
-    from mcoplib.triton_gumbel_sample import gumbel_sample
+use_optimized_gumbel_sample = False
+if mx_envs.USE_PRECOMPILED_KERNEL:
+    try:
+        from mcoplib.triton_gumbel_sample import gumbel_sample
 
-    use_optimized_gumbel_sample = True
-except ImportError:
+        use_optimized_gumbel_sample = True
+    except ImportError:
+        pass
+
+if not use_optimized_gumbel_sample:
     from vllm.v1.worker.gpu.sample.gumbel import gumbel_sample
-
-    use_optimized_gumbel_sample = False
 
 
 def _sample_random(
