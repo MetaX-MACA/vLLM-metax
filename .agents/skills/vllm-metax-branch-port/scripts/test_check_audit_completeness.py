@@ -14,6 +14,26 @@ import check_audit_completeness
 
 
 class AuditCompletenessTest(unittest.TestCase):
+    @staticmethod
+    def publication_fields() -> str:
+        return (
+            "- Final target: `master`\n"
+            "- Requested source and final target: `<source> -> <final-target>`\n"
+            "- Resolved branch chain: `<chain>`\n"
+            "- Skipped `mx/` branches: `<branches-or-none>`\n"
+            "- Source remote: `<logical-name>` / `<provider>`\n"
+            "- Target remote: `<logical-name-or-none>` / `<provider>`\n"
+            "- Remote publication requested: `<yes-or-no>`\n"
+            "- Publication provider: `<gerrit/github/local>`\n"
+            "- Publication remote: `<logical-name-or-none>`\n"
+            "- Gerrit review ref or GitHub PR plan: `<plan>`\n"
+            "- Master local-only reason: `<reason-or-none>`\n"
+            "- Master commit identity policy: `<policy>`\n"
+            "- Publish to remote: `<yes-or-no>`\n"
+            "- Confirmed source-to-final-target branch matrix: `<chain>`\n"
+            "- Final target and master version gate: `<gate>`\n"
+        )
+
     def test_reports_missing_commit(self) -> None:
         first = "a" * 40
         second = "b" * 40
@@ -89,6 +109,26 @@ class AuditCompletenessTest(unittest.TestCase):
 
             self.assertEqual(
                 check_audit_completeness.invalid_port_audits(report, [sha]),
+                [],
+            )
+
+    def test_requires_publication_confirmation_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            report = Path(temporary) / "AUDIT.md"
+            report.write_text("- Final target: `master`\n", encoding="utf-8")
+
+            missing = check_audit_completeness.missing_publication_plan(report)
+
+            self.assertIn("- Publish to remote:", missing)
+            self.assertIn("- Final target and master version gate:", missing)
+
+    def test_accepts_publication_confirmation_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            report = Path(temporary) / "AUDIT.md"
+            report.write_text(self.publication_fields(), encoding="utf-8")
+
+            self.assertEqual(
+                check_audit_completeness.missing_publication_plan(report),
                 [],
             )
 

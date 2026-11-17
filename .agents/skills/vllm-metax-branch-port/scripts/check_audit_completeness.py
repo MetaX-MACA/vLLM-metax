@@ -10,6 +10,24 @@ import json
 from pathlib import Path
 from collections.abc import Sequence
 
+PUBLICATION_MARKERS = (
+    "- Final target: `master`",
+    "- Requested source and final target:",
+    "- Resolved branch chain:",
+    "- Skipped `mx/` branches:",
+    "- Source remote:",
+    "- Target remote:",
+    "- Remote publication requested:",
+    "- Publication provider:",
+    "- Publication remote:",
+    "- Gerrit review ref or GitHub PR plan:",
+    "- Master local-only reason:",
+    "- Master commit identity policy:",
+    "- Publish to remote:",
+    "- Confirmed source-to-final-target branch matrix:",
+    "- Final target and master version gate:",
+)
+
 
 def missing_commits(inventory_path: Path, report_path: Path) -> list[dict[str, str]]:
     inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
@@ -44,6 +62,11 @@ def invalid_port_audits(report_path: Path, port_shas: Sequence[str]) -> list[str
     return invalid
 
 
+def missing_publication_plan(report_path: Path) -> list[str]:
+    report = report_path.read_text(encoding="utf-8")
+    return [marker for marker in PUBLICATION_MARKERS if marker not in report]
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--inventory", type=Path, required=True)
@@ -69,10 +92,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"INCOMPLETE PORT AUDIT {issue}")
         return 1
 
+    missing_publication = missing_publication_plan(args.report)
+    if missing_publication:
+        for marker in missing_publication:
+            print(f"MISSING PUBLICATION FIELD {marker}")
+        return 1
+
     inventory = json.loads(args.inventory.read_text(encoding="utf-8"))
     print(
         f"Audit is complete: {inventory['commit_count']} commit(s) present; "
-        f"{len(args.port_sha)} port logic audit(s) validated"
+        f"{len(args.port_sha)} port logic audit(s) and publication confirmation "
+        "validated"
     )
     return 0
 

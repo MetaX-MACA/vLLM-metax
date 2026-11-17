@@ -118,8 +118,22 @@ silently split or combine it.
 - Fetched at: `<UTC timestamp>`
 - Source: `<ref>` @ `<full-sha>`
 - Target: `<ref>` @ `<full-sha>`
+- Requested source and final target: `<source> -> <final-target>`
+- Resolved branch chain: `<ref -> ref -> ...>`
+- Skipped `mx/` branches: `<branches-or-none>`
+- Source remote: `<logical-name>` / `<provider>`
+- Target remote: `<logical-name-or-none>` / `<provider>`
 - Target vLLM: `<ref>` @ `<full-sha>` / `<public-version>`
 - Target MetaX public version: `<public-version>` / `<matches-vllm: yes-or-no>`
+- Final target: `master`
+- Latest `mx/vX.Y.Z-dev` public version: `<version>`
+- GitHub master public version: `<version>` / `<master-version-gate: pass-or-blocked>`
+- Remote publication requested: `<yes-or-no>`
+- Publication provider: `<gerrit/github/local>`
+- Publication remote: `<logical-name-or-none>`
+- Gerrit review ref or GitHub PR plan: `<ref-or-base/head-plan>`
+- Master local-only reason: `<reason-or-none>`
+- Master commit identity policy: `<porting-developer-as-author-and-committer/no-source-trailer>`
 - Matrix edge: `<edge-id>`
 - Predecessor edge: `<edge-id or none>` / `<status>`
 - Edge status: `<OPEN/IN_PROGRESS/BLOCKED/CLOSED>`
@@ -159,10 +173,17 @@ references/commit-logic-audit.md. Each section must include an explanation examp
 ## Approval needed
 
 - Selected commits:
+- Confirmed source-to-final-target branch matrix:
+- Publish to remote: `<yes-or-no>`
+- Publication provider and logical remote:
+- Gerrit review ref or GitHub PR base/head:
+- Final target and master version gate:
+- Master local-only reason:
 - Original author identities (`Name <email>`):
 - Porting developer name/email:
 - Source-author confirmation:
 - Target ref and frozen SHA:
 - Target vLLM mapping and public version:
 - MetaX/vLLM public-version equality:
+- Master commit identity policy:
 ```
