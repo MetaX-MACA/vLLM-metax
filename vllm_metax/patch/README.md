@@ -383,6 +383,13 @@ imports, the parent activation chain, initialization order and the audit table.
 Avoid compatibility aliases under retired paths: importing the same patch under
 two names can attempt to install it twice.
 
+## Kimi-K3 GEMM collectives
+
+On MACA, Kimi-K3 skips NVIDIA GEMM-AR and GEMM-RS initialization and keeps
+its ordinary linear path. This applies even when `VLLM_KIMI_K3_GEMM_AR=1`
+(the upstream default) or `VLLM_ENABLE_GEMM_RS=1`. These fused collectives
+require NVIDIA CuTe DSL and multicast support that MACA does not provide.
+
 ## Keep in mind
 
 - Prefer `vllm_metax/registry/`, attention backends, or platform configuration
