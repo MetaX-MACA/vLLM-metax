@@ -340,6 +340,15 @@ def target_kernel(...):
     ...
 ```
 
+## Synchronous pipeline decode batches
+
+Synchronous MRv2 scheduling with PP greater than one, DP equal to one, FCFS
+and no speculative decoding automatically balances one-token decode rows.
+Each scheduling pass aims for `ceil(min(request capacity, unfinished requests) / PP)`
+decodes. Prefills retain their budgets, and a request deferred PP times can
+exceed the soft target to prevent starvation. Other scheduling modes delegate
+to upstream. This policy does not claim a measured throughput gain.
+
 ## Patch layout
 
 | Directory | Ownership |
