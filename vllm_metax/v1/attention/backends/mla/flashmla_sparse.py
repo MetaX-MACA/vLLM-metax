@@ -777,31 +777,53 @@ class FlashMLASparseMetadataBuilder(
         active_num_decodes = 0
         decode_seq_lens = None
         if num_decode_tokens > 0:
-            query_lens = torch.diff(
-                common_attn_metadata.query_start_loc_cpu[: num_decodes + 1]
+            # Uniform, unpadded decode rows are already a contiguous prefix.
+            # Avoid a CPU row-index upload and GPU gather in this common case;
+            # retain the generic mapping for variable/padded decode batches.
+            query_starts_np = common_attn_metadata.query_start_loc_cpu[
+                : num_decodes + 1
+            ].numpy()
+            uniform_query_len = (
+                int(query_starts_np[1] - query_starts_np[0])
+                if num_decodes > 0 and query_starts_np.size == num_decodes + 1
+                else 0
             )
-            active_reqs = torch.nonzero(query_lens > 0).flatten()
-            active_lens = query_lens[active_reqs]
-            # NOTE(metax): The runner includes graph padding in num_decode_tokens,
-            # while padded requests have zero query length. Keep those token rows
-            # in the kernel shape instead of dropping them from the batch.
-            mapped_decode_tokens = int(active_lens.sum())
-            assert mapped_decode_tokens <= num_decode_tokens
-            uniform = mapped_decode_tokens == num_decode_tokens and bool(
-                torch.all(active_lens == active_lens[0])
+            uniform_unpadded = (
+                uniform_query_len > 0
+                and uniform_query_len * num_decodes == num_decode_tokens
+                and bool(np.all(np.diff(query_starts_np) == uniform_query_len))
             )
-            decode_query_len = int(active_lens[0]) if uniform else 1
-            active_num_decodes = num_decode_tokens // decode_query_len
-            # These lengths are informational for sparse decode (the kernel
-            # uses top-k slots), but keep them aligned with the flattened rows.
-            row_reqs = (
-                active_reqs
-                if uniform
-                else metadata.req_id_per_token[:num_decode_tokens]
-            )
-            decode_seq_lens = common_attn_metadata.seq_lens.index_select(
-                0, row_reqs.to(device=self.device, non_blocking=True)
-            )
+            if uniform_unpadded:
+                decode_query_len = uniform_query_len
+                active_num_decodes = num_decodes
+                decode_seq_lens = common_attn_metadata.seq_lens[:num_decodes]
+            else:
+                query_lens = torch.diff(
+                    common_attn_metadata.query_start_loc_cpu[: num_decodes + 1]
+                )
+                active_reqs = torch.nonzero(query_lens > 0).flatten()
+                active_lens = query_lens[active_reqs]
+                # NOTE(metax): The runner includes graph padding in
+                # num_decode_tokens, while padded requests have zero query
+                # length. Keep those token rows in the kernel shape.
+                mapped_decode_tokens = int(active_lens.sum())
+                assert mapped_decode_tokens <= num_decode_tokens
+                uniform = mapped_decode_tokens == num_decode_tokens and bool(
+                    torch.all(active_lens == active_lens[0])
+                )
+                decode_query_len = int(active_lens[0]) if uniform else 1
+                active_num_decodes = num_decode_tokens // decode_query_len
+                # These lengths are informational for sparse decode (the kernel
+                # uses top-k slots), but keep them aligned with the flattened
+                # rows.
+                row_reqs = (
+                    active_reqs
+                    if uniform
+                    else metadata.req_id_per_token[:num_decode_tokens]
+                )
+                decode_seq_lens = common_attn_metadata.seq_lens.index_select(
+                    0, row_reqs.to(device=self.device, non_blocking=True)
+                )
 
         bf16_metadata = BF16Meta(
             num_decodes=active_num_decodes,
