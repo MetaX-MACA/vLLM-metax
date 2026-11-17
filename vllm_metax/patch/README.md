@@ -255,6 +255,13 @@ The markers do not trigger patch activation, wrap calls automatically, or
 provide an unpatch API. Activation still happens when the patch module imports;
 delegating to an original requires an explicit call such as the wrapper above.
 
+## Small-batch MoE-LoRA expert bounds
+
+Small-batch MoE-LoRA skips weight accesses for negative expert IDs or IDs at
+or above the local weight expert count. These inactive entries preserve their
+existing output, in both add and overwrite modes. Valid experts retain the
+upstream persistent kernel, rank padding, slices and routed-weight behavior.
+
 ## Common examples
 
 ### Submodule replacement
