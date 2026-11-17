@@ -407,3 +407,12 @@ On MACA, Kimi-K3 skips NVIDIA GEMM-AR and GEMM-RS initialization and keeps
 its ordinary linear path. This applies even when `VLLM_KIMI_K3_GEMM_AR=1`
 (the upstream default) or `VLLM_ENABLE_GEMM_RS=1`. These fused collectives
 require NVIDIA CuTe DSL and multicast support that MACA does not provide.
+
+## Synchronous pipeline decode batches
+
+Synchronous MRv2 scheduling with PP greater than one, DP equal to one, FCFS
+and no speculative decoding automatically balances one-token decode rows.
+Each scheduling pass aims for `ceil(min(request capacity, unfinished requests) / PP)`
+decodes. Prefills retain their budgets, and a request deferred PP times can
+exceed the soft target to prevent starvation. Other scheduling modes delegate
+to upstream. This policy does not claim a measured throughput gain.

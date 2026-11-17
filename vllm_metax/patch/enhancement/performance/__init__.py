@@ -15,3 +15,4 @@
 from . import grouped_topk_router  # noqa: F401
 from . import speculative_decode_perf  # noqa: F401
 from . import gumbel_sample  # noqa: F401
+from . import pp_batch_balance  # noqa: F401
