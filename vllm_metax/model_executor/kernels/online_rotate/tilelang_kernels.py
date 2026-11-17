@@ -37,8 +37,11 @@ def make_hadamard_kernel(
     gemm_order: int = 64,
     mma_rows: int = 0,
     gemm_policy: str = "square",
+    device_id: int = 0,
 ):
     """Build one CTA/token: dense H_B -> remaining H_P -> H_K."""
+    # TileLang elaboration uses a compiler thread with thread-local GPU state.
+    torch.cuda.set_device(device_id)
     if num_threads <= 0 or num_threads % 64:
         raise ValueError("num_threads must be a positive multiple of 64")
     if hidden_size % base_order:
@@ -186,7 +189,7 @@ def make_hadamard_kernel(
     return kernel
 
 
-_KERNEL_CACHE: dict[tuple[int, int, bool, str, int], Callable] = {}
+_KERNEL_CACHE: dict[tuple[int, int, int, bool, str, int], Callable] = {}
 
 
 def hadamard(
@@ -223,23 +226,27 @@ def hadamard(
     if h_gemm.shape != (gemm_order, gemm_order):
         raise ValueError(f"h_gemm must have shape ({gemm_order}, {gemm_order})")
 
+    device_id = x.device.index
     key = (
+        device_id,
         hidden_size,
         base_order,
         inverse,
         tilelang_dtype,
         gemm_order,
     )
-    if key not in _KERNEL_CACHE:
-        _KERNEL_CACHE[key] = make_hadamard_kernel.compile(
-            hidden_size,
-            base_order,
-            inverse,
-            tilelang_dtype,
-            gemm_order=gemm_order,
-        )
+    with torch.cuda.device(x.device):
+        if key not in _KERNEL_CACHE:
+            _KERNEL_CACHE[key] = make_hadamard_kernel.compile(
+                hidden_size,
+                base_order,
+                inverse,
+                tilelang_dtype,
+                gemm_order=gemm_order,
+                device_id=device_id,
+            )
 
-    input_2d = x.reshape(-1, hidden_size).contiguous()
-    output_2d = torch.empty_like(input_2d)
-    _KERNEL_CACHE[key](input_2d, sign, hk, h_gemm, output_2d)
-    return output_2d.reshape(x.shape)
+        input_2d = x.reshape(-1, hidden_size).contiguous()
+        output_2d = torch.empty_like(input_2d)
+        _KERNEL_CACHE[key](input_2d, sign, hk, h_gemm, output_2d)
+        return output_2d.reshape(x.shape)
