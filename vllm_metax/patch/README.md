@@ -400,3 +400,10 @@ MiniMax-M3 now owns its complete NVIDIA-derived implementation under
 and auxiliary-state logic no longer monkey-patch upstream model symbols. Only
 pre-model draft configuration integration remains in `bugfix/`; see the model's
 [adaptation record](../models/minimax_m3/README.md).
+
+## Kimi-K3 GEMM collectives
+
+On MACA, Kimi-K3 skips NVIDIA GEMM-AR and GEMM-RS initialization and keeps
+its ordinary linear path. This applies even when `VLLM_KIMI_K3_GEMM_AR=1`
+(the upstream default) or `VLLM_ENABLE_GEMM_RS=1`. These fused collectives
+require NVIDIA CuTe DSL and multicast support that MACA does not provide.

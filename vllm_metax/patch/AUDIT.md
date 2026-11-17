@@ -6,8 +6,8 @@ Reviewed upstream target: **v0.33.0**
 to `vllm_metax/patch/`; upstream source paths are relative to `vllm/`.
 Transformers compatibility entries refer to the approved **5.19.0** environment.
 
-This inventory describes the current working tree: **33 patch modules**
-(12 bugfix, 5 model-specific and 16 enhancement, including 3 performance),
+This inventory describes the current working tree: **34 patch modules**
+(12 bugfix, 6 model-specific and 16 enhancement, including 3 performance),
 plus shared infrastructure.
 Decisions describe the retained implementation or its migration/removal;
 **they do not declare all v0.33.0 runtime obligations complete**. Earlier 0.30.0
@@ -85,6 +85,7 @@ a replacement automatically. Shared wrappers remain in the shared categories.
 | --- | --- |
 | `models/joyai/joyai_transformer_config.py`: `MODEL_ARCH_CONFIG_CONVERTORS["joyai_llm_flash"]` | **Retain.** Add only the JoyAI converter entry in `transformers_utils/model_arch_config_convertor.py`; identify MLA from the checkpoint's compressed/non-compressed architecture fields and inherit other conversion behavior. Remove when upstream recognizes this architecture equivalently. |
 | `models/kimi_k3/disable_low_latency.py`: `_low_latency_table` | **Retain against v0.33.** Return `None` from target `models/kimi_k3/nvidia/low_latency_gemm.py` so capability aliases cannot install NVIDIA projection plans or enable KDA projection overlap on MACA. Both `enable_kimi_k3_low_latency_gemm` (model/MTP weight loading) and `try_low_latency_gemm` (MLA) resolve this module global. Remove when native dispatch checks backend support or equivalent MACA kernels are validated. Import/fallback checks do not establish Kimi-K3 model numerics. |
+| `models/kimi_k3/disable_gemm_rs_ar.py`: `models/kimi_k3/nvidia/model.py:maybe_init_gemm_rs_ar` | **Retain narrow initializer guard.** The exact v0.33 initializer imports CuTe DSL when GEMM-AR (enabled by default) or GEMM-RS is requested. MACA lacks the required NVIDIA kernels and multicast support. Return `False` before that import so callers keep their ordinary linear path. The existing low-latency table patch covers a different initializer. No registry hook gates this function. Activate through `models/kimi_k3/__init__.py`; remove when native backend gating or validated equivalent MACA kernels cover both modes. Fresh normal-plugin binding and both mode/flag cases are component evidence, without a complete-model or speed claim. |
 | `models/qwen/qwen3_5_moe_loading.py`: `AutoWeightsLoader.load_weights` | **Retain.** Dequantize ignored INT8 shared-expert gates only for the exact Qwen3.5 MTP class; pair weights/scales regardless of input order and reject incomplete pairs. Delegate to the original loader, retaining its mapper and reload behavior. Remove when affected checkpoints or upstream loading resolve the ignored-gate mismatch. Real MTP weight loading remains required. |
 | `models/telechat3/telechat3_yarn.py`: `_get_and_verify_max_len` | **Retain.** Temporarily normalize TeleChat3's rotary name for target `config/model.py` validation, preserve nested `None` RoPE entries and restore caller-owned config afterward. An already-scaled maximum of 32768 with factor 4 remains 32768. Remove when upstream recognizes `telechat3-yarn` with these length semantics. |
 
