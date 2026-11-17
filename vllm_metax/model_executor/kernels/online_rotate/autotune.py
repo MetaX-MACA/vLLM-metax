@@ -22,9 +22,10 @@ def get_hadamard_configs(
     gemm_order: int = 64,
     mma_rows: int = 0,
     gemm_policy: str = "square",
+    device_id: int = 0,
 ) -> list[dict[str, int | str]]:
     """Build ``threads x neighboring M tiles x policies`` candidates."""
-    del base_order, inverse, dtype, num_threads, mma_rows, gemm_policy
+    del base_order, inverse, dtype, num_threads, mma_rows, gemm_policy, device_id
 
     rows_per_token = hidden_size // gemm_order
     floor_rows = (rows_per_token // 32) * 32
