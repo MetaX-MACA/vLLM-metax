@@ -1,0 +1,4 @@
+interface:
+  display_name: "vLLM-MetaX Branch Port"
+  short_description: "Audit and port needed commits between development branches"
+  default_prompt: "Use $vllm-metax-branch-port to audit one source vLLM-MetaX branch against one target branch, then port only the user-approved commits with fresh Conventional Commit messages and Change-Ids."

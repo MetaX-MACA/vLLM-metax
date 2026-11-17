@@ -4,6 +4,9 @@
 # Local upgrade environment dumps, verification logs and resumable TODO/state.
 /.metax-upgrade/
 
+# Independent branch-port matrix, environment, audit and validation state.
+/.metax-branch-port/
+
 
 # triton jit 
 .triton
