@@ -39,7 +39,7 @@ repos:
   rev: 0.11.1
   hooks:
     - id: pip-compile
-      args: [requirements/test.in, -o, requirements/test.txt, --index-strategy, unsafe-best-match, --torch-backend, cpu]
+      args: [requirements/test.in, -o, requirements/test.txt, --python-version, "3.12", --index-strategy, unsafe-best-match, --torch-backend, cpu]
       files: ^requirements/test\.(in|txt)$
 - repo: local
   hooks:
