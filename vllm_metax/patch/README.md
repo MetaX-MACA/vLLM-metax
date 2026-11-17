@@ -416,3 +416,10 @@ Each scheduling pass aims for `ceil(min(request capacity, unfinished requests) /
 decodes. Prefills retain their budgets, and a request deferred PP times can
 exceed the soft target to prevent starvation. Other scheduling modes delegate
 to upstream. This policy does not claim a measured throughput gain.
+
+## Small-batch MoE-LoRA expert bounds
+
+Small-batch MoE-LoRA skips weight accesses for negative expert IDs or IDs at
+or above the local weight expert count. These inactive entries preserve their
+existing output, in both add and overwrite modes. Valid experts retain the
+upstream persistent kernel, rank padding, slices and routed-weight behavior.

@@ -6,8 +6,8 @@ Reviewed upstream target: **v0.33.0**
 to `vllm_metax/patch/`; upstream source paths are relative to `vllm/`.
 Transformers compatibility entries refer to the approved **5.19.0** environment.
 
-This inventory describes the current working tree: **35 patch modules**
-(12 bugfix, 6 model-specific and 17 enhancement, including 4 performance),
+This inventory describes the current working tree: **36 patch modules**
+(13 bugfix, 6 model-specific and 17 enhancement, including 4 performance),
 plus shared infrastructure.
 Decisions describe the retained implementation or its migration/removal;
 **they do not declare all v0.33.0 runtime obligations complete**. Earlier 0.30.0
@@ -34,6 +34,7 @@ templates are not imported by the activation chain.
 
 | Module / target | Decision, repair reason and removal condition |
 | --- | --- |
+| `bugfix/fused_moe_lora_expert_bounds.py`: `_fused_moe_lora_small_batch_kernel`, `_run_fused_moe_lora_small_batch` | **Retain missing upper bound.** Exact v0.33 checks negative expert IDs and adapter validity but still forms weight pointers for IDs beyond the local expert count. There is no extension hook for this kernel guard. Preserve both complete target functions, decorators, persistent/chunk work loops and rank masks; add only the A-weight expert count and upper-bound predicate. Activate through `bugfix/__init__.py`; callers resolve the patched wrapper/kernel globals. Invalid rows preserve their existing output. Remove when the native kernel checks both expert bounds. Independent source-Triton component numerics cover valid/invalid IDs, adapter states, slices, routed weights and add/overwrite modes. |
 | `bugfix/bytes_to_unicode.py`: `transformers.models.gpt2.tokenization_gpt2.bytes_to_unicode` | **Retain.** Restore the cached GPT-2 byte mapping only when the export is absent; affected remote tokenizers still import that legacy Transformers location. Remove when those tokenizers no longer require the removed export. Remote-tokenizer loading remains a separate validation obligation. |
 | `bugfix/tokenizer.py`: `LlamaTokenizerFast.convert_to_native_format`, `AutoTokenizer.from_pretrained` | **Retain.** Select full serialized-backend loading when a real `tokenizer.json` is supplied; otherwise delegate native conversion. After normal loading of a local JoyAI checkpoint, restore its serialized backend while retaining added-token flags and checking token IDs. Remove each branch when Transformers/checkpoints preserve the same backend semantics without it. Llama and JoyAI round-trip behavior require separate checks. |
 | `bugfix/draft_config_overrides.py`: `SpeculativeConfig.compose_draft_hf_overrides`, `SpeculativeConfig.hf_config_override` | **Update; retain dictionary inheritance and MetaX draft identity.** v0.33 added `transformers_mtp_overrides`; the replacement accepts that argument, delegates Transformers MTP overrides unchanged, composes callable overrides through the target implementation, and applies MetaX dictionary inheritance plus JoyAI/MiniMax identity only afterward. Empty dictionary overrides remain a module-referenceable callable. Remove when upstream supports draft dictionary inheritance and preserves these identities. |
