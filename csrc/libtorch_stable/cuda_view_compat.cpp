@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd.
 //
-// NOTE(metax): Stable Torch 2.10 from_blob has no storage deleter overload.
+// NOTE(metax): Stable Torch 2.13 from_blob has no storage deleter overload.
 // This single translation unit uses the exact installed ATen ABI to retain
 // host-storage ownership. The rest of the extension keeps its stable ABI.
 #include <ATen/ATen.h>
@@ -12,7 +12,7 @@
 #include <cstring>
 #include <memory>
 
-#if TORCH_VERSION_MAJOR != 2 || TORCH_VERSION_MINOR != 10
+#if TORCH_VERSION_MAJOR != 2 || TORCH_VERSION_MINOR != 13
   #error "The MACA UVA ownership bridge must be reviewed for this Torch version"
 #endif
 

@@ -65,7 +65,7 @@ set(PYTHON_SUPPORTED_VERSIONS "3.11" "3.12")
 # versions are derived from docker/Dockerfile.rocm
 #
 
-set(TORCH_SUPPORTED_VERSION_CUDA "2.10.0")
+set(TORCH_SUPPORTED_VERSION_CUDA "2.13.0")
 
 #
 # Try to find python package with an executable that exactly matches
@@ -241,7 +241,7 @@ set(VLLM_STABLE_EXT_SRC
 # it does not use NVIDIA cluster/TMA execution.
 if(USE_MACA)
   list(APPEND VLLM_STABLE_EXT_SRC "csrc/libtorch_stable/cooperative_topk.cu")
-  # NOTE(metax): Torch 2.10's stable from_blob cannot retain a storage owner.
+  # NOTE(metax): Stable from_blob cannot retain a storage owner.
   # Only the ownership bridge uses ATen's exact-version ABI.
   list(APPEND VLLM_STABLE_EXT_SRC "csrc/libtorch_stable/cuda_view_compat.cpp")
   set_source_files_properties("csrc/libtorch_stable/cuda_view_compat.cpp"
