@@ -136,6 +136,10 @@ def with_mxsml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
 
 
 class MacaPlatformBase(Platform):
+    @classmethod
+    def get_kv_cache_config_builder_cls(cls, vllm_config: VllmConfig) -> str:
+        return "vllm_metax.v1.core.kv_cache_config_builder.MacaKVCacheConfigBuilder"
+
     _enum = PlatformEnum.OOT
     device_name: str = "maca"
     device_type: str = "cuda"
