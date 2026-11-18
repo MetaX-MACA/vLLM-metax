@@ -83,7 +83,7 @@ from vllm.model_executor.layers.quantization.utils.quant_utils import (
     scaled_dequantize,
 )
 from vllm.model_executor.layers.rotary_embedding import get_rope
-from vllm.model_executor.layers.sparse_attn_indexer import (
+from vllm_metax.registry.custom_ops.layers.sparse_attn_indexer.sparse_attn_indexer import (
     SparseAttnIndexer,
     fused_indexer_q_rope_quant,
 )
