@@ -86,6 +86,13 @@ capability-gated. They are not selected on MACA.
 - The decoder replay path must use the same local layer classes and cache
   positions as eager execution; replay must not rebind an upstream decoder.
 
+- PP intermediate tensors carry `input_ids` as int64 along with hidden states,
+  residual and mixture state. Later stages restore the same token IDs before
+  Engram hashing and token-aware expert routing. The first stage remains the
+  token-ID producer; sequence-parallel token sharding requires PP=1.
+- `supports_aux_hidden_states_over_pp=True` declares this intermediate-state
+  contract. Multi-rank model execution remains unverified without a checkpoint.
+
 ## 7. Chip scope and validation
 
 - Current scope: MetaX C500 source mode, BF16/INT8.
