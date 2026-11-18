@@ -19,6 +19,9 @@ from collections.abc import Sequence
 
 import regex as re
 
+from check_adversarial_review import validate_review
+from worktree_manager import verify as verify_worktree_lease
+
 MX_BRANCH_RE = re.compile(r"^mx/v(?P<version>\d+\.\d+\.\d+)-dev$")
 URL_RE = re.compile(
     r"(?:https?|ssh|git)://\S+|git@[^:\s]+:\S+|(?:www\.)?github\.com[/:]\S+",
@@ -27,6 +30,34 @@ URL_RE = re.compile(
 CHANGE_ID_RE = re.compile(r"^Change-Id:\s*(\S+)\s*$", re.MULTILINE)
 SOURCE_RE = re.compile(r"^Source:\s*\S+\s*$", re.MULTILINE)
 PR_NUMBER_RE = re.compile(r"/pull/(\d+)")
+MARKDOWN_H2_RE = re.compile(r"^##\s+(?P<title>\S.*?)\s*$", re.MULTILINE)
+MARKDOWN_H3_RE = re.compile(r"^###\s+(?P<title>\S.*?)\s*$", re.MULTILINE)
+CHECKBOX_RE = re.compile(
+    r"^\s*[-*]\s+\[(?P<state>[ xX])\]\s+(?P<label>.+?)\s*$", re.MULTILINE
+)
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+HORIZONTAL_RULE_RE = re.compile(r"^---\s*$", re.MULTILINE)
+PLACEHOLDER_RE = re.compile(
+    r"\b(?:TBD|TODO|PLEASE FILL IN|PLACEHOLDER)\b", re.IGNORECASE
+)
+PENDING_ENTRY_RE = re.compile(r"^[-*]\s+Pending verification\s*:\s+\S.*$")
+CJK_PROSE_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
+FENCED_CODE_RE = re.compile(r"```.*?```", re.DOTALL)
+INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
+PENDING_REASON_RE = re.compile(
+    r"\b(?:because|due to|cannot|can't|unavailable|unsupported|no access)\b"
+    r"|因为|由于|无法|缺少|未提供",
+    re.IGNORECASE,
+)
+PENDING_RESTRICTED_DETAILS_RE = re.compile(
+    r"\b(?:metax|maca|nvidia|cuda|amd|rocm|ascend|npu|gpu|chip|accelerator"
+    r"|hardware|private|proprietary|internal|c\d{3,4})\b"
+    r"|芯片|显卡|加速卡|私有|内部|硬件",
+    re.IGNORECASE,
+)
+PRECOMMIT_PASS_RE = re.compile(
+    r"\b(?:pass|passed|success|succeeded)\b|通过", re.IGNORECASE
+)
 
 
 def now() -> str:
@@ -80,6 +111,172 @@ def run_gh(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
 
 def git_output(repo: Path, *args: str) -> str:
     return run(repo, *args).stdout.strip()
+
+
+def run_precommit_all_files(repo: Path) -> None:
+    executable = shutil.which("pre-commit")
+    if executable is None:
+        raise RuntimeError("PR publication requires an installed pre-commit")
+    result = subprocess.run(
+        [executable, "run", "--all-files"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode:
+        raise RuntimeError(
+            redact(
+                "pre-commit run --all-files failed:\n"
+                f"{result.stdout}{result.stderr}".strip()
+            )
+        )
+    if git_output(repo, "status", "--porcelain"):
+        raise RuntimeError(
+            "pre-commit run --all-files modified files; include the hook changes, "
+            "commit them, and rerun publication"
+        )
+
+
+def markdown_h2_sections(text: str) -> dict[str, str]:
+    matches = list(MARKDOWN_H2_RE.finditer(text))
+    sections: dict[str, str] = {}
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        sections[match.group("title").strip()] = text[match.end() : end]
+    return sections
+
+
+def markdown_h3_sections(text: str) -> dict[str, str]:
+    matches = list(MARKDOWN_H3_RE.finditer(text))
+    sections: dict[str, str] = {}
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        sections[match.group("title").strip()] = text[match.end() : end]
+    return sections
+
+
+def visible_section_content(content: str) -> str:
+    content = HORIZONTAL_RULE_RE.split(content, maxsplit=1)[0]
+    return HTML_COMMENT_RE.sub("", content).strip()
+
+
+def checkbox_items(text: str) -> list[tuple[bool, str]]:
+    return [
+        (
+            match.group("state").lower() == "x",
+            " ".join(match.group("label").split()),
+        )
+        for match in CHECKBOX_RE.finditer(text)
+    ]
+
+
+def validate_pr_body_text(repo: Path, body: str, *, source: str) -> dict[str, Any]:
+    template_path = repo / ".github" / "PULL_REQUEST_TEMPLATE.md"
+    if not template_path.is_file():
+        raise RuntimeError(f"Missing PR template: {template_path}")
+
+    template = template_path.read_text()
+    template_sections = markdown_h2_sections(template)
+    body_sections = markdown_h2_sections(body)
+    if not template_sections:
+        raise RuntimeError("PR template must contain at least one level-two heading")
+
+    problems: list[str] = []
+    english_prose = FENCED_CODE_RE.sub("", body)
+    english_prose = INLINE_CODE_RE.sub("", english_prose)
+    english_prose = HTML_COMMENT_RE.sub("", english_prose)
+    if CJK_PROSE_RE.search(english_prose):
+        problems.append("PR description prose must be written in English")
+
+    for title in template_sections:
+        if title not in body_sections:
+            problems.append(f"missing section '## {title}'")
+            continue
+        content = visible_section_content(body_sections[title])
+        if not content:
+            problems.append(f"empty section '## {title}'")
+        elif PLACEHOLDER_RE.search(content):
+            problems.append(f"placeholder content in '## {title}'")
+
+    template_validation_sections = markdown_h3_sections(
+        template_sections.get("Validation", "")
+    )
+    body_validation_sections = markdown_h3_sections(body_sections.get("Validation", ""))
+    for title in template_validation_sections:
+        if title not in body_validation_sections:
+            problems.append(f"missing validation subsection '### {title}'")
+            continue
+        content = visible_section_content(body_validation_sections[title])
+        if not content:
+            problems.append(f"empty validation subsection '### {title}'")
+        elif PLACEHOLDER_RE.search(content):
+            problems.append(f"placeholder content in '### {title}'")
+
+    evidence = visible_section_content(
+        body_validation_sections.get("Validation Evidence", "")
+    )
+    if evidence:
+        if "pre-commit run --all-files" not in evidence:
+            problems.append(
+                "Validation Evidence must report `pre-commit run --all-files`"
+            )
+        elif not PRECOMMIT_PASS_RE.search(evidence):
+            problems.append(
+                "Validation Evidence must report a passing `pre-commit run --all-files` result"
+            )
+
+    pending = visible_section_content(
+        body_validation_sections.get("Pending Verification", "")
+    )
+    if pending and pending.casefold() not in {"none", "none."}:
+        pending_lines = [line.strip() for line in pending.splitlines() if line.strip()]
+        if any(PENDING_ENTRY_RE.fullmatch(line) is None for line in pending_lines):
+            problems.append(
+                "Pending Verification must contain only 'None.' or '- Pending verification: <claim>' entries"
+            )
+        if PENDING_REASON_RE.search(pending):
+            problems.append(
+                "Pending Verification must not disclose why verification is unavailable"
+            )
+        if PENDING_RESTRICTED_DETAILS_RE.search(pending):
+            problems.append(
+                "Pending Verification must not expose vendor/chip or private environment details"
+            )
+
+    template_checkboxes = checkbox_items(HTML_COMMENT_RE.sub("", template))
+    body_checkboxes = checkbox_items(HTML_COMMENT_RE.sub("", body))
+    body_checkbox_state: dict[str, bool] = {}
+    for checked, label in body_checkboxes:
+        body_checkbox_state.setdefault(label, checked)
+
+    for _, label in template_checkboxes:
+        if label not in body_checkbox_state:
+            problems.append(f"missing checklist item '{label}'")
+        elif not body_checkbox_state[label]:
+            problems.append(f"unchecked checklist item '{label}'")
+
+    if problems:
+        detail = "; ".join(problems)
+        raise RuntimeError(
+            f"{source} does not follow .github/PULL_REQUEST_TEMPLATE.md: {detail}"
+        )
+
+    return {
+        "template": ".github/PULL_REQUEST_TEMPLATE.md",
+        "sections": list(template_sections),
+        "validation_sections": list(template_validation_sections),
+        "checklist_items": len(template_checkboxes),
+    }
+
+
+def validate_pr_body(repo: Path, body_file: Path) -> dict[str, Any]:
+    if not body_file.is_file():
+        raise RuntimeError(f"PR body file does not exist: {body_file}")
+    return validate_pr_body_text(
+        repo,
+        body_file.read_text(),
+        source=f"PR body file {body_file}",
+    )
 
 
 def remote_urls(repo: Path, remote: str) -> list[str]:
@@ -560,6 +757,34 @@ def publish(args: argparse.Namespace) -> int:
     base = args.base_sha or git_output(repo, "rev-parse", f"{args.base_ref}^{{commit}}")
     provider = report["target"]["provider"]
     remote = report["target"]["remote"]
+    head_sha = git_output(repo, "rev-parse", "HEAD")
+    review_target_sha = report["target"].get("sha") or base
+    adversarial_review: dict[str, Any] | None = None
+    worktree_lease: dict[str, Any] | None = None
+    if provider in {"gerrit", "github"}:
+        if not args.worktree_json:
+            raise RuntimeError(
+                f"{provider.capitalize()} publication requires --worktree-json"
+            )
+        worktree_lease = verify_worktree_lease(
+            argparse.Namespace(worktree_json=args.worktree_json.resolve())
+        )
+        if Path(worktree_lease["path"]).resolve() != repo:
+            raise RuntimeError(
+                "Publication worktree does not match the leased worktree"
+            )
+        if not args.adversarial_review:
+            raise RuntimeError(
+                f"{provider.capitalize()} publication requires --adversarial-review"
+            )
+        adversarial_review = validate_review(
+            args.adversarial_review.resolve(),
+            expected_stage="final",
+            expected_target_sha=review_target_sha,
+            expected_head_sha=head_sha,
+            expected_worktree=repo,
+            require_endorsement=True,
+        )
     if provider == "local":
         receipt.update(
             status="local-only",
@@ -583,20 +808,26 @@ def publish(args: argparse.Namespace) -> int:
             status="pushed" if result.returncode == 0 else "blocked",
             logical_remote=remote,
             review_ref=review_ref,
+            worktree_lease=worktree_lease,
+            adversarial_review=adversarial_review,
             output=redact(result.stdout + result.stderr),
         )
     elif provider == "github":
-        if not args.pr_branch or not args.title:
-            raise RuntimeError("GitHub publication requires --pr-branch and --title")
+        if not args.pr_branch or not args.title or not args.body_file:
+            raise RuntimeError(
+                "GitHub publication requires --pr-branch, --title and --body-file"
+            )
         if args.pr_branch == "master":
             raise RuntimeError("GitHub PR head branch must not be master")
         if not args.porting_identity:
             raise RuntimeError("GitHub publication requires --porting-identity")
+        body_file = args.body_file.resolve()
+        body_validation = validate_pr_body(repo, body_file)
         validate_master_commits(repo, base, args.porting_identity)
+        run_precommit_all_files(repo)
         run_gh("auth", "status")
         slug, owner = github_slug(repo, remote)
         remote_sha = remote_branch_sha(repo, remote, args.pr_branch)
-        head_sha = git_output(repo, "rev-parse", "HEAD")
         if remote_sha and remote_sha != head_sha:
             ancestor = run(
                 repo,
@@ -637,13 +868,39 @@ def publish(args: argparse.Namespace) -> int:
             "number",
         )
         prs = json.loads(existing.stdout)
+        pr_body_updated = False
         if prs:
             number = prs[0]["number"]
+            current_body = run_gh(
+                "pr",
+                "view",
+                str(number),
+                "--repo",
+                slug,
+                "--json",
+                "body",
+                "--template",
+                "{{.body}}",
+            ).stdout
+            try:
+                validate_pr_body_text(
+                    repo,
+                    current_body,
+                    source=f"Open PR #{number} body",
+                )
+            except RuntimeError:
+                run_gh(
+                    "pr",
+                    "edit",
+                    str(number),
+                    "--repo",
+                    slug,
+                    "--body-file",
+                    str(body_file),
+                )
+                pr_body_updated = True
             status = "pr-open"
         else:
-            body_file = args.body_file
-            if body_file is None:
-                body_file = run_dir / "VALIDATION.md"
             created = run_gh(
                 "pr",
                 "create",
@@ -669,6 +926,11 @@ def publish(args: argparse.Namespace) -> int:
             base="master",
             head_branch=args.pr_branch,
             pr_number=number,
+            pr_body_template=body_validation["template"],
+            worktree_lease=worktree_lease,
+            adversarial_review=adversarial_review,
+            precommit_all_files="passed",
+            pr_body_updated=pr_body_updated,
             push_output=redact(result.stdout + result.stderr),
         )
     else:
@@ -702,7 +964,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     publish_parser.add_argument("--pr-branch")
     publish_parser.add_argument("--title")
     publish_parser.add_argument("--body-file", type=Path)
+    publish_parser.add_argument("--adversarial-review", type=Path)
+    publish_parser.add_argument("--worktree-json", type=Path)
     publish_parser.add_argument("--porting-identity")
+    validate_body_parser = commands.add_parser("validate-pr-body")
+    validate_body_parser.add_argument("--repo", type=Path, required=True)
+    validate_body_parser.add_argument("--body-file", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
         if args.action == "inspect":
@@ -730,6 +997,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     ensure_ascii=False,
                 )
             )
+            return 0
+        if args.action == "validate-pr-body":
+            result = validate_pr_body(args.repo.resolve(), args.body_file.resolve())
+            print(json.dumps({"status": "ok", **result}, indent=2, ensure_ascii=False))
             return 0
         return publish(args)
     except (RuntimeError, OSError, ValueError, KeyError, json.JSONDecodeError) as error:

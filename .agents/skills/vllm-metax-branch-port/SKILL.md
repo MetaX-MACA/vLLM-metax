@@ -84,6 +84,15 @@ Absent versions are skipped automatically; they do not create placeholder edges.
   must be greater than or equal to every available `mx/vX.Y.Z-dev` branch version.
   Otherwise master is local-only.
 
+## Daily automation
+
+For scheduled, pre-approved runs read [daily-automation.md](references/daily-automation.md)
+and use the [daily coordinator](../../agents/vllm-metax-branch-port-daily.md). Daily runs
+are idempotent by run key, use unique run-scoped worktrees with active leases, and launch
+both adversarial review gates in fresh contexts automatically. A new calendar day alone
+does not invalidate a SHA-bound review; source, target, patch, policy or environment
+changes do.
+
 ## Remote publication
 
 At the approval gate, ask explicitly whether the completed ports should be published to
@@ -104,8 +113,21 @@ the confirmed plan in the audit approval.
 - Discover remotes and their provider roles from Git metadata. Refer to them only by
   logical remote name. Never write a repository URL, credentials or owner/repository URL
   into the skill, run state or reports.
-- Push Gerrit changes to `refs/for/<target-branch>` after validation. Reuse each fresh
-  `Change-Id`; do not submit automatically.
+- Before any remote publication, including Gerrit `refs/for/<target-branch>` and GitHub
+  PRs, rerun the independent reviewer's final gate against the latest frozen target
+  baseline. It must validate actual fail-before/pass-after behavior evidence, confirm the
+  patch is still necessary and write `ADVERSARIAL-FINAL.json` with `ENDORSE_PORT` for
+  every published intent. A pending or non-endorsing review blocks publication.
+- Push Gerrit changes to `refs/for/<target-branch>` only after validation and the endorsed
+  final review. Reuse each fresh `Change-Id`; do not submit automatically.
+- Before GitHub publication, run `pre-commit run --all-files` on the final tree; include
+  any hook changes and rerun until it passes without further changes. The publisher
+  reruns the command before pushing and blocks on failure or new hook changes. Copy
+  `.github/PULL_REQUEST_TEMPLATE.md` to the run's `PR_BODY.md`; write it in English,
+  briefly state the validation method and evidence, provide a detailed explanation of the
+  PR content, mark pending checks as specified there, fill every checklist item with
+  confirmed evidence, and run the publisher's `validate-pr-body` command.
+  Free-form notes or `VALIDATION.md` are not valid PR bodies.
 - Push a dedicated non-force branch to GitHub once the master version gate passes, then
   create or reuse an open pull request whose base is `master`. Do not merge it.
 - Publication permission is limited to the confirmed provider and refs. Audit-only,
@@ -178,12 +200,13 @@ the confirmed plan in the audit approval.
    proof that a change is version-specific or obsolete. For every commit, state the
    evidence found on the target and whether migration or target-specific adaptation is
    required. For every `PORT_REQUIRED` commit, complete the detailed logic audit in
-   [commit-logic-audit.md](references/commit-logic-audit.md), including a simple
-   user-facing example that explains the source behavior and expected adapted behavior.
-   The example is explanatory, not a required numeric test or reproduced result. If the
-   logic is incomplete, continue investigating and record the exact open question. A
-   user-selected missing capability stays `PORT_REQUIRED` with implementation review
-   pending; `NEEDS_REVIEW` does not remove it from the selected scope.
+   [commit-logic-audit.md](references/commit-logic-audit.md), including target-first
+   applicability proof, checked source assumptions, a behavior-level falsification plan
+   and a simple user-facing explanation example. The example is explanatory, not a
+   required numeric test or reproduced result. If the logic is incomplete, continue
+   investigating and record the exact open question. A user-selected missing capability
+   stays `PORT_REQUIRED` with implementation review pending; `NEEDS_REVIEW` does not
+   remove it from the selected scope.
 8. Write `.metax-branch-port/runs/<source-slug>__to__<target-slug>/AUDIT.md` from the
    template in the rubric. Include the frozen SHAs, every source-only commit, merge
    wrappers ignored, target evidence, original authors, proposed conventional type
@@ -195,7 +218,25 @@ the confirmed plan in the audit approval.
    Include the confirmed step 2 redacted provider, logical remote, Gerrit review ref or
    GitHub PR plan, local-only master decision when applicable, final master version gate,
    and the required yes/no publication confirmation in the audit.
-9. Run the completeness checker against the inventory and audit:
+9. Before presenting the audit for approval, launch the independent
+   [branch-port reviewer](../../agents/vllm-metax-branch-port-reviewer.md) with a fresh
+   context and require the applicability gate in
+   [adversarial-review.md](references/adversarial-review.md). The reviewer writes
+   `ADVERSARIAL-APPLICABILITY.json` and must challenge target equivalence, source
+   assumptions and the falsification plan for every selected commit or child intent.
+   Validate the artifact:
+
+   ```bash
+   python .agents/skills/vllm-metax-branch-port/scripts/check_adversarial_review.py \
+     --review .metax-branch-port/runs/<source-slug>__to__<target-slug>/ADVERSARIAL-APPLICABILITY.json \
+     --stage applicability --expected-target-sha <target-sha> \
+     --worktree <metax-worktree> --intent-id <selected-intent-id>
+   ```
+
+   If no independent reviewer is available, record the gate as pending and do not present
+   the selected port as ready for automatic merge. The implementing agent cannot satisfy
+   this gate by reviewing its own work.
+10. Run the completeness checker against the inventory and audit:
 
    ```bash
    python .agents/skills/vllm-metax-branch-port/scripts/check_audit_completeness.py \
@@ -228,8 +269,8 @@ No confirmation in this workflow authorizes automatic merge or Gerrit submission
 
 ## Approval gate
 
-Present the complete audit, detailed port logic explanations and proposed selected
-commits before mutation. The user must approve:
+Present the complete audit, independent applicability review, detailed port logic
+explanations and proposed selected commits before mutation. The user must approve:
 
 - the exact source commits to port and their order;
 - the target branch and full target SHA;
@@ -258,8 +299,11 @@ starting the mutation phase.
 
 ## Environment and adaptation
 
-1. Create an isolated worktree from the re-fetched, frozen target SHA before preparing
-   the environment. Do not reuse or modify the user's active checkout.
+1. Create a run-scoped worktree from the re-fetched, frozen target SHA before preparing
+   the environment. Do not reuse a fixed `vLLM-metax-pr-*` path or modify the user's active
+   checkout. Use `worktree_manager.py prepare` to allocate a unique path and lease, then
+   record its absolute path in `RUN.json.metax_worktree` and the matrix so the independent
+   reviewer can bind to the exact checkout instead of guessing a directory name.
 2. Read and apply
    [independent-environment.md](references/independent-environment.md). Obtain one
    complete branch-port environment approval, then install and verify the target
@@ -297,22 +341,36 @@ starting the mutation phase.
   provenance with `Source: <source-ref>@<full-sha>`.
 - For `master`, use the confirmed porting developer as both author and committer, and
   omit the `Source:` trailer. Preserve source-to-target traceability in `MATRIX.json`,
-  `VALIDATION.md` and the pull request body instead.
+  `VALIDATION.md` and the template-derived `PR_BODY.md` instead.
 - Let the Gerrit hook generate one new `Change-Id` for every target commit. Verify each
   commit separately.
 - On `mx/` targets, preserve both the original author name and email. Use the approved
   porting developer as committer and signer-off. Never fabricate either identity.
 - Use conservative, tiered validation. Run static checks, targeted tests and relevant
-  component tests by default. Run e2e or benchmarks only when the change affects a path
-  that targeted checks cannot establish, or when a performance claim requires it.
-  Missing hardware, models or benchmarks do not deselect a port. Record unrun checks
-  and unmeasured gains explicitly; fix known failures before claiming completion.
+  component tests by default. A correctness fix must have a behavior-level falsification
+  check that fails without the target patch and passes with it. Run e2e or benchmarks
+  only when the change affects a path that targeted checks cannot establish, or when a
+  performance claim requires it.
+  Missing hardware, models or benchmarks do not deselect a port. Record exact unrun
+  checks and private reasons in the run state; fix known failures before claiming
+  completion. In a public PR, represent those items only as
+  `- Pending verification: <affected behavior or claim>` and omit vendor/chip, private environment,
+  internal path and credential details.
+- After every rebase to a newer target baseline, repeat target-first applicability and
+  the falsification check. A rebase changes the context even without a textual conflict;
+  confirm the patch is still necessary and update all target SHAs in the matrix, review
+  artifact and PR body.
+- Before creating or updating a pull request, the independent final review artifact must
+  exist and be validated, and `pre-commit run --all-files` must pass on the final submitted
+  tree. Record the exact command and result in `Validation Evidence`.
 - If a selected commit depends on another source commit, preserve and validate the
   dependency order. Do not silently produce a partial port.
 
 At completion, report source-to-target SHA mapping, new `Change-Id` values, exact
 original author names and emails, target-specific adaptations, validation evidence,
-skipped commits, publication result and unresolved risks. Update the matrix only after
+skipped commits, publication result and unresolved risks. Include the same confirmed
+facts in the template-derived pull request body; keep it current when review or
+validation changes. Update the matrix only after
 every source commit has its final disposition and the edge's validation is complete. Do
 not mark an edge `CLOSED` while any selected port, review item or stale baseline remains.
 Remote publication occurs only under the yes answer captured at approval. `master` PR

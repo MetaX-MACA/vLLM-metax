@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "source_ref": "mx/v0.32.0-dev",
+  "target_ref": "master",
+  "scope": {
+    "mode": "all-source-only",
+    "intent_file": ".metax-branch-port/DAILY-SCOPE.json",
+    "new_source_commits": "audit-and-continue",
+    "unknown_source_author": "block",
+    "source_author_policy": "current-branch-authors",
+    "approved_source_authors": []
+  },
+  "identity": {
+    "porting_developer": "<Name> <email@example.com>"
+  },
+  "environment": {
+    "fingerprint": "<sha256-from-runtime_fingerprint.py>",
+    "allowed_kernel_provider": "source",
+    "temporary_requirement_edits": "allow-if-restored",
+    "environment_mismatch": "block"
+  },
+  "publication": {
+    "mode": "auto",
+    "provider": "auto",
+    "github_draft": true,
+    "publish_with_pending_review": true,
+    "reuse_open_pr": true,
+    "overwrite_manual_pr_body": false
+  },
+  "review": {
+    "mode": "automatic-independent-agent",
+    "require_endorsement": true,
+    "max_rounds": 2,
+    "on_changes_required": "fix-and-review-again",
+    "on_exhausted": "block",
+    "new_material_risk": "block"
+  },
+  "validation": {
+    "known_pending_categories": [
+      "performance-unmeasured",
+      "hardware-unavailable",
+      "model-unavailable"
+    ],
+    "unknown_failure": "block",
+    "publish_pending_verification": true
+  },
+  "worktree": {
+    "root": "/workspace/.metax-worktrees",
+    "lease_hours": 24,
+    "retain_days": 14,
+    "active_lease_policy": "wait",
+    "active_lease_wait_minutes": 30
+  },
+  "retry": {
+    "target_moved": "reaudit-once",
+    "push_lease_conflict": "refetch-and-reaudit",
+    "max_retries": 1,
+    "max_runtime_minutes": 360
+  },
+  "approvals": {
+    "scope_approved_by": "<human-owner>",
+    "remote_publication_approved": true,
+    "draft_publication_with_pending_approved": true,
+    "merge_authorized": false
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "mode": "all-source-only",
+  "source_shas": [],
+  "exclude_source_shas": [],
+  "intent_ids": [],
+  "notes": "Port every source-only non-merge commit between the configured source and target refs."
+}

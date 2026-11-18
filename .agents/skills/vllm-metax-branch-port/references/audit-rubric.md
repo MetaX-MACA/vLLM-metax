@@ -35,10 +35,16 @@ Every row must state:
 - the resulting disposition and any missing evidence.
 
 Every commit marked `PORT_REQUIRED` must also have a detailed section following
-[commit-logic-audit.md](commit-logic-audit.md). That section must explain the execution
-logic and provide a simple user-facing explanation example. The example is not required
-to include numerical validation or a reproduced test result. A row without this section
-is not eligible for approval as a port candidate.
+[commit-logic-audit.md](commit-logic-audit.md). That section must include target-first
+applicability proof, checked source assumptions, a behavior-level falsification plan,
+the execution logic and a simple user-facing explanation example. A missing source patch
+is not target evidence. A row without this section is not eligible for approval as a port
+candidate.
+
+A selected commit or child intent additionally requires independent adversarial review at
+the applicability gate. The reviewer must actively search for an equivalent target
+mechanism and try to show that the port is unnecessary. The implementing agent cannot
+self-approve this gate.
 
 A target commit with the same patch ID is strong evidence that the exact change is
 already present. It is not sufficient by itself: target code may contain an equivalent
@@ -56,7 +62,7 @@ Use one decision for each source commit or tightly coupled Gerrit change:
 
 | Decision | Meaning | Required evidence |
 | --- | --- | --- |
-| `PORT_REQUIRED` | Source behavior requested by the user is absent or needs adaptation on the target. | Trace source/target contracts and expected behavior; record remaining implementation questions and validation limits separately. A reproduced performance gain is not required to select the port. |
+| `PORT_REQUIRED` | Source behavior requested by the user is absent or needs adaptation on the target. | Prove target-first applicability, search target code/history for an equivalent mechanism, validate source assumptions and define a behavior-level falsification check. Record implementation questions and validation limits separately. A reproduced performance gain is not required to select the port. |
 | `NEEDS_REVIEW` | Applicability or scope is genuinely undecided. | State the exact unresolved contract or decision and investigate it. Do not deselect user-required work or use this merely because runtime validation is unavailable. |
 | `ALREADY_PRESENT` | The target already contains the same semantic change, including an equivalent adaptation. | Target symbol or test showing current behavior; patch ID is supporting evidence only. |
 | `UPSTREAM_FIXED` | Target upstream or another target change fixes the same problem differently. | Link or identify the replacement revision, symbol and behavior; explain why the old source change is unnecessary. |
@@ -117,6 +123,16 @@ do not prohibit committing a sound adaptation.
 For model adaptations, verify that the model is in target scope, its registration and
 model-owned dependency chain still apply, and the source implementation does not rely
 on removed framework contracts.
+
+## Independent adversarial review
+
+For every selected commit or child intent, run the role in
+[../../../agents/vllm-metax-branch-port-reviewer.md](../../../agents/vllm-metax-branch-port-reviewer.md)
+using [adversarial-review.md](adversarial-review.md) before the port approval and again
+before publication. The applicability artifact is `ADVERSARIAL-APPLICABILITY.json`; the
+post-rebase artifact is `ADVERSARIAL-FINAL.json`. Only `ENDORSE_PORT` permits the affected
+intent to be published. `ALREADY_COVERED`, `DO_NOT_PORT`, `CHANGES_REQUIRED` and a missing
+review are blockers, not implicit approvals.
 
 ## Commit grouping
 

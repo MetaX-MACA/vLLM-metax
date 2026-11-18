@@ -21,6 +21,10 @@ linked references. This role coordinates one source-to-target matrix edge at a t
   references for upstream-first source ownership, dependency closure, validation and
   recovery. This does not create or authorize a full-upgrade run.
 - Reuse shared domain skills for changed contracts.
+- Use the separate
+  [branch-port reviewer](vllm-metax-branch-port-reviewer.md) for applicability and final
+  adversarial review. If it is unavailable, leave the gate pending and report that the
+  change is not ready for automatic merge; never self-approve it.
 - Preserve user worktrees, identities and uncommitted changes.
 - Ask whether to publish to the remote as part of the initial audit approval. A yes may
   publish only to the confirmed provider and refs; a no keeps the run local.
@@ -85,19 +89,24 @@ confirmation does not approve unseen code, waive known failures or authorize mer
    the read-only inventory and produce an exhaustive audit. Every inventory non-merge
    commit, including already-adapted or likely-unneeded commits, must have its own row
    with target evidence and a migration/adaptation conclusion.
-4. For every `PORT_REQUIRED` commit, produce a complete logic audit with a simple
-   user-facing explanation example as specified by the branch-port skill. The example
-   explains the behavior; it is not a mandatory numerical test or reproduced result. Do
-   not infer a port decision from a diff summary alone. Investigate incomplete logic
-   and record the exact unresolved contract. Preserve user-selected work as required;
-   use pending implementation review rather than an implicit exclusion.
-5. Present the confirmed logical source/target remotes, complete audit, per-commit logic
-   explanations, selected commits, original authors, porting developer identity,
-   source-author confirmation request, final master version gate or local-only decision,
-   and an explicit yes/no remote-publication choice. Wait for approval.
+4. For every `PORT_REQUIRED` commit or child intent, prove target applicability before
+   producing a patch: current target owner, target history search, equivalent-mechanism
+   check, still-valid source assumptions, observable gap and a behavior-level falsification
+   plan. Include the simple user-facing explanation required by the skill. Do not infer a
+   port decision from an absent source patch alone. Preserve user-selected work while
+   investigating incomplete logic.
+5. Before approval, launch the independent reviewer in a fresh task for the applicability
+   gate. Require `ADVERSARIAL-APPLICABILITY.json` with a verdict for every selected intent
+   and validate it with `check_adversarial_review.py`. Then present the confirmed logical
+   remotes, complete audit, independent verdicts, per-intent logic explanations, selected
+   commits, identities, source-author confirmation request, version gate and publication
+   choice. Wait for approval. If the reviewer is unavailable, the gate is pending and the
+   port is not ready for automatic merge.
 6. Re-fetch both MetaX branches and verify their frozen SHAs. If either moved, invalidate
    the affected audit and request approval for any changed selection or baseline.
-7. Create an isolated target-branch worktree before preparing the environment.
+7. Use `worktree_manager.py prepare` to create a unique run-scoped target worktree and
+   lease before preparing the environment. Do not reuse a fixed `vLLM-metax-pr-*` path;
+   heartbeat long runs and record the returned `WORKTREE.json`.
 8. Prepare one complete branch-port environment plan for user approval. Follow
    [independent-environment.md](../skills/vllm-metax-branch-port/references/independent-environment.md).
 9. Install target `vllm_metax` first, then the matching target vLLM. Both installations
@@ -116,10 +125,25 @@ confirmation does not approve unseen code, waive known failures or authorize mer
     version bindings remain unchanged.
 13. If remote publication was approved, run
     [publish_branch_port.py](../skills/vllm-metax-branch-port/scripts/publish_branch_port.py)
-    after closure. Push Gerrit `mx/vX.Y.Z-dev` targets to `refs/for/<branch>`; create or
-    reuse a GitHub PR targeting `master` only when a GitHub remote owns it. If master is
-    not a GitHub remote, record local-only and perform no remote mutation. Do not submit
-    or merge.
+    after closure. Before any Gerrit `refs/for/<branch>` push or GitHub PR, rebase onto
+    the latest frozen target baseline and re-audit patch applicability. Launch the
+    independent reviewer's final gate and require `ADVERSARIAL-FINAL.json` with
+    `ENDORSE_PORT` for every published intent and fail-before/pass-after behavior evidence.
+    A pending or non-endorsing review blocks the remote mutation. Then push Gerrit
+    `mx/vX.Y.Z-dev` targets to `refs/for/<branch>`. For a GitHub PR targeting `master`,
+    additionally run `pre-commit run --all-files` on the final tree and rerun after any hook
+    changes until it passes without further changes. Copy
+    `.github/PULL_REQUEST_TEMPLATE.md` to `<run-dir>/PR_BODY.md`; write the description in
+    English, briefly state the validation method, provide a detailed explanation of the PR
+    content, record the pre-commit and other evidence, use only
+    `- Pending verification: <claim>` for pending checks, complete every checklist item,
+    and pass the file through `validate-pr-body`. The publisher reruns the all-files
+    pre-commit
+    command and blocks if it fails or modifies the tree. Create or reuse the PR only
+    when a GitHub remote owns master. If master is not a GitHub remote, record local-only
+    and perform no remote mutation. After publication or a blocked run, release the worktree
+    lease with `PUBLISHED`, `BLOCKED` or `ABANDONED`; do not reuse or overwrite the run
+    worktree. Do not submit or merge.
 14. Repeat steps 3-13 for every confirmed edge. Continue toward `master` only after
     predecessor changes are actually merged into
     their target branch. For master commits, use the approved porting developer as

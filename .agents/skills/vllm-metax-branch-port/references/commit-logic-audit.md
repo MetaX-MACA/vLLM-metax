@@ -18,6 +18,7 @@ Create one section using the full source SHA:
 - Source subject: `<subject>`
 - Original author: `<name> <email>`
 - Files and symbols: `<paths and functions/classes>`
+- Child intent ID: `<stable-intent-id-or-source-commit>`
 - Target counterpart: `<paths and symbols>`
 - Decision: `PORT_REQUIRED`
 - Selection and basis: `<current user instruction or approved scope>`
@@ -49,7 +50,34 @@ result.
 
 Identify the target implementation and explain why the same logic requirement remains,
 or which target contract requires a different implementation. Cite concrete symbols and
-code paths rather than only file names.
+code paths rather than only file names. A missing source patch is not evidence that the
+target needs the change.
+
+### Target-first applicability proof
+
+Record the falsifiable target-side checks:
+
+- current target entry point, callers, callees and owned state;
+- target code and history searches used to find an equivalent mechanism;
+- exact evidence that no equivalent implementation exists, or the replacement the target
+  already uses;
+- every source assumption that must still hold, and whether it does;
+- the observable target gap if the source change is omitted;
+- why the proposed target mechanism is the smallest appropriate change.
+
+### Falsification evidence
+
+Define the behavior-level check before implementing the patch:
+
+- input/configuration and final observable behavior;
+- expected failure on the unmodified target, or an explicit non-runtime contract when
+  execution is impossible;
+- the test or measurement that must pass after the patch;
+- why helper flags, intermediate shapes or copied patch text are insufficient proof.
+
+For a correctness fix, the final evidence should include a fail-before/pass-after check.
+For a performance change, record a paired target baseline and the workload that makes the
+claim meaningful. For an API adaptation, exercise the real target caller.
 
 ### Adaptation plan
 
@@ -60,6 +88,18 @@ Describe the target-side change:
 - target APIs or layouts that require adaptation;
 - dependencies and ordering constraints;
 - unrelated behavior that must not change.
+
+### Final rebase re-audit
+
+After rebasing onto the latest target baseline, record:
+
+- the new full target SHA;
+- whether target code, APIs or tests changed the applicability conclusion;
+- which source assumptions remain valid;
+- which patch portions became redundant;
+- whether the falsification check still fails without the patch and passes with it.
+
+A textual conflict-free rebase does not prove that the patch is still needed.
 
 ### Explanation example
 

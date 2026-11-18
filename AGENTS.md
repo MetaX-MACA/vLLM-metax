@@ -19,10 +19,29 @@ references; load only workflows relevant to the user's request.
   assist with the implementation and review, but they cannot be the accountable
   author. The human owner must review every changed line and run the required
   validation.
+- Before opening or updating any pull request, including a draft, run
+  `pre-commit run --all-files` against the final submitted tree. If hooks modify files,
+  include those changes and rerun until the command passes with no uncommitted hook
+  output. Record the exact command and passing result in the PR's validation evidence.
 - State in the code review description that AI assistance was used. Include
   duplicate-work analysis when relevant, the validation commands and results,
   and model evaluation evidence when the change affects model output, accuracy
   or serving.
+- Agent-created GitHub pull requests must use a completed copy of
+  `.github/PULL_REQUEST_TEMPLATE.md`; free-form notes or `VALIDATION.md` are not
+  acceptable substitutes. Prepare the filled body as `PR_BODY.md` in the run directory,
+  check only statements that are true, and run the owning workflow's body validator
+  before publication. The branch-port publisher enforces this template contract and
+  reruns `pre-commit run --all-files` before the remote push.
+- All PR descriptions must be written in English. Briefly state the validation method
+  and provide concrete commands and results under `Validation`. Under `Details`, give a
+  detailed explanation of the PR content: what changed, why it changed, the behavior,
+  design decisions and tradeoffs.
+- Public PR descriptions must not expose vendor/chip, private environment, internal
+  path or credential details. A pending check must use only
+  `- Pending verification: <affected behavior or claim>` under `Pending Verification`;
+  do not disclose why verification was unavailable. Keep restricted evidence in private
+  run state.
 - User-visible changes must update the corresponding documentation in the same
   change. This includes CLI arguments, configuration fields, environment
   variables, supported models, hardware requirements, defaults and deprecations.
@@ -31,8 +50,11 @@ references; load only workflows relevant to the user's request.
 
 | Task | Skill |
 | --- | --- |
+| Independent staged/worktree/commit code review | [independent-review](.agents/skills/independent-review/SKILL.md) |
 | Full upgrade or coordinated component upgrade | [vllm-metax-upgrade](.agents/skills/vllm-metax-upgrade/SKILL.md) |
 | Cross-branch commit audit and source port | [vllm-metax-branch-port](.agents/skills/vllm-metax-branch-port/SKILL.md) |
+| Independent branch-port adversarial review | [vllm-metax-branch-port-reviewer](.agents/agents/vllm-metax-branch-port-reviewer.md) |
+| Scheduled daily branch port | [vllm-metax-branch-port-daily](.agents/agents/vllm-metax-branch-port-daily.md) |
 | Upgrade environment preparation | [environment-check](.agents/skills/environment-check/SKILL.md) |
 | Shared upgrade rules and tooling | [common-sense](.agents/skills/common-sense/SKILL.md) |
 | New or standalone model adaptation | [model-adaptation](.agents/skills/model-adaptation/SKILL.md) |
@@ -45,10 +67,18 @@ references; load only workflows relevant to the user's request.
 
 The portable coordinator roles are:
 
+- [independent-reviewer](.agents/agents/independent-reviewer.md) for fresh-context,
+  read-only review of staged, unstaged, commit or commit-range code.
 - [vllm-metax-upgrade](.agents/agents/vllm-metax-upgrade.md) for full or coordinated
   component upgrades.
 - [vllm-metax-branch-port](.agents/agents/vllm-metax-branch-port.md) for independent
   linear-matrix cross-branch commit audits and source ports.
+- [vllm-metax-branch-port-reviewer](.agents/agents/vllm-metax-branch-port-reviewer.md)
+  for independent, read-only adversarial review of the recorded worktree, target
+  applicability, behavioral evidence and post-rebase patch necessity.
+- [vllm-metax-branch-port-daily](.agents/agents/vllm-metax-branch-port-daily.md)
+  for idempotent scheduled runs with pre-approved scope, run-scoped worktrees and
+  automatic fresh-context applicability/final reviews.
 
 Clients with native subagent support may register these roles in their own
 configuration; the Markdown files supply their instructions. Native agent registration
@@ -147,7 +177,7 @@ pre-commit run --all-files
 pre-commit run ruff-check --all-files
 ```
 
-Run the relevant hooks on every change. Final upgrade and release acceptance require
-`pre-commit run --all-files` to pass on the final code. Fix all hook failures reported
-by that run and rerun until it passes. If hooks modify source, refresh affected
-validation evidence before declaring the upgrade complete.
+Run the relevant hooks on every change. Every pull request, including an update to an
+open PR, requires `pre-commit run --all-files` to pass on the final submitted tree. Fix
+all hook failures reported by that run and rerun until it passes. If hooks modify source,
+include the changes in the submitted revision and refresh affected validation evidence.

@@ -150,13 +150,42 @@ For each source commit, retain:
   "target_change_id": "<new-git-change-id-or-null>",
   "original_author": "Name <email>",
   "evidence": "Concrete target behavior or superseding revision",
-  "audit_artifact": "relative/path/to/AUDIT.md"
+  "audit_artifact": "relative/path/to/AUDIT.md",
+  "intents": [
+    {
+      "intent_id": "stable-child-intent-id",
+      "observable_behavior": "Target behavior affected by the source intent",
+      "target_counterpart": "Target symbols and call path",
+      "target_history_search": "Searches performed and evidence found",
+      "target_equivalence_evidence": "None found or equivalent target mechanism",
+      "source_assumptions": ["Assumptions checked against the target"],
+      "source_assumptions_still_valid": true,
+      "why_patch_still_needed": "Concrete target-side gap",
+      "falsification_test": "Behavior-level fail-before/pass-after check",
+      "rebase_reaudit_at_sha": "<latest-target-sha>",
+      "adversarial_review_status": "ENDORSE_PORT"
+    }
+  ],
+  "adversarial_review": {
+    "applicability_artifact": "relative/path/to/ADVERSARIAL-APPLICABILITY.json",
+    "final_artifact": "relative/path/to/ADVERSARIAL-FINAL.json",
+    "reviewer_mode": "independent-agent",
+    "review_worktree": "<absolute-worktree-path>",
+    "worktree_branch": "<reviewed-branch>",
+    "status": "PASSED"
+  }
 }
 ```
 
-Use `target_sha: null` for terminal dispositions that create no target commit. Preserve
-the complete source-to-target mapping and evidence; a branch name alone is not a stable
-watermark.
+Use `target_sha: null` for terminal dispositions that create no target commit. For a
+source commit with mixed intents, keep one intent record per child intent; do not infer
+that the whole commit is required or complete from one child result. A branch name alone
+is not a stable watermark.
+
+Before `PORTED`/publication, both independent review artifacts must validate. After every
+rebase, update `rebase_reaudit_at_sha` and re-evaluate target equivalence. A target that
+now covers the behavior must use a terminal non-port disposition, not a defensive or
+obsolete patch.
 
 Every edge records its explicit upstream vLLM mapping. `vllm_public_version` must equal
 `metax_public_version`; local build suffixes do not permit a different public base.

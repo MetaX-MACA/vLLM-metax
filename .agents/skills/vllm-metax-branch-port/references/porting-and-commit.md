@@ -46,9 +46,14 @@ and correct the commit if any field differs.
 
 This source-author preservation applies to `mx/vX.Y.Z-dev` targets. For a commit created
 on `master`, use the confirmed porting developer as both author and committer and omit
-the `Source:` trailer. The matrix and pull request body retain provenance.
+the `Source:` trailer. The matrix and template-derived `PR_BODY.md` retain provenance.
 
 ## Environment and worktree
+
+Before preparing or applying an adaptation patch, require a validated independent
+applicability review artifact for every selected intent. The review must prove the
+target-side gap, rule out an equivalent target mechanism, validate source assumptions and
+define a behavior-level falsification check.
 
 Use the independent branch-port environment workflow in
 [independent-environment.md](independent-environment.md). Its single preparation plan
@@ -72,9 +77,12 @@ predecessor source SHA. Do not use a complete target snapshot as evidence for th
 linear guarantee if the edge that was supposed to populate it still has pending or
 unreviewed source commits.
 
-Use an isolated worktree based on the approved full target SHA. Name the local work
-branch explicitly and record it in the run state. Keep the source checkout available
-for evidence, but do not alter it.
+Use `worktree_manager.py prepare` to create an isolated worktree based on the approved
+full target SHA. It allocates a unique path and local branch, records an edge lease and
+writes `WORKTREE.json` into the run directory. Do not reuse a fixed PR worktree name or
+check out the same local branch in concurrent runs. Keep the source checkout available
+for evidence, but do not alter it. Heartbeat long runs and release the lease when the
+run is published, blocked or abandoned.
 
 The Gerrit `commit-msg` hook must create a new `Change-Id`. If the hook is absent or the
 repository is configured with a pre-commit-only hook, resolve it under the approved
@@ -155,7 +163,8 @@ commit has no `Source:` trailer:
 Signed-off-by: <confirmed porting developer>
 ```
 
-Record source provenance in `MATRIX.json`, `VALIDATION.md` and the PR body.
+Record source provenance in `MATRIX.json`, `VALIDATION.md` and the template-derived
+`PR_BODY.md` used for GitHub publication.
 
 Use one commit per selected source commit. Commit dependencies in the approved order.
 Do not squash related commits or split one source commit without explicit approval.
@@ -164,7 +173,9 @@ Do not squash related commits or split one source commit without explicit approv
 
 Apply [scope-and-validation.md](scope-and-validation.md). Choose checks appropriate
 to each correctness or performance claim; record executed results and unavailable
-coverage separately:
+coverage separately. For a correctness fix, first establish a behavior-level check that
+fails on the unmodified target and passes after the adaptation. Do not treat a helper
+flag, intermediate shape or copied patch as final behavioral proof.
 
 1. Static: review the target-vs-source semantic mapping, imports, API contracts and
    changed-file lint. Run focused unit or component tests covering the changed behavior.
@@ -176,19 +187,36 @@ coverage separately:
    hardware, configuration and frozen baseline. An unavailable benchmark does not
    itself prevent the selected optimization from being adapted and committed.
 
-Unavailable FP8 hardware, models or dependencies make the affected execution check
-`UNVERIFIED`; they do not deselect the source capability. Run other meaningful checks,
-report the exact gap and preserve source behavior. A known correctness failure still
-requires a fix; a missing resource is not a passing result.
+Unavailable FP8 execution resources, models or dependencies make the affected check
+`UNVERIFIED`; they do not deselect the source capability. Record the exact gap in private
+run state and preserve source behavior. In a public PR, list only
+`- Pending verification: <affected behavior or claim>` under `Pending Verification`; omit why the check
+was unavailable and all vendor/chip, private environment, internal path and credential
+details. A known correctness failure still requires a fix; a missing resource is not a
+passing result.
 
-Run `pre-commit` on the changed files after every commit or at least before declaring
-the selected run complete. Re-run any evidence invalidated by later edits. A green exit
-code without asserting the expected behavior is not sufficient.
+Run `pre-commit run --all-files` on the final tree before creating or updating any pull
+request. Include any hook changes and rerun until the command passes without producing
+further changes. Re-run any evidence invalidated by later edits. A green exit code
+without asserting the expected behavior is not sufficient.
 
-When publication was approved, validate provider authentication and idempotency before
-the remote mutation. For Gerrit, verify every new commit has its own `Change-Id` and push
-only to `refs/for/<mx-branch>`. For GitHub, verify the master version gate, push a
-dedicated non-force branch, and create or reuse an open PR targeting `master`.
+Patch lifecycle headers (`Note`, `Affected versions`, `Remove at`) belong only to files
+under `vllm_metax/patch/`. Model, backend, kernel and distributed runtime code must use
+normal implementation headers and a concise docstring. Put substantial target-side
+rationale in the owning specification or the audit/review artifact.
+
+After every rebase to a newer target baseline, repeat target-first applicability and the
+falsification check before updating the PR. A conflict-free rebase does not prove the
+patch is still necessary.
+
+When publication was approved, validate provider authentication, target freshness and
+idempotency before the remote mutation. Obtain a validated `ENDORSE_PORT` final
+adversarial review for every published intent before either Gerrit or GitHub publication.
+For Gerrit, verify every new commit has its own `Change-Id` and push only to
+`refs/for/<mx-branch>`. For GitHub, additionally verify the master version gate, confirm
+`Validation Evidence` records the passing all-files pre-commit run, validate the
+template-derived `PR_BODY.md`, push a dedicated non-force branch, and create or reuse an
+open PR targeting `master`.
 
 ## Completion
 
@@ -202,7 +230,8 @@ Report:
 - adaptations and dependency ordering;
 - validation commands, configurations and outcomes;
 - skipped or blocked commits with their audit evidence;
-- remaining risks or unverified hardware/model combinations;
+- remaining risks or unverified behavior, with restricted reasons retained only in
+  private run state and public PR entries limited to `- Pending verification: <claim>`;
 - publication status, logical remote name and either the Gerrit review ref or GitHub PR
   number, with no repository URL.
 

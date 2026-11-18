@@ -16,6 +16,9 @@ Record scope, implementation and validation independently:
   Summarize mixed coverage as `PARTIAL`; do not turn an unrun check into a pass.
 - Human review: record `review_status`, concrete reasons, the requested user decision
   and the exact confirmation. Migration selection does not itself accept review risks.
+- Independent adversarial review: record applicability/final artifact paths, reviewer
+  mode, per-intent verdicts and the latest rebased target SHA. Pending or non-endorsing
+  review blocks automatic merge and publication.
 
 The disposition describes the migration decision. A user-required capability missing
 from the target is `PORT_REQUIRED`, even when implementation review or runtime
@@ -54,20 +57,22 @@ child intents under the approved grouping policy so partial delivery stays visib
 | Is the source capability absent or different on the target? | Inspect source and target entry points, dispatch conditions, registration, contracts and an explanatory scenario. | Continue call-path analysis. Keep a user-selected port required; list the unresolved implementation question. |
 | Does an existing implementation make the port unnecessary? | Identify the exact target symbols or replacement revision and show equivalent behavior over the relevant conditions. | Do not mark it already present, obsolete or version-specific. |
 | Can the adaptation be implemented coherently? | Resolve API/layout changes, ownership, dependency order, state lifetime and stream/event invariants. | Investigate code and feasible checks. Block only the affected implementation step if a concrete unresolved contract prevents a sound patch. |
-| Is correctness validated on a particular configuration? | Run the relevant component, independent reference or integration check on that configuration. | Mark that check `UNVERIFIED`, name the missing resource and run other meaningful checks. Static review does not count as numerical validation. |
+| Is correctness validated on a particular configuration? | Run the relevant component, independent reference or integration check on that configuration. | Mark that check `UNVERIFIED` in private run state, retain the missing-resource detail there and run other meaningful checks. Static review does not count as numerical validation. |
 | Is performance improved on the target? | Paired measurements or traces with the same workload, hardware and configuration. | Mark target benefit unmeasured. Port the selected optimization without claiming a speedup; a missing benchmark alone is not a correctness failure. |
 
 Do not require the user to supply evidence that the agent can investigate. State the
 specific symbol, invariant, configuration or decision that remains unresolved and the
-next feasible action; avoid a bare “insufficient evidence” verdict.
+next feasible action; avoid a bare “insufficient evidence” verdict. Keep missing-resource
+reasons and vendor/chip or private environment details in private run state. A public PR
+lists only `- Pending verification: <affected behavior or claim>` for the pending check.
 
 ## Proceed with bounded validation
 
 Run feasible static checks, imports, builds and focused component checks. If FP8
 execution needs unavailable hardware or a dependency is absent from the fixed approved
 environment, preserve the source capability and adapt its target integration. Record
-exactly which execution was not tested. Do not remove the path, replace it with a no-op,
-or change its default merely to avoid that validation gap.
+exactly which execution was not tested and why in private run state. Do not remove the
+path, replace it with a no-op, or change its default merely to avoid that validation gap.
 
 Known incorrect results, broken ordering, a failed affected check or an unexplained
 ABI mismatch are implementation problems to fix. They are not waived by labeling the
@@ -86,6 +91,19 @@ the inconsistency. Correct a demonstrated defect as part of adaptation and expla
 deviation. Do not automatically make an optimization opt-in, disable it, or demand a
 new product approval just because its subject says “opt-in”. If equally plausible
 contracts remain, ask the smallest concrete question while continuing independent work.
+
+## Independent adversarial review
+
+Use [adversarial-review.md](adversarial-review.md) and the portable
+[branch-port reviewer](../../../agents/vllm-metax-branch-port-reviewer.md). The reviewer
+must be a fresh agent/task or human who did not implement the patch. The implementer can
+prepare evidence but cannot write the approval artifact.
+
+The applicability gate runs before port approval and uses `ADVERSARIAL-APPLICABILITY.json`.
+The final gate runs after the latest rebase and uses `ADVERSARIAL-FINAL.json`. Every
+selected intent needs `ENDORSE_PORT`; `ALREADY_COVERED`, `DO_NOT_PORT`, `CHANGES_REQUIRED`
+and a missing review remain blockers. A plan confirmation or PR-publication approval is
+not an independent review result.
 
 ## Explicit confirmation for items needing review
 

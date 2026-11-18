@@ -21,17 +21,17 @@ sed -i '/<!--.*-->$/d' "${NEW}"
 # Remove "PLEASE FILL IN THE PR DESCRIPTION HERE ENSURING ALL CHECKLIST ITEMS (AT THE BOTTOM) HAVE BEEN CONSIDERED."
 sed -i '/PLEASE FILL IN THE PR DESCRIPTION HERE.*$/d' "${NEW}"
 
-# Remove all lines after and including "**BEFORE SUBMITTING, PLEASE READ THE CHECKLIST BELOW AND FILL IN THE DESCRIPTION ABOVE**"
+# Remove all lines after and including the final submission marker
 sed -i '/\*\*BEFORE SUBMITTING, PLEASE READ.*\*\*/,$d' "${NEW}"
 
-# Remove HTML <details> section that includes <summary> text of "PR Checklist (Click to Expand)"
+# Remove HTML <details> section that includes <summary> text of "Pull Request Checklist"
 python3 - <<EOF
 import regex as re
 
 with open("${NEW}", "r") as file:
     content = file.read()
 
-pattern = re.compile(r'(---\n\n)?<details>.*?<summary>.*?PR Checklist \(Click to Expand\).*?</summary>.*?</details>', re.DOTALL)
+pattern = re.compile(r'(---\n\n)?<details>.*?<summary>.*?Pull Request Checklist.*?</summary>.*?</details>', re.DOTALL)
 content = re.sub(pattern, '', content)
 
 with open("${NEW}", "w") as file:
