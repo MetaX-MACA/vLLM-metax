@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK: bool = False
     VLLM_METAX_USE_FLASHINFER_SAMPLER: bool = False
     VLLM_METAX_DISABLE_ASYNC_OUTPUT: bool = True
+    VLLM_METAX_ENABLE_MRV2_HWQ_BALANCING: bool = False
 
 environment_variables: dict[str, Callable[[], Any]] = {
     # ================== Installation Time Env Vars ==================
@@ -96,6 +97,10 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # if set, disable MRV2 asyc output stream
     "VLLM_METAX_DISABLE_ASYNC_OUTPUT": lambda: bool(
         int(os.environ.get("VLLM_METAX_DISABLE_ASYNC_OUTPUT", "1"))
+    ),
+    # Opt in to MACA queue balancing with MRV2 asynchronous output.
+    "VLLM_METAX_ENABLE_MRV2_HWQ_BALANCING": lambda: (
+        os.environ.get("VLLM_METAX_ENABLE_MRV2_HWQ_BALANCING", "0") == "1"
     ),
     # =================== Debug Env Vars ==================
     # if set, use vllm's fused_moe implementation instead of maca's one for debugging and comparison
