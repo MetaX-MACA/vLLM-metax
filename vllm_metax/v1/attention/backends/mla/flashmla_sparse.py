@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar
 
@@ -34,7 +35,10 @@ from vllm.v1.attention.backend import (
     CommonAttentionMetadata,
     MultipleOf,
 )
-from vllm.v1.attention.backends.mla.index_group import HiSparseMLAIndexGroup
+from vllm.v1.attention.backends.mla.index_group import (
+    HiSparseMLAIndexGroup,
+    SparseMLAIndexGroup,
+)
 from vllm.v1.attention.backends.mla.sparse_utils import (
     align_blocks_to_rows,
     flat_kv_row_view,
@@ -1005,6 +1009,10 @@ class FlashMLASparseImpl(
             topk_indices_buffer=topk_indices_buffer,
             **mla_args,
         )
+        # Read once before graph capture; default on, 0 selects upstream streams.
+        self._sparse_mla_index_group_use_main_stream = (
+            os.getenv("VLLM_METAX_SPARSE_MLA_INDEX_GROUP_USE_MAIN_STREAM", "1") == "1"
+        )
         self.softmax_scale = scale
         # Prefill BF16 kernel requires 64 heads on Hopper and Blackwell.
         self.prefill_padding = 64
@@ -1203,6 +1211,67 @@ class FlashMLASparseImpl(
                 result.masked_fill_((counts == 0)[:, None, None], 0)
                 out[tokens] = result
         return out, lse
+
+    def _convert_logical_to_physical_topk(
+        self,
+        logical_topk_indices: torch.Tensor,
+        attn_metadata: FlashMLASparseMetadata | FlashMLASparseBF16Metadata,
+        *,
+        block_stride_rows: int | None,
+        return_valid_counts: bool,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        if not self._sparse_mla_index_group_use_main_stream:
+            return super()._convert_logical_to_physical_topk(
+                logical_topk_indices,
+                attn_metadata,
+                block_stride_rows=block_stride_rows,
+                return_valid_counts=return_valid_counts,
+            )
+
+        group = self.index_group
+        if not (
+            type(group) is SparseMLAIndexGroup
+            and type(attn_metadata) is FlashMLASparseBF16Metadata
+            and attn_metadata.num_prefills == 0
+        ):
+            return super()._convert_logical_to_physical_topk(
+                logical_topk_indices,
+                attn_metadata,
+                block_stride_rows=block_stride_rows,
+                return_valid_counts=return_valid_counts,
+            )
+
+        # Preserve the upstream consumer's DCP contract.
+        assert self.dcp_world_size == 1
+        num_tokens = logical_topk_indices.shape[0]
+        if num_tokens > group.physical_topk_indices.shape[0]:
+            return super()._convert_logical_to_physical_topk(
+                logical_topk_indices,
+                attn_metadata,
+                block_stride_rows=block_stride_rows,
+                return_valid_counts=return_valid_counts,
+            )
+
+        physical_topk_indices = group.physical_topk_indices[:num_tokens]
+        valid_topk_counts = group.valid_topk_counts[:num_tokens]
+        # Keep one conversion per index group and its persistent output buffers.
+        # In BF16 pure decode the producer and consumer use the current stream;
+        # other metadata types and HiSparse retain upstream stream/event logic.
+        if self.index_group_index == 0:
+            triton_convert_req_index_to_global_index(
+                attn_metadata.req_id_per_token[:num_tokens],
+                attn_metadata.block_table,
+                logical_topk_indices,
+                BLOCK_SIZE=attn_metadata.block_size,
+                BLOCK_STRIDE_ROWS=block_stride_rows,
+                NUM_TOPK_TOKENS=logical_topk_indices.shape[1],
+                return_valid_counts=return_valid_counts,
+                out=physical_topk_indices,
+                valid_counts_out=(valid_topk_counts if return_valid_counts else None),
+            )
+        if return_valid_counts:
+            return physical_topk_indices, valid_topk_counts
+        return physical_topk_indices
 
     # Mixed batch for bf16
     def _forward_bf16_kv(
