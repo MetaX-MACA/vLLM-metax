@@ -96,10 +96,24 @@ Use these states:
 `UPSTREAM_FIXED`, `VERSION_SPECIFIC`, `OBSOLETE` and explicitly approved
 `OUT_OF_SCOPE` are terminal.
 
+Selection and validation are independent of disposition; see
+[scope-and-validation.md](scope-and-validation.md). When the user includes previously
+excluded work, reopen the affected rows and child intents, retain the old decision as
+history, and preserve already-merged mappings. An untested configuration remains
+`UNVERIFIED`; it cannot make selected work `OUT_OF_SCOPE` or count as a passing check.
+An accepted external coverage limit does not erase specifically required acceptance
+checks or justify an unsupported completeness claim.
+
+For review items also retain `review_status`, specific reasons, requested decision,
+confirmation response and bound source/target/patch SHAs. Pending confirmation is
+separate from disposition: a selected port stays required. Never report an item as
+review-approved or merge-ready while its required human confirmation is pending.
+
 ## Matrix record
 
 Store the maintained state outside tracked source at
-`.metax-branch-port/MATRIX.json`. Each edge should retain:
+`.metax-branch-port/MATRIX.json`. Each edge should retain the selection basis, implementation status and per-check
+validation results/limits alongside its existing commit and version records:
 
 ```json
 {

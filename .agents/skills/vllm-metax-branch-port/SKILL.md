@@ -7,14 +7,17 @@ description: Audit source-only commits from one older vLLM-MetaX development bra
 
 Treat this as a semantic carry-forward workflow, not a Git branch merge or a blind
 `cherry-pick`. Audit one user-specified source branch against one target branch, and
-port only changes selected by the user after the audit. The default final target for
-every branch-port invocation is GitHub `master`, even when an intermediate `mx/` edge
-is requested first.
+carry forward the user-requested behavior under the current scope. An audit identifies
+equivalent, obsolete and excluded work; it does not silently narrow a full-branch port.
+The default final target for every branch-port invocation is GitHub `master`, even when
+an intermediate `mx/` edge is requested first.
 
 When acting as the coordinator, read the independent
 [vllm-metax-branch-port agent](../../agents/vllm-metax-branch-port.md). It owns the
 matrix, environment and validation sequence; this skill owns the audit and adaptation
-rules.
+rules. Read [scope-and-validation.md](references/scope-and-validation.md) before
+classifying candidates. It separates migration requirements from implementation
+questions and unavailable validation, including FP8 and performance measurements.
 
 ## Invocation contract
 
@@ -178,7 +181,9 @@ the confirmed plan in the audit approval.
    [commit-logic-audit.md](references/commit-logic-audit.md), including a simple
    user-facing example that explains the source behavior and expected adapted behavior.
    The example is explanatory, not a required numeric test or reproduced result. If the
-   logic cannot be explained clearly, use `NEEDS_REVIEW` instead of `PORT_REQUIRED`.
+   logic is incomplete, continue investigating and record the exact open question. A
+   user-selected missing capability stays `PORT_REQUIRED` with implementation review
+   pending; `NEEDS_REVIEW` does not remove it from the selected scope.
 8. Write `.metax-branch-port/runs/<source-slug>__to__<target-slug>/AUDIT.md` from the
    template in the rubric. Include the frozen SHAs, every source-only commit, merge
    wrappers ignored, target evidence, original authors, proposed conventional type
@@ -203,10 +208,23 @@ the confirmed plan in the audit approval.
    inventory commit as present and confirm each port candidate has a logic-audit section
    containing an explanation example. Do not present an incomplete audit for approval.
 
-By default, bug fixes, performance fixes, model adaptations, required build/dependency
-compatibility and security fixes are port candidates. Ordinary features, documentation,
-formatting and test-only changes are reported but are not automatic port candidates.
-`PORT_REQUIRED` still requires user selection; uncertainty is `NEEDS_REVIEW`.
+A branch-port request includes relevant fixes, optimizations, features and adaptations
+unless the user limits the scope. Account separately for documentation, formatting and
+test-only changes under the contribution policy. `OUT_OF_SCOPE` needs an explicit
+exclusion or approved scope rule; unavailable runtime checks are validation limits.
+Reuse the user's selection and publication authorization across turns, including a
+later instruction to include previously excluded commits. Track implementation and
+validation independently as defined in [scope-and-validation.md](references/scope-and-validation.md).
+
+## Review items require explicit confirmation
+
+Apply the [human review confirmation rules](references/scope-and-validation.md#explicit-confirmation-for-items-needing-review).
+For each selected commit or child intent needing review, tell the user “暂不满足自动合并”,
+give the concrete reasons and ask for the specific decision. Track pending confirmation
+separately from selection and validation; do not silently skip the port. A generic
+instruction to migrate does not accept a newly disclosed review risk. Reuse existing
+explicit confirmations, continue independent work and wait before the dependent action.
+No confirmation in this workflow authorizes automatic merge or Gerrit submission.
 
 ## Approval gate
 
@@ -287,6 +305,8 @@ starting the mutation phase.
 - Use conservative, tiered validation. Run static checks, targeted tests and relevant
   component tests by default. Run e2e or benchmarks only when the change affects a path
   that targeted checks cannot establish, or when a performance claim requires it.
+  Missing hardware, models or benchmarks do not deselect a port. Record unrun checks
+  and unmeasured gains explicitly; fix known failures before claiming completion.
 - If a selected commit depends on another source commit, preserve and validate the
   dependency order. Do not silently produce a partial port.
 
