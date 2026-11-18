@@ -149,3 +149,10 @@ Persist inventory, audit, approval, environment, port mapping and validation art
 On interruption, restore temporary requirement files first, then resume from the frozen
 matrix edge rather than creating a new authorization. Report edge status, frozen SHAs,
 version mapping, pending commits, blockers and the next safe action at every handoff.
+
+## Target Torch baseline
+
+For MetaX master v0.33.0 and later, the build/runtime baseline is Torch 2.13.
+Reconcile dependency declarations and ordinary ATen ABI guards with the selected
+MetaX Torch 2.13 installation. Keep stable C ABI floors separate from this baseline.
+Do not infer compatible optional binary versions from package presence alone.

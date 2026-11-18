@@ -78,7 +78,11 @@ fetch all branches or the entire history.
 
 Synchronize only `requirements/common.txt` byte-for-byte from target upstream and the
 fixed public base version in `setup.py`; preserve MetaX SCM/MACA/Torch suffix logic.
-Keep other requirements unchanged in the final source diff.
+Preserve other requirements unless the selected target or explicit user scope changes
+the build/runtime baseline. For MetaX master v0.33.0 and later, use Torch 2.13
+and verified matching MetaX package versions. Distinguish the stable C ABI
+minimum from the runtime/build dependency. Record unavailable compatible optional
+binaries as validation gaps; never invent private package versions.
 
 Install target vLLM with `VLLM_TARGET_DEVICE=empty`, no build isolation and no dependencies.
 For MetaX, source `env.sh`, run `use_existing_metax.py`, then install editable without
