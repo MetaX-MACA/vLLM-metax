@@ -1055,8 +1055,9 @@ class DeepseekV32IndexerMetadataBuilder(AttentionMetadataBuilder):
         # Align with deepgemm+metax
         num_blocks = get_num_blocks_paged_mqa_logits_metadata(self.num_sms)
         self.scheduler_metadata_buffer = torch.empty(
-            (num_blocks + 1, 2), dtype=torch.int32, device=self.device
+            (max(num_blocks + 1, 4096), 2), dtype=torch.int32, device=self.device
         )
+        self._scheduler_metadata_capture_started = False
 
         # Each compressed state must live on a single rank, so the DCP
         # interleave has to cover whole states.
@@ -1707,8 +1708,7 @@ class DeepseekV32IndexerMetadataBuilder(AttentionMetadataBuilder):
                     self.num_sms,
                     indices=decode_indices,
                 )
-                schedule_metadata = self.scheduler_metadata_buffer[: metadata.shape[0]]
-                schedule_metadata[:] = metadata
+                schedule_metadata = self._copy_scheduler_metadata(metadata)
 
             decode_metadata = DeepSeekV32IndexerDecodeMetadata(
                 block_table=block_table,
@@ -1737,6 +1737,33 @@ class DeepseekV32IndexerMetadataBuilder(AttentionMetadataBuilder):
         )
 
         return attn_metadata
+
+    def _copy_scheduler_metadata(self, metadata: torch.Tensor) -> torch.Tensor:
+        rows = metadata.shape[0]
+        if rows > self.scheduler_metadata_buffer.shape[0]:
+            if (
+                self._scheduler_metadata_capture_started
+                or torch.cuda.is_current_stream_capturing()
+            ):
+                raise RuntimeError(
+                    "Sparse indexer scheduler metadata exceeded its captured buffer; "
+                    "recreate the runner with sufficient scheduler capacity."
+                )
+            self.scheduler_metadata_buffer = torch.empty(
+                (rows + 512, 2), dtype=torch.int32, device=self.device
+            )
+        result = self.scheduler_metadata_buffer[:rows]
+        result.copy_(metadata)
+        return result
+
+    def build_for_cudagraph_capture(
+        self, common_attn_metadata: CommonAttentionMetadata
+    ) -> DeepseekV32IndexerMetadata:
+        metadata = super().build_for_cudagraph_capture(common_attn_metadata)
+        # Captured kernels retain this address. Later metadata builds may update
+        # its contents but must not replace the storage behind an existing graph.
+        self._scheduler_metadata_capture_started = True
+        return metadata
 
     def update_draft_decode_metadata(
         self,
