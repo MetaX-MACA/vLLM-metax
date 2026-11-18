@@ -62,6 +62,8 @@ from vllm_metax.models.deepseek_v41.metax.ops.kv_cache_int8 import (
     fused_deepseek_v4_kv_rope_insert_int8,
 )
 
+from vllm.triton_utils import triton, tl
+
 logger = init_logger(__name__)
 
 # MoE expert scale suffix differs by expert dtype (mirrors deepseek_v4 loaders):
@@ -241,12 +243,6 @@ class DSparkDeepseekV4Model(nn.Module):
         return hidden_states
 
 
-
-
-import triton
-import triton.language as tl
-
-
 @triton.jit
 def _dspark_bf16_insert_triton(
     kv_ptr,
@@ -276,8 +272,7 @@ def _dspark_bf16_insert_triton(
         blk = slot // block_size
         off = slot % block_size
         row_base = (
-            blk.to(tl.int64) * stride_cache_block
-            + off.to(tl.int64) * stride_cache_row
+            blk.to(tl.int64) * stride_cache_block + off.to(tl.int64) * stride_cache_row
         )
         hidx = tl.arange(0, HEAD_DIM)
         tl.store(
@@ -314,8 +309,13 @@ def _dspark_bf16_context_insert_op(
     block_size: int,
 ) -> None:
     _dspark_bf16_insert_triton[(kv.shape[0],)](
-        kv, cache, slot_mapping, positions, cos_sin_cache,
-        cache.stride(0), cache.stride(1),
+        kv,
+        cache,
+        slot_mapping,
+        positions,
+        cos_sin_cache,
+        cache.stride(0),
+        cache.stride(1),
         block_size,
         HEAD_DIM=cache.shape[-1],
         RD=cos_sin_cache.shape[-1],
@@ -357,7 +357,10 @@ def _insert_context_kv(
     # cross-checks the two rather than restating the tensor.
     if cache.dtype == torch.bfloat16:
         _dspark_bf16_context_insert(
-            kv, cache, slot_mapping, positions,
+            kv,
+            cache,
+            slot_mapping,
+            positions,
             attn.rotary_emb.cos_sin_cache,
             attn.swa_cache_layer.block_size,
         )
