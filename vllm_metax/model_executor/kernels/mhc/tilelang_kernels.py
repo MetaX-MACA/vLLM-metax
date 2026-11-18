@@ -54,8 +54,10 @@ def compute_num_split(block_k: int, k: int | None, grid_size: int) -> int:
 
 
 def compute_mhc_pre_num_splits(input_size: int, num_tokens: int) -> int:
+    """Return a split-K value supported by the mctlassEx HC pre-norm kernel."""
     splits = compute_num_split(64, input_size, cdiv(num_tokens, 64))
-    # Bound both GEMM and fused-normalization specializations during startup.
+    # The raw SM heuristic can return a non-divisor such as 28 for K=20480,
+    # which traps in MacaHcPrenormGemm. Keep the previously validated buckets.
     return 1 if splits == 1 else 4 if splits <= 4 else 16
 
 
@@ -179,11 +181,7 @@ def mhc_pre_big_fuse_tilelang(
     rms_numel: int = 0,
     write_aux: bool = False,
 ):
-    """Fuse coefficient generation and residual collapse after the projection.
-
-    With save_pre_mix, store the new pre-mix and collapse with pre_mix_in,
-    or select stream zero when use_pre_mix_in is false.
-    """
+    """Deeply fused kernels, everything other than gemm & sqrsum in mHC pre block."""
     num_tokens = T.dynamic("num_tokens")
     hc_mult3 = hc_mult * (2 + hc_mult)
     hidden_block = math.gcd(512, hidden_size)
@@ -293,6 +291,11 @@ def mhc_pre_big_fuse_tilelang(
                         T.sigmoid(mixes_shared[j] * hc_scale[0] + hc_base[j])
                         + hc_pre_eps
                     )
+                if save_pre_mix:
+                    pre_mix_out[i, j] = (
+                        T.sigmoid(mixes_shared[j] * hc_scale[0] + hc_base[j])
+                        + hc_pre_eps
+                    )
             ###################################################################
             # _pre_apply_mix_fwd
             for i0_h in T.Pipelined(hidden_size // hidden_block, num_stages=2):
@@ -388,34 +391,57 @@ def mhc_pre_big_fuse_with_norm_tilelang(
     pre_mix_out: T.Tensor[[num_tokens, hc_mult], T.float32]  # type: ignore[no-redef, valid-type]
     aux_out: T.Tensor[[num_tokens, hidden_size], T.bfloat16]  # type: ignore[no-redef, valid-type]
 
-    with T.Kernel(num_tokens, threads=128) as i:
+    with T.Kernel(num_tokens, threads=320) as i:
+        gemm_out_sqrsum_share = T.alloc_shared((n_splits, 1), T.float32)
+        gemm_out_mul_share = T.alloc_shared((n_splits, 1, hc_mult3), T.float32)
+        mixes_shared = T.alloc_shared(hc_mult3, T.float32)
+        pre_mix_shared = T.alloc_shared(hc_mult, T.float32)
         if ENABLE_PDL:
             T.pdl_sync()
-        mixes_shared = T.alloc_shared(hc_mult3, T.float32)
-        if split_mode != "input":
-            rms = T.alloc_fragment(1, T.float32)
+        if split_mode != "input" and T.get_thread_binding() < 64:
+            rms_f = T.alloc_fragment(hc_mult3, T.float32)
+            T.clear(rms_f)
+            T.copy(gemm_out_sqrsum[:, i], gemm_out_sqrsum_share)
+            for i_split in T.serial(n_splits):
+                for idx in T.parallel(hc_mult3):
+                    rms_f[idx] += gemm_out_sqrsum_share[i_split, 0]
+            for idx in T.parallel(hc_mult3):
+                rms_f[idx] = T.rsqrt(rms_f[idx] / rms_numel + rms_eps)
+            T.copy(gemm_out_mul[:, i, :], gemm_out_mul_share)
             mixes = T.alloc_fragment(hc_mult3, T.float32)
             T.clear(mixes)
-            rms[0] = 0
-
-            for i_split in T.serial(n_splits):
-                rms[0] += gemm_out_sqrsum[i_split, i]
-            rms[0] = T.rsqrt(rms[0] / rms_numel + rms_eps)
             for j in T.Parallel(hc_mult3):
                 mixes[j] = 0
                 for i_split in T.serial(n_splits):
-                    mixes[j] += gemm_out_mul[i_split, i, j]
-                mixes[j] *= rms[0]
+                    mixes[j] += gemm_out_mul_share[i_split, 0, j]
+                mixes[j] *= rms_f[j]
             T.copy(mixes, mixes_shared)
-
-        if split_mode != "input" and T.get_thread_binding() < 64:
-            cm = T.alloc_fragment((hc_mult, hc_mult), T.float32)
             for j in T.Parallel(hc_mult):
+                if use_pre_mix_in:
+                    pre_mix_shared[j] = pre_mix_in[i, j]
+                elif save_pre_mix:
+                    pre_mix_shared[j] = T.if_then_else(j == 0, 1.0, 0.0)
+                else:
+                    pre_mix_shared[j] = (
+                        T.sigmoid(mixes_shared[j] * hc_scale[0] + hc_base[j])
+                        + hc_pre_eps
+                    )
                 if save_pre_mix:
                     pre_mix_out[i, j] = (
                         T.sigmoid(mixes_shared[j] * hc_scale[0] + hc_base[j])
                         + hc_pre_eps
                     )
+        if split_mode == "input" and T.get_thread_binding() < 64:
+            for j in T.Parallel(hc_mult):
+                pre_mix_shared[j] = (
+                    pre_mix_in[i, j]
+                    if use_pre_mix_in
+                    else T.if_then_else(j == 0, 1.0, 0.0)
+                )
+        T.sync_threads()
+        if split_mode != "input" and T.get_thread_binding() < 64:
+            cm = T.alloc_fragment((hc_mult, hc_mult), T.float32)
+            for j in T.Parallel(hc_mult):
                 post_mix[i, j] = (
                     T.sigmoid(
                         mixes_shared[j + hc_mult] * hc_scale[1] + hc_base[j + hc_mult]
@@ -447,7 +473,7 @@ def mhc_pre_big_fuse_with_norm_tilelang(
             # logit and the whole result is NaN already. Skip the remaining
             # iterations: IEEE division takes a slow path on NaN. rms is an
             # rsqrt, so it is >= 0 unless NaN (T.isfinite does not lower on HIP).
-            if rms[0] >= 0.0:
+            if mixes_shared[0] == mixes_shared[0]:
                 for _ in T.serial(sinkhorn_repeat - 1):
                     T.reduce_sum(cm, row_sum, dim=1)
                     for j, k in T.Parallel(hc_mult, hc_mult):
@@ -459,31 +485,13 @@ def mhc_pre_big_fuse_with_norm_tilelang(
 
             for j, k in T.Parallel(hc_mult, hc_mult):
                 comb_mix[i, j * hc_mult + k] = cm[j, k]
-        elif split_mode != "stats":
-            pre_mix_shared = T.alloc_shared(hc_mult, T.float32)
-            for j in T.Parallel(hc_mult):
-                if use_pre_mix_in:
-                    pre_mix_shared[j] = pre_mix_in[i, j]
-                elif save_pre_mix:
-                    pre_mix_shared[j] = T.if_then_else(j == 0, 1.0, 0.0)
-                else:
-                    pre_mix_shared[j] = (
-                        T.sigmoid(mixes_shared[j] * hc_scale[0] + hc_base[j])
-                        + hc_pre_eps
-                    )
-
-            # Pass 1: stash unnormalized weighted-sum output in shared memory
-            # as bf16 (matches the rounding that RMSNorm would see) while
-            # accumulating the per-position squared sum.
+        elif split_mode != "stats" and T.get_thread_binding() >= 64:
             output_shared = T.alloc_shared(hidden_size, T.bfloat16)
             sumsq_per_pos = T.alloc_fragment(hidden_block, T.float32)
             T.clear(sumsq_per_pos)
-
-            for i0_h in T.Pipelined(hidden_size // hidden_block, num_stages=2):
-                xs = T.alloc_shared((hc_mult, hidden_block), T.bfloat16)
+            for i0_h in T.Serial(hidden_size // hidden_block):
                 xl = T.alloc_fragment((hc_mult, hidden_block), T.float32)
-                T.copy(residual[i, 0, i0_h * hidden_block], xs)
-                T.copy(xs, xl)
+                T.copy(residual[i, 0, i0_h * hidden_block], xl)
 
                 ol = T.alloc_fragment(hidden_block, T.float32)
                 T.clear(ol)
@@ -524,7 +532,6 @@ def mhc_pre_big_fuse_with_norm_tilelang(
             rsqrt_norm = T.alloc_fragment(1, T.float32)
             rsqrt_norm[0] = T.rsqrt(sumsq[0] / hidden_size + norm_eps)
 
-            # Pass 2: scale by rsqrt * norm_weight and write the result to HBM.
             for i0_h in T.Pipelined(hidden_size // hidden_block, num_stages=2):
                 w_shared = T.alloc_shared(hidden_block, T.bfloat16)
                 w_local = T.alloc_fragment(hidden_block, T.float32)
@@ -850,46 +857,65 @@ def mhc_post_tilelang(
     hidden: int,
     n_thr: int = 128,
     h_blk: int = 1024,
+    split_h: bool = False,
 ) -> tilelang.JITKernel:
     # rename for shorter code
     n = T.dynamic("num_tokens")
     h = hidden
 
     h_blk = math.gcd(hidden, h_blk)
+    h_tiles = (h + h_blk - 1) // h_blk
     a: T.Tensor((n, hc, hc), T.float32)  # type: ignore[no-redef, valid-type]
     b: T.Tensor((n, hc, h), T.bfloat16)  # type: ignore[no-redef, valid-type]
     c: T.Tensor((n, hc), T.float32)  # type: ignore[no-redef, valid-type]
     d: T.Tensor((n, h), T.bfloat16)  # type: ignore[no-redef, valid-type]
     x: T.Tensor((n, hc, h), T.bfloat16)  # type: ignore[no-redef, valid-type]
-    with T.Kernel(n, threads=n_thr) as i_n:
-        b_shared = T.alloc_shared((hc, h_blk), T.bfloat16)
-        d_shared = T.alloc_shared(h_blk, T.bfloat16)
+    if not split_h:
+        with T.Kernel(n, threads=n_thr) as (i_n):
+            x_local = T.alloc_fragment((hc, h_blk), T.float32)
+            b_local = T.alloc_fragment((hc, h_blk), T.float32)
+            d_local = T.alloc_fragment(h_blk, T.float32)
 
-        x_local = T.alloc_fragment((hc, h_blk), T.float32)
-        b_local = T.alloc_fragment((hc, h_blk), T.float32)
-        d_local = T.alloc_fragment(h_blk, T.float32)
+            a_local = T.alloc_fragment((hc, hc), T.float32)
+            c_local = T.alloc_fragment(hc, T.float32)
+            if ENABLE_PDL:
+                T.pdl_sync()
+            T.copy(a[i_n, 0, 0], a_local)
+            T.copy(c[i_n, 0], c_local)
+            for i0_h in T.Pipelined(h_tiles, num_stages=1):
+                T.copy(b[i_n, 0, i0_h * h_blk], b_local)
+                T.copy(d[i_n, i0_h * h_blk], d_local)
+                for i1_h, i_hco in T.Parallel(h_blk, hc):
+                    x_local[i_hco, i1_h] = c_local[i_hco] * d_local[i1_h]
+                    for i_hci in T.serial(hc):
+                        x_local[i_hco, i1_h] += (
+                            a_local[i_hci, i_hco] * b_local[i_hci, i1_h]
+                        )
+                T.copy(x_local, x[i_n, 0, i0_h * h_blk])
+            if ENABLE_PDL:
+                T.pdl_trigger()
+    else:
+        with T.Kernel(n, h_tiles, threads=n_thr) as (i_n, i0_h):
+            x_local = T.alloc_fragment((hc, h_blk), T.float32)
+            b_local = T.alloc_fragment((hc, h_blk), T.float32)
+            d_local = T.alloc_fragment(h_blk, T.float32)
 
-        a_local = T.alloc_fragment((hc, hc), T.float32)
-        c_local = T.alloc_fragment(hc, T.float32)
-        if ENABLE_PDL:
-            T.pdl_sync()
-        T.copy(a[i_n, 0, 0], a_local)
-        T.copy(c[i_n, 0], c_local)
+            a_local = T.alloc_fragment((hc, hc), T.float32)
+            c_local = T.alloc_fragment(hc, T.float32)
+            T.copy(a[i_n, 0, 0], a_local)
+            T.copy(c[i_n, 0], c_local)
+            if ENABLE_PDL:
+                T.pdl_sync()
+            T.copy(b[i_n, 0, i0_h * h_blk], b_local)
+            T.copy(d[i_n, i0_h * h_blk], d_local)
 
-        for i0_h in T.Serial(T.ceildiv(h, h_blk)):
-            T.copy(b[i_n, 0, i0_h * h_blk], b_shared)
-            T.copy(d[i_n, i0_h * h_blk], d_shared)
-
-            T.copy(b_shared, b_local)
-            T.copy(d_shared, d_local)
             for i_hco, i1_h in T.Parallel(hc, h_blk):
                 x_local[i_hco, i1_h] = c_local[i_hco] * d_local[i1_h]
-                for i_hci in T.vectorized(hc):
+                for i_hci in T.serial(hc):
                     x_local[i_hco, i1_h] += a_local[i_hci, i_hco] * b_local[i_hci, i1_h]
-
             T.copy(x_local, x[i_n, 0, i0_h * h_blk])
-        if ENABLE_PDL:
-            T.pdl_trigger()
+            if ENABLE_PDL:
+                T.pdl_trigger()
 
 
 @tilelang.jit(
@@ -1646,6 +1672,7 @@ class MhcPostTileLangKernel(VllmTileLangJitKernel["MhcPostTileLangKernel.Compile
     class CompileKey:
         hidden_size: int
         hc_mult: int
+        split_h: bool
 
     @staticmethod
     def kernel() -> Any:
@@ -1653,9 +1680,12 @@ class MhcPostTileLangKernel(VllmTileLangJitKernel["MhcPostTileLangKernel.Compile
 
     def dispatch(  # type: ignore[override]
         self,
-        **compile_key_fields: int,
+        *,
+        hidden_size: int,
+        hc_mult: int,
+        split_h: bool,
     ) -> CompileKey:
-        return self.CompileKey(**compile_key_fields)
+        return self.CompileKey(hidden_size, hc_mult, split_h)
 
     def get_warmup_keys(
         self,
@@ -1666,6 +1696,7 @@ class MhcPostTileLangKernel(VllmTileLangJitKernel["MhcPostTileLangKernel.Compile
         return self._trace_dispatch(self.dispatch)(
             hidden_size=hidden_size,
             hc_mult=hc_mult,
+            split_h=[False, True],
         )
 
     def warmup_inputs(self, compile_key: CompileKey) -> dict[str, Any]:
@@ -1693,6 +1724,7 @@ class MhcPostTileLangKernel(VllmTileLangJitKernel["MhcPostTileLangKernel.Compile
             out=out,
             hc_mult=hc_mult,
             hidden_size=hidden_size,
+            split_h=compile_key.split_h,
         )
 
     @kernel_launcher
@@ -1705,6 +1737,7 @@ class MhcPostTileLangKernel(VllmTileLangJitKernel["MhcPostTileLangKernel.Compile
         out: Any,
         hc_mult: int,
         hidden_size: int,
+        split_h: bool = False,
     ) -> TileLangLaunchSpec:
         return (), (
             comb_mix,
@@ -1714,6 +1747,9 @@ class MhcPostTileLangKernel(VllmTileLangJitKernel["MhcPostTileLangKernel.Compile
             out,
             hc_mult,
             hidden_size,
+            128,
+            1024,
+            split_h,
         )
 
 
