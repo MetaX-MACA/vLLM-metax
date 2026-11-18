@@ -52,6 +52,26 @@ edge `BLOCKED`; do not silently edit `setup.py`, `requirements/common.txt` or de
 files to force installation. A version synchronization is a separately scoped change
 that requires audit and approval.
 
+## Scope and evidence
+
+Apply [scope-and-validation.md](../skills/vllm-metax-branch-port/references/scope-and-validation.md).
+A user-requested missing capability remains required while its implementation is being
+reviewed or its FP8/hardware/performance validation is unavailable. Investigate concrete
+unknowns and record unrun checks; do not turn them into scope exclusions. Later user
+instructions to include excluded work reopen those items and supersede the old choice.
+Keep selected scope, implementation progress and validation outcomes separate.
+
+## Human review confirmation
+
+For every commit or child intent needing review, show a concrete confirmation card
+under [scope-and-validation.md](../skills/vllm-metax-branch-port/references/scope-and-validation.md#explicit-confirmation-for-items-needing-review).
+Explicitly state “暂不满足自动合并”, list the specific reasons and affected behavior,
+and ask the user to confirm the named proposal or validation limit. Record
+`review_status: AWAITING_USER_CONFIRMATION` and `automatic_merge_eligible: false` until
+the explicit answer is captured. Keep the item selected; continue independent work.
+Scope or PR-publication approval does not accept a new review risk. An approach
+confirmation does not approve unseen code, waive known failures or authorize merge.
+
 ## Workflow
 
 1. Read the current configured matrix.
@@ -68,8 +88,9 @@ that requires audit and approval.
 4. For every `PORT_REQUIRED` commit, produce a complete logic audit with a simple
    user-facing explanation example as specified by the branch-port skill. The example
    explains the behavior; it is not a mandatory numerical test or reproduced result. Do
-   not infer a port decision from a diff summary alone. If the logic or explanation is
-   incomplete, mark the commit `NEEDS_REVIEW`.
+   not infer a port decision from a diff summary alone. Investigate incomplete logic
+   and record the exact unresolved contract. Preserve user-selected work as required;
+   use pending implementation review rather than an implicit exclusion.
 5. Present the confirmed logical source/target remotes, complete audit, per-commit logic
    explanations, selected commits, original authors, porting developer identity,
    source-author confirmation request, final master version gate or local-only decision,
@@ -84,8 +105,12 @@ that requires audit and approval.
 10. Before patching, read and apply `common-sense`. Then port approved commits in
    dependency order. Read the owning model, attention, registry, csrc or patch skill for
    each changed contract. Keep one target commit per selected source commit.
-11. Run conservative validation. Record current evidence, exact source/target SHAs,
-   authors, new `Change-Id` values and environment fingerprint.
+11. Run feasible, relevant validation and distinguish failures from unavailable checks.
+   Present any remaining human-review items and obtain the named confirmation before
+   the dependent action; record the decision separately from migration selection.
+   A missing benchmark prevents a speedup claim, not the selected port itself. Record
+   current evidence, validation limits, exact source/target SHAs, private provenance,
+   new `Change-Id` values and environment fingerprint.
 12. Close the matrix edge only when every source non-merge commit has a terminal
     disposition, all selected ports and validations are current, and both baselines and
     version bindings remain unchanged.

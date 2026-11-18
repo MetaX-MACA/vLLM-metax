@@ -47,29 +47,39 @@ prove that the behavior is needed.
 
 ## Decisions
 
+Apply [scope-and-validation.md](scope-and-validation.md). Keep the user's selection,
+implementation progress and per-configuration validation results independent.
+A selected missing capability remains required while open implementation questions
+are investigated or runtime checks are unavailable.
+
 Use one decision for each source commit or tightly coupled Gerrit change:
 
 | Decision | Meaning | Required evidence |
 | --- | --- | --- |
-| `PORT_REQUIRED` | The target still has the defect, performance problem or missing required adaptation addressed by the source change. | Reproducible target code path, test or precise behavioral comparison, plus why the source approach applies after adaptation. |
-| `NEEDS_REVIEW` | Evidence is incomplete, conflicting, spans unrelated intentions, or depends on an unresolved product decision. | State the concrete missing evidence and the exact reviewer decision required. |
+| `PORT_REQUIRED` | Source behavior requested by the user is absent or needs adaptation on the target. | Trace source/target contracts and expected behavior; record remaining implementation questions and validation limits separately. A reproduced performance gain is not required to select the port. |
+| `NEEDS_REVIEW` | Applicability or scope is genuinely undecided. | State the exact unresolved contract or decision and investigate it. Do not deselect user-required work or use this merely because runtime validation is unavailable. |
 | `ALREADY_PRESENT` | The target already contains the same semantic change, including an equivalent adaptation. | Target symbol or test showing current behavior; patch ID is supporting evidence only. |
 | `UPSTREAM_FIXED` | Target upstream or another target change fixes the same problem differently. | Link or identify the replacement revision, symbol and behavior; explain why the old source change is unnecessary. |
 | `VERSION_SPECIFIC` | The changed behavior intentionally applies only to the source version. | Evidence such as removed feature/API contract, unsupported model or chip scope, or an explicit version policy. A cherry-pick conflict is not evidence. |
 | `OBSOLETE` | The affected code path or feature no longer exists and has no target replacement requiring the change. | Target-wide reference search and call-path analysis, not only an absent file. |
-| `OUT_OF_SCOPE` | The commit is documentation, formatting, test-only, ordinary feature work or otherwise outside the approved port policy. | State the category and any user override. |
+| `OUT_OF_SCOPE` | The user or an approved scope policy explicitly excludes this work. | Record the exclusion basis. Missing hardware, FP8 validation, model weights or performance evidence never establishes an exclusion. A later inclusion instruction supersedes it. |
 
-When evidence does not meet the bar, use `NEEDS_REVIEW`. Do not turn uncertainty into
-`VERSION_SPECIFIC` or `OBSOLETE`.
+When target applicability is uncertain, investigate and record `NEEDS_REVIEW` without
+losing the user's selection. For user-required work, keep `PORT_REQUIRED` and record
+pending implementation review. Do not turn uncertainty into a terminal non-port
+disposition or treat an unrun check as evidence that the capability is unnecessary.
 
 ## Terminal dispositions and edge closure
 
 The linear matrix requires complete accounting, not literal commit ancestry.
 
-- `PORT_REQUIRED` becomes `PORTED` only after the target commit exists and its
-  validation evidence is current.
-- `NEEDS_REVIEW` remains nonterminal until the user or required reviewer supplies a
-  decision.
+- `PORT_REQUIRED` becomes `PORTED` after the target commit implements the selected
+  behavior, feasible checks pass and no known implementation failure remains. Record
+  external coverage limits separately; specifically required acceptance checks remain
+  required.
+- `NEEDS_REVIEW` remains nonterminal while applicability or scope is unresolved. The
+  agent should resolve code questions within the authorized task instead of always
+  waiting for the user to supply evidence.
 - `ALREADY_PRESENT`, `UPSTREAM_FIXED`, `VERSION_SPECIFIC` and `OBSOLETE` are terminal
   when their required evidence is recorded.
 - `OUT_OF_SCOPE` is terminal only under the approved scope policy.
@@ -77,6 +87,14 @@ The linear matrix requires complete accounting, not literal commit ancestry.
 Do not close an edge while any `PORT_REQUIRED`, `PORTED` without a target SHA,
 `NEEDS_REVIEW` or stale-baseline item remains. A terminal non-port disposition creates
 no target commit, so the source commit does not appear in the next downstream audit.
+
+## Human review confirmation
+
+For each item requiring human review, add the explicit confirmation card from
+[scope-and-validation.md](scope-and-validation.md#explicit-confirmation-for-items-needing-review).
+State “暂不满足自动合并”, concrete reasons, affected configurations, resolving actions
+and the exact user decision. Record pending/confirmed status and the response, keeping
+the item's migration requirement unchanged. Do not count selection as risk acceptance.
 
 ## What still needs porting
 
@@ -90,9 +108,11 @@ A change remains a candidate when any of the following is true on the target:
   must retain the source fix.
 
 For performance changes, identify the affected workload, hardware and configuration.
-If the bottleneck cannot be established statically, mark the benchmark or reproducer
-needed before committing. A historical measured gain on another version is not proof
-of a target gain.
+If target benefit cannot be established statically, record a benchmark or reproducer
+as needed to substantiate the performance claim. Continue a selected semantic port
+with feasible correctness checks and label the target gain unmeasured. A historical
+gain on another version is not proof of a target gain; unavailable measurements alone
+do not prohibit committing a sound adaptation.
 
 For model adaptations, verify that the model is in target scope, its registration and
 model-owned dependency chain still apply, and the source implementation does not rely
@@ -106,8 +126,10 @@ be understood independently, use that logical group for the audit decision. The 
 port still produces one target commit per selected source commit, unless the user
 explicitly approves a different mapping.
 
-If one source commit contains unrelated intentions, mark it `NEEDS_REVIEW`; do not
-silently split or combine it.
+If one source commit contains unrelated intentions, enumerate its child intents and
+preserve the requested scope. Follow the approved split/grouping policy; do not silently
+split, combine or mark a partly delivered commit fully ported. Review questions about
+one child do not exclude its siblings.
 
 ## Report template
 
@@ -151,8 +173,8 @@ silently split or combine it.
 
 ## Complete commit decisions
 
-| Source | Author | Intent | Files/domain | Target evidence | Migration/adaptation required | Decision | Proposed commit | Depends on | Validation |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Source | Intent | Selection and basis | Target evidence | Decision | Implementation status | Proposed commit | Depends on | Validation results and limits |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 Every inventory commit must have exactly one row. Do not group commits or move
 already-adapted commits to an unlisted summary.
@@ -165,6 +187,18 @@ references/commit-logic-audit.md. Each section must include an explanation examp
 ## Ignored merge wrappers
 
 <List source-only merge commits and the change commits they wrap.>
+
+## Validation limits
+
+<List each unrun check, its exact configuration, missing resource and next action.
+Distinguish unavailable checks from known failures and unmeasured performance claims.
+Keep private author provenance outside public reports when required by the user.>
+
+## Review confirmation requests
+
+<For each item: source/child intent, concrete proposal, “暂不满足自动合并”, reasons,
+known results versus limits, resolving actions, exact user decision and pending or
+confirmed response. A plan confirmation is not final code review or merge approval.>
 
 ## Proposed port order
 

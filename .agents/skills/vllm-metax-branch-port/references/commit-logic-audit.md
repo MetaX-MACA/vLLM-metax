@@ -20,6 +20,10 @@ Create one section using the full source SHA:
 - Files and symbols: `<paths and functions/classes>`
 - Target counterpart: `<paths and symbols>`
 - Decision: `PORT_REQUIRED`
+- Selection and basis: `<current user instruction or approved scope>`
+- Implementation status: `<reviewing/in-progress/committed/merged/blocked>`
+- Human review: `<not-required/awaiting-user-confirmation/confirmed>`
+- Review reasons and requested confirmation: `<specific risks and decision>`
 
 ### Original intent
 
@@ -92,9 +96,16 @@ configurations and any assumption that could invalidate the adaptation.
 
 ### Validation plan
 
-List the focused static, unit, component, e2e or benchmark evidence needed to prove the
-adapted behavior. Connect each check to the example where possible.
+List focused checks for correctness separately from measurements for a performance
+claim. For every unavailable check, name its configuration, missing resource and next
+feasible action. Follow [scope-and-validation.md](scope-and-validation.md): unrun FP8
+or hardware checks are validation limits, not exclusions. Connect each check to the
+example where possible.
 ````
 
-If the reviewer cannot explain the logic and give a simple user-facing example, the
-commit cannot be `PORT_REQUIRED`; use `NEEDS_REVIEW` and state the missing information.
+If the logic is not yet understood, record the exact unresolved contract and continue
+source/target analysis before making an adaptation patch. A user-required missing
+capability stays `PORT_REQUIRED` with `implementation_status: REVIEWING`; missing
+logic is work to resolve, not permission to discard it. Use `NEEDS_REVIEW` when target
+applicability or selection is genuinely undecided, preserving any user selection.
+An explanatory example does not require hardware, model weights or measured gains.

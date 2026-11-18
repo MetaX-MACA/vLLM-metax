@@ -162,16 +162,24 @@ Do not squash related commits or split one source commit without explicit approv
 
 ## Conservative validation
 
-Choose the minimum evidence that actually proves the target behavior:
+Apply [scope-and-validation.md](scope-and-validation.md). Choose checks appropriate
+to each correctness or performance claim; record executed results and unavailable
+coverage separately:
 
 1. Static: review the target-vs-source semantic mapping, imports, API contracts and
    changed-file lint. Run focused unit or component tests covering the changed behavior.
 2. Runtime: when dispatch, cache layout, quantization, operators, model loading or
    distributed behavior is affected, exercise the actual selected component and record
    the configuration and observed backend.
-3. E2E/benchmark: use only when the earlier tiers cannot establish correctness, or when
-   the commit's value depends on a performance or full-model result. Record the exact
-   model, hardware, configuration and compare against the frozen target baseline.
+3. E2E: use when component checks cannot establish the relevant correctness contract.
+   Benchmark to substantiate a target performance claim, with the exact model,
+   hardware, configuration and frozen baseline. An unavailable benchmark does not
+   itself prevent the selected optimization from being adapted and committed.
+
+Unavailable FP8 hardware, models or dependencies make the affected execution check
+`UNVERIFIED`; they do not deselect the source capability. Run other meaningful checks,
+report the exact gap and preserve source behavior. A known correctness failure still
+requires a fix; a missing resource is not a passing result.
 
 Run `pre-commit` on the changed files after every commit or at least before declaring
 the selected run complete. Re-run any evidence invalidated by later edits. A green exit
