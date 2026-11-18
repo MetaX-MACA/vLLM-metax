@@ -89,3 +89,18 @@ logits rounding remain active.
 
 - Final model e2e and batched evidence are recorded in validation.
 - Revisit NVFP4 and FP8 table/cache execution on supported hardware.
+
+## Native NIXL transfer contract on vLLM 0.33.0
+
+QSA advertises KV connector support only for the built-in `NixlConnector`.
+Configuration validation runs before checkpoint loading and requires GPU cache
+buffers, PP=1, hybrid cache management and DS convolution state layout. Sequential
+Qwen4Exp MTP is accepted only with the matching draft architecture; parallel drafts
+and custom connectors require a separate implementation. Both endpoints must have
+matching cache-owner and MTP configurations. The native handshake validates cache
+compatibility; this guard does not establish end-to-end transfer correctness.
+
+QSA, GDN and replicated PLE state remain cache owners. Native 0.33.0 NIXL preserves
+recurrent/circular caches and excludes speculative scratch slots. Component guards
+and HTTP proxy contracts can be tested locally; real P/D transfer, recurrent-state
+numerics and MTP generation remain unverified until compatible endpoints are run.

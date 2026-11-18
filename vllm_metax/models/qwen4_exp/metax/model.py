@@ -421,6 +421,9 @@ class Qwen4ExpModel(nn.Module):
 
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = "") -> None:
         super().__init__()
+        from .pd import validate_pd_config
+
+        validate_pd_config(vllm_config)
         config: Qwen4ExpTextConfig = vllm_config.model_config.hf_text_config
         self.config = config
         self.num_redundant_experts = (

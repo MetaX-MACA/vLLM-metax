@@ -227,7 +227,16 @@ class Qwen4ExpQSAFlashAttentionBackend(MacaFlashAttentionBackend):
 
     @classmethod
     def supports_kv_connector(cls) -> bool:
-        return False
+        # NIXL transfers complete requests, including QSA circular scratch,
+        # GDN recurrence and PLE history. Layerwise connectors do not.
+        from vllm.config import get_current_vllm_config
+        from .pd import supports_nixl_transfer
+
+        try:
+            config = get_current_vllm_config()
+        except (AssertionError, RuntimeError):
+            return False
+        return supports_nixl_transfer(config)
 
 
 class Qwen4ExpQSAFlashAttentionImpl(FlashAttentionImpl):
