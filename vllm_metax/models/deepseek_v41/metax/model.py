@@ -622,6 +622,8 @@ class DeepseekV4DecoderLayer(nn.Module):
 
 
 class DeepseekV4Model(nn.Module, EagleModelMixin):
+    supports_aux_hidden_states_over_pp = True
+
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
         super().__init__()
 
@@ -868,6 +870,10 @@ class DeepseekV4Model(nn.Module, EagleModelMixin):
                     dtype=torch.float32,
                     device=device,
                 ),
+                # Later PP stages need token identities for hash/vision routing.
+                "input_ids": torch.zeros(
+                    (batch_size,), dtype=torch.int64, device=device
+                ),
             }
         )
 
@@ -887,6 +893,7 @@ class DeepseekV4Model(nn.Module, EagleModelMixin):
         else:
             assert intermediate_tensors is not None
             hidden_states = intermediate_tensors["hidden_states"]
+            input_ids = intermediate_tensors["input_ids"]
 
         if self.use_native_mega_moe:
             input_ids = input_ids.to(torch.int64)
@@ -1013,7 +1020,11 @@ class DeepseekV4Model(nn.Module, EagleModelMixin):
 
         if not get_pp_group().is_last_rank:
             return IntermediateTensors(
-                {"hidden_states": hidden_states, "pre_mix": pre_mix}
+                {
+                    "hidden_states": hidden_states,
+                    "pre_mix": pre_mix,
+                    "input_ids": input_ids.to(dtype=torch.int64),
+                }
             )
 
         # MTP needs full HC states; otherwise collapse and normalize locally
