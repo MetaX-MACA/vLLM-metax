@@ -255,13 +255,6 @@ The markers do not trigger patch activation, wrap calls automatically, or
 provide an unpatch API. Activation still happens when the patch module imports;
 delegating to an original requires an explicit call such as the wrapper above.
 
-## Small-batch MoE-LoRA expert bounds
-
-Small-batch MoE-LoRA skips weight accesses for negative expert IDs or IDs at
-or above the local weight expert count. These inactive entries preserve their
-existing output, in both add and overwrite modes. Valid experts retain the
-upstream persistent kernel, rank padding, slices and routed-weight behavior.
-
 ## Common examples
 
 ### Submodule replacement
@@ -401,9 +394,3 @@ two names can attempt to install it twice.
 - Use `allow_missing=True` only when intentionally adding a new compatibility
   attribute; normal patches require the target to exist.
 - Record affected versions and a concrete removal condition in every patch.
-
-MiniMax-M3 now owns its complete NVIDIA-derived implementation under
-`vllm_metax/models/minimax_m3/`. Its norm, loading, sparse-attention, index-score
-and auxiliary-state logic no longer monkey-patch upstream model symbols. Only
-pre-model draft configuration integration remains in `bugfix/`; see the model's
-[adaptation record](../models/minimax_m3/README.md).
