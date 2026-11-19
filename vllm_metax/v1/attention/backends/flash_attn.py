@@ -128,7 +128,7 @@ class MacaFlashAttentionBackend(AttentionBackend):
         # NOTE(metax): Exact sizes, not MultipleOf: e.g. 24 is unsupported.
         if kv_cache_spec is not None and is_power_of_2(kv_cache_spec.block_size):
             return [kv_cache_spec.block_size]
-        return [1, 2, 4, 8, 16, 32, 64, 128, 256]
+        return [8, 16, 32, 64, 128, 256, 512, 1024]
 
     @classmethod
     def supports_block_size(cls, block_size: int | None) -> bool:
