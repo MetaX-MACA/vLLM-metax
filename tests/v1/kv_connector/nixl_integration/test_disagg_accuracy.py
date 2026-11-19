@@ -1,6 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+
+import os
+import pytest
+
+_NIXL_REQUIRED_ENV = ("PREFILL_PORT", "DECODE_PORT", "PROXY_PORT")
+if not all(os.environ.get(name) for name in _NIXL_REQUIRED_ENV):
+    pytest.skip(
+        "requires a running NIXL disaggregated deployment",
+        allow_module_level=True,
+    )
+
 import argparse
 import json
 import os
@@ -26,8 +37,7 @@ SAMPLE_PROMPTS = (
 
 
 def check_vllm_server(url: str, timeout=5, retries=3) -> bool:
-    """
-    Checks if the vLLM server is ready by sending a GET request to the
+    """Checks if the vLLM server is ready by sending a GET request to the
     /health endpoint.
 
     Args:
@@ -37,6 +47,7 @@ def check_vllm_server(url: str, timeout=5, retries=3) -> bool:
 
     Returns:
         bool: True if the server is ready, False otherwise.
+
     """
     for attempt in range(retries):
         try:
@@ -44,44 +55,45 @@ def check_vllm_server(url: str, timeout=5, retries=3) -> bool:
             if response.status_code == 200:
                 return True
             else:
-                print(f"Attempt {attempt + 1}: Server returned status code "
-                      "{response.status_code}")
+                print(
+                    f"Attempt {attempt + 1}: Server returned status code "
+                    "{response.status_code}"
+                )
         except requests.exceptions.RequestException as e:
             print(f"Attempt {attempt + 1}: Error connecting to server: {e}")
         time.sleep(1)  # Wait before retrying
     return False
 
 
-def run_simple_prompt(base_url: str, model_name: str, input_prompt: str,
-                      use_chat_endpoint: bool) -> str:
+def run_simple_prompt(
+    base_url: str, model_name: str, input_prompt: str, use_chat_endpoint: bool
+) -> str:
     client = openai.OpenAI(api_key="EMPTY", base_url=base_url)
     if use_chat_endpoint:
         completion = client.chat.completions.create(
             model=model_name,
-            messages=[{
-                "role": "user",
-                "content": [{
-                    "type": "text",
-                    "text": input_prompt
-                }]
-            }],
+            messages=[
+                {"role": "user", "content": [{"type": "text", "text": input_prompt}]}
+            ],
             max_completion_tokens=MAX_OUTPUT_LEN,
             temperature=0.0,
-            seed=42)
+            seed=42,
+        )
         return completion.choices[0].message.content
     else:
-        completion = client.completions.create(model=model_name,
-                                               prompt=input_prompt,
-                                               max_tokens=MAX_OUTPUT_LEN,
-                                               temperature=0.0,
-                                               seed=42)
+        completion = client.completions.create(
+            model=model_name,
+            prompt=input_prompt,
+            max_tokens=MAX_OUTPUT_LEN,
+            temperature=0.0,
+            seed=42,
+        )
 
         return completion.choices[0].text
 
 
 def main():
-    """
-    This script demonstrates how to accept two optional string arguments
+    """This script demonstrates how to accept two optional string arguments
     ("service_url" and "file_name") from the command line, each with a
     default value of an empty string, using the argparse module.
     """
@@ -91,7 +103,8 @@ def main():
         "--service_url",  # Name of the first argument
         type=str,
         required=True,
-        help="The vLLM service URL.")
+        help="The vLLM service URL.",
+    )
 
     parser.add_argument(
         "--model_name",  # Name of the first argument
@@ -128,28 +141,30 @@ def main():
         if not os.path.exists(args.file_name):
             raise ValueError(
                 f"In disagg mode, the output file {args.file_name} from "
-                "non-disagg. baseline does not exist.")
+                "non-disagg. baseline does not exist."
+            )
 
     service_url = f"{args.service_url}/v1"
 
     if not check_vllm_server(health_check_url):
-        raise RuntimeError(
-            f"vllm server: {args.service_url} is not ready yet!")
+        raise RuntimeError(f"vllm server: {args.service_url} is not ready yet!")
 
     output_strs = dict()
     for i, prompt in enumerate(SAMPLE_PROMPTS):
-        use_chat_endpoint = (i % 2 == 1)
-        output_str = run_simple_prompt(base_url=service_url,
-                                       model_name=args.model_name,
-                                       input_prompt=prompt,
-                                       use_chat_endpoint=use_chat_endpoint)
+        use_chat_endpoint = i % 2 == 1
+        output_str = run_simple_prompt(
+            base_url=service_url,
+            model_name=args.model_name,
+            input_prompt=prompt,
+            use_chat_endpoint=use_chat_endpoint,
+        )
         print(f"Prompt: {prompt}, output: {output_str}")
         output_strs[prompt] = output_str
 
     if args.mode == "baseline":
         # baseline: save outputs
         try:
-            with open(args.file_name, 'w') as json_file:
+            with open(args.file_name, "w") as json_file:
                 json.dump(output_strs, json_file, indent=4)
         except OSError as e:
             print(f"Error writing to file: {e}")

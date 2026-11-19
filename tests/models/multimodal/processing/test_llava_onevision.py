@@ -12,6 +12,7 @@ from pqdm.threads import pqdm
 from vllm.multimodal import MULTIMODAL_REGISTRY
 from vllm.multimodal.parse import ImageSize
 from vllm.multimodal.processing import BaseMultiModalProcessor
+from vllm.tokenizers.hf import maybe_make_thread_pool
 
 from ...utils import build_model_context
 
@@ -23,8 +24,9 @@ def _validate_image_max_tokens_one(
     image_size: ImageSize,
 ) -> None:
     info = processor.info
-    feature_size = info.get_num_image_tokens(image_width=image_size.width,
-                                             image_height=image_size.height)
+    feature_size = info.get_num_image_tokens(
+        image_width=image_size.width, image_height=image_size.height
+    )
 
     try:
         assert feature_size <= max_tokens, f"{feature_size} <= {max_tokens}"
@@ -32,17 +34,25 @@ def _validate_image_max_tokens_one(
         failed_size_excs.append((image_size, exc))
 
 
-@pytest.mark.skip("This test takes around 5 minutes to run. "
-                  "Comment this out to run it manually.")
-@pytest.mark.parametrize("model_id",
-                         ["llava-hf/llava-onevision-qwen2-0.5b-ov-hf"])
+@pytest.mark.skip(
+    "This test takes around 5 minutes to run. Comment this out to run it manually."
+)
+@pytest.mark.parametrize("model_id", ["llava-hf/llava-onevision-qwen2-0.5b-ov-hf"])
 def test_processor_max_tokens(model_id):
     ctx = build_model_context(
         model_id,
         mm_processor_kwargs=None,
         limit_mm_per_prompt={"image": 1},
     )
-    processor = MULTIMODAL_REGISTRY.create_processor(ctx.model_config)
+
+    # Avoid tokenizer already borrowed error
+    maybe_make_thread_pool(ctx.tokenizer)
+
+    processor = MULTIMODAL_REGISTRY.create_processor(
+        ctx.model_config,
+        tokenizer=ctx.tokenizer,
+    )
+
     info = processor.info
 
     seen_aspect_ratios = set[float]()
@@ -68,9 +78,9 @@ def test_processor_max_tokens(model_id):
     pqdm(image_sizes, validate_one, n_jobs=8, desc="Validating image sizes")
 
     if failed_size_excs:
-        msg = "Found failing image sizes:" \
-            + "\n========\n".join(f"[{size}]\n{exc}"
-                                  for size, exc in failed_size_excs)
+        msg = "Found failing image sizes:" + "\n========\n".join(
+            f"[{size}]\n{exc}" for size, exc in failed_size_excs
+        )
         raise AssertionError(msg)
 
 
@@ -87,7 +97,11 @@ def _validate_image_prompt_replacements_one(
     try:
         # The processor will throw an error if there is a mismatch
         # in the prompt replacements
-        processed_inputs = processor.apply(prompt, mm_data, {})
+        processed_inputs = processor(
+            prompt,
+            mm_items=processor.info.parse_mm_data(mm_data),
+            hf_processor_mm_kwargs={},
+        )
 
         image_placeholders = processed_inputs["mm_placeholders"]["image"]
         assert len(image_placeholders) == num_imgs
@@ -95,8 +109,10 @@ def _validate_image_prompt_replacements_one(
         first_placeholder = image_placeholders[0]
 
         assert first_placeholder.offset == 0
-        assert first_placeholder.length == len(
-            processed_inputs["prompt_token_ids"]) // num_imgs
+        assert (
+            first_placeholder.length
+            == len(processed_inputs["prompt_token_ids"]) // num_imgs
+        )
     except Exception as exc:
         failed_size_excs.append((image_size, exc))
 
@@ -107,8 +123,7 @@ def _test_image_prompt_replacements(
     num_imgs: int,
     image_sizes: list[ImageSize],
 ) -> None:
-    """
-    Ensure LlavaOnevisionMultiModalProcessor
+    """Ensure LlavaOnevisionMultiModalProcessor
     handles prompt replacement properly for input images.
     """
     failed_size_excs = list[tuple[ImageSize, Exception]]()
@@ -122,14 +137,13 @@ def _test_image_prompt_replacements(
     pqdm(image_sizes, validate_one, n_jobs=8, desc="Validating image sizes")
 
     if failed_size_excs:
-        msg = "Found failing image sizes:" \
-            + "\n========\n".join(f"[{size}]\n{exc}"
-                                  for size, exc in failed_size_excs)
+        msg = "Found failing image sizes:" + "\n========\n".join(
+            f"[{size}]\n{exc}" for size, exc in failed_size_excs
+        )
         raise AssertionError(msg)
 
 
-@pytest.mark.parametrize("model_id",
-                         ["llava-hf/llava-onevision-qwen2-0.5b-ov-hf"])
+@pytest.mark.parametrize("model_id", ["llava-hf/llava-onevision-qwen2-0.5b-ov-hf"])
 @pytest.mark.parametrize("num_imgs", [1, 2])
 def test_processor_prompt_replacements_regression(model_id, num_imgs):
     ctx = build_model_context(
@@ -137,13 +151,26 @@ def test_processor_prompt_replacements_regression(model_id, num_imgs):
         mm_processor_kwargs=None,
         limit_mm_per_prompt={"image": num_imgs},
     )
-    processor = MULTIMODAL_REGISTRY.create_processor(ctx.model_config)
 
-    image_ratios = [(171, 152), (184, 161), (198, 176), (333, 296), (369, 328),
-                    (488, 183), (2560, 1669)]
+    # Avoid tokenizer already borrowed error
+    maybe_make_thread_pool(ctx.tokenizer)
+
+    processor = MULTIMODAL_REGISTRY.create_processor(
+        ctx.model_config,
+        tokenizer=ctx.tokenizer,
+    )
+
+    image_ratios = [
+        (171, 152),
+        (184, 161),
+        (198, 176),
+        (333, 296),
+        (369, 328),
+        (488, 183),
+        (2560, 1669),
+    ]
     image_sizes = [
-        size for w, h in image_ratios
-        for size in [ImageSize(w, h), ImageSize(h, w)]
+        size for w, h in image_ratios for size in [ImageSize(w, h), ImageSize(h, w)]
     ]
 
     _test_image_prompt_replacements(
@@ -153,10 +180,10 @@ def test_processor_prompt_replacements_regression(model_id, num_imgs):
     )
 
 
-@pytest.mark.skip("This test takes around 2 hours to run. "
-                  "Comment this out to run it manually.")
-@pytest.mark.parametrize("model_id",
-                         ["llava-hf/llava-onevision-qwen2-0.5b-ov-hf"])
+@pytest.mark.skip(
+    "This test takes around 2 hours to run. Comment this out to run it manually."
+)
+@pytest.mark.parametrize("model_id", ["llava-hf/llava-onevision-qwen2-0.5b-ov-hf"])
 @pytest.mark.parametrize("num_imgs", [1])
 def test_processor_prompt_replacements_all(model_id, num_imgs):
     ctx = build_model_context(

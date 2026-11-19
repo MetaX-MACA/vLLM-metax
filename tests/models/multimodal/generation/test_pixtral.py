@@ -3,29 +3,31 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 import json
 from dataclasses import asdict
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import pytest
-from mistral_common.multimodal import download_image
-from mistral_common.protocol.instruct.messages import ImageURLChunk
-from mistral_common.protocol.instruct.request import ChatCompletionRequest
-from mistral_common.tokens.tokenizers.mistral import MistralTokenizer
-from mistral_common.tokens.tokenizers.multimodal import image_from_chunk
-from transformers import AutoProcessor
+import torch
 
-from vllm import RequestOutput, SamplingParams, TextPrompt, TokensPrompt
-from vllm.multimodal import MultiModalDataBuiltins
-from vllm.multimodal.inputs import PlaceholderRange
-from vllm.sequence import Logprob, SampleLogprobs
+from vllm import SamplingParams
+from vllm.logprobs import Logprob, SampleLogprobs
+from vllm.model_executor.models.pixtral import (
+    _apply_rotary_emb_vit_complex,
+    _apply_rotary_emb_vit_real,
+    _make_packed_sequence_metadata,
+    precompute_freqs_cis_2d,
+)
+from vllm.platforms import current_platform
+from vllm.v1.attention.backends.registry import AttentionBackendEnum
 
 from ....utils import VLLM_PATH, large_gpu_test
-from ...utils import check_logprobs_close, dummy_hf_overrides
+from ...utils import check_logprobs_close
 
 if TYPE_CHECKING:
     from _typeshed import StrPath
 
 PIXTRAL_ID = "mistralai/Pixtral-12B-2409"
 MISTRAL_SMALL_3_1_ID = "mistralai/Mistral-Small-3.1-24B-Instruct-2503"
+MINISTRAL_3B_ID = "mistralai/Ministral-3-3B-Instruct-2512"
 
 MODELS = [PIXTRAL_ID, MISTRAL_SMALL_3_1_ID]
 
@@ -39,71 +41,18 @@ PROMPT = "Describe each image in one short sentence."
 
 
 def _create_msg_format(urls: list[str]) -> list[dict[str, Any]]:
-    return [{
-        "role":
-        "user",
-        "content": [{
-            "type": "text",
-            "text": PROMPT,
-        }] + [{
-            "type": "image_url",
-            "image_url": {
-                "url": url
-            }
-        } for url in urls],
-    }]
-
-
-def _create_msg_format_hf(urls: list[str]) -> list[dict[str, Any]]:
-    return [{
-        "role":
-        "user",
-        "content": [{
-            "type": "text",
-            "content": PROMPT,
-        }, *({
-            "type": "image",
-            "image": download_image(url)
-        } for url in urls)],
-    }]
-
-
-def _create_engine_inputs(urls: list[str]) -> TokensPrompt:
-    msg = _create_msg_format(urls)
-
-    tokenizer = MistralTokenizer.from_model("pixtral")
-
-    request = ChatCompletionRequest(messages=msg)  # type: ignore[type-var]
-    tokenized = tokenizer.encode_chat_completion(request)
-
-    engine_inputs = TokensPrompt(prompt_token_ids=tokenized.tokens)
-
-    images = []
-    for chunk in request.messages[0].content:
-        if isinstance(chunk, ImageURLChunk):
-            images.append(image_from_chunk(chunk))
-
-    mm_data = MultiModalDataBuiltins(image=images)
-    engine_inputs["multi_modal_data"] = mm_data
-
-    return engine_inputs
-
-
-def _create_engine_inputs_hf(urls: list[str]) -> TextPrompt:
-    msg = _create_msg_format_hf(urls)
-
-    tokenizer = AutoProcessor.from_pretrained("mistral-community/pixtral-12b")
-    prompt = tokenizer.apply_chat_template(msg)
-
-    images = []
-    for chunk in msg[0]["content"]:
-        if chunk["type"] == "image":
-            images.append(chunk["image"])
-
-    mm_data = MultiModalDataBuiltins(image=images)
-    engine_inputs = TextPrompt(prompt=prompt, multi_modal_data=mm_data)
-
-    return engine_inputs
+    return [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": PROMPT,
+                }
+            ]
+            + [{"type": "image_url", "image_url": {"url": url}} for url in urls],
+        }
+    ]
 
 
 SAMPLING_PARAMS = SamplingParams(max_tokens=512, temperature=0.0, logprobs=5)
@@ -117,9 +66,54 @@ assert FIXTURES_PATH.exists()
 FIXTURE_LOGPROBS_CHAT = {
     PIXTRAL_ID: FIXTURES_PATH / "pixtral_chat.json",
     MISTRAL_SMALL_3_1_ID: FIXTURES_PATH / "mistral_small_3_chat.json",
+    MINISTRAL_3B_ID: FIXTURES_PATH / "ministral_3b_chat.json",
 }
 
-OutputsLogprobs = list[tuple[list[int], str, Optional[SampleLogprobs]]]
+OutputsLogprobs = list[tuple[list[int], str, SampleLogprobs | None]]
+
+
+@pytest.mark.parametrize(
+    "backend",
+    [
+        AttentionBackendEnum.FLASH_ATTN,
+        AttentionBackendEnum.FLASHINFER,
+        AttentionBackendEnum.TORCH_SDPA,
+    ],
+)
+def test_packed_sequence_metadata(backend: AttentionBackendEnum) -> None:
+    cu_seqlens, max_seqlen, sequence_lengths = _make_packed_sequence_metadata(
+        [4, 6],
+        backend,
+        hidden_size=64,
+        tp_size=1,
+        device=torch.device("cpu"),
+    )
+
+    assert cu_seqlens.dtype == torch.int32
+    assert max_seqlen.dtype == torch.int32
+    if backend == AttentionBackendEnum.FLASHINFER:
+        assert max_seqlen.item() >= 6
+        assert sequence_lengths is not None
+        assert sequence_lengths.dtype == torch.int32
+        assert len(cu_seqlens) % 2 == 0
+    else:
+        expected_max_seqlen = 6 if backend == AttentionBackendEnum.FLASH_ATTN else 0
+        assert max_seqlen.item() == expected_max_seqlen
+        assert cu_seqlens.tolist() == [0, 4, 10]
+        assert sequence_lengths is None
+
+
+def test_real_rotary_emb_vit_matches_complex() -> None:
+    """The real RoPE used under torch.compile must match the eager one."""
+    num_patches, num_heads, head_dim = 12, 4, 64
+    freqs_cis = precompute_freqs_cis_2d(head_dim, height=3, width=4, theta=1e4)
+    freqs_cis = torch.view_as_real(freqs_cis.reshape(num_patches, head_dim // 2))
+    q, k = torch.randn(2, 1, num_patches, num_heads, head_dim).unbind(0)
+
+    torch.testing.assert_close(
+        _apply_rotary_emb_vit_real(q, k, freqs_cis),
+        _apply_rotary_emb_vit_complex(q, k, freqs_cis),
+    )
 
 
 # For the test author to store golden output in JSON
@@ -127,11 +121,17 @@ def _dump_outputs_w_logprobs(
     outputs: OutputsLogprobs,
     filename: "StrPath",
 ) -> None:
-    json_data = [(tokens, text, [{
-        k: asdict(v)
-        for k, v in token_logprobs.items()
-    } for token_logprobs in (logprobs or [])])
-                 for tokens, text, logprobs in outputs]
+    json_data = [
+        (
+            tokens,
+            text,
+            [
+                {k: asdict(v) for k, v in token_logprobs.items()}
+                for token_logprobs in (logprobs or [])
+            ],
+        )
+        for tokens, text, logprobs in outputs
+    ]
 
     with open(filename, "w") as f:
         json.dump(json_data, f)
@@ -141,28 +141,44 @@ def load_outputs_w_logprobs(filename: "StrPath") -> OutputsLogprobs:
     with open(filename, "rb") as f:
         json_data = json.load(f)
 
-    return [(tokens, text, [{
-        int(k): Logprob(**v)
-        for k, v in token_logprobs.items()
-    } for token_logprobs in logprobs]) for tokens, text, logprobs in json_data]
+    return [
+        (
+            tokens,
+            text,
+            [
+                {int(k): Logprob(**v) for k, v in token_logprobs.items()}
+                for token_logprobs in logprobs
+            ],
+        )
+        for tokens, text, logprobs in json_data
+    ]
 
 
 @large_gpu_test(min_gb=80)
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("max_model_len", MAX_MODEL_LEN)
 @pytest.mark.parametrize("dtype", ["bfloat16"])
-def test_chat(vllm_runner, max_model_len: int, model: str, dtype: str,
-              local_asset_server) -> None:
-    EXPECTED_CHAT_LOGPROBS = load_outputs_w_logprobs(
-        FIXTURE_LOGPROBS_CHAT[model])
+def test_chat(
+    vllm_runner, max_model_len: int, model: str, dtype: str, local_asset_server
+) -> None:
+    if (
+        model == MISTRAL_SMALL_3_1_ID
+        and max_model_len == 65536
+        and current_platform.is_rocm()
+    ):
+        pytest.skip(
+            "OOM on ROCm: 24B model with 65536 context length exceeds GPU memory"
+        )
+
+    EXPECTED_CHAT_LOGPROBS = load_outputs_w_logprobs(FIXTURE_LOGPROBS_CHAT[model])
     with vllm_runner(
-            model,
-            dtype=dtype,
-            tokenizer_mode="mistral",
-            load_format="mistral",
-            config_format="mistral",
-            max_model_len=max_model_len,
-            limit_mm_per_prompt=LIMIT_MM_PER_PROMPT,
+        model,
+        dtype=dtype,
+        tokenizer_mode="mistral",
+        load_format="mistral",
+        config_format="mistral",
+        max_model_len=max_model_len,
+        limit_mm_per_prompt=LIMIT_MM_PER_PROMPT,
     ) as vllm_model:
         outputs = []
 
@@ -182,51 +198,47 @@ def test_chat(vllm_runner, max_model_len: int, model: str, dtype: str,
     for i in range(len(logprobs)):
         assert logprobs[i][-1] is None
         logprobs[i] = logprobs[i][:-1]
-    check_logprobs_close(outputs_0_lst=EXPECTED_CHAT_LOGPROBS,
-                         outputs_1_lst=logprobs,
-                         name_0="h100_ref",
-                         name_1="output")
+    check_logprobs_close(
+        outputs_0_lst=EXPECTED_CHAT_LOGPROBS,
+        outputs_1_lst=logprobs,
+        name_0="h100_ref",
+        name_1="output",
+    )
 
 
-@pytest.mark.parametrize(
-    "image_urls,expected_ranges",
-    [(IMG_URLS[:1], [PlaceholderRange(offset=11, length=494)]),
-     (IMG_URLS[1:4], [
-         PlaceholderRange(offset=11, length=266),
-         PlaceholderRange(offset=277, length=1056),
-         PlaceholderRange(offset=1333, length=418)
-     ])])
-def test_multi_modal_placeholders(vllm_runner, image_urls: list[str],
-                                  expected_ranges: list[PlaceholderRange],
-                                  local_asset_server, monkeypatch) -> None:
-    local_image_urls = [local_asset_server.url_for(u) for u in image_urls]
-    prompt = _create_engine_inputs_hf(local_image_urls)
-
-    # This placeholder checking test only works with V0 engine
-    # where `multi_modal_placeholders` is returned with `RequestOutput`
-    monkeypatch.setenv("VLLM_USE_V1", "0")
+@large_gpu_test(min_gb=16)
+@pytest.mark.parametrize("dtype", ["bfloat16"])
+def test_chat_consolidated(vllm_runner, dtype: str, local_asset_server) -> None:
+    EXPECTED_CHAT_LOGPROBS = load_outputs_w_logprobs(
+        FIXTURE_LOGPROBS_CHAT[MINISTRAL_3B_ID]
+    )
     with vllm_runner(
-            "mistral-community/pixtral-12b",
-            max_model_len=8192,
-            limit_mm_per_prompt=LIMIT_MM_PER_PROMPT,
-            load_format="dummy",
-            hf_overrides=dummy_hf_overrides,
+        MINISTRAL_3B_ID,
+        dtype=dtype,
+        tokenizer_mode="mistral",
+        load_format="mistral",
+        config_format="mistral",
+        max_model_len=8192,
+        limit_mm_per_prompt=LIMIT_MM_PER_PROMPT,
     ) as vllm_model:
-        outputs = vllm_model.llm.generate(prompt)
+        outputs = []
+        urls_all = [local_asset_server.url_for(u) for u in IMG_URLS]
+        msgs = [
+            _create_msg_format(urls_all[:1]),
+            _create_msg_format(urls_all[:2]),
+            _create_msg_format(urls_all),
+        ]
+        for msg in msgs:
+            output = vllm_model.llm.chat(msg, sampling_params=SAMPLING_PARAMS)
+            outputs.extend(output)
 
-        assert len(outputs) == 1, f"{len(outputs)=}"
-        output: RequestOutput = outputs[0]
-        assert hasattr(output,
-                       "multi_modal_placeholders"), f"{output.__dict__=}"
-        assert "image" in output.multi_modal_placeholders, \
-            f"{output.multi_modal_placeholders.keys()=}"
-        image_placeholder_ranges: list[
-            PlaceholderRange] = output.multi_modal_placeholders["image"]
-        assert len(image_placeholder_ranges) == len(
-            expected_ranges), f"{image_placeholder_ranges=}"
-        for real_range, expected_range in zip(image_placeholder_ranges,
-                                              expected_ranges):
-            assert real_range.offset == expected_range.offset, \
-                f"{real_range=} {expected_range=}"
-            assert real_range.length == expected_range.length, \
-                f"{real_range=} {expected_range=}"
+    logprobs = vllm_runner._final_steps_generate_w_logprobs(outputs)
+    for i in range(len(logprobs)):
+        assert logprobs[i][-1] is None
+        logprobs[i] = logprobs[i][:-1]
+    check_logprobs_close(
+        outputs_0_lst=EXPECTED_CHAT_LOGPROBS,
+        outputs_1_lst=logprobs,
+        name_0="h100_ref",
+        name_1="output",
+    )

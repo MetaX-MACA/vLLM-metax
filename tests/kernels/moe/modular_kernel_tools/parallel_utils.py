@@ -3,22 +3,32 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 import dataclasses
 import os
+import time
 import traceback
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any, Concatenate
 
 import torch
-from torch.multiprocessing import (
-    spawn)  # pyright: ignore[reportPrivateImportUsage]
-from typing_extensions import Concatenate, ParamSpec
+from torch.multiprocessing import spawn  # pyright: ignore[reportPrivateImportUsage]
+from typing_extensions import ParamSpec
 
+import vllm.envs as envs
 from vllm.config import VllmConfig, set_current_vllm_config
-from vllm.distributed import (init_distributed_environment,
-                              initialize_model_parallel)
-from vllm.utils import get_open_port
+from vllm.distributed import (
+    cleanup_dist_env_and_memory,
+    init_distributed_environment,
+    initialize_model_parallel,
+)
+from vllm.platforms import current_platform
+from vllm.utils.network_utils import get_open_port
 
 ## Parallel Processes Utils
 
 P = ParamSpec("P")
+
+# On ROCm the first AITER CK MoE launch JIT-compiles two stage modules that the
+# AITER wheel does not prebuild, ~10 min each (ROCm/aiter#5766).
+LAUNCH_TIMEOUT_S = 1800 if current_platform.is_rocm() else 900
 
 
 @dataclasses.dataclass
@@ -31,29 +41,42 @@ class ProcessGroupInfo:
     device: torch.device
 
 
-def _set_vllm_config(vllm_config: VllmConfig, world_size: int, rank: int,
-                     local_rank: int):
-
+def _set_vllm_config(
+    vllm_config: VllmConfig, world_size: int, rank: int, local_rank: int
+):
     import tempfile
+
     temp_file = tempfile.mkstemp()[1]
+
+    # When DP is enabled, processes are organized as:
+    #  rank = dp_rank * tp_pp_world_size + tp_pp_rank
+    tp_pp_world_size = vllm_config.parallel_config.world_size
+    vllm_config.parallel_config.data_parallel_rank = rank // tp_pp_world_size
+    tp_pp_rank = rank % tp_pp_world_size
+    vllm_config.parallel_config.rank = tp_pp_rank
 
     with set_current_vllm_config(vllm_config):
         init_distributed_environment(
-            world_size=world_size,
-            rank=rank,
+            world_size=tp_pp_world_size,
+            rank=tp_pp_rank,
             distributed_init_method=f"file://{temp_file}",
             local_rank=local_rank,
             backend="nccl",
         )
 
         initialize_model_parallel(
-            tensor_model_parallel_size=vllm_config.parallel_config.
-            tensor_parallel_size,
-            pipeline_model_parallel_size=vllm_config.parallel_config.
-            pipeline_parallel_size,
+            tensor_model_parallel_size=vllm_config.parallel_config.tensor_parallel_size,
+            pipeline_model_parallel_size=vllm_config.parallel_config.pipeline_parallel_size,
         )
-        cpu_group = torch.distributed.new_group(list(range(world_size)),
-                                                backend="gloo")
+        if envs.VLLM_DISTRIBUTED_USE_SPLIT_GROUP:
+            cpu_group = torch.distributed.split_group(
+                split_ranks=[list(range(world_size))],
+                group_desc="moe_test_cpu",
+            )
+        else:
+            cpu_group = torch.distributed.new_group(
+                list(range(world_size)), backend="gloo"
+            )
     return cpu_group
 
 
@@ -63,16 +86,16 @@ def _worker_parallel_launch(
     world_local_size: int,
     node_rank: int,
     init_method: str,
-    worker: Callable[Concatenate[ProcessGroupInfo, Optional[VllmConfig], Any,
-                                 P], None],
-    vllm_config: Optional[VllmConfig],
-    env_dict: Optional[dict],
-    *args: P.args,
-    **kwargs: P.kwargs,
+    worker: Callable[..., None],
+    vllm_config: VllmConfig | None,
+    env_dict: dict | None,
+    worker_kwargs: dict[str, Any],
+    *args: Any,
 ) -> None:
     rank = node_rank * world_local_size + local_rank
-    torch.cuda.set_device(local_rank)
     device = torch.device("cuda", local_rank)
+    torch.accelerator.set_device_index(device)
+    torch.set_default_device(device)
     torch.distributed.init_process_group(
         backend="cpu:gloo,cuda:nccl",
         init_method=init_method,
@@ -90,7 +113,7 @@ def _worker_parallel_launch(
     if vllm_config is not None:
         cpu_group = _set_vllm_config(vllm_config, world_size, rank, local_rank)
 
-    try:
+    def _run_worker():
         worker(
             ProcessGroupInfo(
                 world_size=world_size,
@@ -103,26 +126,36 @@ def _worker_parallel_launch(
             vllm_config,
             cpu_group,
             *args,
-            **kwargs,
+            **worker_kwargs,
         )
+
+    try:
+        if vllm_config is not None:
+            with set_current_vllm_config(vllm_config):
+                _run_worker()
+        else:
+            _run_worker()
     except Exception as ex:
         print(ex)
         traceback.print_exc()
         raise
     finally:
-        torch.distributed.destroy_process_group()
+        torch.accelerator.synchronize()
+        if vllm_config is not None:
+            cleanup_dist_env_and_memory()
+        else:
+            torch.distributed.destroy_process_group()
 
 
 def parallel_launch_with_config(
     world_size: int,
     worker: Callable[Concatenate[ProcessGroupInfo, VllmConfig, Any, P], None],
     vllm_config: VllmConfig,
-    env_dict: dict[Any, Any],
+    env_dict: dict[Any, Any] | None,
     *args: P.args,
     **kwargs: P.kwargs,
 ) -> None:
-    assert not kwargs
-    spawn(
+    context = spawn(
         _worker_parallel_launch,
         args=(
             world_size,
@@ -132,7 +165,20 @@ def parallel_launch_with_config(
             worker,
             vllm_config,
             env_dict,
-        ) + args,
+            kwargs,
+        )
+        + args,
         nprocs=world_size,
-        join=True,
+        join=False,
     )
+    # A worker stuck in communicator setup never exits, so bound the wait.
+    deadline = time.monotonic() + LAUNCH_TIMEOUT_S
+    while not context.join(timeout=max(0.0, deadline - time.monotonic())):
+        if time.monotonic() >= deadline:
+            for process in context.processes:
+                process.kill()
+            for process in context.processes:
+                process.join()
+            raise TimeoutError(
+                f"Parallel workers did not finish within {LAUNCH_TIMEOUT_S}s"
+            )

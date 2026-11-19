@@ -1,9 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-"""
-Tests for miscellaneous utilities
-"""
+"""Tests for miscellaneous utilities."""
 
 import torch
 
@@ -18,7 +16,7 @@ def test_convert_fp8_opcheck():
 
 # TODO: Add this back, currently fails with
 # csrc/cuda_utils_kernels.cu:15 'invalid argument'
-# @pytest.mark.skipif(not current_platform.is_cuda(),
+# @pytest.mark.skipif(not current_platform.is_cuda_alike(),
 #                     reason="Only supported for CUDA")
 # def test_cuda_utils_opcheck():
 #     opcheck(torch.ops._C_cuda_utils.get_device_attribute, (0, 0))
