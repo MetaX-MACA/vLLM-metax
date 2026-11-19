@@ -2,6 +2,7 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 import torch
 from vllm.logger import init_logger
+import vllm.envs as envs
 from vllm.model_executor.layers.attention import Attention
 from vllm.model_executor.layers.fused_moe import (
     RoutedExperts,
@@ -31,6 +32,7 @@ from vllm.model_executor.layers.quantization.utils.quant_utils import (
     is_layer_skipped,
     kFp8Dynamic128Sym,
     kFp8DynamicTensorSym,
+    kFp8DynamicTokenSym,
     kFp8StaticTensorSym,
 )
 from vllm.model_executor.utils import replace_parameter
@@ -85,6 +87,7 @@ class MacaFp8Config(Fp8Config):
 
 class Fp8MoEMethod(vllm_Fp8MoEMethod):
     def __init__(self, quant_config: Fp8Config, layer: RoutedExperts):
+        """the same as upstream __init__ and maca select its own fp8 moe_backend"""
         super(vllm_Fp8MoEMethod, self).__init__(layer.moe_config)
         self.quant_config = quant_config
         self.weight_block_size = self.quant_config.weight_block_size
@@ -115,13 +118,17 @@ class Fp8MoEMethod(vllm_Fp8MoEMethod):
             activation_key = kFp8Dynamic128Sym
         else:
             weight_key = kFp8StaticTensorSym
-            activation_key = (
-                kFp8StaticTensorSym
-                if self.quant_config.activation_scheme == "static"
-                else kFp8DynamicTensorSym
-            )
+            if self.quant_config.activation_scheme == "static":
+                activation_key = kFp8StaticTensorSym
+            elif envs.VLLM_BATCH_INVARIANT:
+                # A per-tensor dynamic scale is the max over every token in
+                # the batch, so a request's quantized activations would depend
+                # on the requests it is batched with.
+                activation_key = kFp8DynamicTokenSym
+            else:
+                activation_key = kFp8DynamicTensorSym
+        self.per_act_token_quant = activation_key == kFp8DynamicTokenSym
 
-        # NOTE(metax): Select MACA FP8 MoE experts and kernel dispatch.
         self.fp8_backend, self.experts_cls = select_fp8_moe_backend(
             config=self.moe,
             weight_key=weight_key,
