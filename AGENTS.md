@@ -52,9 +52,8 @@ references; load only workflows relevant to the user's request.
 | --- | --- |
 | Independent staged/worktree/commit code review | [independent-review](.agents/skills/independent-review/SKILL.md) |
 | Full upgrade or coordinated component upgrade | [vllm-metax-upgrade](.agents/skills/vllm-metax-upgrade/SKILL.md) |
-| Cross-branch commit audit and source port | [vllm-metax-branch-port](.agents/skills/vllm-metax-branch-port/SKILL.md) |
+| Cross-branch commit audit and interactive/daily source port | [vllm-metax-branch-port](.agents/skills/vllm-metax-branch-port/SKILL.md) |
 | Independent branch-port adversarial review | [vllm-metax-branch-port-reviewer](.agents/agents/vllm-metax-branch-port-reviewer.md) |
-| Scheduled daily branch port | [vllm-metax-branch-port-daily](.agents/agents/vllm-metax-branch-port-daily.md) |
 | Upgrade environment preparation | [environment-check](.agents/skills/environment-check/SKILL.md) |
 | Shared upgrade rules and tooling | [common-sense](.agents/skills/common-sense/SKILL.md) |
 | New or standalone model adaptation | [model-adaptation](.agents/skills/model-adaptation/SKILL.md) |
@@ -71,14 +70,11 @@ The portable coordinator roles are:
   read-only review of staged, unstaged, commit or commit-range code.
 - [vllm-metax-upgrade](.agents/agents/vllm-metax-upgrade.md) for full or coordinated
   component upgrades.
-- [vllm-metax-branch-port](.agents/agents/vllm-metax-branch-port.md) for independent
-  linear-matrix cross-branch commit audits and source ports.
+- [vllm-metax-branch-port](.agents/agents/vllm-metax-branch-port.md) for interactive or
+  pre-approved daily linear-matrix commit audits and source ports.
 - [vllm-metax-branch-port-reviewer](.agents/agents/vllm-metax-branch-port-reviewer.md)
   for independent, read-only adversarial review of the recorded worktree, target
   applicability, behavioral evidence and post-rebase patch necessity.
-- [vllm-metax-branch-port-daily](.agents/agents/vllm-metax-branch-port-daily.md)
-  for idempotent scheduled runs with pre-approved scope, run-scoped worktrees and
-  automatic fresh-context applicability/final reviews.
 
 Clients with native subagent support may register these roles in their own
 configuration; the Markdown files supply their instructions. Native agent registration

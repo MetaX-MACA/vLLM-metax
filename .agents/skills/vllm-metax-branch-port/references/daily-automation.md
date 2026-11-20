@@ -9,8 +9,8 @@ then idempotent, run-scoped and blocked only by changed facts or unresolved risk
 Start one fresh Codex task from the repository root:
 
 ```text
-Read .agents/agents/vllm-metax-branch-port-daily.md and execute the daily port using
-$METAX_BRANCH_PORT_HOME/state/config.json. Do not request approval again for facts already
+Read .agents/agents/vllm-metax-branch-port.md and execute the daily port in daily mode
+using $METAX_BRANCH_PORT_HOME/state/config.json. Do not request approval again for facts already
 covered by that configuration. Do not merge or submit.
 ```
 

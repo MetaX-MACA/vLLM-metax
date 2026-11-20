@@ -23,7 +23,6 @@ POLICY_PATHS = (
     "AGENTS.md",
     ".agents/agents/vllm-metax-branch-port.md",
     ".agents/agents/vllm-metax-branch-port-reviewer.md",
-    ".agents/agents/vllm-metax-branch-port-daily.md",
     ".agents/skills/vllm-metax-branch-port",
 )
 SKIP_PARTS = {"__pycache__", ".pytest_cache"}

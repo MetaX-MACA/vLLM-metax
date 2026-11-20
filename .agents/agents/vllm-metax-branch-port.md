@@ -1,6 +1,6 @@
 ---
 name: vllm-metax-branch-port
-description: Coordinate independent linear-matrix vLLM-MetaX branch ports, including target-worktree environment preparation, version-coupled MetaX/vLLM installation, commit adaptation and matrix closure without the full-upgrade coordinator.
+description: Coordinate independent linear-matrix vLLM-MetaX branch ports in interactive or pre-approved daily mode, including target-worktree environment preparation, version-coupled MetaX/vLLM installation, commit adaptation and matrix closure without the full-upgrade coordinator.
 ---
 
 # vLLM-MetaX Branch Port Coordinator
@@ -75,6 +75,14 @@ and ask the user to confirm the named proposal or validation limit. Record
 the explicit answer is captured. Keep the item selected; continue independent work.
 Scope or PR-publication approval does not accept a new review risk. An approach
 confirmation does not approve unseen code, waive known failures or authorize merge.
+
+## Run modes
+
+- Interactive (default): confirm the resolved matrix and publication choice with the user,
+  then follow [Workflow](#workflow).
+- Daily: use only when the user explicitly asks to execute a scheduled run from
+  `$METAX_BRANCH_PORT_HOME/state/config.json`. Reuse the durable facts approved by that
+  configuration and follow [Daily mode](#daily-mode).
 
 ## Review risk tiers
 
@@ -161,6 +169,49 @@ full target-history search unless the target moved or the implementation deviate
     predecessor changes are actually merged into
     their target branch. For master commits, use the approved porting developer as
     author and committer and omit the `Source:` trailer.
+
+## Daily mode
+
+Read [daily-automation.md](../skills/vllm-metax-branch-port/references/daily-automation.md).
+The configuration pre-approves only the scope and publication facts it names. It does not
+approve unseen code, accept a material review risk, authorize merge or authorize Gerrit
+submission. Daily mode replaces the interactive matrix/publication confirmations, not the
+implementation, validation or independent-review safeguards.
+
+Use seven checkpoints:
+
+1. configuration and scope are valid;
+2. source/target/master refs and all source commits are frozen;
+3. worktree, branch, identity and clean state are correct;
+4. every inventory commit has a terminal disposition;
+5. all-files pre-commit and necessary targeted checks pass;
+6. the selected risk-tier review gate passes;
+7. the final commit and run state are recorded.
+
+Daily workflow:
+
+1. Run `daily_config.py detect`. Ask only unresolved configuration questions, then create
+   and validate the configuration before continuing.
+2. Freeze the configured refs, run `daily_preflight.py` and `daily_state.py`, and return
+   `NOOP` for the same completed run key.
+3. Audit every source-only non-merge commit and record its terminal disposition and
+   `risk_tier` in `RUN.json`.
+4. Run only the required review gates. Create the implementation worktree only after a
+   required pre-implementation gate passes.
+5. Implement, validate, rebase onto the latest frozen target and run a fresh final review.
+6. In local publication mode, create local commits and stop. Remote publication is allowed
+   only when the configuration explicitly approves the detected provider and refs.
+7. Release the worktree lease and record `COMPLETED`, `NOOP` or `BLOCKED`.
+
+The default local run keeps `RUN.json`, `AUDIT.md`, `REVIEW.json` and `VALIDATION.json`.
+`APPLICABILITY-REVIEW.json` exists only for `STANDARD` or `HIGH`; `PR_BODY.md` and
+`PUBLISH.json` exist only for approved remote publication.
+
+A hard stop records the artifacts, releases the lease and leaves remote state unchanged when
+configuration/scope is invalid, preflight or identity/version checks fail, a lease remains,
+review cannot pass, a new material risk is not approved, a known correctness failure remains,
+the reviewed SHA does not match, or the unattended runtime limit is exceeded. State
+“暂不满足自动合并” with specific reasons whenever the review gate remains blocked.
 
 ## Installation invariants
 

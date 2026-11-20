@@ -87,9 +87,9 @@ Absent versions are skipped automatically; they do not create placeholder edges.
 ## Daily automation
 
 For scheduled, pre-approved runs read [daily-automation.md](references/daily-automation.md)
-and use the [daily coordinator](../../agents/vllm-metax-branch-port-daily.md). Daily runs
-are idempotent by run key, use unique run-scoped worktrees with active leases, and apply
-the configured risk tier. `LOW` runs use one fresh final review; `STANDARD`/`HIGH` use a
+and invoke the [branch-port coordinator](../../agents/vllm-metax-branch-port.md) in daily
+mode. Daily runs are idempotent by run key, use unique run-scoped worktrees with active
+leases, and apply the configured risk tier. `LOW` runs use one fresh final review; `STANDARD`/`HIGH` use a
 focused pre-implementation applicability gate plus a separate final review. A new calendar
 day alone does not invalidate a SHA-bound review; source, target, patch, policy or
 environment changes do.

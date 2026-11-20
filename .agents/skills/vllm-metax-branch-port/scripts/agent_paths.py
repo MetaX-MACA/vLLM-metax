@@ -97,10 +97,10 @@ def policy_root(repo: Path) -> Path:
     if override:
         return Path(override).expanduser().resolve()
     repo = repo.resolve()
-    marker = repo / ".agents/agents/vllm-metax-branch-port-daily.md"
+    marker = repo / ".agents/agents/vllm-metax-branch-port.md"
     if marker.is_file():
         return repo
     sibling = repo.parent / f"{repo.name}-branch-port-policy"
-    if (sibling / ".agents/agents/vllm-metax-branch-port-daily.md").is_file():
+    if (sibling / ".agents/agents/vllm-metax-branch-port.md").is_file():
         return sibling.resolve()
     return repo
