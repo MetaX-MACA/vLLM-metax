@@ -53,7 +53,11 @@ class MacaAutoAWQConfig(AutoAWQConfig):
             if is_layer_skipped(
                 prefix,
                 getattr(self, "modules_to_not_convert", []),
-                skip_with_substr=True,
+                # /-------------------- MetaX Modification --------------------\
+                # vLLM >= v0.28 replaced the `skip_with_substr` flag with the
+                # keyword-only `match_mode` argument.
+                match_mode="substring",
+                # \-------------------- MetaX Modification --------------------/
             ):
                 return UnquantizedFusedMoEMethod(layer.moe_config)
             # Lazy import to avoid circular import.

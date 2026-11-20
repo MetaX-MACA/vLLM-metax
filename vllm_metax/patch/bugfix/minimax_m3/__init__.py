@@ -15,3 +15,4 @@
 from . import index_topk  # noqa: F401
 from . import sparse_attn  # noqa: F401
 from . import load_weights  # noqa: F401
+from . import video_processor_preprocess  # noqa: F401

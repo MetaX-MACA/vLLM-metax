@@ -997,6 +997,7 @@ def invoke_fused_moe_triton_kernel(
             EM,
             top_k,
             mul_routed_weight,
+            filter_expert=filter_expert,
         )
     elif use_int4_w4a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
         # if block_shape is None, then Per-Channel
@@ -1016,6 +1017,7 @@ def invoke_fused_moe_triton_kernel(
                 EM=EM,
                 topk=top_k,
                 mul_routed_weight=mul_routed_weight,
+                filter_expert=filter_expert,
             )
         else:
             mctlass_ops.cutlass_moe_w4a8_gemm(
@@ -1037,6 +1039,7 @@ def invoke_fused_moe_triton_kernel(
                 top_k,
                 mul_routed_weight,
                 group_size=block_shape[1],
+                filter_expert=filter_expert,
             )
     elif use_fp8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
         mctlass_ops.cutlass_moe_w8a8_fp8(
@@ -1286,6 +1289,7 @@ def dispatch_fused_moe_kernel(
                 topk=top_k,
                 group_size=block_shape[1],
                 b_zp=B_zp,
+                filter_expert=filter_expert,
             )
             return
 
@@ -2278,10 +2282,9 @@ def fused_experts_impl(
         block_shape=block_shape,
         ignore_invalid_experts=True,
     )
-    # Only MCTLASS consumes this flag. Alignment above drops invalid experts.
-    # _prepare_expert_assignment set ignore_invalid_experts to True here,
-    # filter_expert is False.
-    filter_expert = not mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+    # NOTE(metax): Invalid routes were dropped; processed blocks are nonnegative.
+    # Unused -1 tail blocks lie beyond num_tokens_post_padded.
+    filter_expert = False
 
     # -------- stage1 --------
     # SPLIT_K>1 uses tl.atomic_add, so output must be zero-initialized.
@@ -2344,9 +2347,6 @@ def fused_experts_impl(
                 ignore_invalid_experts=True,
             )
         )
-        if mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
-            filter_expert = False
-
     if expert_map is not None or staged_configs[1].get("SPLIT_K", 1) > 1:
         intermediate_cache3.zero_()
 

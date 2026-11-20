@@ -2329,10 +2329,26 @@ class MLACommonMetadataBuilder(AttentionMetadataBuilder[M]):
                 dcp_manager=self.dcp_manager,
             )
 
+            # `max_query_len` is the whole batch's maximum, which over-states
+            # the query length of this prefill sub-batch whenever a decode
+            # request in the same batch scheduled more tokens (spec decode
+            # schedules 1 + num_speculative_tokens). MetaX FlashAttention sizes
+            # its split-KV launch geometry from max_seqlen_q but allocates the
+            # split-KV scratch buffers from the rows actually passed in, so the
+            # over-statement makes the splitkv/combine kernels address past
+            # that buffer and traps the GPU
+            # (Xnack Error/ATU Fault -> illegal memory access -> engine dies).
+            # Reuse the CPU-side per-request lengths computed above: exact, and
+            # no device synchronization.
+            prefill_max_query_len = (
+                int(prefill_query_lens_cpu.max())
+                if num_prefills > 0 and prefill_query_lens_cpu.numel() > 0
+                else max_query_len
+            )
             prefill_metadata = MLACommonPrefillMetadata(
                 block_table=block_table_tensor[reqs_start:, ...],
                 query_start_loc=prefill_query_start_loc,
-                max_query_len=max_query_len,
+                max_query_len=prefill_max_query_len,
                 chunked_context=chunked_context_metadata,
                 output_dtype=self.model_config.dtype,
                 q_data_type=self.q_data_type,

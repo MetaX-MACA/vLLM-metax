@@ -35,12 +35,12 @@ deep_ep==1.0.0+metax3.9.0.11torch2.10
 apache-tvm-ffi==0.1.11+maca
 tilelang==0.1.12+maca
 
-deep_gemm==0.2.0+maca0.4.11.1
-mcoplib==0.4.11+ga3b69de.maca3.8.0.25.torch2.10
+deep_gemm==0.4.0+maca3.9.2.3
+mcoplib==0.4.14+gf3794c4.maca3.9.0.31.torch2.10
 
-lmcache==0.5.3+maca3.8.2.201
-nixl==1.0.0+maca3.8.2.208
-mooncake-transfer-engine==0.3.12+geb7daa.d20260903.maca3.8.2.104
+lmcache==0.5.4+maca3.9.0.1
+mixl==1.0.0+maca3.9.0.10
+mooncake-transfer-engine==0.3.12+g00951c.d20261012.maca3.9.0.0
 
 maca-python==0.0.1
 

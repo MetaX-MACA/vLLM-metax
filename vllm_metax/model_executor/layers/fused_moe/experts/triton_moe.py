@@ -216,6 +216,17 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
             swiglu_limit_func(output, input, activation_config.clamp_limit)
             return
 
+        # /------------------------- Metax Modification --------------------------\
+        if activation == MoEActivation.SWIGLUSTEP:
+            from vllm_metax._custom_ops import swiglustep_and_mul
+
+            limit = activation_config.clamp_limit
+            if limit is None:
+                limit = 7.0
+            swiglustep_and_mul(output, input, float(limit))
+            return
+        # \-----------------------------------------------------------------------/
+
         # SWIGLUOAI_UNINTERLEAVE routes to the silu_and_mul_with_clamp kernel and
         # requires a clamp limit. Other activations ignore these parameters.
         if activation == MoEActivation.SWIGLUOAI_UNINTERLEAVE:
@@ -556,6 +567,29 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 group_size=128,
                 quant_dtype=current_platform.fp8_dtype(),
             )
+        # /------------------------- Metax Modification --------------------------\
+        elif (
+            activation == MoEActivation.SWIGLUSTEP
+            and self.quant_config.use_fp8_w8a8
+            and self.block_shape == [128, 128]
+            and lora_context is None
+            and not is_deep_gemm_e8m0_used()
+        ):
+            from vllm_metax._custom_ops import (
+                swiglu_step_and_mul_per_block_quant,
+            )
+
+            limit = self.activation_config.clamp_limit
+            if limit is None:
+                limit = 7.0
+
+            qintermediate_cache2, a2q_scale = swiglu_step_and_mul_per_block_quant(
+                intermediate_cache1.view(-1, N),
+                group_size=128,
+                quant_dtype=current_platform.fp8_dtype(),
+                clamp_limit=float(limit),
+            )
+        # \-----------------------------------------------------------------------/
         else:
             self.activation(
                 activation, intermediate_cache2, intermediate_cache1.view(-1, N)

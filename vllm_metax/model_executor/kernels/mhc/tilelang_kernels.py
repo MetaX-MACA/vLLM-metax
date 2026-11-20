@@ -80,7 +80,7 @@ def mhc_pre_big_fuse_tilelang(
     comb_mix: T.Tensor[[num_tokens, hc_mult * hc_mult], T.float32]  # type: ignore[no-redef, valid-type]
     layer_input: T.Tensor[[num_tokens, hidden_size], T.bfloat16]  # type: ignore[no-redef, valid-type]
 
-    with T.Kernel(num_tokens, threads=96) as i:
+    with T.Kernel(num_tokens, threads=64) as i:
         if ENABLE_PDL:
             T.pdl_sync()
         ##################################################################
@@ -100,84 +100,99 @@ def mhc_pre_big_fuse_tilelang(
         mixes_shared = T.alloc_shared(hc_mult3, T.float32)
         T.copy(mixes, mixes_shared)
 
-        if T.get_thread_binding() < 32:
-            ##################################################################
-            # _pre_split_mixes_fwd (post & comb)
-            cm = T.alloc_fragment((hc_mult, hc_mult), T.float32)
-            for j in T.Parallel(hc_mult):
-                post_mix[i, j] = (
-                    T.sigmoid(
-                        mixes_shared[j + hc_mult] * hc_scale[1] + hc_base[j + hc_mult]
-                    )
-                    * hc_post_mult_value
-                )
-            for j, k in T.Parallel(hc_mult, hc_mult):
-                cm[j, k] = (
-                    mixes_shared[j * hc_mult + k + hc_mult * 2] * hc_scale[2]
-                    + hc_base[j * hc_mult + k + hc_mult * 2]
-                )
+        # /-------------------- MetaX Modification --------------------\
+        # Upstream runs the two work items below in a `tx < 32` / `else`
+        # divergent branch. Both branches use shared memory, so the compiler
+        # has to insert a shared-memory barrier inside a thread-divergent
+        # branch:
+        #   * maca-tilelang >= 0.1.13 refuses to lower it ("[ThreadSync]
+        #     Cannot lower a required shared-memory sync inside the else
+        #     branch ... Condition: not tx < 32"), so DeepSeek-V4 cannot
+        #     even start up;
+        #   * maca-tilelang 0.1.12 hoists that barrier out of the branch
+        #     instead, which silently corrupts `layer_input` (measured at
+        #     8192 tokens: 175 wrong rows out of 163840, max error 12.8).
+        # Running both work items with the whole block (64 threads) keeps
+        # every barrier at block scope. Verified against a float64 reference
+        # on tilelang 0.1.12 and 0.1.14.
+        # \-------------------- MetaX Modification --------------------/
 
-            ##################################################################
-            # _sinkhorn_fwd
-            row_sum = T.alloc_fragment(hc_mult, T.float32)
-            col_sum = T.alloc_fragment(hc_mult, T.float32)
+        ##################################################################
+        # _pre_split_mixes_fwd (post & comb)
+        cm = T.alloc_fragment((hc_mult, hc_mult), T.float32)
+        for j in T.Parallel(hc_mult):
+            post_mix[i, j] = (
+                T.sigmoid(
+                    mixes_shared[j + hc_mult] * hc_scale[1] + hc_base[j + hc_mult]
+                )
+                * hc_post_mult_value
+            )
+        for j, k in T.Parallel(hc_mult, hc_mult):
+            cm[j, k] = (
+                mixes_shared[j * hc_mult + k + hc_mult * 2] * hc_scale[2]
+                + hc_base[j * hc_mult + k + hc_mult * 2]
+            )
 
-            # comb = comb.softmax(-1) + eps
-            row_max = T.alloc_fragment(hc_mult, T.float32)
-            T.reduce_max(cm, row_max, dim=1)
-            for j, k in T.Parallel(hc_mult, hc_mult):
-                cm[j, k] = T.exp(cm[j, k] - row_max[j])
+        ##################################################################
+        # _sinkhorn_fwd
+        row_sum = T.alloc_fragment(hc_mult, T.float32)
+        col_sum = T.alloc_fragment(hc_mult, T.float32)
+
+        # comb = comb.softmax(-1) + eps
+        row_max = T.alloc_fragment(hc_mult, T.float32)
+        T.reduce_max(cm, row_max, dim=1)
+        for j, k in T.Parallel(hc_mult, hc_mult):
+            cm[j, k] = T.exp(cm[j, k] - row_max[j])
+        T.reduce_sum(cm, row_sum, dim=1)
+        for j, k in T.Parallel(hc_mult, hc_mult):
+            cm[j, k] = cm[j, k] / row_sum[j] + hc_sinkhorn_eps
+
+        # comb = comb / (comb.sum(-2) + eps)
+        T.reduce_sum(cm, col_sum, dim=0)
+        for j, k in T.Parallel(hc_mult, hc_mult):
+            cm[j, k] = cm[j, k] / (col_sum[k] + hc_sinkhorn_eps)
+
+        for _ in T.serial(sinkhorn_repeat - 1):
+            # comb = comb / (comb.sum(-1) + eps)
             T.reduce_sum(cm, row_sum, dim=1)
             for j, k in T.Parallel(hc_mult, hc_mult):
-                cm[j, k] = cm[j, k] / row_sum[j] + hc_sinkhorn_eps
+                cm[j, k] = cm[j, k] / (row_sum[j] + hc_sinkhorn_eps)
 
             # comb = comb / (comb.sum(-2) + eps)
             T.reduce_sum(cm, col_sum, dim=0)
             for j, k in T.Parallel(hc_mult, hc_mult):
                 cm[j, k] = cm[j, k] / (col_sum[k] + hc_sinkhorn_eps)
 
-            for _ in T.serial(sinkhorn_repeat - 1):
-                # comb = comb / (comb.sum(-1) + eps)
-                T.reduce_sum(cm, row_sum, dim=1)
-                for j, k in T.Parallel(hc_mult, hc_mult):
-                    cm[j, k] = cm[j, k] / (row_sum[j] + hc_sinkhorn_eps)
-
-                # comb = comb / (comb.sum(-2) + eps)
-                T.reduce_sum(cm, col_sum, dim=0)
-                for j, k in T.Parallel(hc_mult, hc_mult):
-                    cm[j, k] = cm[j, k] / (col_sum[k] + hc_sinkhorn_eps)
-
-            # save comb_mix to global memory
-            for j, k in T.Parallel(hc_mult, hc_mult):
-                comb_mix[i, j * hc_mult + k] = cm[j, k]
-        else:
-            ##################################################################
-            # _pre_split_mixes_fwd (pre)
-            pre_mix_shared = T.alloc_shared(hc_mult, T.float32)
-            for j in T.Parallel(hc_mult):
-                pre_mix_shared[j] = (
-                    T.sigmoid(
-                        mixes_shared[j] * hc_scale[0] + hc_base[j],
-                    )
-                    + hc_pre_eps
+        # save comb_mix to global memory
+        for j, k in T.Parallel(hc_mult, hc_mult):
+            comb_mix[i, j * hc_mult + k] = cm[j, k]
+        ##################################################################
+        # _pre_split_mixes_fwd (pre)
+        pre_mix_shared = T.alloc_shared(hc_mult, T.float32)
+        for j in T.Parallel(hc_mult):
+            pre_mix_shared[j] = (
+                T.sigmoid(
+                    mixes_shared[j] * hc_scale[0] + hc_base[j],
                 )
-            ###################################################################
-            # _pre_apply_mix_fwd
-            for i0_h in T.Pipelined(hidden_size // hidden_block, num_stages=2):
-                xs = T.alloc_shared((hc_mult, hidden_block), T.float32)
-                xl = T.alloc_fragment((hc_mult, hidden_block), T.float32)
-                T.copy(residual[i, 0, i0_h * hidden_block], xs)
-                T.copy(xs, xl)
+                + hc_pre_eps
+            )
+        ###################################################################
+        # _pre_apply_mix_fwd
+        for i0_h in T.Pipelined(hidden_size // hidden_block, num_stages=2):
+            xs = T.alloc_shared((hc_mult, hidden_block), T.float32)
+            xl = T.alloc_fragment((hc_mult, hidden_block), T.float32)
+            T.copy(residual[i, 0, i0_h * hidden_block], xs)
+            T.copy(xs, xl)
 
-                ol = T.alloc_fragment(hidden_block, T.float32)
-                T.clear(ol)
+            ol = T.alloc_fragment(hidden_block, T.float32)
+            T.clear(ol)
 
-                for i_hc in T.serial(hc_mult):
-                    pre = pre_mix_shared[i_hc]
-                    for i1_h in T.Parallel(hidden_block):
-                        ol[i1_h] += pre * xl[i_hc, i1_h]
+            for i_hc in T.serial(hc_mult):
+                pre = pre_mix_shared[i_hc]
+                for i1_h in T.Parallel(hidden_block):
+                    ol[i1_h] += pre * xl[i_hc, i1_h]
 
-                T.copy(ol, layer_input[i, i0_h * hidden_block])
+            T.copy(ol, layer_input[i, i0_h * hidden_block])
 
         if ENABLE_PDL:
             T.pdl_trigger()
@@ -226,7 +241,7 @@ def mhc_pre_big_fuse_with_norm_tilelang(
     layer_input: T.Tensor[[num_tokens, hidden_size], T.bfloat16]  # type: ignore[no-redef, valid-type]
     norm_weight: T.Tensor[[hidden_size], T.bfloat16]  # type: ignore[no-redef, valid-type]
 
-    with T.Kernel(num_tokens, threads=96) as i:
+    with T.Kernel(num_tokens, threads=64) as i:
         rms = T.alloc_fragment(1, T.float32)
         mixes = T.alloc_fragment(hc_mult3, T.float32)
         T.clear(mixes)
@@ -246,103 +261,118 @@ def mhc_pre_big_fuse_with_norm_tilelang(
         mixes_shared = T.alloc_shared(hc_mult3, T.float32)
         T.copy(mixes, mixes_shared)
 
-        if T.get_thread_binding() < 32:
-            cm = T.alloc_fragment((hc_mult, hc_mult), T.float32)
-            for j in T.Parallel(hc_mult):
-                post_mix[i, j] = (
-                    T.sigmoid(
-                        mixes_shared[j + hc_mult] * hc_scale[1] + hc_base[j + hc_mult]
-                    )
-                    * hc_post_mult_value
-                )
-            for j, k in T.Parallel(hc_mult, hc_mult):
-                cm[j, k] = (
-                    mixes_shared[j * hc_mult + k + hc_mult * 2] * hc_scale[2]
-                    + hc_base[j * hc_mult + k + hc_mult * 2]
-                )
+        # /-------------------- MetaX Modification --------------------\
+        # Upstream runs the two work items below in a `tx < 32` / `else`
+        # divergent branch. Both branches use shared memory, so the compiler
+        # has to insert a shared-memory barrier inside a thread-divergent
+        # branch:
+        #   * maca-tilelang >= 0.1.13 refuses to lower it ("[ThreadSync]
+        #     Cannot lower a required shared-memory sync inside the else
+        #     branch ... Condition: not tx < 32"), so DeepSeek-V4 cannot
+        #     even start up;
+        #   * maca-tilelang 0.1.12 hoists that barrier out of the branch
+        #     instead, which silently corrupts `layer_input` (measured at
+        #     8192 tokens: 175 wrong rows out of 163840, max error 12.8).
+        # Running both work items with the whole block (64 threads) keeps
+        # every barrier at block scope. Verified against a float64 reference
+        # on tilelang 0.1.12 and 0.1.14.
+        # \-------------------- MetaX Modification --------------------/
 
-            row_sum = T.alloc_fragment(hc_mult, T.float32)
-            col_sum = T.alloc_fragment(hc_mult, T.float32)
+        cm = T.alloc_fragment((hc_mult, hc_mult), T.float32)
+        for j in T.Parallel(hc_mult):
+            post_mix[i, j] = (
+                T.sigmoid(
+                    mixes_shared[j + hc_mult] * hc_scale[1] + hc_base[j + hc_mult]
+                )
+                * hc_post_mult_value
+            )
+        for j, k in T.Parallel(hc_mult, hc_mult):
+            cm[j, k] = (
+                mixes_shared[j * hc_mult + k + hc_mult * 2] * hc_scale[2]
+                + hc_base[j * hc_mult + k + hc_mult * 2]
+            )
 
-            row_max = T.alloc_fragment(hc_mult, T.float32)
-            T.reduce_max(cm, row_max, dim=1)
-            for j, k in T.Parallel(hc_mult, hc_mult):
-                cm[j, k] = T.exp(cm[j, k] - row_max[j])
+        row_sum = T.alloc_fragment(hc_mult, T.float32)
+        col_sum = T.alloc_fragment(hc_mult, T.float32)
+
+        row_max = T.alloc_fragment(hc_mult, T.float32)
+        T.reduce_max(cm, row_max, dim=1)
+        for j, k in T.Parallel(hc_mult, hc_mult):
+            cm[j, k] = T.exp(cm[j, k] - row_max[j])
+        T.reduce_sum(cm, row_sum, dim=1)
+        for j, k in T.Parallel(hc_mult, hc_mult):
+            cm[j, k] = cm[j, k] / row_sum[j] + hc_sinkhorn_eps
+
+        T.reduce_sum(cm, col_sum, dim=0)
+        for j, k in T.Parallel(hc_mult, hc_mult):
+            cm[j, k] = cm[j, k] / (col_sum[k] + hc_sinkhorn_eps)
+
+        for _ in T.serial(sinkhorn_repeat - 1):
             T.reduce_sum(cm, row_sum, dim=1)
             for j, k in T.Parallel(hc_mult, hc_mult):
-                cm[j, k] = cm[j, k] / row_sum[j] + hc_sinkhorn_eps
+                cm[j, k] = cm[j, k] / (row_sum[j] + hc_sinkhorn_eps)
 
             T.reduce_sum(cm, col_sum, dim=0)
             for j, k in T.Parallel(hc_mult, hc_mult):
                 cm[j, k] = cm[j, k] / (col_sum[k] + hc_sinkhorn_eps)
 
-            for _ in T.serial(sinkhorn_repeat - 1):
-                T.reduce_sum(cm, row_sum, dim=1)
-                for j, k in T.Parallel(hc_mult, hc_mult):
-                    cm[j, k] = cm[j, k] / (row_sum[j] + hc_sinkhorn_eps)
+        for j, k in T.Parallel(hc_mult, hc_mult):
+            comb_mix[i, j * hc_mult + k] = cm[j, k]
+        pre_mix_shared = T.alloc_shared(hc_mult, T.float32)
+        for j in T.Parallel(hc_mult):
+            pre_mix_shared[j] = (
+                T.sigmoid(
+                    mixes_shared[j] * hc_scale[0] + hc_base[j],
+                )
+                + hc_pre_eps
+            )
 
-                T.reduce_sum(cm, col_sum, dim=0)
-                for j, k in T.Parallel(hc_mult, hc_mult):
-                    cm[j, k] = cm[j, k] / (col_sum[k] + hc_sinkhorn_eps)
+        # Pass 1: stash unnormalized weighted-sum output in shared memory
+        # as bf16 (matches the rounding that RMSNorm would see) while
+        # accumulating the per-position squared sum.
+        output_shared = T.alloc_shared(hidden_size, T.bfloat16)
+        sumsq_per_pos = T.alloc_fragment(hidden_block, T.float32)
+        T.clear(sumsq_per_pos)
 
-            for j, k in T.Parallel(hc_mult, hc_mult):
-                comb_mix[i, j * hc_mult + k] = cm[j, k]
-        else:
-            pre_mix_shared = T.alloc_shared(hc_mult, T.float32)
-            for j in T.Parallel(hc_mult):
-                pre_mix_shared[j] = (
-                    T.sigmoid(
-                        mixes_shared[j] * hc_scale[0] + hc_base[j],
-                    )
-                    + hc_pre_eps
+        for i0_h in T.Pipelined(hidden_size // hidden_block, num_stages=2):
+            xs = T.alloc_shared((hc_mult, hidden_block), T.bfloat16)
+            xl = T.alloc_fragment((hc_mult, hidden_block), T.float32)
+            T.copy(residual[i, 0, i0_h * hidden_block], xs)
+            T.copy(xs, xl)
+
+            ol = T.alloc_fragment(hidden_block, T.float32)
+            T.clear(ol)
+
+            for i_hc in T.serial(hc_mult):
+                pre = pre_mix_shared[i_hc]
+                for i1_h in T.Parallel(hidden_block):
+                    ol[i1_h] += pre * xl[i_hc, i1_h]
+
+            for i1_h in T.Parallel(hidden_block):
+                sumsq_per_pos[i1_h] += ol[i1_h] * ol[i1_h]
+                output_shared[i0_h * hidden_block + i1_h] = T.bfloat16(ol[i1_h])
+
+        sumsq = T.alloc_fragment(1, T.float32)
+        T.reduce_sum(sumsq_per_pos, sumsq, dim=0)
+        rsqrt_norm = T.alloc_fragment(1, T.float32)
+        rsqrt_norm[0] = T.rsqrt(sumsq[0] / hidden_size + norm_eps)
+
+        # Pass 2: scale by rsqrt * norm_weight and write the result to HBM.
+        for i0_h in T.Pipelined(hidden_size // hidden_block, num_stages=2):
+            w_shared = T.alloc_shared(hidden_block, T.bfloat16)
+            w_local = T.alloc_fragment(hidden_block, T.float32)
+            T.copy(norm_weight[i0_h * hidden_block], w_shared)
+            T.copy(w_shared, w_local)
+
+            ol = T.alloc_fragment(hidden_block, T.float32)
+            for i1_h in T.Parallel(hidden_block):
+                ol[i1_h] = (
+                    output_shared[i0_h * hidden_block + i1_h]
+                    * rsqrt_norm[0]
+                    * w_local[i1_h]
                 )
 
-            # Pass 1: stash unnormalized weighted-sum output in shared memory
-            # as bf16 (matches the rounding that RMSNorm would see) while
-            # accumulating the per-position squared sum.
-            output_shared = T.alloc_shared(hidden_size, T.bfloat16)
-            sumsq_per_pos = T.alloc_fragment(hidden_block, T.float32)
-            T.clear(sumsq_per_pos)
-
-            for i0_h in T.Pipelined(hidden_size // hidden_block, num_stages=2):
-                xs = T.alloc_shared((hc_mult, hidden_block), T.bfloat16)
-                xl = T.alloc_fragment((hc_mult, hidden_block), T.float32)
-                T.copy(residual[i, 0, i0_h * hidden_block], xs)
-                T.copy(xs, xl)
-
-                ol = T.alloc_fragment(hidden_block, T.float32)
-                T.clear(ol)
-
-                for i_hc in T.serial(hc_mult):
-                    pre = pre_mix_shared[i_hc]
-                    for i1_h in T.Parallel(hidden_block):
-                        ol[i1_h] += pre * xl[i_hc, i1_h]
-
-                for i1_h in T.Parallel(hidden_block):
-                    sumsq_per_pos[i1_h] += ol[i1_h] * ol[i1_h]
-                    output_shared[i0_h * hidden_block + i1_h] = T.bfloat16(ol[i1_h])
-
-            sumsq = T.alloc_fragment(1, T.float32)
-            T.reduce_sum(sumsq_per_pos, sumsq, dim=0)
-            rsqrt_norm = T.alloc_fragment(1, T.float32)
-            rsqrt_norm[0] = T.rsqrt(sumsq[0] / hidden_size + norm_eps)
-
-            # Pass 2: scale by rsqrt * norm_weight and write the result to HBM.
-            for i0_h in T.Pipelined(hidden_size // hidden_block, num_stages=2):
-                w_shared = T.alloc_shared(hidden_block, T.bfloat16)
-                w_local = T.alloc_fragment(hidden_block, T.float32)
-                T.copy(norm_weight[i0_h * hidden_block], w_shared)
-                T.copy(w_shared, w_local)
-
-                ol = T.alloc_fragment(hidden_block, T.float32)
-                for i1_h in T.Parallel(hidden_block):
-                    ol[i1_h] = (
-                        output_shared[i0_h * hidden_block + i1_h]
-                        * rsqrt_norm[0]
-                        * w_local[i1_h]
-                    )
-
-                T.copy(ol, layer_input[i, i0_h * hidden_block])
+            T.copy(ol, layer_input[i, i0_h * hidden_block])
 
         if ENABLE_PDL:
             T.pdl_trigger()
@@ -390,7 +420,7 @@ def mhc_pre_big_fuse_broadcast_with_norm_tilelang(
     layer_input: T.Tensor[[num_tokens, hidden_size], T.bfloat16]  # type: ignore[no-redef, valid-type]
     norm_weight: T.Tensor[[hidden_size], T.bfloat16]  # type: ignore[no-redef, valid-type]
 
-    with T.Kernel(num_tokens, threads=96) as i:
+    with T.Kernel(num_tokens, threads=64) as i:
         rms = T.alloc_fragment(1, T.float32)
         mixes = T.alloc_fragment(hc_mult3, T.float32)
         T.clear(mixes)
@@ -411,102 +441,117 @@ def mhc_pre_big_fuse_broadcast_with_norm_tilelang(
         mixes_shared = T.alloc_shared(hc_mult3, T.float32)
         T.copy(mixes, mixes_shared)
 
-        if T.get_thread_binding() < 32:
-            cm = T.alloc_fragment((hc_mult, hc_mult), T.float32)
-            for j in T.Parallel(hc_mult):
-                post_mix[i, j] = (
-                    T.sigmoid(
-                        mixes_shared[j + hc_mult] * hc_scale[1] + hc_base[j + hc_mult]
-                    )
-                    * hc_post_mult_value
-                )
-            for j, k in T.Parallel(hc_mult, hc_mult):
-                cm[j, k] = (
-                    mixes_shared[j * hc_mult + k + hc_mult * 2] * hc_scale[2]
-                    + hc_base[j * hc_mult + k + hc_mult * 2]
-                )
+        # /-------------------- MetaX Modification --------------------\
+        # Upstream runs the two work items below in a `tx < 32` / `else`
+        # divergent branch. Both branches use shared memory, so the compiler
+        # has to insert a shared-memory barrier inside a thread-divergent
+        # branch:
+        #   * maca-tilelang >= 0.1.13 refuses to lower it ("[ThreadSync]
+        #     Cannot lower a required shared-memory sync inside the else
+        #     branch ... Condition: not tx < 32"), so DeepSeek-V4 cannot
+        #     even start up;
+        #   * maca-tilelang 0.1.12 hoists that barrier out of the branch
+        #     instead, which silently corrupts `layer_input` (measured at
+        #     8192 tokens: 175 wrong rows out of 163840, max error 12.8).
+        # Running both work items with the whole block (64 threads) keeps
+        # every barrier at block scope. Verified against a float64 reference
+        # on tilelang 0.1.12 and 0.1.14.
+        # \-------------------- MetaX Modification --------------------/
 
-            row_sum = T.alloc_fragment(hc_mult, T.float32)
-            col_sum = T.alloc_fragment(hc_mult, T.float32)
+        cm = T.alloc_fragment((hc_mult, hc_mult), T.float32)
+        for j in T.Parallel(hc_mult):
+            post_mix[i, j] = (
+                T.sigmoid(
+                    mixes_shared[j + hc_mult] * hc_scale[1] + hc_base[j + hc_mult]
+                )
+                * hc_post_mult_value
+            )
+        for j, k in T.Parallel(hc_mult, hc_mult):
+            cm[j, k] = (
+                mixes_shared[j * hc_mult + k + hc_mult * 2] * hc_scale[2]
+                + hc_base[j * hc_mult + k + hc_mult * 2]
+            )
 
-            row_max = T.alloc_fragment(hc_mult, T.float32)
-            T.reduce_max(cm, row_max, dim=1)
-            for j, k in T.Parallel(hc_mult, hc_mult):
-                cm[j, k] = T.exp(cm[j, k] - row_max[j])
+        row_sum = T.alloc_fragment(hc_mult, T.float32)
+        col_sum = T.alloc_fragment(hc_mult, T.float32)
+
+        row_max = T.alloc_fragment(hc_mult, T.float32)
+        T.reduce_max(cm, row_max, dim=1)
+        for j, k in T.Parallel(hc_mult, hc_mult):
+            cm[j, k] = T.exp(cm[j, k] - row_max[j])
+        T.reduce_sum(cm, row_sum, dim=1)
+        for j, k in T.Parallel(hc_mult, hc_mult):
+            cm[j, k] = cm[j, k] / row_sum[j] + hc_sinkhorn_eps
+
+        T.reduce_sum(cm, col_sum, dim=0)
+        for j, k in T.Parallel(hc_mult, hc_mult):
+            cm[j, k] = cm[j, k] / (col_sum[k] + hc_sinkhorn_eps)
+
+        for _ in T.serial(sinkhorn_repeat - 1):
             T.reduce_sum(cm, row_sum, dim=1)
             for j, k in T.Parallel(hc_mult, hc_mult):
-                cm[j, k] = cm[j, k] / row_sum[j] + hc_sinkhorn_eps
+                cm[j, k] = cm[j, k] / (row_sum[j] + hc_sinkhorn_eps)
 
             T.reduce_sum(cm, col_sum, dim=0)
             for j, k in T.Parallel(hc_mult, hc_mult):
                 cm[j, k] = cm[j, k] / (col_sum[k] + hc_sinkhorn_eps)
 
-            for _ in T.serial(sinkhorn_repeat - 1):
-                T.reduce_sum(cm, row_sum, dim=1)
-                for j, k in T.Parallel(hc_mult, hc_mult):
-                    cm[j, k] = cm[j, k] / (row_sum[j] + hc_sinkhorn_eps)
+        for j, k in T.Parallel(hc_mult, hc_mult):
+            comb_mix[i, j * hc_mult + k] = cm[j, k]
+        pre_mix_shared = T.alloc_shared(hc_mult, T.float32)
+        for j in T.Parallel(hc_mult):
+            pre_mix_shared[j] = (
+                T.sigmoid(
+                    mixes_shared[j] * hc_scale[0] + hc_base[j],
+                )
+                + hc_pre_eps
+            )
 
-                T.reduce_sum(cm, col_sum, dim=0)
-                for j, k in T.Parallel(hc_mult, hc_mult):
-                    cm[j, k] = cm[j, k] / (col_sum[k] + hc_sinkhorn_eps)
+        output_shared = T.alloc_shared(hidden_size, T.bfloat16)
+        sumsq_per_pos = T.alloc_fragment(hidden_block, T.float32)
+        T.clear(sumsq_per_pos)
 
-            for j, k in T.Parallel(hc_mult, hc_mult):
-                comb_mix[i, j * hc_mult + k] = cm[j, k]
-        else:
-            pre_mix_shared = T.alloc_shared(hc_mult, T.float32)
-            for j in T.Parallel(hc_mult):
-                pre_mix_shared[j] = (
-                    T.sigmoid(
-                        mixes_shared[j] * hc_scale[0] + hc_base[j],
-                    )
-                    + hc_pre_eps
+        for i0_h in T.Pipelined(hidden_size // hidden_block, num_stages=2):
+            xs = T.alloc_shared(hidden_block, T.bfloat16)
+            xl = T.alloc_fragment(hidden_block, T.float32)
+            T.copy(residual[i, i0_h * hidden_block], xs)
+            T.copy(xs, xl)
+
+            for i_hc, i1_h in T.Parallel(hc_mult, hidden_block):
+                residual_out[i, i_hc, i0_h * hidden_block + i1_h] = xs[i1_h]
+
+            ol = T.alloc_fragment(hidden_block, T.float32)
+            T.clear(ol)
+
+            for i_hc in T.serial(hc_mult):
+                pre = pre_mix_shared[i_hc]
+                for i1_h in T.Parallel(hidden_block):
+                    ol[i1_h] += pre * xl[i1_h]
+
+            for i1_h in T.Parallel(hidden_block):
+                sumsq_per_pos[i1_h] += ol[i1_h] * ol[i1_h]
+                output_shared[i0_h * hidden_block + i1_h] = T.bfloat16(ol[i1_h])
+
+        sumsq = T.alloc_fragment(1, T.float32)
+        T.reduce_sum(sumsq_per_pos, sumsq, dim=0)
+        rsqrt_norm = T.alloc_fragment(1, T.float32)
+        rsqrt_norm[0] = T.rsqrt(sumsq[0] / hidden_size + norm_eps)
+
+        for i0_h in T.Pipelined(hidden_size // hidden_block, num_stages=2):
+            w_shared = T.alloc_shared(hidden_block, T.bfloat16)
+            w_local = T.alloc_fragment(hidden_block, T.float32)
+            T.copy(norm_weight[i0_h * hidden_block], w_shared)
+            T.copy(w_shared, w_local)
+
+            ol = T.alloc_fragment(hidden_block, T.float32)
+            for i1_h in T.Parallel(hidden_block):
+                ol[i1_h] = (
+                    output_shared[i0_h * hidden_block + i1_h]
+                    * rsqrt_norm[0]
+                    * w_local[i1_h]
                 )
 
-            output_shared = T.alloc_shared(hidden_size, T.bfloat16)
-            sumsq_per_pos = T.alloc_fragment(hidden_block, T.float32)
-            T.clear(sumsq_per_pos)
-
-            for i0_h in T.Pipelined(hidden_size // hidden_block, num_stages=2):
-                xs = T.alloc_shared(hidden_block, T.bfloat16)
-                xl = T.alloc_fragment(hidden_block, T.float32)
-                T.copy(residual[i, i0_h * hidden_block], xs)
-                T.copy(xs, xl)
-
-                for i_hc, i1_h in T.Parallel(hc_mult, hidden_block):
-                    residual_out[i, i_hc, i0_h * hidden_block + i1_h] = xs[i1_h]
-
-                ol = T.alloc_fragment(hidden_block, T.float32)
-                T.clear(ol)
-
-                for i_hc in T.serial(hc_mult):
-                    pre = pre_mix_shared[i_hc]
-                    for i1_h in T.Parallel(hidden_block):
-                        ol[i1_h] += pre * xl[i1_h]
-
-                for i1_h in T.Parallel(hidden_block):
-                    sumsq_per_pos[i1_h] += ol[i1_h] * ol[i1_h]
-                    output_shared[i0_h * hidden_block + i1_h] = T.bfloat16(ol[i1_h])
-
-            sumsq = T.alloc_fragment(1, T.float32)
-            T.reduce_sum(sumsq_per_pos, sumsq, dim=0)
-            rsqrt_norm = T.alloc_fragment(1, T.float32)
-            rsqrt_norm[0] = T.rsqrt(sumsq[0] / hidden_size + norm_eps)
-
-            for i0_h in T.Pipelined(hidden_size // hidden_block, num_stages=2):
-                w_shared = T.alloc_shared(hidden_block, T.bfloat16)
-                w_local = T.alloc_fragment(hidden_block, T.float32)
-                T.copy(norm_weight[i0_h * hidden_block], w_shared)
-                T.copy(w_shared, w_local)
-
-                ol = T.alloc_fragment(hidden_block, T.float32)
-                for i1_h in T.Parallel(hidden_block):
-                    ol[i1_h] = (
-                        output_shared[i0_h * hidden_block + i1_h]
-                        * rsqrt_norm[0]
-                        * w_local[i1_h]
-                    )
-
-                T.copy(ol, layer_input[i, i0_h * hidden_block])
+            T.copy(ol, layer_input[i, i0_h * hidden_block])
 
         if ENABLE_PDL:
             T.pdl_trigger()

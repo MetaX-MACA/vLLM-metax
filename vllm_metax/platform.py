@@ -1049,6 +1049,17 @@ mx_envs.maybe_override_vllm_env(
     "USE_DEEP_GEMM_E8M0 default to false on Maca platform",
 )
 
+mx_envs.maybe_override_vllm_env(
+    "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS",
+    False,
+    "disable CUDA graph memory estimate in the KV cache budget on Maca platform",
+)
+
+mx_envs.maybe_override_vllm_env(
+    "VLLM_DISABLE_SHARED_EXPERTS_STREAM",
+    True,
+    "Disabling MoE shared_experts cuda stream on Maca",
+)
 
 # --------------------------------------------------
 # Note: vllm_metax currently does not support third-party
