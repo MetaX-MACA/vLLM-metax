@@ -24,6 +24,8 @@ if TYPE_CHECKING:
     VLLM_METAX_USE_FLASHINFER_SAMPLER: bool = False
     VLLM_METAX_DISABLE_ASYNC_OUTPUT: bool = True
     VLLM_METAX_ENABLE_MRV2_HWQ_BALANCING: bool = False
+    VLLM_METAX_MASKED_INT8_MOE: bool = True
+    VLLM_METAX_NATIVE_MASKED_ACT: bool = False
     VLLM_METAX_MOONCAKE_EARLY_READY: bool = True
 
 environment_variables: dict[str, Callable[[], Any]] = {
@@ -102,6 +104,15 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # Opt in to MACA queue balancing with MRV2 asynchronous output.
     "VLLM_METAX_ENABLE_MRV2_HWQ_BALANCING": lambda: (
         os.environ.get("VLLM_METAX_ENABLE_MRV2_HWQ_BALANCING", "0") == "1"
+    ),
+    # Enable masked MoE with per-token INT8 activations for INT8 and INT4
+    # weights. Set to 0 to disable it for both weight formats.
+    "VLLM_METAX_MASKED_INT8_MOE": lambda: bool(
+        int(os.environ.get("VLLM_METAX_MASKED_INT8_MOE", "1"))
+    ),
+    # Use mcoplib's native fused activation/quant/pack kernel when available.
+    "VLLM_METAX_NATIVE_MASKED_ACT": lambda: bool(
+        int(os.environ.get("VLLM_METAX_NATIVE_MASKED_ACT", "0"))
     ),
     # Notify Mooncake P workers as soon as a request becomes ready to send,
     # without waiting for the next batch metadata.

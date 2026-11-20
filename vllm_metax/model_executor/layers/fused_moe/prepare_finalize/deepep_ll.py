@@ -22,6 +22,16 @@ from vllm.model_executor.layers.fused_moe.topk_weight_and_reduce import (
 )
 from importlib import metadata
 
+from vllm_metax.model_executor.layers.fused_moe import (
+    masked_int8_moe,
+    source_packed_dispatch,
+)
+from vllm_metax.model_executor.layers.fused_moe.deepep_fixed_geometry import (
+    copy_valid_rows,
+    map_expert_ids,
+    wire_experts,
+)
+
 logger = init_logger(__name__)
 
 # DeepEP kernels quantize dispatch inputs in 128 element chunks.
@@ -65,6 +75,9 @@ class MacaDeepEPLLPrepareAndFinalize(DeepEPLLPrepareAndFinalize):
                 "Please select an MoE kernel that accepts quantized inputs."
             )
 
+        # /---------------- MetaX Modification ---------------\
+        source_packed = source_packed_dispatch.transport_for(a1)
+        # \---------------- MetaX Modification ---------------/
         hidden_size = a1.size(1)
         assert hidden_size in self.SUPPORTED_HIDDEN_SIZES, (
             f"Hidden Size {hidden_size} not in supported list of hidden sizes"
@@ -111,6 +124,18 @@ class MacaDeepEPLLPrepareAndFinalize(DeepEPLLPrepareAndFinalize):
 
         # Dispatch
         dispatch_topk_ids = self._map_global_to_physical_ids(topk_ids)
+        transport_experts = wire_experts(self.buffer, num_experts)
+        if transport_experts != num_experts:
+            if not quant_config.use_int4_w4a8 or self.use_fp8_dispatch:
+                raise NotImplementedError(
+                    "Fixed expert geometry currently supports BF16 W4A8 transport"
+                )
+            dispatch_topk_ids = map_expert_ids(
+                dispatch_topk_ids,
+                num_experts,
+                transport_experts,
+                self.buffer.group_size,
+            )
         (
             expert_x,
             expert_num_tokens,
@@ -118,10 +143,12 @@ class MacaDeepEPLLPrepareAndFinalize(DeepEPLLPrepareAndFinalize):
             _,
             hook,
         ) = self.buffer.low_latency_dispatch(
-            a1,
+            # /---------------- MetaX Modification ---------------\
+            a1 if source_packed is None else source_packed,
+            # \---------------- MetaX Modification ---------------/
             dispatch_topk_ids,
             self.max_tokens_per_rank,
-            num_experts,
+            transport_experts,
             use_fp8=self.use_fp8_dispatch,
             **(
                 dict(topk_weights=topk_weights)
@@ -131,7 +158,37 @@ class MacaDeepEPLLPrepareAndFinalize(DeepEPLLPrepareAndFinalize):
             async_finish=False,
             return_recv_hook=True,
         )
+        # /---------------- MetaX Modification ---------------\
+        if source_packed is not None:
+            # Dispatch uses a byte carrier; combine sends the real BF16 hidden size.
+            # Preserve source info, expert layout and buffer capacity exactly.
+            handle = (handle[0], handle[1], handle[2], hidden_size, handle[4])
+        # \---------------- MetaX Modification ---------------/
         self.handles[a2a_idx] = handle
+        if not hasattr(self, "_metax_wire_states"):
+            self._metax_wire_states: dict[
+                int, tuple[int, int, torch.Tensor, torch.Tensor] | None
+            ] = {}
+        self._metax_wire_states[a2a_idx] = None
+        if transport_experts != num_experts:
+            assert (
+                isinstance(expert_x, torch.Tensor) and expert_x.dtype == torch.bfloat16
+            )
+            local_experts = num_experts // self.buffer.group_size
+            valid_counts = expert_num_tokens[:local_experts]
+            combine_view = expert_x
+            if source_packed is not None:
+                combine_view = source_packed_dispatch.combine_workspace(
+                    self.buffer, expert_x, hidden_size, a2a_idx
+                )
+            self._metax_wire_states[a2a_idx] = (
+                num_experts,
+                transport_experts,
+                combine_view,
+                valid_counts,
+            )
+            expert_x = expert_x[:local_experts]
+            expert_num_tokens = valid_counts
 
         return (
             hook,
@@ -141,8 +198,79 @@ class MacaDeepEPLLPrepareAndFinalize(DeepEPLLPrepareAndFinalize):
                 quant_config.a1_scale,
                 a1.dtype,
                 quant_config,
+                # /---------------- MetaX Modification ---------------\
+                packed_hidden_size=hidden_size if source_packed is not None else None,
+                # \---------------- MetaX Modification ---------------/
             ),
         )
+
+    def _receiver(
+        self,
+        expert_x: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
+        expert_num_tokens: torch.Tensor,
+        a1_scale: torch.Tensor | None,
+        a1_dtype: torch.dtype,
+        quant_config: FusedMoEQuantConfig,
+        # /---------------- MetaX Modification ---------------\
+        packed_hidden_size: int | None = None,
+        # \---------------- MetaX Modification ---------------/
+    ) -> mk.PrepareResultType:
+        # /---------------- MetaX Modification ---------------\
+        packed_input = None
+        if packed_hidden_size is not None:
+            if (
+                not isinstance(expert_x, torch.Tensor)
+                or expert_x.dtype != torch.bfloat16
+            ):
+                raise ValueError("Packed receiver requires a BF16 byte carrier")
+            e, t, width = expert_x.shape
+            if (
+                width != source_packed_dispatch.carrier_width(packed_hidden_size)
+                or not expert_x.is_contiguous()
+            ):
+                raise ValueError("Unsupported packed receive layout")
+            # Pass the ENTIRE padded carrier to native GEMM, as SGL does.
+            # No quantization, unpack, compact copy, cat or zero kernel here.
+            packed_input = expert_x.view(torch.int8)
+            # Shape-only ABI placeholders for the existing modular allocator.
+            # Neither is initialized/read by the guarded packed experts path.
+            # Keep K=hidden size so output/workspace/combine dimensions stay correct.
+            _cache = getattr(self.buffer, "_metax_w4a8_expert_x_scratch", None)
+            if _cache is None:
+                _cache = self.buffer._metax_w4a8_expert_x_scratch = {}
+            _key = ((e, t, packed_hidden_size), expert_x.device)
+            if _key not in _cache:
+                _cache[_key] = torch.empty(
+                    (e, t, packed_hidden_size), device=expert_x.device, dtype=torch.int8
+                )
+            expert_x = _cache[_key]
+            expert_x_scale = torch.empty(
+                (e, t, 1), device=expert_x.device, dtype=torch.float32
+            )
+        elif (
+            masked_int8_moe.enabled()
+            and (quant_config.use_int8_w8a8 or quant_config.use_int4_w4a8)
+            and quant_config.per_act_token_quant
+            and quant_config.a1_scale is None
+            and quant_config.block_shape is None
+            and not self.use_fp8_dispatch
+            and isinstance(expert_x, torch.Tensor)
+            and expert_x.dtype == torch.bfloat16
+        ):
+            expert_x, expert_x_scale, packed_input = (
+                masked_int8_moe.quantize_and_pack_valid_rows(
+                    expert_x, expert_num_tokens
+                )
+            )
+        else:
+            expert_x, expert_x_scale = self._do_quant(expert_x, a1_dtype, quant_config)
+
+        expert_tokens_meta = masked_int8_moe.PackedInt8TokensMetadata(
+            expert_num_tokens, packed_input
+        )
+        # \---------------- MetaX Modification ---------------/
+
+        return expert_x, expert_x_scale, expert_tokens_meta, None, None
 
     def _finalize(
         self,
@@ -169,6 +297,16 @@ class MacaDeepEPLLPrepareAndFinalize(DeepEPLLPrepareAndFinalize):
             combine_topk_weights = torch.ones_like(topk_weights)
 
         combine_topk_ids = self._map_global_to_physical_ids(topk_ids)
+        state = getattr(self, "_metax_wire_states", {}).get(a2a_idx)
+        if state is not None:
+            actual, wire, wire_recv, valid_counts = state
+            combine_topk_ids = map_expert_ids(
+                combine_topk_ids, actual, wire, self.buffer.group_size
+            )
+            # Only computed rows enter the native wire view; unused expert
+            # slots have zero counts and are never read by combine.
+            copy_valid_rows(wire_recv, fused_expert_output, valid_counts)
+            fused_expert_output = wire_recv
         # TODO (varun) : Enable zero copy mode
         dbo_maybe_run_recv_hook()
         combined, _, recv_hook = self.buffer.low_latency_combine(
