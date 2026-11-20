@@ -44,9 +44,10 @@ repos:
 - repo: local
   hooks:
   - id: mypy # TODO: Use https://github.com/pre-commit/mirrors-mypy when mypy setup is less awkward
-    name: Run mypy for the oldest supported Python version
-    entry: python tools/pre_commit/mypy.py "3.11"
+    name: Run mypy for Python 3.12
+    entry: python tools/pre_commit/mypy.py "3.12"
     language: python
+    language_version: python3.12
     types_or: [python, pyi]
     exclude: ^tests/
     require_serial: true
