@@ -214,6 +214,78 @@ class MacaDeepEPHTAll2AllManager(DeepEPHTAll2AllManager):
 
 
 class MacaDeepEPLLAll2AllManager(DeepEPLLAll2AllManager):
+    # The installed native runtime supports one CPU RDMA team per process.
+    # Target/draft manager wrappers may differ, but identical ordered EP ranks
+    # and geometry can safely share a buffer under sequential model execution.
+    _shared_ll_handle = None
+    _shared_ll_geometry = None
+
+    def get_handle(self, kwargs):
+        import os
+        import torch.distributed as dist
+
+        capacity = int(os.getenv("VLLM_METAX_DEEPEP_LL_BUFFER_MAX_TOKENS", "0"))
+        if capacity == 0:
+            return super().get_handle(kwargs)
+        expert_capacity = int(
+            os.getenv(
+                "VLLM_METAX_DEEPEP_LL_BUFFER_MAX_EXPERTS",
+                str(kwargs["num_global_experts"]),
+            )
+        )
+        ranks = kwargs["num_ep_ranks"]
+        if capacity < kwargs["max_num_tokens_per_dp_rank"]:
+            raise ValueError(
+                "DeepEP shared LL capacity is smaller than requested token capacity"
+            )
+        if (
+            expert_capacity < kwargs["num_global_experts"]
+            or expert_capacity % ranks
+            or kwargs["num_global_experts"] != ranks * kwargs["num_local_experts"]
+        ):
+            raise ValueError(
+                "DeepEP shared LL expert allocation cannot accommodate requested expert geometry"
+            )
+        geometry = (
+            tuple(dist.get_process_group_ranks(self.cpu_group)),
+            torch.cuda.current_device(),
+            kwargs["token_hidden_size"],
+            ranks,
+            expert_capacity,
+            expert_capacity // ranks,
+            capacity,
+            envs.VLLM_DEEPEP_BUFFER_SIZE_MB,
+        )
+        cls = MacaDeepEPLLAll2AllManager
+        from vllm.logger import init_logger
+
+        init_logger(__name__).warning_once(
+            "MetaX DeepEP LL shared buffer: capacity=%s requested_tokens=%d requested_experts=%d reused=%s",
+            geometry,
+            kwargs["max_num_tokens_per_dp_rank"],
+            kwargs["num_global_experts"],
+            cls._shared_ll_handle is not None,
+        )
+        if cls._shared_ll_handle is not None:
+            if cls._shared_ll_geometry != geometry:
+                raise ValueError(
+                    f"Native DeepEP LL buffer rank/hidden geometry mismatch: existing={cls._shared_ll_geometry}, requested={geometry}"
+                )
+            DeepEPLLAll2AllManager._buffer = cls._shared_ll_handle
+            return cls._shared_ll_handle
+        # Only reserve upper bounds. Dispatch/combine still receive the actual
+        # model expert count (target384, DSpark128) and token count on each call.
+        normalized = dict(
+            kwargs,
+            max_num_tokens_per_dp_rank=capacity,
+            num_global_experts=expert_capacity,
+            num_local_experts=expert_capacity // ranks,
+        )
+        handle = super().get_handle(normalized)
+        cls._shared_ll_handle = handle
+        cls._shared_ll_geometry = geometry
+        return handle
+
     def _make_all2all_kwargs(
         self,
         max_num_tokens_per_dp_rank: int,
@@ -236,6 +308,29 @@ class MacaDeepEPLLAll2AllManager(DeepEPLLAll2AllManager):
         )
 
         import deep_ep  # type: ignore[import-not-found]
+
+        # Target and DSpark draft models can request different token capacities.
+        # Round both allocations up to the configured capacity so the existing
+        # handle cache reuses the same native RDMA team. Per-call token bounds
+        # remain unchanged. Cache keys still include group/geometry/QP count.
+        allocation_capacity = int(
+            os.getenv("VLLM_METAX_DEEPEP_LL_BUFFER_MAX_TOKENS", "0")
+        )
+        if allocation_capacity < 0:
+            raise ValueError("DeepEP LL buffer capacity must be nonnegative")
+        requested_capacity = max_num_tokens_per_dp_rank
+        max_num_tokens_per_dp_rank = max(requested_capacity, allocation_capacity)
+        if allocation_capacity:
+            from vllm.logger import init_logger
+
+            init_logger(__name__).info_once(
+                "DeepEP LL buffer capacity: requested=%d allocated=%d hidden=%d EP=%d experts=%d",
+                requested_capacity,
+                max_num_tokens_per_dp_rank,
+                token_hidden_size,
+                num_ep_ranks,
+                num_global_experts,
+            )
 
         # Defaults for internode and intranode are taken from DeepEP tests.
         num_nvl_bytes = envs.VLLM_DEEPEP_BUFFER_SIZE_MB * 1024 * 1024
