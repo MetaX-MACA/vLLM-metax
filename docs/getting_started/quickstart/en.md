@@ -23,7 +23,7 @@ Currently the recommended way to start ***vLLM-MetaX*** is via *docker*.
 
 | plugin version | maca version | mcoplib version | docker image url |
 | :---: | :---: | :---: | :---: |
-| v0.29.0 | maca3.8.2.x | 0.4.14 | [vllm-metax:0.29.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.29.0-torch2.10) |
+| v0.29.0 | maca3.9.0.x | 0.4.14 | [vllm-metax:0.29.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.29.0-torch2.10) |
 | v0.28.0 | maca3.8.2.x | 0.4.13 | [vllm-metax:0.28.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.28.0-torch2.10) |
 | v0.27.0 | maca3.8.2.x | 0.4.12 | [vllm-metax:0.27.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.27.0-torch2.10) |
 | v0.26.0 | maca3.8.2.x | 0.4.11 | [vllm-metax:0.26.0](https://developer.metax-tech.com/softnova/docker?package_name=vllm-metax:0.26.0-torch2.10) |
