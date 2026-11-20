@@ -97,6 +97,14 @@ def _missing(*_: Any, **__: Any) -> NoReturn:
     )
 
 
+def _paged_mqa_context_lens(context_lens: torch.Tensor) -> torch.Tensor:
+    """Return context lengths with a version counter usable by MACA caches."""
+    if not torch.is_inference(context_lens):
+        return context_lens
+    with torch.inference_mode(False):
+        return context_lens.clone()
+
+
 _grouped_impl: Callable[..., Any] | None = None
 _fp8_grouped_masked_impl: Callable[..., Any] | None = None
 _fp8_gemm_nt_impl: Callable[..., Any] | None = None
@@ -247,6 +255,7 @@ def get_paged_mqa_logits_metadata(
     _lazy_init()
     if _get_paged_mqa_logits_metadata_impl is None:
         return _missing()
+    context_lens = _paged_mqa_context_lens(context_lens)
     return _get_paged_mqa_logits_metadata_impl(context_lens, block_size, num_sms)
 
 
@@ -337,6 +346,7 @@ def bf16_paged_mqa_logits(
     _lazy_init()
     if _bf16_paged_mqa_logits_impl is None:
         return _missing()
+    context_lens = _paged_mqa_context_lens(context_lens)
     return _bf16_paged_mqa_logits_impl(
         q_bf16,
         kv_cache_bf16,
@@ -593,6 +603,7 @@ def int8_paged_mqa_logits(
     _lazy_init()
     if _int8_paged_mqa_logits_impl is None:
         return _missing()
+    context_lens = _paged_mqa_context_lens(context_lens)
     # if not kv_cache.is_contiguous():
     #     return _int8_paged_mqa_logits_strided(
     #         q,
@@ -736,6 +747,7 @@ def fp8_paged_mqa_logits(
     _lazy_init()
     if _fp8_paged_mqa_logits_impl is None:
         return _missing()
+    context_lens = _paged_mqa_context_lens(context_lens)
     return _fp8_paged_mqa_logits_impl(
         q,
         kv_cache,
@@ -815,6 +827,7 @@ def fp8_fp4_paged_mqa_logits(
     _lazy_init()
     if _fp8_fp4_paged_mqa_logits_impl is None:
         return _missing()
+    context_lens = _paged_mqa_context_lens(context_lens)
     return _fp8_fp4_paged_mqa_logits_impl(
         q,
         kv_cache,
@@ -877,6 +890,7 @@ def get_paged_sparse_mqa_logits_metadata(
     _lazy_init()
     if _get_paged_sparse_mqa_logits_metadata_impl is None:
         return _missing()
+    context_lens = _paged_mqa_context_lens(context_lens)
     return _get_paged_sparse_mqa_logits_metadata_impl(
         sparse_indices, context_lens, block_table, page_kv
     )
@@ -939,6 +953,7 @@ def fp8_fp4_sparse_paged_mqa_logits(
     _lazy_init()
     if _fp8_paged_sparse_mqa_logits_impl is None:
         return _missing()
+    context_lens = _paged_mqa_context_lens(context_lens)
     return _fp8_paged_sparse_mqa_logits_impl(
         q,
         kv_cache,
