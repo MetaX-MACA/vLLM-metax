@@ -15,6 +15,7 @@ from typing import Any
 
 import regex as re
 
+from agent_paths import config_path, default_worktree_root, scope_path
 from runtime_fingerprint import compute_fingerprint
 
 MX_BRANCH_RE = re.compile(r"^mx/v(?P<version>\d+\.\d+\.\d+)-dev$")
@@ -33,14 +34,6 @@ def git_output(repo: Path, *args: str) -> str:
             f"git {' '.join(args)} failed in {repo}: {result.stderr.strip()}"
         )
     return result.stdout.strip()
-
-
-def config_path(repo: Path) -> Path:
-    return repo / ".metax-branch-port" / "DAILY-CONFIG.json"
-
-
-def scope_path(repo: Path) -> Path:
-    return repo / ".metax-branch-port" / "DAILY-SCOPE.json"
 
 
 def atomic_json(path: Path, data: dict[str, Any]) -> None:
@@ -436,7 +429,7 @@ def detect(repo: Path) -> dict[str, Any]:
                 "publish_pending_verification": True,
             },
             "worktree": {
-                "root": str(repo.parent / ".metax-worktrees"),
+                "root": str(default_worktree_root(repo)),
                 "lease_hours": 24,
                 "retain_days": 14,
                 "active_lease_policy": "wait",
@@ -501,8 +494,8 @@ def create_from_answers(
             "notes", "Created from daily configuration questionnaire."
         ),
     }
-    relative_scope = str(scope_file.relative_to(repo))
-    worktree_root = answers.get("worktree_root", str(repo.parent / ".metax-worktrees"))
+    relative_scope = str(scope_file.resolve())
+    worktree_root = answers.get("worktree_root", str(default_worktree_root(repo)))
     environment_fingerprint = (
         answers.get("environment_fingerprint") or compute_fingerprint()["fingerprint"]
     )

@@ -67,7 +67,7 @@ Run after the commit audit and before user approval of the port implementation. 
 every selected commit or child intent. The artifact is:
 
 ```text
-.metax-branch-port/runs/<run>/ADVERSARIAL-APPLICABILITY.json
+$METAX_BRANCH_PORT_HOME/runs/<run>/ADVERSARIAL-APPLICABILITY.json
 ```
 
 The gate must establish target-first evidence and a concrete falsification plan. If the
@@ -81,7 +81,7 @@ Gerrit review or creating/updating a GitHub PR. Review every intent still repres
 the patch. The artifact is:
 
 ```text
-.metax-branch-port/runs/<run>/ADVERSARIAL-FINAL.json
+$METAX_BRANCH_PORT_HOME/runs/<run>/ADVERSARIAL-FINAL.json
 ```
 
 The final gate must include actual fail-before/pass-after behavior evidence, or a narrow

@@ -16,6 +16,8 @@ from typing import Any
 
 import regex as re
 
+from agent_paths import policy_root, state_path
+
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 POLICY_PATHS = (
     "AGENTS.md",
@@ -29,10 +31,6 @@ SKIP_PARTS = {"__pycache__", ".pytest_cache"}
 
 def now() -> str:
     return datetime.now(UTC).isoformat()
-
-
-def state_path(repo: Path) -> Path:
-    return repo / ".metax-branch-port" / "DAILY-STATE.json"
 
 
 def require_sha(value: str, name: str) -> str:
@@ -74,7 +72,7 @@ def compute_run_key(
     digest.update(json.dumps(fields, sort_keys=True).encode())
     for relative in POLICY_PATHS:
         digest.update(relative.encode())
-        file_digest(repo / relative, digest)
+        file_digest(policy_root(repo) / relative, digest)
     digest.update(config.read_bytes())
     if intent_file is not None:
         digest.update(intent_file.read_bytes())

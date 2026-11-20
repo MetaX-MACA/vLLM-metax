@@ -4,7 +4,7 @@
   "target_ref": "master",
   "scope": {
     "mode": "all-source-only",
-    "intent_file": ".metax-branch-port/DAILY-SCOPE.json",
+    "intent_file": "/workspace/.metax-agent-state/<project>/branch-port/control/DAILY-SCOPE.json",
     "new_source_commits": "audit-and-continue",
     "unknown_source_author": "block",
     "source_author_policy": "current-branch-authors",
@@ -45,7 +45,7 @@
     "publish_pending_verification": true
   },
   "worktree": {
-    "root": "/workspace/.metax-worktrees",
+    "root": "/workspace/.metax-agent-state/<project>/branch-port/worktrees",
     "lease_hours": 24,
     "retain_days": 14,
     "active_lease_policy": "wait",

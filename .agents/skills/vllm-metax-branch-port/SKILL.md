@@ -186,7 +186,7 @@ the confirmed plan in the audit approval.
      --repo . \
      --source <source-sha> \
      --target <target-sha> \
-     --output .metax-branch-port/runs/<source-slug>__to__<target-slug>/inventory.json
+     --output $METAX_BRANCH_PORT_HOME/runs/<source-slug>__to__<target-slug>/inventory.json
    ```
 
 6. Review every source-only non-merge commit without pre-filtering. The audit report must
@@ -207,7 +207,7 @@ the confirmed plan in the audit approval.
    investigating and record the exact open question. A user-selected missing capability
    stays `PORT_REQUIRED` with implementation review pending; `NEEDS_REVIEW` does not
    remove it from the selected scope.
-8. Write `.metax-branch-port/runs/<source-slug>__to__<target-slug>/AUDIT.md` from the
+8. Write `$METAX_BRANCH_PORT_HOME/runs/<source-slug>__to__<target-slug>/AUDIT.md` from the
    template in the rubric. Include the frozen SHAs, every source-only commit, merge
    wrappers ignored, target evidence, original authors, proposed conventional type
    and scope, required validation and dependencies. Validate that the number of commit
@@ -228,7 +228,7 @@ the confirmed plan in the audit approval.
 
    ```bash
    python .agents/skills/vllm-metax-branch-port/scripts/check_adversarial_review.py \
-     --review .metax-branch-port/runs/<source-slug>__to__<target-slug>/ADVERSARIAL-APPLICABILITY.json \
+     --review $METAX_BRANCH_PORT_HOME/runs/<source-slug>__to__<target-slug>/ADVERSARIAL-APPLICABILITY.json \
      --stage applicability --expected-target-sha <target-sha> \
      --worktree <metax-worktree> --intent-id <selected-intent-id>
    ```
@@ -240,8 +240,8 @@ the confirmed plan in the audit approval.
 
    ```bash
    python .agents/skills/vllm-metax-branch-port/scripts/check_audit_completeness.py \
-     --inventory .metax-branch-port/runs/<source-slug>__to__<target-slug>/inventory.json \
-     --report .metax-branch-port/runs/<source-slug>__to__<target-slug>/AUDIT.md \
+     --inventory $METAX_BRANCH_PORT_HOME/runs/<source-slug>__to__<target-slug>/inventory.json \
+     --report $METAX_BRANCH_PORT_HOME/runs/<source-slug>__to__<target-slug>/AUDIT.md \
      --port-sha <source-sha-for-each-port-required-commit>
    ```
 

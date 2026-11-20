@@ -19,6 +19,8 @@ from typing import Any
 
 import regex as re
 
+from agent_paths import branch_port_locks_dir, default_worktree_root, registry_path
+
 SCHEMA_VERSION = 1
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -58,13 +60,9 @@ def full_sha(repo: Path, ref: str) -> str:
     return sha
 
 
-def registry_path(repo: Path) -> Path:
-    return repo / ".metax-branch-port" / "WORKTREES.json"
-
-
 @contextmanager
 def registry_lock(repo: Path):
-    lock_path = repo / ".metax-branch-port" / "locks" / "worktrees.lock"
+    lock_path = branch_port_locks_dir(repo) / "worktrees.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+", encoding="utf-8") as lock_file:
         fcntl.flock(lock_file, fcntl.LOCK_EX)
@@ -139,7 +137,7 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
         else Path(
             os.environ.get(
                 "METAX_BRANCH_PORT_WORKTREE_ROOT",
-                str(repo.parent / ".metax-worktrees"),
+                str(default_worktree_root(repo)),
             )
         ).resolve()
     )

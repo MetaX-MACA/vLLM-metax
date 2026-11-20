@@ -112,7 +112,7 @@ review-approved or merge-ready while its required human confirmation is pending.
 ## Matrix record
 
 Store the maintained state outside tracked source at
-`.metax-branch-port/MATRIX.json`. Each edge should retain the selection basis, implementation status and per-check
+`$METAX_BRANCH_PORT_HOME/control/MATRIX.json`. Each edge should retain the selection basis, implementation status and per-check
 validation results/limits alongside its existing commit and version records:
 
 ```json

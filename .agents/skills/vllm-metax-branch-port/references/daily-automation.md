@@ -68,12 +68,37 @@ Example answers file:
 This writes and validates both `DAILY-CONFIG.json` and `DAILY-SCOPE.json`. A later run
 reuses the configuration without asking again.
 
+## External agent state layout
+
+All mutable branch-port agent state lives outside the repository. The default layout is:
+
+```text
+/workspace/.metax-agent-state/
+└── <project>/
+    ├── branch-port/
+    │   ├── control/      # DAILY-CONFIG, DAILY-SCOPE, DAILY-STATE, MATRIX, leases
+    │   ├── runs/         # run artifacts and independent-review outputs
+    │   ├── audits/       # durable audit snapshots
+    │   ├── locks/        # cross-process locks
+    │   └── worktrees/    # run-scoped Git worktrees
+    └── <other-agent>/    # independent state for other agent families
+```
+
+Environment overrides:
+
+- `METAX_AGENT_STATE_ROOT` changes the shared agent-state root.
+- `METAX_AGENT_PROJECT` changes the project directory name.
+- `METAX_BRANCH_PORT_HOME` overrides the complete branch-port directory.
+- `METAX_BRANCH_PORT_POLICY_ROOT` points to the checkout containing `.agents` when the working repository does not carry the policy tree.
+
+Do not create branch-port configuration, run artifacts, locks, or worktrees inside the source repository.
+
 ## Pre-approved configuration
 
 Store the durable configuration outside tracked source, for example:
 
 ```text
-.metax-branch-port/DAILY-CONFIG.json
+$METAX_BRANCH_PORT_HOME/control/DAILY-CONFIG.json
 ```
 
 Start from [DAILY-CONFIG.example.json](../assets/DAILY-CONFIG.example.json) and
@@ -137,7 +162,7 @@ python .agents/skills/vllm-metax-branch-port/scripts/daily_state.py \
 
 The helper hashes the source/target/master SHAs, configuration, intent file, policy,
 agent/skill tree and environment fingerprint, then compares
-`.metax-branch-port/DAILY-STATE.json`. If all inputs match a completed run and its
+`$METAX_BRANCH_PORT_HOME/control/DAILY-STATE.json`. If all inputs match a completed run and its
 applicability/final review artifacts still validate, return `NOOP`. Do not recreate a
 worktree merely because a new day started.
 
@@ -156,13 +181,13 @@ python .agents/skills/vllm-metax-branch-port/scripts/worktree_manager.py prepare
   --repo <meta-repo> --run-dir <run-dir> --edge-id <edge-id> \
   --source-sha <source-sha> --target-baseline-sha <target-sha> \
   --remote-pr-branch <stable-pr-branch-or-omit> \
-  --worktree-root /workspace/.metax-worktrees --lease-hours 24
+  --worktree-root $METAX_BRANCH_PORT_HOME/worktrees --lease-hours 24
 ```
 
 It creates:
 
 ```text
-/workspace/.metax-worktrees/<edge-id>/<run-id>
+$METAX_BRANCH_PORT_HOME/worktrees/<edge-id>/<run-id>
 ```
 
 The local branch is unique:
@@ -172,7 +197,7 @@ port-run/<run-id>
 ```
 
 The remote PR branch may remain stable and is updated later with `--force-with-lease`.
-The manager records a lease in `.metax-branch-port/WORKTREES.json` and the run's
+The manager records a lease in `$METAX_BRANCH_PORT_HOME/control/WORKTREES.json` and the run's
 `WORKTREE.json`.
 
 Heartbeat during long runs:

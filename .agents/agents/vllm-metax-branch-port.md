@@ -13,7 +13,7 @@ linked references. This role coordinates one source-to-target matrix edge at a t
 
 - Own the branch matrix, audit state, environment plan, approvals, port ordering,
   validation evidence, publication receipts and final edge status under
-  `.metax-branch-port/`.
+  `$METAX_BRANCH_PORT_HOME/`.
 - Do not initialize or advance the `vllm-metax-upgrade` coordinator.
 - Do not require a full framework upgrade or a full csrc upgrade. Review selected csrc
   commits with `csrc-upgrade`, but keep the claim limited to the approved port.

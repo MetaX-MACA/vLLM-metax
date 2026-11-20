@@ -17,7 +17,8 @@ from typing import Any
 
 import regex as re
 
-from daily_config import config_path, git_output, validate_config
+from agent_paths import config_path, registry_path
+from daily_config import git_output, validate_config
 from publish_branch_port import inspect_publication
 from runtime_fingerprint import compute_fingerprint
 
@@ -41,7 +42,7 @@ def current_authors(repo: Path, source_sha: str, target_sha: str) -> list[str]:
 
 
 def active_lease(repo: Path, edge_id: str) -> dict[str, Any] | None:
-    path = repo / ".metax-branch-port" / "WORKTREES.json"
+    path = registry_path(repo)
     if not path.exists():
         return None
     data = json.loads(path.read_text(encoding="utf-8"))
