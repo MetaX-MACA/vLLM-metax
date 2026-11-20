@@ -129,8 +129,8 @@ on removed framework contracts.
 For every selected commit or child intent, run the role in
 [../../../agents/vllm-metax-branch-port-reviewer.md](../../../agents/vllm-metax-branch-port-reviewer.md)
 using [adversarial-review.md](adversarial-review.md) before the port approval and again
-before publication. The applicability artifact is `ADVERSARIAL-APPLICABILITY.json`; the
-post-rebase artifact is `ADVERSARIAL-FINAL.json`. Only `ENDORSE_PORT` permits the affected
+before publication. The applicability artifact is `APPLICABILITY-REVIEW.json`; the
+post-rebase artifact is `REVIEW.json`. Only `ENDORSE_PORT` permits the affected
 intent to be published. `ALREADY_COVERED`, `DO_NOT_PORT`, `CHANGES_REQUIRED` and a missing
 review are blockers, not implicit approvals.
 

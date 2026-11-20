@@ -88,10 +88,11 @@ Absent versions are skipped automatically; they do not create placeholder edges.
 
 For scheduled, pre-approved runs read [daily-automation.md](references/daily-automation.md)
 and use the [daily coordinator](../../agents/vllm-metax-branch-port-daily.md). Daily runs
-are idempotent by run key, use unique run-scoped worktrees with active leases, and launch
-both adversarial review gates in fresh contexts automatically. A new calendar day alone
-does not invalidate a SHA-bound review; source, target, patch, policy or environment
-changes do.
+are idempotent by run key, use unique run-scoped worktrees with active leases, and apply
+the configured risk tier. `LOW` runs use one fresh final review; `STANDARD`/`HIGH` use a
+focused pre-implementation applicability gate plus a separate final review. A new calendar
+day alone does not invalidate a SHA-bound review; source, target, patch, policy or
+environment changes do.
 
 ## Remote publication
 
@@ -116,7 +117,7 @@ the confirmed plan in the audit approval.
 - Before any remote publication, including Gerrit `refs/for/<target-branch>` and GitHub
   PRs, rerun the independent reviewer's final gate against the latest frozen target
   baseline. It must validate actual fail-before/pass-after behavior evidence, confirm the
-  patch is still necessary and write `ADVERSARIAL-FINAL.json` with `ENDORSE_PORT` for
+  patch is still necessary and write `REVIEW.json` with `ENDORSE_PORT` for
   every published intent. A pending or non-endorsing review blocks publication.
 - Push Gerrit changes to `refs/for/<target-branch>` only after validation and the endorsed
   final review. Reuse each fresh `Change-Id`; do not submit automatically.
@@ -218,17 +219,16 @@ the confirmed plan in the audit approval.
    Include the confirmed step 2 redacted provider, logical remote, Gerrit review ref or
    GitHub PR plan, local-only master decision when applicable, final master version gate,
    and the required yes/no publication confirmation in the audit.
-9. Before presenting the audit for approval, launch the independent
+9. For `STANDARD` or `HIGH` risk, launch the independent
    [branch-port reviewer](../../agents/vllm-metax-branch-port-reviewer.md) with a fresh
-   context and require the applicability gate in
+   context before implementation and require the applicability gate in
    [adversarial-review.md](references/adversarial-review.md). The reviewer writes
-   `ADVERSARIAL-APPLICABILITY.json` and must challenge target equivalence, source
-   assumptions and the falsification plan for every selected commit or child intent.
-   Validate the artifact:
+   `APPLICABILITY-REVIEW.json`. For `LOW` risk, skip this separate gate and include
+   applicability in the final review. Validate a two-gate applicability artifact:
 
    ```bash
    python .agents/skills/vllm-metax-branch-port/scripts/check_adversarial_review.py \
-     --review $METAX_BRANCH_PORT_HOME/runs/<source-slug>__to__<target-slug>/ADVERSARIAL-APPLICABILITY.json \
+     --review $METAX_BRANCH_PORT_HOME/runs/<source-slug>__to__<target-slug>/APPLICABILITY-REVIEW.json \
      --stage applicability --expected-target-sha <target-sha> \
      --worktree <metax-worktree> --intent-id <selected-intent-id>
    ```
@@ -340,7 +340,7 @@ starting the mutation phase.
 - For an `mx/vX.Y.Z-dev` target, preserve the original author and add exactly enough
   provenance with `Source: <source-ref>@<full-sha>`.
 - For `master`, use the confirmed porting developer as both author and committer, and
-  omit the `Source:` trailer. Preserve source-to-target traceability in `MATRIX.json`,
+  omit the `Source:` trailer. Preserve source-to-target traceability in `state/matrix.json`,
   `VALIDATION.md` and the template-derived `PR_BODY.md` instead.
 - Let the Gerrit hook generate one new `Change-Id` for every target commit. Verify each
   commit separately.

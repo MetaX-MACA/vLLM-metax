@@ -78,9 +78,9 @@ def load_registry(repo: Path) -> dict[str, Any]:
         return {"schema_version": SCHEMA_VERSION, "worktrees": []}
     data = json.loads(path.read_text(encoding="utf-8"))
     if data.get("schema_version") != SCHEMA_VERSION:
-        raise ValueError("Unsupported WORKTREES.json schema version")
+        raise ValueError("Unsupported worktrees.json schema version")
     if not isinstance(data.get("worktrees"), list):
-        raise ValueError("WORKTREES.json must contain a worktrees list")
+        raise ValueError("worktrees.json must contain a worktrees list")
     return data
 
 

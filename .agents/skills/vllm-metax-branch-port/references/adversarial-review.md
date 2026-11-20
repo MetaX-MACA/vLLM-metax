@@ -59,43 +59,54 @@ The HEAD must equal `target_head_sha`, the branch must match `worktree_branch`, 
 worktree must be clean. The publisher additionally requires the reviewed worktree to be
 the same checkout it is publishing.
 
+## Risk-tiered gates
+
+- `LOW`: one combined final `REVIEW.json` after implementation.
+- `STANDARD`: `APPLICABILITY-REVIEW.json` before implementation plus final `REVIEW.json`.
+- `HIGH`: both gates plus named human confirmation for material risks.
+
+In two-gate mode the first gate decides whether the behavior is needed. The final gate
+checks implementation and evidence and does not repeat the full target-history search
+unless the target moved or the patch deviated from the approved intent.
+
 ## Gates
 
-### Applicability gate
+### Pre-implementation applicability gate (`STANDARD`/`HIGH`)
 
 Run after the commit audit and before user approval of the port implementation. Review
 every selected commit or child intent. The artifact is:
 
 ```text
-$METAX_BRANCH_PORT_HOME/runs/<run>/ADVERSARIAL-APPLICABILITY.json
+$METAX_BRANCH_PORT_HOME/runs/<run>/APPLICABILITY-REVIEW.json
 ```
 
 The gate must establish target-first evidence and a concrete falsification plan. If the
 target already provides an equivalent behavior, recommend `ALREADY_COVERED` rather than
 porting source text.
 
-### Final gate
+### Final gate (all risk tiers)
 
 Run after implementation, latest-target rebase, and validation, but before pushing a
 Gerrit review or creating/updating a GitHub PR. Review every intent still represented in
 the patch. The artifact is:
 
 ```text
-$METAX_BRANCH_PORT_HOME/runs/<run>/ADVERSARIAL-FINAL.json
+$METAX_BRANCH_PORT_HOME/runs/<run>/REVIEW.json
 ```
 
 The final gate must include actual fail-before/pass-after behavior evidence, or a narrow
 and explicitly approved non-runtime validation contract when execution is impossible.
-It must also record the latest target baseline SHA and confirm that the patch was
-re-audited after rebasing.
+It must also bind the latest target baseline SHA and final head. `LOW` includes target-first
+applicability in this same pass; `STANDARD`/`HIGH` re-open applicability only when target
+movement or implementation drift invalidates the earlier decision.
 
 ## Generic code review layer
 
 Run the generic [independent-review](../../independent-review/SKILL.md) workflow over
-the exact staged, worktree, commit or range target in addition to the branch-port checks
-below. Its review context and artifact prevent code from changing between review and use.
-A branch-port verdict cannot be `ENDORSE_PORT` while the generic code review is blocking,
-stale or absent.
+the exact final target. The same `REVIEW.json` is a superset containing both the generic
+review fields and the branch-port adversarial verdict. Validate it with both checkers.
+A branch-port verdict cannot be `ENDORSE_PORT` while the generic review is blocking or
+stale.
 
 ## Required reviewer checks
 

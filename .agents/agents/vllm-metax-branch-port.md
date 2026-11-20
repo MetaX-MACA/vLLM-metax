@@ -76,6 +76,21 @@ the explicit answer is captured. Keep the item selected; continue independent wo
 Scope or PR-publication approval does not accept a new review risk. An approach
 confirmation does not approve unseen code, waive known failures or authorize merge.
 
+## Review risk tiers
+
+- `LOW`: documentation, agent policy, build metadata or another non-runtime change. Use
+  one fresh final reviewer after implementation; that review combines applicability and
+  code review.
+- `STANDARD`: ordinary behavior code. Use a focused applicability reviewer before
+  implementation and a different fresh final reviewer afterward.
+- `HIGH`: native ABI, kernels, distributed communication, cache lifetime, graph capture or
+  quantization numerics. Use both gates and obtain named human confirmation for material
+  risks.
+
+In two-gate mode, the first gate decides whether the behavior should be ported. The final
+gate checks the actual implementation, validation and final SHA, and does not repeat the
+full target-history search unless the target moved or the implementation deviated.
+
 ## Workflow
 
 1. Read the current configured matrix.
@@ -95,13 +110,11 @@ confirmation does not approve unseen code, waive known failures or authorize mer
    plan. Include the simple user-facing explanation required by the skill. Do not infer a
    port decision from an absent source patch alone. Preserve user-selected work while
    investigating incomplete logic.
-5. Before approval, launch the independent reviewer in a fresh task for the applicability
-   gate. Require `ADVERSARIAL-APPLICABILITY.json` with a verdict for every selected intent
-   and validate it with `check_adversarial_review.py`. Then present the confirmed logical
-   remotes, complete audit, independent verdicts, per-intent logic explanations, selected
-   commits, identities, source-author confirmation request, version gate and publication
-   choice. Wait for approval. If the reviewer is unavailable, the gate is pending and the
-   port is not ready for automatic merge.
+5. For `STANDARD` or `HIGH`, launch the independent reviewer in a fresh task for the
+   applicability gate and require `APPLICABILITY-REVIEW.json`. For `LOW`, skip this
+   separate gate and cover applicability in the final review. Then present the audit,
+   selected intent risk tier, identities, source-author decision and local/remote
+   publication choice. If a required reviewer is unavailable, the gate is pending.
 6. Re-fetch both MetaX branches and verify their frozen SHAs. If either moved, invalidate
    the affected audit and request approval for any changed selection or baseline.
 7. Use `worktree_manager.py prepare` to create a unique run-scoped target worktree and
@@ -127,8 +140,8 @@ confirmation does not approve unseen code, waive known failures or authorize mer
     [publish_branch_port.py](../skills/vllm-metax-branch-port/scripts/publish_branch_port.py)
     after closure. Before any Gerrit `refs/for/<branch>` push or GitHub PR, rebase onto
     the latest frozen target baseline and re-audit patch applicability. Launch the
-    independent reviewer's final gate and require `ADVERSARIAL-FINAL.json` with
-    `ENDORSE_PORT` for every published intent and fail-before/pass-after behavior evidence.
+    independent reviewer's final gate and require `REVIEW.json` with `ENDORSE_PORT` for
+    every published intent and fail-before/pass-after behavior evidence.
     A pending or non-endorsing review blocks the remote mutation. Then push Gerrit
     `mx/vX.Y.Z-dev` targets to `refs/for/<branch>`. For a GitHub PR targeting `master`,
     additionally run `pre-commit run --all-files` on the final tree and rerun after any hook

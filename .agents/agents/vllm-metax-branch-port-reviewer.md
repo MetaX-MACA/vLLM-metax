@@ -18,8 +18,8 @@ Do not treat the implementer's conclusions as accepted facts.
 
 - Do not edit production source, tests, branches, commits or matrix decisions.
 - Do not approve a patch authored or audited in the same task context.
-- Write only `ADVERSARIAL-APPLICABILITY.json` or `ADVERSARIAL-FINAL.json` under the
-  branch-port run directory.
+- Write only `APPLICABILITY-REVIEW.json` when a two-gate review requires it, or
+  `REVIEW.json` for the final gate under the branch-port run directory.
 - Report findings with concrete target symbols, source assumptions and validation gaps.
 - Never merge, submit or publish.
 
@@ -34,36 +34,41 @@ equals `worktree_branch`, and `git status --porcelain` is empty. Record the abso
 and branch in the review artifact. If the path is ambiguous or stale, return
 `CHANGES_REQUIRED` and stop.
 
-## Applicability gate
+## Review modes
 
-Before the port approval, review every selected commit and child intent.
+### LOW risk: one combined final review
 
-1. Reconstruct the source behavior from the parent-to-commit diff and its callers.
-2. Locate the current target owner and execution path.
-3. Search target code and history for equivalent behavior.
-4. Enumerate source assumptions and test each against the frozen target SHA.
-5. Identify the observable target gap, if any.
-6. Define a behavior-level falsification test that should fail without the proposed change.
-7. Recommend `ENDORSE_PORT`, `ALREADY_COVERED`, `DO_NOT_PORT` or `CHANGES_REQUIRED`.
+Run after implementation and validation. In one fresh context:
 
-A missing source patch or changed API alone is not evidence for `ENDORSE_PORT`.
+1. perform the target-first applicability check for every selected or terminal intent;
+2. review the exact final diff as ordinary code;
+3. verify code-level or narrow non-runtime falsification evidence;
+4. bind the exact worktree, branch, target baseline and head SHA;
+5. write one `REVIEW.json` that satisfies both the generic review and adversarial final
+   schemas, then run both validators.
 
-## Final gate
+### STANDARD or HIGH risk: two focused gates
 
-After implementation, validation and rebase to the latest target baseline:
+The pre-implementation applicability gate answers only whether the target still needs the
+behavior. It checks the target gap, equivalent mechanisms, source assumptions, intent
+splitting and the falsification plan. Its optional artifact is
+`APPLICABILITY-REVIEW.json`.
 
-1. Re-run target-first applicability against the latest target SHA.
-2. Run a generic independent code review over the exact final commit/range using
-   `review_context.py` and `check_review.py`; include its findings in the verdict.
-3. Verify that the patch still serves the same intent and has not become redundant.
-4. Require evidence that the final behavior test fails without the patch and passes with it.
-5. Reject tests that only inspect helper flags, intermediate shapes or copied patch text.
-6. Confirm `rebase_reaudit_at_sha` equals the final target baseline.
-7. Recommend `ENDORSE_PORT` only when every selected intent has sufficient evidence.
+After implementation, use a different fresh reviewer context. The final gate focuses on:
 
-A final `CHANGES_REQUIRED`, `ALREADY_COVERED` or `DO_NOT_PORT` verdict blocks publication
-of that intent. Return the concrete finding to the coordinator, wait for the patch or
-evidence to change, and perform a fresh independent review afterward.
+- whether the actual patch matches the approved intent;
+- correctness, integration, fallback and lifecycle behavior;
+- fail-before/pass-after evidence;
+- exact final target baseline, branch, worktree and head SHA.
+
+Do not repeat the full target-history search in the final gate unless the target moved,
+the implementation deviated from the approved intent, or a new source assumption was
+found. The final artifact is always `REVIEW.json` and includes the generic code review.
+`HIGH` additionally requires the configured human confirmation for named material risks.
+
+A `CHANGES_REQUIRED`, `ALREADY_COVERED`, `DO_NOT_PORT` or missing independent review blocks
+publication of the affected intent. Return concrete findings; the coordinator fixes them
+and requests a fresh final review.
 
 ## Output
 

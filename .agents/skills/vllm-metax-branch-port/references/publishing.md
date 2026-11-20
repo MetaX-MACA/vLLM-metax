@@ -17,7 +17,7 @@ Publication is limited to those refs. A negative answer, an audit-only request o
 unconfirmed provider performs no remote mutation.
 
 Never write a repository URL, credentials, token, owner/repository URL or PR URL into the
-skill, `MATRIX.json`, `VALIDATION.md` or logs. Use remote names such as `origin` or
+skill, `state/matrix.json`, `VALIDATION.json` or logs. Use remote names such as `origin` or
 `upstream` only after discovering their roles from Git metadata. Redact any URL emitted
 by Git or `gh`.
 
@@ -66,7 +66,7 @@ After all local validation passes and every selected commit has a fresh, unique
 2. Confirm the target still matches the final frozen SHA used by the run.
 3. Check the supplied Gerrit hook and identity gates.
 4. Rebase or otherwise bind the reviewed patch to the latest frozen target baseline and
-   obtain a validated `ADVERSARIAL-FINAL.json` with `ENDORSE_PORT` for every published
+   obtain a validated `REVIEW.json` with `ENDORSE_PORT` for every published
    intent. A pending or non-endorsing review blocks the push.
 5. Push without force:
 
@@ -84,7 +84,7 @@ The helper command is:
 python .agents/skills/vllm-metax-branch-port/scripts/publish_branch_port.py publish \
   --repo . --run-dir <run-dir> --target-ref <mx-target-branch> \
   --worktree-json <run-dir>/WORKTREE.json \
-  --adversarial-review <run-dir>/ADVERSARIAL-FINAL.json
+  --adversarial-review <run-dir>/REVIEW.json
 ```
 
 ## GitHub PR description
@@ -117,7 +117,7 @@ substitute for the PR template.
 7. For a source port, `Details` must include the complete source-to-target commit SHA
    mapping and identify every pending review risk. Do not include repository URLs or
    credentials.
-8. Validate `ADVERSARIAL-FINAL.json` against the latest target baseline and final head.
+8. Validate `REVIEW.json` against the latest target baseline and final head.
    Publication requires `ENDORSE_PORT` for every selected intent and actual
    fail-before/pass-after behavior evidence, except for a specifically approved
    non-runtime validation contract.
@@ -131,7 +131,7 @@ substitute for the PR template.
       validate-pr-body --repo . --body-file <run-dir>/PR_BODY.md
 
     python .agents/skills/vllm-metax-branch-port/scripts/check_adversarial_review.py \
-      --review <run-dir>/ADVERSARIAL-FINAL.json --stage final \
+      --review <run-dir>/REVIEW.json --stage final \
       --expected-target-sha <master-sha> --expected-head-sha <patch-head-sha> \
       --worktree <metax-worktree> --require-endorsement
     ```
@@ -156,7 +156,7 @@ follow the local-only rule below.
 3. Use the approved porting developer as both author and committer for every master
    commit. Omit `Source:` trailers.
 4. Rebase onto the latest master, repeat target-first applicability review and obtain a
-   validated `ADVERSARIAL-FINAL.json` with `ENDORSE_PORT` for every published intent. The
+   validated `REVIEW.json` with `ENDORSE_PORT` for every published intent. The
    artifact must bind `review_worktree` and `worktree_branch` to the clean checkout being
    published.
 5. Run `pre-commit run --all-files` on the final tree. If hooks modify files, commit or
@@ -187,7 +187,7 @@ python .agents/skills/vllm-metax-branch-port/scripts/publish_branch_port.py publ
   --repo . --run-dir <run-dir> --target-ref master --pr-branch <dedicated-branch> \
   --title "<PR title>" --body-file <run-dir>/PR_BODY.md \
   --worktree-json <run-dir>/WORKTREE.json \
-  --adversarial-review <run-dir>/ADVERSARIAL-FINAL.json
+  --adversarial-review <run-dir>/REVIEW.json
 ```
 
 ## Idempotency and failure
@@ -195,7 +195,7 @@ python .agents/skills/vllm-metax-branch-port/scripts/publish_branch_port.py publ
 - Check authentication before the first push to avoid an orphaned remote branch.
 - A missing, expired or mismatched `WORKTREE.json` lease blocks both Gerrit and GitHub
   publication.
-- A missing, stale or non-endorsing `ADVERSARIAL-FINAL.json` blocks both Gerrit and
+- A missing, stale or non-endorsing `REVIEW.json` blocks both Gerrit and
   GitHub publication.
 - A remote PR branch at the same SHA may be reused.
 - A remote PR branch at a different SHA is a conflict; do not force, overwrite or rebase

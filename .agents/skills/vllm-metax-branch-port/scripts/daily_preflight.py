@@ -175,51 +175,60 @@ def preflight(args: argparse.Namespace) -> dict[str, Any]:
 
     publication = config["publication"]
     approvals = config["approvals"]
-    if not approvals["remote_publication_approved"]:
-        blockers.append("remote publication is not approved")
-    if (
-        publication["publish_with_pending_review"]
-        and not approvals["draft_publication_with_pending_approved"]
-    ):
-        blockers.append("pending-review draft publication is not approved")
-
-    report = inspect_publication(repo, config["source_ref"], config["target_ref"])
-    if report.get("status") != "ok":
-        blockers.extend(report.get("issues", ["publication inspection failed"]))
-    else:
-        target_provider = report["target"]["provider"]
-        target_remote = report["target"]["remote"]
-        if target_provider == "github":
-            if shutil.which("gh") is None:
-                blockers.append("gh CLI is not installed")
-            else:
-                auth = subprocess.run(
-                    ["gh", "auth", "status"],
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-                if auth.returncode:
-                    blockers.append("gh CLI authentication is unavailable")
-        if target_remote:
-            error = check_remote_access(repo, target_remote, config["target_ref"])
-            if error:
-                blockers.append(f"target remote access failed: {error}")
-        source_remote = report["source"]["remote"]
-        if source_remote:
-            error = check_remote_access(repo, source_remote, config["source_ref"])
-            if error:
-                blockers.append(f"source remote access failed: {error}")
+    if publication["mode"] == "local":
         checks.append(
             {
-                "name": "publication_inspection",
+                "name": "publication_mode",
                 "status": "PASSED",
-                "evidence": (
-                    f"source={report['source']['provider']} "
-                    f"target={report['target']['provider']}"
-                ),
+                "evidence": "local-only; remote authentication and PR checks skipped",
             }
         )
+    else:
+        if not approvals["remote_publication_approved"]:
+            blockers.append("remote publication is not approved")
+        if (
+            publication["publish_with_pending_review"]
+            and not approvals["draft_publication_with_pending_approved"]
+        ):
+            blockers.append("pending-review draft publication is not approved")
+
+        report = inspect_publication(repo, config["source_ref"], config["target_ref"])
+        if report.get("status") != "ok":
+            blockers.extend(report.get("issues", ["publication inspection failed"]))
+        else:
+            target_provider = report["target"]["provider"]
+            target_remote = report["target"]["remote"]
+            if target_provider == "github":
+                if shutil.which("gh") is None:
+                    blockers.append("gh CLI is not installed")
+                else:
+                    auth = subprocess.run(
+                        ["gh", "auth", "status"],
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    if auth.returncode:
+                        blockers.append("gh CLI authentication is unavailable")
+            if target_remote:
+                error = check_remote_access(repo, target_remote, config["target_ref"])
+                if error:
+                    blockers.append(f"target remote access failed: {error}")
+            source_remote = report["source"]["remote"]
+            if source_remote:
+                error = check_remote_access(repo, source_remote, config["source_ref"])
+                if error:
+                    blockers.append(f"source remote access failed: {error}")
+            checks.append(
+                {
+                    "name": "publication_inspection",
+                    "status": "PASSED",
+                    "evidence": (
+                        f"source={report['source']['provider']} "
+                        f"target={report['target']['provider']}"
+                    ),
+                }
+            )
 
     root = Path(config["worktree"]["root"])
     try:

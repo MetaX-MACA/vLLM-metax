@@ -163,7 +163,7 @@ commit has no `Source:` trailer:
 Signed-off-by: <confirmed porting developer>
 ```
 
-Record source provenance in `MATRIX.json`, `VALIDATION.md` and the template-derived
+Record source provenance in `state/matrix.json`, `VALIDATION.json` and the template-derived
 `PR_BODY.md` used for GitHub publication.
 
 Use one commit per selected source commit. Commit dependencies in the approved order.

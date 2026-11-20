@@ -20,15 +20,15 @@
     "environment_mismatch": "block"
   },
   "publication": {
-    "mode": "auto",
-    "provider": "auto",
-    "github_draft": true,
-    "publish_with_pending_review": true,
-    "reuse_open_pr": true,
+    "mode": "local",
+    "provider": "local",
+    "github_draft": false,
+    "publish_with_pending_review": false,
+    "reuse_open_pr": false,
     "overwrite_manual_pr_body": false
   },
   "review": {
-    "mode": "automatic-independent-agent",
+    "mode": "risk-tiered-independent",
     "require_endorsement": true,
     "max_rounds": 2,
     "on_changes_required": "fix-and-review-again",
@@ -42,7 +42,7 @@
       "model-unavailable"
     ],
     "unknown_failure": "block",
-    "publish_pending_verification": true
+    "publish_pending_verification": false
   },
   "worktree": {
     "root": "/workspace/.metax-agent-state/<project>/branch-port/worktrees",
@@ -59,8 +59,8 @@
   },
   "approvals": {
     "scope_approved_by": "<human-owner>",
-    "remote_publication_approved": true,
-    "draft_publication_with_pending_approved": true,
+    "remote_publication_approved": false,
+    "draft_publication_with_pending_approved": false,
     "merge_authorized": false
   }
 }

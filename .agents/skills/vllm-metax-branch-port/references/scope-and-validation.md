@@ -16,7 +16,7 @@ Record scope, implementation and validation independently:
   Summarize mixed coverage as `PARTIAL`; do not turn an unrun check into a pass.
 - Human review: record `review_status`, concrete reasons, the requested user decision
   and the exact confirmation. Migration selection does not itself accept review risks.
-- Independent adversarial review: record applicability/final artifact paths, reviewer
+- Independent risk-tiered review: record applicability/final artifact paths, reviewer
   mode, per-intent verdicts and the latest rebased target SHA. Pending or non-endorsing
   review blocks automatic merge and publication.
 
@@ -99,11 +99,11 @@ Use [adversarial-review.md](adversarial-review.md) and the portable
 must be a fresh agent/task or human who did not implement the patch. The implementer can
 prepare evidence but cannot write the approval artifact.
 
-The applicability gate runs before port approval and uses `ADVERSARIAL-APPLICABILITY.json`.
-The final gate runs after the latest rebase and uses `ADVERSARIAL-FINAL.json`. Every
+Use one fresh final review for `LOW` risk. Use `APPLICABILITY-REVIEW.json` before
+implementation and a different fresh final `REVIEW.json` for `STANDARD`/`HIGH`. Every
 selected intent needs `ENDORSE_PORT`; `ALREADY_COVERED`, `DO_NOT_PORT`, `CHANGES_REQUIRED`
-and a missing review remain blockers. A plan confirmation or PR-publication approval is
-not an independent review result.
+and a missing required review remain blockers. A plan confirmation or PR-publication
+approval is not an independent review result.
 
 ## Explicit confirmation for items needing review
 

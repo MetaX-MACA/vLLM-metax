@@ -140,11 +140,8 @@ def validate_config(repo: Path, config: dict[str, Any]) -> dict[str, Any]:
         problems.append("scope.mode must be all-source-only or explicit-shas")
 
     review = config.get("review")
-    if (
-        not isinstance(review, dict)
-        or review.get("mode") != "automatic-independent-agent"
-    ):
-        problems.append("review.mode must be automatic-independent-agent")
+    if not isinstance(review, dict) or review.get("mode") != "risk-tiered-independent":
+        problems.append("review.mode must be risk-tiered-independent")
     elif review.get("require_endorsement") is not True:
         problems.append("review.require_endorsement must be true")
 
@@ -155,8 +152,8 @@ def validate_config(repo: Path, config: dict[str, Any]) -> dict[str, Any]:
         owner = approvals.get("scope_approved_by")
         if not isinstance(owner, str) or not owner.strip() or owner == "<human-owner>":
             problems.append("approvals.scope_approved_by must name the approving human")
-        if approvals.get("remote_publication_approved") is not True:
-            problems.append("approvals.remote_publication_approved must be true")
+        if not isinstance(approvals.get("remote_publication_approved"), bool):
+            problems.append("approvals.remote_publication_approved must be boolean")
         if approvals.get("merge_authorized") is not False:
             problems.append("approvals.merge_authorized must be false")
 
@@ -281,16 +278,36 @@ def validate_config(repo: Path, config: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(publication, dict):
         problems.append("publication must be an object")
     else:
-        if publication.get("mode") != "auto" or publication.get("provider") != "auto":
-            problems.append("publication mode/provider must be auto")
-        if not isinstance(publication.get("github_draft"), bool):
-            problems.append("publication.github_draft must be boolean")
-        if not isinstance(publication.get("publish_with_pending_review"), bool):
-            problems.append("publication.publish_with_pending_review must be boolean")
-        if not isinstance(publication.get("reuse_open_pr"), bool):
-            problems.append("publication.reuse_open_pr must be boolean")
+        publication_mode = publication.get("mode")
+        publication_provider = publication.get("provider")
+        if publication_mode not in {"local", "auto"}:
+            problems.append("publication.mode must be local or auto")
+        expected_provider = "local" if publication_mode == "local" else "auto"
+        if publication_provider != expected_provider:
+            problems.append(
+                f"publication.provider must be {expected_provider} for {publication_mode} mode"
+            )
+        for field in (
+            "github_draft",
+            "publish_with_pending_review",
+            "reuse_open_pr",
+        ):
+            if not isinstance(publication.get(field), bool):
+                problems.append(f"publication.{field} must be boolean")
         if publication.get("overwrite_manual_pr_body") is not False:
             problems.append("publication.overwrite_manual_pr_body must be false")
+        if publication_mode == "auto" and isinstance(approvals, dict):
+            if approvals.get("remote_publication_approved") is not True:
+                problems.append(
+                    "approvals.remote_publication_approved must be true in auto mode"
+                )
+            if (
+                publication.get("publish_with_pending_review")
+                and approvals.get("draft_publication_with_pending_approved") is not True
+            ):
+                problems.append(
+                    "draft_publication_with_pending_approved must be true when pending publication is enabled"
+                )
 
     if isinstance(approvals, dict) and not isinstance(
         approvals.get("draft_publication_with_pending_approved"), bool
@@ -366,9 +383,15 @@ def detect(repo: Path) -> dict[str, Any]:
             "candidates": ["all-source-only", "explicit-shas"],
         },
         {
+            "id": "publication_mode",
+            "question": "Keep this daily workflow local-only or enable approved remote publication?",
+            "recommended": "local",
+            "candidates": ["local", "auto"],
+        },
+        {
             "id": "remote_publication_approved",
-            "question": "Approve automatic Gerrit/GitHub publication for this bounded scope?",
-            "recommended": None,
+            "question": "If publication_mode=auto, approve the bounded Gerrit/GitHub publication plan?",
+            "recommended": False,
             "candidates": [True, False],
         },
         {
@@ -398,8 +421,8 @@ def detect(repo: Path) -> dict[str, Any]:
         },
         {
             "id": "draft_publication_with_pending_approved",
-            "question": "Allow draft Gerrit/GitHub publication when only pre-approved pending validation remains?",
-            "recommended": True,
+            "question": "If auto publication is enabled, allow draft publication with pre-approved pending validation?",
+            "recommended": False,
             "candidates": [True, False],
         },
     ]
@@ -410,9 +433,13 @@ def detect(repo: Path) -> dict[str, Any]:
         "detected": candidates,
         "questions": questions,
         "safe_defaults": {
-            "publication": {"mode": "auto", "provider": "auto", "github_draft": True},
+            "publication": {
+                "mode": "local",
+                "provider": "local",
+                "github_draft": False,
+            },
             "review": {
-                "mode": "automatic-independent-agent",
+                "mode": "risk-tiered-independent",
                 "require_endorsement": True,
                 "max_rounds": 2,
                 "on_changes_required": "fix-and-review-again",
@@ -496,6 +523,12 @@ def create_from_answers(
     }
     relative_scope = str(scope_file.resolve())
     worktree_root = answers.get("worktree_root", str(default_worktree_root(repo)))
+    publication_mode = answers.get("publication_mode", "local")
+    if publication_mode not in {"local", "auto"}:
+        raise ValueError("publication_mode must be local or auto")
+    remote_publication = bool(
+        answers.get("remote_publication_approved", publication_mode == "auto")
+    )
     environment_fingerprint = (
         answers.get("environment_fingerprint") or compute_fingerprint()["fingerprint"]
     )
@@ -527,17 +560,21 @@ def create_from_answers(
             "environment_mismatch": answers.get("environment_mismatch", "block"),
         },
         "publication": {
-            "mode": "auto",
-            "provider": "auto",
-            "github_draft": bool(answers.get("github_draft", True)),
-            "publish_with_pending_review": bool(
-                answers.get("publish_with_pending_review", True)
+            "mode": publication_mode,
+            "provider": "local" if publication_mode == "local" else "auto",
+            "github_draft": bool(
+                answers.get("github_draft", publication_mode == "auto")
             ),
-            "reuse_open_pr": bool(answers.get("reuse_open_pr", True)),
+            "publish_with_pending_review": bool(
+                answers.get("publish_with_pending_review", publication_mode == "auto")
+            ),
+            "reuse_open_pr": bool(
+                answers.get("reuse_open_pr", publication_mode == "auto")
+            ),
             "overwrite_manual_pr_body": False,
         },
         "review": {
-            "mode": "automatic-independent-agent",
+            "mode": "risk-tiered-independent",
             "require_endorsement": True,
             "max_rounds": int(answers.get("review_max_rounds", 2)),
             "on_changes_required": answers.get(
@@ -579,9 +616,12 @@ def create_from_answers(
         },
         "approvals": {
             "scope_approved_by": answers["scope_approved_by"],
-            "remote_publication_approved": answers["remote_publication_approved"],
+            "remote_publication_approved": remote_publication,
             "draft_publication_with_pending_approved": bool(
-                answers.get("draft_publication_with_pending_approved", True)
+                answers.get(
+                    "draft_publication_with_pending_approved",
+                    publication_mode == "auto",
+                )
             ),
             "merge_authorized": False,
         },

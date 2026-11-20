@@ -167,8 +167,8 @@ For each source commit, retain:
     }
   ],
   "adversarial_review": {
-    "applicability_artifact": "relative/path/to/ADVERSARIAL-APPLICABILITY.json",
-    "final_artifact": "relative/path/to/ADVERSARIAL-FINAL.json",
+    "applicability_artifact": "relative/path/to/APPLICABILITY-REVIEW.json",
+    "final_artifact": "relative/path/to/REVIEW.json",
     "reviewer_mode": "independent-agent",
     "review_worktree": "<absolute-worktree-path>",
     "worktree_branch": "<reviewed-branch>",

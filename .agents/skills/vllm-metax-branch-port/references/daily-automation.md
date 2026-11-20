@@ -10,12 +10,13 @@ Start one fresh Codex task from the repository root:
 
 ```text
 Read .agents/agents/vllm-metax-branch-port-daily.md and execute the daily port using
-<absolute-path-to-DAILY-CONFIG.json>. Do not request approval again for facts already
+$METAX_BRANCH_PORT_HOME/state/config.json. Do not request approval again for facts already
 covered by that configuration. Do not merge or submit.
 ```
 
-The daily coordinator automatically starts the independent reviewer in a fresh subagent
-context. Manual reviewer startup is not part of the normal path.
+The coordinator starts only the reviewer gates required by the recorded risk tier. `LOW`
+runs use one fresh final reviewer; `STANDARD` and `HIGH` use focused applicability and
+final reviewers in separate fresh contexts.
 
 ## Bootstrap and auto-detection
 
@@ -34,7 +35,7 @@ Ask the user only for information that cannot be inferred safely:
 
 - source and target refs when the candidates are ambiguous;
 - all-source-only versus an explicit SHA subset;
-- approval for automatic remote publication and draft publication with pending review;
+- local-only versus approved remote publication, plus draft-pending approval only when remote publication is enabled;
 - the accountable human scope owner and porting-developer identity;
 - source-author policy for current and future commits;
 - acceptable pending-validation categories and retry/time limits when overriding defaults.
@@ -55,17 +56,18 @@ Example answers file:
   "scope_mode": "all-source-only",
   "source_shas": [],
   "exclude_source_shas": [],
-  "remote_publication_approved": true,
+  "publication_mode": "local",
+  "remote_publication_approved": false,
   "scope_approved_by": "<human-owner>",
   "porting_developer": "Name <email@example.com>",
   "source_author_policy": "current-branch-authors",
-  "github_draft": true,
-  "publish_with_pending_review": true,
-  "draft_publication_with_pending_approved": true
+  "github_draft": false,
+  "publish_with_pending_review": false,
+  "draft_publication_with_pending_approved": false
 }
 ```
 
-This writes and validates both `DAILY-CONFIG.json` and `DAILY-SCOPE.json`. A later run
+This writes and validates `state/config.json` and `state/scope.json`. A later run
 reuses the configuration without asking again.
 
 ## External agent state layout
@@ -91,6 +93,21 @@ Environment overrides:
 
 Do not create branch-port configuration, run artifacts, locks, or worktrees inside the source repository. Historical runs are disposable; the durable control state is kept in `state/`.
 
+## Core checkpoints
+
+A daily local run uses seven checks:
+
+1. configuration and scope are valid;
+2. source/target/master refs and source commits are frozen;
+3. identity, branch, worktree and clean state are correct;
+4. every source-only non-merge commit has a terminal disposition;
+5. all-files pre-commit and necessary targeted checks pass;
+6. the risk-tier review gate passes;
+7. the final local commit and run state are recorded.
+
+Remote authentication, PR-body validation, remote conflicts and publication receipts are
+conditional checks enabled only by `publication.mode: auto`.
+
 ## Pre-approved configuration
 
 Store the durable configuration outside tracked source, for example:
@@ -105,14 +122,14 @@ set scope `mode` to `explicit-shas` and list the selected source SHAs under
 `source_shas`; list any explicitly excluded SHAs under `exclude_source_shas`.
 
 The example files are the canonical schema. In addition to source, target and publication
-approval, `DAILY-CONFIG.json` records:
+approval, `state/config.json` records:
 
 - porting-developer identity;
 - approved kernel provider and environment fingerprint;
 - source-author allowlist policy;
-- review retry count and new-risk behavior;
+- risk-tiered review behavior, round limits and new-risk handling;
 - accepted pending-validation categories;
-- draft publication with pending review;
+- local versus remote publication mode;
 - active-lease waiting policy;
 - target-move and push-conflict retry policy;
 - maximum unattended runtime.
@@ -127,7 +144,7 @@ After fetching source, target and master refs, run:
 
 ```bash
 python .agents/skills/vllm-metax-branch-port/scripts/daily_preflight.py \
-  --repo <meta-repo> --config <DAILY-CONFIG.json> \
+  --repo <meta-repo> --config $METAX_BRANCH_PORT_HOME/state/config.json \
   --source-sha <source-sha> --target-sha <target-sha> --master-sha <master-sha> \
   --reviewer-capability available
 ```
@@ -139,7 +156,7 @@ The helper checks:
 - source-author policy and unknown authors;
 - environment fingerprint and kernel provider;
 - fresh independent-reviewer capability;
-- publication/version inspection and remote authentication;
+- remote publication/version/authentication checks only in `publication.mode: auto`;
 - worktree-root writability and active edge leases.
 
 `READY` continues. `WAIT` follows `active_lease_policy`. `BLOCKED` records artifacts and
@@ -151,8 +168,8 @@ Compute the durable run key with the deterministic daily-state helper:
 
 ```bash
 python .agents/skills/vllm-metax-branch-port/scripts/daily_state.py \
-  --repo <meta-repo> --config <DAILY-CONFIG.json> \
-  --intent-file <DAILY-SCOPE.json> \
+  --repo <meta-repo> --config $METAX_BRANCH_PORT_HOME/state/config.json \
+  --intent-file $METAX_BRANCH_PORT_HOME/state/scope.json \
   --source-sha <frozen-source-sha> --target-sha <frozen-target-sha> \
   --master-sha <frozen-master-sha> \
   --environment-fingerprint <approved-environment-fingerprint>
@@ -230,26 +247,47 @@ invocations must not overwrite the first run's worktree.
 - Worktree leases handle process ownership, not semantic validity.
 - CI evidence is valid only for the exact head SHA and base SHA it ran against.
 
-## Automatic adversarial review
+## Risk-tiered independent review
 
-The coordinator must:
+Record `risk_tier` in `RUN.json`:
 
-1. run the applicability reviewer after the audit but before implementation;
-2. create the run-scoped worktree only after the applicability review endorses the intent;
-3. run the final reviewer after implementation, tests and latest-target rebase;
-4. pass the exact worktree path, branch, target baseline SHA and head SHA to both gates;
-5. validate both JSON artifacts with `check_adversarial_review.py`.
+- `LOW`: documentation, agent policy, build metadata or another non-runtime change. Use
+  one fresh final reviewer after implementation. It combines target-first applicability,
+  code review, falsification evidence and final SHA binding in `REVIEW.json`.
+- `STANDARD`: ordinary behavior code. Use an applicability reviewer before implementation
+  and a different fresh final reviewer afterward. The first gate decides whether the
+  behavior is needed; the final gate checks implementation, tests and final SHA.
+- `HIGH`: ABI, native kernels, distributed communication, cache lifetime, graph capture or
+  quantization numerics. Use both gates and obtain the configured named human confirmation
+  for material risks.
 
-Use a fresh task/subagent for each reviewer gate. If the runtime cannot create an
-independent context, daily automation stops with `BLOCKED`; it must not self-review.
+Do not repeat the complete target search in the final gate unless the target moved, the
+implementation deviated from the approved intent, or a new source assumption was found.
+Each gate must use a fresh independent context; the implementer cannot self-approve.
+
+## Artifacts
+
+Local runs keep four core files:
+
+```text
+RUN.json
+AUDIT.md
+REVIEW.json
+VALIDATION.json
+```
+
+`REVIEW.json` is a superset validated by both the generic and adversarial review checkers.
+`APPLICABILITY-REVIEW.json` exists only for `STANDARD` or `HIGH`. `PR_BODY.md` and
+`PUBLISH.json` exist only for approved remote publication.
 
 ## Publication and cleanup
 
-Use `publish_branch_port.py` with both the active lease and final review:
+Publication is skipped entirely when `publication.mode` is `local`. For an approved remote
+run, use `publish_branch_port.py` with the active lease and `REVIEW.json`:
 
 ```bash
 --worktree-json <run-dir>/WORKTREE.json \
---adversarial-review <run-dir>/ADVERSARIAL-FINAL.json
+--adversarial-review <run-dir>/REVIEW.json
 ```
 
 The publisher revalidates the artifact and requires the reviewed worktree to equal the
