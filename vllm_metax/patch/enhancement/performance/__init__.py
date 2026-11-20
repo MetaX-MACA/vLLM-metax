@@ -18,3 +18,8 @@ from . import gumbel_sample  # noqa: F401
 from . import pp_batch_balance  # noqa: F401
 
 from . import mrv2_hwq_balancing  # noqa: F401
+
+from vllm_metax import envs as mx_envs
+
+if mx_envs.VLLM_METAX_MOONCAKE_EARLY_READY:
+    from . import mooncake_early_ready_loader  # noqa: F401

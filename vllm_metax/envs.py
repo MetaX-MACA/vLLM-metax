@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     VLLM_METAX_USE_FLASHINFER_SAMPLER: bool = False
     VLLM_METAX_DISABLE_ASYNC_OUTPUT: bool = True
     VLLM_METAX_ENABLE_MRV2_HWQ_BALANCING: bool = False
+    VLLM_METAX_MOONCAKE_EARLY_READY: bool = True
 
 environment_variables: dict[str, Callable[[], Any]] = {
     # ================== Installation Time Env Vars ==================
@@ -101,6 +102,11 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # Opt in to MACA queue balancing with MRV2 asynchronous output.
     "VLLM_METAX_ENABLE_MRV2_HWQ_BALANCING": lambda: (
         os.environ.get("VLLM_METAX_ENABLE_MRV2_HWQ_BALANCING", "0") == "1"
+    ),
+    # Notify Mooncake P workers as soon as a request becomes ready to send,
+    # without waiting for the next batch metadata.
+    "VLLM_METAX_MOONCAKE_EARLY_READY": lambda: bool(
+        int(os.environ.get("VLLM_METAX_MOONCAKE_EARLY_READY", "1"))
     ),
     # =================== Debug Env Vars ==================
     # if set, use vllm's fused_moe implementation instead of maca's one for debugging and comparison
