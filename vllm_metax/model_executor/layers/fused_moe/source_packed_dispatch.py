@@ -16,7 +16,8 @@ remaps expert ids before dispatch, so it is compatible. Shared
 experts are supported: the runner feeds them the original BF16 hidden states.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 
 import torch
 
@@ -27,6 +28,7 @@ original_runner_forward: Callable[..., torch.Tensor] | None = None
 
 # (runner, layer_name, original hidden, packed carrier) while a packed MoE op runs.
 _scope = None
+_transport_override = None
 
 
 def carrier_width(hidden_size):
@@ -37,7 +39,30 @@ def carrier_width(hidden_size):
     return -(-(hidden_size + 4) // 512) * 256
 
 
+def dummy_carrier_for_active_scope():
+    """Create a zero carrier for a mandatory empty-rank collective."""
+    if _scope is None:
+        return None
+    packed = _scope[3]
+    return packed.new_zeros((1, packed.shape[1]))
+
+
+@contextmanager
+def transport_override(carrier) -> Iterator[None]:
+    """Route one dummy collective through an explicit packed carrier."""
+    global _transport_override
+    if _transport_override is not None:
+        raise RuntimeError("Nested source-packed transport override is unsupported")
+    _transport_override = carrier
+    try:
+        yield
+    finally:
+        _transport_override = None
+
+
 def transport_for(x):
+    if _transport_override is not None:
+        return _transport_override
     if _scope is None:
         return None
     _, _, original, packed = _scope

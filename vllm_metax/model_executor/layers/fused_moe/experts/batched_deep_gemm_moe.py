@@ -594,7 +594,7 @@ class BatchedDeepGemmExperts(mk.FusedMoEExpertsModular):
 
         if (
             moe_config.activation == MoEActivation.SWIGLUSTEP
-            and self.gemm1_clamp_limit is None
+            and self.activation_config.clamp_limit is None
         ):
             raise ValueError("SWIGLUSTEP requires swiglu_limit in moe_config")
 
@@ -614,6 +614,11 @@ class BatchedDeepGemmExperts(mk.FusedMoEExpertsModular):
             kInt8StaticChannelSym,
             kInt8DynamicTokenSym,
         )
+        if moe_config.activation == MoEActivation.SWIGLUOAI_UNINTERLEAVE:
+            if not int8_w8a8:
+                return False, "packed OAI SwiGLU is supported only by the INT8 path"
+            if moe_config.swiglu_limit is None:
+                return False, "packed OAI SwiGLU requires swiglu_limit"
         if (
             moe_config.activation == MoEActivation.SWIGLUSTEP
             and moe_config.swiglu_limit is None
@@ -656,7 +661,11 @@ class BatchedDeepGemmExperts(mk.FusedMoEExpertsModular):
 
     @staticmethod
     def _supports_activation(activation: MoEActivation) -> bool:
-        return activation in [MoEActivation.SILU, MoEActivation.SWIGLUSTEP]
+        return activation in [
+            MoEActivation.SILU,
+            MoEActivation.SWIGLUSTEP,
+            MoEActivation.SWIGLUOAI_UNINTERLEAVE,
+        ]
 
     @staticmethod
     def _supports_parallel_config(moe_parallel_config: FusedMoEParallelConfig) -> bool:
@@ -855,7 +864,7 @@ class BatchedDeepGemmExperts(mk.FusedMoEExpertsModular):
 
         quant_scale_fmt = DeepGemmQuantScaleFMT.from_oracle()
         if activation == MoEActivation.SWIGLUSTEP:
-            limit = self.gemm1_clamp_limit
+            limit = self.activation_config.clamp_limit
             assert limit is not None, "SWIGLUSTEP requires swiglu_limit in moe_config"
             a2q, a2q_scale = persistent_masked_m_swiglustep_mul_quant(
                 workspace1,
@@ -950,6 +959,54 @@ class BatchedDeepGemmExperts(mk.FusedMoEExpertsModular):
             max_tokens_per_expert=max_num_tokens,
             topk=topk_ids.size(-1),
         )
+
+        # /---------------- MetaX Modification ---------------\
+        # Opt-in packed INT8 path: every consumer visits only valid rows.
+        # Keep the baseline for other activation/quantization semantics.
+        from vllm_metax.model_executor.layers.fused_moe import masked_int8_moe
+
+        act_route = masked_int8_moe.activation_route(
+            activation,
+            self.activation_config.clamp_limit,
+            self.activation_config.alpha,
+            self.activation_config.beta,
+        )
+        if masked_int8_moe.enabled() and act_route:
+            logger.info_once(
+                "Using masked INT8 MoE: valid-row packing and fused SiLU/quant/pack"
+            )
+            packed_a1 = getattr(expert_tokens_meta, "packed_input", None)
+            if packed_a1 is None:
+                packed_a1 = masked_int8_moe.pack_valid_rows(
+                    hidden_states, a1_s, expert_num_tokens
+                )
+            int8_m_grouped_gemm_nt_masked(
+                (packed_a1, None),
+                (w1, w1_s),
+                workspace1,
+                expert_num_tokens,
+                expected_m,
+            )
+            packed_a2 = masked_int8_moe.silu_quant_pack_valid_rows(
+                workspace1,
+                expert_num_tokens,
+                self.activation_config.clamp_limit,
+                act_route,
+                self.activation_config.alpha,
+                self.activation_config.beta,
+            )
+            w2_s = _normalize_int8_scale_2d(self.w2_scale, E, K, "w2_scale")
+            # workspace13 may alias output. GEMM1 has already been consumed.
+            # DeepEP combine reads only rows identified by the dispatch handle.
+            int8_m_grouped_gemm_nt_masked(
+                (packed_a2, None),
+                (w2, w2_s),
+                output,
+                expert_num_tokens,
+                expected_m,
+            )
+            return
+        # \---------------- MetaX Modification ---------------/
 
         # Masked grouped GEMM only writes valid token rows. Clear the shared
         # workspace so activation/quantization over the fixed graph shape sees
