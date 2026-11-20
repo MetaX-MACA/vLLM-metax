@@ -1280,10 +1280,18 @@ class DeepseekV4DecoderLayer(nn.Module):
             self.hc_sinkhorn_iters,
             n_splits=1,
             tile_n=1,
-            norm_weight=ffn_norm_weight,
+            norm_weight=(
+                None
+                if getattr(self, "_metax_source_packed_norm", False)
+                else ffn_norm_weight
+            ),
             norm_eps=ffn_norm_eps,
         )
 
+        if getattr(self, "_metax_source_packed_norm", False):
+            # The packed adapter fuses this RMSNorm with INT8 quantization.
+            # MHC above must return the unnormalized FFN input in this mode.
+            x = self.ffn_norm(x)
         x = self.ffn(x, input_ids, mega_gate_metadata)
         return x, residual, post_mix, res_mix
 

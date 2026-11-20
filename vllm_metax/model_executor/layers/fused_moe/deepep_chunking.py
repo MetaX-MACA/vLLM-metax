@@ -4,6 +4,8 @@
 
 import torch
 
+from vllm_metax.model_executor.layers.fused_moe import source_packed_dispatch
+
 
 def apply_chunked_deepep(
     kernel, x, topk_weights, topk_ids, max_tokens, chunk_size, kwargs
@@ -36,7 +38,19 @@ def apply_chunked_deepep(
         options = dict(kwargs)
         options["shared_experts"] = shared if start == 0 else None
         options["shared_experts_input"] = shared_input if start == 0 else None
-        value = kernel.apply(chunk, topk_weights=weights, topk_ids=ids, **options)
+        if start < local:
+            value = kernel.apply(chunk, topk_weights=weights, topk_ids=ids, **options)
+        else:
+            carrier = source_packed_dispatch.dummy_carrier_for_active_scope()
+            if carrier is None:
+                value = kernel.apply(
+                    chunk, topk_weights=weights, topk_ids=ids, **options
+                )
+            else:
+                with source_packed_dispatch.transport_override(carrier):
+                    value = kernel.apply(
+                        chunk, topk_weights=weights, topk_ids=ids, **options
+                    )
         if start < local:
             result[start:end].copy_(value)
     return result
