@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     VLLM_METAX_USE_FP8_WO_A: bool = True
     VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK: bool = False
     VLLM_METAX_USE_FLASHINFER_SAMPLER: bool = False
+    VLLM_METAX_DISABLE_ASYNC_OUTPUT: bool = True
 
 environment_variables: dict[str, Callable[[], Any]] = {
     # ================== Installation Time Env Vars ==================
@@ -77,6 +78,10 @@ environment_variables: dict[str, Callable[[], Any]] = {
     "VLLM_METAX_USE_FP8_WO_A": lambda: bool(
         int(os.environ.get("VLLM_METAX_USE_FP8_WO_A", "1"))
     ),
+    # if set, quant config of main_proj is set to default
+    "VLLM_METAX_USE_QUANT_MAIN_PROJ": lambda: bool(
+        int(os.environ.get("VLLM_METAX_USE_QUANT_MAIN_PROJ", "1"))
+    ),
     # if set, enable sglang fused grouped topk ops on deepseek and kimi model
     "VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK": lambda: bool(
         int(os.getenv("VLLM_METAX_USE_SGL_FUSED_MOE_GROUPED_TOPK", "0"))
@@ -90,6 +95,10 @@ environment_variables: dict[str, Callable[[], Any]] = {
                 os.getenv("VLLM_USE_FLASHINFER_SAMPLER", "0"),
             )
         )
+    ),
+    # if set, disable MRV2 asyc output stream
+    "VLLM_METAX_DISABLE_ASYNC_OUTPUT": lambda: bool(
+        int(os.environ.get("VLLM_METAX_DISABLE_ASYNC_OUTPUT", "1"))
     ),
     # =================== Debug Env Vars ==================
     # if set, use vllm's fused_moe implementation instead of maca's one for debugging and comparison

@@ -913,6 +913,7 @@ def invoke_fused_moe_triton_kernel(
     use_int8_w8a16: bool,
     use_int4_w4a8: bool,
     use_int4_w4a16: bool,
+    use_mxfp4_w4a16: bool,
     per_channel_quant: bool,
     block_shape: list[int] | None = None,
     B_bias: torch.Tensor | None = None,
@@ -954,7 +955,7 @@ def invoke_fused_moe_triton_kernel(
         assert block_shape is None or triton.cdiv(
             B.size(-1), block_shape[1]
         ) == B_scale.size(-1)
-    elif use_int8_w8a16 or use_int4_w4a16 or use_int4_w4a8:
+    elif use_int8_w8a16 or use_int4_w4a16 or use_int4_w4a8 or use_mxfp4_w4a16:
         assert B_scale is not None
         assert block_shape is None or block_shape[0] == 0
     else:
@@ -997,6 +998,7 @@ def invoke_fused_moe_triton_kernel(
             EM,
             top_k,
             mul_routed_weight,
+            filter_expert=filter_expert,
         )
     elif use_int4_w4a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
         # if block_shape is None, then Per-Channel
@@ -1016,6 +1018,7 @@ def invoke_fused_moe_triton_kernel(
                 EM=EM,
                 topk=top_k,
                 mul_routed_weight=mul_routed_weight,
+                filter_expert=filter_expert,
             )
         else:
             mctlass_ops.cutlass_moe_w4a8_gemm(
@@ -1037,6 +1040,7 @@ def invoke_fused_moe_triton_kernel(
                 top_k,
                 mul_routed_weight,
                 group_size=block_shape[1],
+                filter_expert=filter_expert,
             )
     elif use_fp8_w8a8 and mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
         mctlass_ops.cutlass_moe_w8a8_fp8(
@@ -1054,6 +1058,21 @@ def invoke_fused_moe_triton_kernel(
             mul_routed_weight,
             block_shape,
             filter_expert,
+        )
+    elif use_mxfp4_w4a16:
+        mctlass_ops.cutlass_moe_mm_mxfp4_w4a16(
+            a=A,
+            b=B,
+            c=C,
+            b_scales=B_scale,
+            topk_weights=topk_weights,
+            token_ids=sorted_token_ids,
+            expert_ids=expert_ids,
+            num_tokens_post_padded=num_tokens_post_padded,
+            mul_routed_weight=mul_routed_weight,
+            topk=top_k,
+            group_size=32,
+            filter_expert=filter_expert,
         )
     elif (
         A.dtype == torch.bfloat16
@@ -1105,6 +1124,12 @@ def invoke_fused_moe_triton_kernel(
             use_td = False
             # Triton kernel "fused_moe_kernel" has been maintained by mcoplib
             # since v0.18.0-dev.
+
+        # Triton treats 0-D tensor arguments as scalar values, but the kernel
+        # loads tensor-wise activation scales through a pointer.
+        if A_scale is not None and A_scale.ndim == 0:
+            A_scale = A_scale.reshape(1)
+
         if mx_envs.USE_PRECOMPILED_KERNEL:
             fused_moe_triton_kernel(
                 grid,
@@ -1226,6 +1251,7 @@ def dispatch_fused_moe_kernel(
     use_int8_w8a16: bool,
     use_int4_w4a8: bool,
     use_int4_w4a16: bool,
+    use_mxfp4_w4a16: bool,
     per_channel_quant: bool,
     block_shape: list[int] | None = None,
     B_bias: torch.Tensor | None = None,
@@ -1286,6 +1312,7 @@ def dispatch_fused_moe_kernel(
                 topk=top_k,
                 group_size=block_shape[1],
                 b_zp=B_zp,
+                filter_expert=filter_expert,
             )
             return
 
@@ -1328,6 +1355,7 @@ def dispatch_fused_moe_kernel(
             use_int8_w8a16,
             use_int4_w4a8,
             use_int4_w4a16,
+            use_mxfp4_w4a16,
             per_channel_quant,
             block_shape,
             B_bias,
@@ -1793,6 +1821,7 @@ def inplace_fused_experts(
     use_int8_w8a16: bool = False,
     use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
+    use_mxfp4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
     global_num_experts: int = -1,
@@ -1821,6 +1850,7 @@ def inplace_fused_experts(
         use_int8_w8a16,
         use_int4_w4a8,
         use_int4_w4a16,
+        use_mxfp4_w4a16,
         ocp_mx_scheme,
         per_channel_quant,
         global_num_experts,
@@ -1850,6 +1880,7 @@ def inplace_fused_experts_fake(
     use_int8_w8a16: bool = False,
     use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
+    use_mxfp4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
     global_num_experts: int = -1,
@@ -1888,6 +1919,7 @@ def outplace_fused_experts(
     use_int8_w8a16: bool = False,
     use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
+    use_mxfp4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
     global_num_experts: int = -1,
@@ -1916,6 +1948,7 @@ def outplace_fused_experts(
         use_int8_w8a16,
         use_int4_w4a8,
         use_int4_w4a16,
+        use_mxfp4_w4a16,
         ocp_mx_scheme,
         per_channel_quant,
         global_num_experts,
@@ -1945,6 +1978,7 @@ def outplace_fused_experts_fake(
     use_int8_w8a16: bool = False,
     use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
+    use_mxfp4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
     global_num_experts: int = -1,
@@ -1997,6 +2031,7 @@ def _prepare_expert_assignment(
     use_fp8_w8a8: bool = False,
     use_int8_w8a16: bool = False,
     use_int4_w4a16: bool = False,
+    use_mxfp4_w4a16: bool = False,
     use_int8_w8a8: bool = False,
     use_int4_w4a8: bool = False,
     block_shape: list[int] | None = None,
@@ -2070,6 +2105,7 @@ def fused_experts(
         use_int8_w8a16=quant_config.use_int8_w8a16,
         use_int4_w4a8=quant_config.use_int4_w4a8,
         use_int4_w4a16=quant_config.use_int4_w4a16,
+        use_mxfp4_w4a16=quant_config.use_mxfp4_w4a16,
         ocp_mx_scheme=quant_config.ocp_mx_scheme,
         per_channel_quant=quant_config.per_act_token_quant,
         global_num_experts=global_num_experts,
@@ -2120,6 +2156,7 @@ def fused_experts_impl(
     use_int8_w8a16: bool = False,
     use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
+    use_mxfp4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
     per_channel_quant: bool = False,
     global_num_experts: int = -1,
@@ -2147,7 +2184,7 @@ def fused_experts_impl(
     if use_int4_w4a8:
         # 8bit activation and int4 packed weight
         assert hidden_states.size(1) // 8 == w1.size(2), "hidden size mismatch"
-    elif use_int4_w4a16:
+    elif use_int4_w4a16 or use_mxfp4_w4a16:
         assert hidden_states.size(1) // 2 == w1.size(2), "Hidden size mismatch"
     else:
         assert hidden_states.size(1) == w1.size(2), (
@@ -2177,6 +2214,7 @@ def fused_experts_impl(
         # ┌------------------------  Metax Modification -------------------------┐
         use_int4_w4a8=use_int4_w4a8,
         use_int8_w8a8=use_int8_w8a8,
+        use_mxfp4_w4a16=use_mxfp4_w4a16,
         # └------------------------- Metax Modification -------------------------┘
         use_int8_w8a16=use_int8_w8a16,
         use_int4_w4a16=use_int4_w4a16,
@@ -2261,6 +2299,7 @@ def fused_experts_impl(
             use_int8_w8a16=use_int8_w8a16,
             use_int4_w4a8=use_int4_w4a8,
             use_int4_w4a16=use_int4_w4a16,
+            use_mxfp4_w4a16=use_mxfp4_w4a16,
             quantized_hidden_states=qhidden_states,
         )
     sorted_token_ids, expert_ids, num_tokens_post_padded = _prepare_expert_assignment(
@@ -2273,15 +2312,15 @@ def fused_experts_impl(
         use_fp8_w8a8=use_fp8_w8a8,
         use_int8_w8a16=use_int8_w8a16,
         use_int4_w4a16=use_int4_w4a16,
+        use_mxfp4_w4a16=use_mxfp4_w4a16,
         use_int8_w8a8=use_int8_w8a8,
         use_int4_w4a8=use_int4_w4a8,
         block_shape=block_shape,
         ignore_invalid_experts=True,
     )
-    # Only MCTLASS consumes this flag. Alignment above drops invalid experts.
-    # _prepare_expert_assignment set ignore_invalid_experts to True here,
-    # filter_expert is False.
-    filter_expert = not mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+    # NOTE(metax): Invalid routes were dropped; processed blocks are nonnegative.
+    # Unused -1 tail blocks lie beyond num_tokens_post_padded.
+    filter_expert = False
 
     # -------- stage1 --------
     # SPLIT_K>1 uses tl.atomic_add, so output must be zero-initialized.
@@ -2308,6 +2347,7 @@ def fused_experts_impl(
         use_int8_w8a16=use_int8_w8a16,
         use_int4_w4a8=use_int4_w4a8,
         use_int4_w4a16=use_int4_w4a16,
+        use_mxfp4_w4a16=use_mxfp4_w4a16,
         per_channel_quant=per_channel_quant,
         block_shape=block_shape,
         B_bias=w1_bias,
@@ -2338,15 +2378,13 @@ def fused_experts_impl(
                 use_fp8_w8a8=use_fp8_w8a8,
                 use_int8_w8a16=use_int8_w8a16,
                 use_int4_w4a16=use_int4_w4a16,
+                use_mxfp4_w4a16=use_mxfp4_w4a16,
                 use_int8_w8a8=use_int8_w8a8,
                 use_int4_w4a8=use_int4_w4a8,
                 block_shape=block_shape,
                 ignore_invalid_experts=True,
             )
         )
-        if mx_envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE:
-            filter_expert = False
-
     if expert_map is not None or staged_configs[1].get("SPLIT_K", 1) > 1:
         intermediate_cache3.zero_()
 
@@ -2370,6 +2408,7 @@ def fused_experts_impl(
         use_int8_w8a16=use_int8_w8a16,
         use_int4_w4a8=use_int4_w4a8,
         use_int4_w4a16=use_int4_w4a16,
+        use_mxfp4_w4a16=use_mxfp4_w4a16,
         per_channel_quant=per_channel_quant,
         block_shape=block_shape,
         B_bias=w2_bias,

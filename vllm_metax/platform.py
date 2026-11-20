@@ -187,6 +187,7 @@ class MacaPlatformBase(Platform):
     if mx_envs.VLLM_METAX_SUPPORTS_FP8:
         supported_quantization.append("fp8")
         supported_quantization.append("deepseek_v4_fp8")
+        supported_quantization.append("mxfp4")
 
     @classmethod
     def set_device(cls, device: torch.device) -> None:
@@ -392,20 +393,6 @@ class MacaPlatformBase(Platform):
             "gemma4",
         ):
             model_config.model_arch_config.is_mm_prefix_lm = False
-
-        # -------------------------------------------------------
-        # Note: Support joyai_llm_flash MTP
-        if model_config is not None and vllm_config.speculative_config is not None:
-            hf_config = model_config.hf_config
-            # logic copied from `SepculativeConfig.hf_config_override`
-            if hf_config.model_type in ("joyai_llm_flash",):
-                # Preserve JoyAI's dense-MTP identity across the model-type rewrite.
-                hf_config.joyai_dense_mtp = True
-                hf_config.model_type = "deepseek_mtp"
-                n_predict = getattr(hf_config, "num_nextn_predict_layers", None)
-                hf_config.update(
-                    {"n_predict": n_predict, "architectures": ["DeepSeekMTPModel"]}
-                )
 
         if kernel_config := vllm_config.kernel_config:
             kernel_config.enable_jit_warmup = False
@@ -1049,6 +1036,17 @@ mx_envs.maybe_override_vllm_env(
     "USE_DEEP_GEMM_E8M0 default to false on Maca platform",
 )
 
+mx_envs.maybe_override_vllm_env(
+    "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS",
+    False,
+    "disable CUDA graph memory estimate in the KV cache budget on Maca platform",
+)
+
+mx_envs.maybe_override_vllm_env(
+    "VLLM_DISABLE_SHARED_EXPERTS_STREAM",
+    True,
+    "Disabling MoE shared_experts cuda stream on Maca",
+)
 
 # --------------------------------------------------
 # Note: vllm_metax currently does not support third-party

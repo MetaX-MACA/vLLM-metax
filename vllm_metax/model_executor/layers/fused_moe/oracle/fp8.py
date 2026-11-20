@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
-from enum import Enum
 import torch
 
 import vllm.model_executor.layers.fused_moe.modular_kernel as mk
@@ -13,21 +12,48 @@ from vllm.model_executor.layers.fused_moe.config import (
 from vllm.model_executor.layers.quantization.utils.quant_utils import (
     QuantKey,
 )
+from vllm.model_executor.layers.quantization.utils.fp8_utils import (
+    prepare_fp8_moe_layer_for_deepgemm,
+)
 from vllm.model_executor.layers.fused_moe.oracle.fp8 import (
+    Fp8MoeBackend,
     logger,
 )
-
+from vllm.model_executor.layers.fused_moe.routed_experts import RoutedExperts
 from vllm_metax.model_executor.layers.fused_moe.all2all_utils import (
     maybe_make_prepare_finalize,
 )
 
 
-class Fp8MoeBackend(Enum):
-    NONE = "NONE"
-    DEEPGEMM = "DEEPGEMM"
-    BATCHED_DEEPGEMM = "BATCHED_DEEPGEMM"
-    TRITON = "TRITON"
-    BATCHED_TRITON = "BATCHED_TRITON"
+def convert_to_fp8_moe_kernel_format(
+    fp8_backend: Fp8MoeBackend,
+    # TODO(bnell): replace layer with weight_block_size
+    layer: RoutedExperts,
+    w13: torch.Tensor,
+    w2: torch.Tensor,
+    w13_scale: torch.Tensor,
+    w2_scale: torch.Tensor,
+    w13_input_scale: torch.Tensor | None,
+    w2_input_scale: torch.Tensor | None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    block_quant = hasattr(layer, "weight_block_size")
+    if fp8_backend in [Fp8MoeBackend.DEEPGEMM, Fp8MoeBackend.BATCHED_DEEPGEMM]:
+        assert block_quant
+        w13, w2, w13_scale, w2_scale = prepare_fp8_moe_layer_for_deepgemm(
+            w13,
+            w2,
+            w13_scale,
+            w2_scale,
+            tuple(layer.weight_block_size),
+        )
+    else:
+        if fp8_backend not in [
+            Fp8MoeBackend.TRITON,
+            Fp8MoeBackend.BATCHED_TRITON,
+        ]:
+            raise ValueError(f"Unsupported FP8 MoE backend: {fp8_backend.value}")
+
+    return w13, w2, w13_scale, w2_scale
 
 
 def _get_priority_backends(
@@ -176,7 +202,7 @@ def select_fp8_moe_backend(
     if not envs.is_set("VLLM_USE_DEEP_GEMM"):
         AVAILABLE_BACKENDS.remove(Fp8MoeBackend.DEEPGEMM)
         AVAILABLE_BACKENDS.remove(Fp8MoeBackend.BATCHED_DEEPGEMM)
-    if envs.is_set("VLLM_USE_DEEP_GEMM") or envs.is_set("VLLM_MOE_USE_DEEP_GEMM"):
+    elif envs.is_set("VLLM_USE_DEEP_GEMM") or envs.is_set("VLLM_MOE_USE_DEEP_GEMM"):
         if not envs.VLLM_USE_DEEP_GEMM or not envs.VLLM_MOE_USE_DEEP_GEMM:
             AVAILABLE_BACKENDS.remove(Fp8MoeBackend.DEEPGEMM)
             AVAILABLE_BACKENDS.remove(Fp8MoeBackend.BATCHED_DEEPGEMM)

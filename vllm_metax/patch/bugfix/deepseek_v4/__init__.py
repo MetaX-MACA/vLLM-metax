@@ -12,3 +12,4 @@
 # -----------------------------------------------------------------------------
 
 from . import parallel_state  # noqa: F401
+from . import topk_global_indices_oob  # noqa: F401

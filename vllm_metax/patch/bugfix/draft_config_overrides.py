@@ -44,6 +44,17 @@ def _update_nested_hf_config(target, updates: Mapping[str, Any]) -> None:
             setattr(target, key, copy.deepcopy(value))
 
 
+_original_hf_config_override = SpeculativeConfig.hf_config_override
+
+
+@patch("vllm.config.speculative", "SpeculativeConfig.hf_config_override")
+def hf_config_override(hf_config: PretrainedConfig) -> PretrainedConfig:
+    """Recognize JoyAI's dense MTP while deriving the draft configuration."""
+    if hf_config.model_type == "joyai_llm_flash":
+        hf_config.model_type = "deepseek_mtp"
+    return _original_hf_config_override(hf_config)
+
+
 class _DraftHfOverrides:
     """Picklable dictionary overrides followed by upstream's draft rewrite."""
 

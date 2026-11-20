@@ -9,6 +9,8 @@ from vllm.model_executor.layers.fused_moe import (
 )
 from vllm.model_executor.layers.fused_moe.oracle.fp8 import (
     refine_fp8_moe_block_shape,
+)
+from vllm_metax.model_executor.layers.fused_moe.oracle.fp8 import (
     convert_to_fp8_moe_kernel_format,
 )
 from vllm_metax.model_executor.layers.fused_moe.oracle.fp8 import (
@@ -42,6 +44,7 @@ from vllm.model_executor.layers.quantization.fp8 import (
     Fp8LinearMethod,
     Fp8MoEMethod as vllm_Fp8MoEMethod,
 )
+from vllm.models.deepseek_v4.quant_config import DeepseekV4FP8Config
 
 
 logger = init_logger(__name__)
@@ -97,6 +100,17 @@ class MacaFp8Config(Fp8Config):
         elif isinstance(layer, Attention):
             return Fp8KVCacheMethod(self)
         return None
+
+
+# NOTE(MetaX): v0.30.0 routes DeepSeek V4 checkpoints to a dedicated FP8
+# config. Preserve its expert-dtype handling, but use MetaX's FP8 linear,
+# attention and FP8 MoE dispatch through the second base class. Revalidate
+# this adapter when the upstream config dispatches those MACA kernels itself.
+@register_quantization_config("deepseek_v4_fp8")
+class MacaDeepseekV4FP8Config(DeepseekV4FP8Config, MacaFp8Config):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._resolved_expert_dtype = "fp8"  # Here we force it to be fp8
 
 
 class Fp8MoEMethod(vllm_Fp8MoEMethod):

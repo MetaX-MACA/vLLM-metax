@@ -28,6 +28,7 @@ def get_config_dtype_str(
     dtype: torch.dtype,
     use_int4_w4a16: bool | None = False,
     # ┌------------------------  Metax Modification -------------------------┐
+    use_mxfp4_w4a16: bool | None = False,
     use_int4_w4a8: bool | None = False,
     use_int8_w8a8: bool | None = False,
     # └------------------------- Metax Modification -------------------------┘
@@ -47,6 +48,8 @@ def get_config_dtype_str(
         return "int8_w8a16"
     elif use_int4_w4a16:
         return "int4_w4a16"
+    elif use_mxfp4_w4a16:
+        return "mxfp4_w4a16"
     elif ocp_mx_scheme is not None:
         # The output of this function is passed to `try_get_optimal_moe_config`,
         # and as we only simulate OCP MX execution in fused_moe for now,
@@ -90,6 +93,7 @@ def maybe_override_stage_block_size_m(
     use_int8_w8a16: bool = False,
     use_int4_w4a8: bool = False,
     use_int4_w4a16: bool = False,
+    use_mxfp4_w4a16: bool = False,
     quantized_hidden_states: torch.Tensor | None = None,
 ) -> None:
     """Match both stages to the MCTLASS kernel's token block size.
@@ -172,11 +176,26 @@ def maybe_override_stage_block_size_m(
         staged_configs[0]["BLOCK_SIZE_M"] = kernel_m
         staged_configs[1]["BLOCK_SIZE_M"] = kernel_m
 
+    if use_mxfp4_w4a16:
+        kernel_m = mctlass_ops.cutlass_moe_mm_mxfp4_w4a16_get_kernel_m(
+            a=hidden_states,
+            b=w1,
+            c=intermediate_cache13,
+            K=K,
+            topk=top_k_num,
+        )
+        assert kernel_m > 0, (
+            "cutlass_fused_moe_fp4_w4a16 BLOCK_SIZE_M must greater than zero."
+        )
+        staged_configs[0]["BLOCK_SIZE_M"] = kernel_m
+        staged_configs[1]["BLOCK_SIZE_M"] = kernel_m
+
     if (
         hidden_states.dtype == torch.bfloat16
         and not use_fp8_w8a8
         and not use_int4_w4a8
         and not use_int4_w4a16
+        and not use_mxfp4_w4a16
         and not use_int8_w8a8
         and not use_int8_w8a16
     ):

@@ -49,6 +49,10 @@ def resolve_worker_cls(additional_config: Any, enforce_eager: bool | None) -> st
             "CUDA graph capture bypasses the Python-level hooks msprobe "
             "relies on."
         )
+    logger.info(
+        "msprobe dump requested; installing MacaWorker (enforce_eager=%s)",
+        enforce_eager,
+    )
     return "vllm_metax.v1.worker.gpu_worker.MacaWorker"
 
 

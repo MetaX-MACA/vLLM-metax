@@ -13,3 +13,4 @@
 
 from . import kda  # noqa: F401
 from . import chunk_delta_h  # noqa: F401
+from . import fused_moe_lora_shmem  # noqa: F401

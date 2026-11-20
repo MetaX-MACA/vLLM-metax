@@ -21,6 +21,7 @@ contains inactive examples. Package initializers only load the entries below.
 | `bugfix/qwen3_5_moe_loading.py` | Keep: upstream AutoWeightsLoader and Qwen3.5 MTP do not dequantize ignored shared-expert gates from affected INT8 checkpoints. Wrapper signature remains compatible. |
 | `bugfix/telechat3/telechat3_yarn.py` | Update: normalize a temporary config to YaRN before upstream length validation. Preserve the model's actual rope type; reject invalid explicit lengths through upstream validation instead of silently clamping afterward. |
 | `bugfix/triton_support/rejection_sampler.py` | Delete (previously disabled). Upstream recovery sampling already tiles the vocabulary and additionally masks invalid vocabulary entries and resolves ties safely. |
+| `bugfix/rejection_sampler.py` | Keep for vLLM 0.29.0: port MC3-15766 insert bounds (mapping index, request state, resample block and output slot clamps), with an early return when `start_idx + num_sampled >= end_idx` before reading the mapping or incrementing the sampled count. Resample block size remains upstream's default. |
 | `bugfix/triton_support/kda.py` | Keep: body matches upstream, but its non-AMD autotune list still includes 32 warps unsupported by MACA. |
 | `bugfix/triton_support/chunk_delta_h.py` | Keep: body and heuristics match upstream. Upstream selects 2–4 pipeline stages; MACA still needs one stage to fit shared memory. |
 | `bugfix/minimax_m3/index_topk.py` | Keep: current score/decode APIs match. Upstream launches still need the MACA single-stage and minimum MMA tile adjustments. |

@@ -56,6 +56,7 @@ from .model import (
     _use_sequence_parallel,
     make_deepseek_v4_expert_params_mapping,
 )
+import vllm_metax.envs as mx_envs
 
 logger = init_logger(__name__)
 
@@ -92,7 +93,9 @@ class DSparkDeepseekV4Model(nn.Module):
             config.hidden_size,
             bias=False,
             return_bias=False,
-            quant_config=vllm_config.quant_config,
+            quant_config=vllm_config.quant_config
+            if mx_envs.VLLM_METAX_USE_QUANT_MAIN_PROJ
+            else None,
             prefix=maybe_prefix(prefix, "main_proj"),
         )
         self.main_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)

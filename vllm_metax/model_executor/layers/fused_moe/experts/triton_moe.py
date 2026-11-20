@@ -216,6 +216,17 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
             swiglu_limit_func(output, input, activation_config.clamp_limit)
             return
 
+        # /------------------------- Metax Modification --------------------------\
+        if activation == MoEActivation.SWIGLUSTEP:
+            from vllm_metax._custom_ops import swiglustep_and_mul
+
+            limit = activation_config.clamp_limit
+            if limit is None:
+                limit = 7.0
+            swiglustep_and_mul(output, input, float(limit))
+            return
+        # \-----------------------------------------------------------------------/
+
         # SWIGLUOAI_UNINTERLEAVE routes to the silu_and_mul_with_clamp kernel and
         # requires a clamp limit. Other activations ignore these parameters.
         if activation == MoEActivation.SWIGLUOAI_UNINTERLEAVE:
@@ -265,9 +276,9 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
         apply_router_weight_on_input: bool,
     ):
         # Check constraints.
-        if self.quant_config.use_int4_w4a16:
+        if self.quant_config.use_int4_w4a16 or self.quant_config.use_mxfp4_w4a16:
             assert hidden_states.size(-1) // 2 == w1.size(2), "Hidden size mismatch"
-        if self.quant_config.use_int4_w4a8:
+        elif self.quant_config.use_int4_w4a8:
             # 8bit activation and int4 packed weight
             assert hidden_states.size(-1) // 8 == w1.size(2), "Hidden size mismatch"
         else:
@@ -318,6 +329,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
         config_dtype = get_config_dtype_str(
             dtype=hidden_states.dtype,
             use_int4_w4a16=self.quant_config.use_int4_w4a16,
+            use_mxfp4_w4a16=self.quant_config.use_mxfp4_w4a16,
             use_int4_w4a8=self.quant_config.use_int4_w4a8,
             use_int8_w8a8=self.quant_config.use_int8_w8a8,
             use_int8_w8a16=self.quant_config.use_int8_w8a16,
@@ -380,6 +392,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 use_int8_w8a16=self.quant_config.use_int8_w8a16,
                 use_int4_w4a8=self.quant_config.use_int4_w4a8,
                 use_int4_w4a16=self.quant_config.use_int4_w4a16,
+                use_mxfp4_w4a16=self.quant_config.use_mxfp4_w4a16,
             )
 
         # Ensure correctness when SPLIT_K>1 (atomic_add path).
@@ -397,6 +410,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
                 use_int8_w8a16=self.quant_config.use_int8_w8a16,
                 use_int4_w4a16=self.quant_config.use_int4_w4a16,
+                use_mxfp4_w4a16=self.quant_config.use_mxfp4_w4a16,
                 use_int8_w8a8=self.quant_config.use_int8_w8a8,
                 use_int4_w4a8=self.quant_config.use_int4_w4a8,
                 block_shape=self.block_shape,
@@ -475,6 +489,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 use_int8_w8a16=self.quant_config.use_int8_w8a16,
                 use_int4_w4a8=self.quant_config.use_int4_w4a8,
                 use_int4_w4a16=self.quant_config.use_int4_w4a16,
+                use_mxfp4_w4a16=self.quant_config.use_mxfp4_w4a16,
                 per_channel_quant=self.per_act_token_quant,
                 block_shape=self.block_shape,
                 B_bias=self.w1_bias,
@@ -556,6 +571,29 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 group_size=128,
                 quant_dtype=current_platform.fp8_dtype(),
             )
+        # /------------------------- Metax Modification --------------------------\
+        elif (
+            activation == MoEActivation.SWIGLUSTEP
+            and self.quant_config.use_fp8_w8a8
+            and self.block_shape == [128, 128]
+            and lora_context is None
+            and not is_deep_gemm_e8m0_used()
+        ):
+            from vllm_metax._custom_ops import (
+                swiglu_step_and_mul_per_block_quant,
+            )
+
+            limit = self.activation_config.clamp_limit
+            if limit is None:
+                limit = 7.0
+
+            qintermediate_cache2, a2q_scale = swiglu_step_and_mul_per_block_quant(
+                intermediate_cache1.view(-1, N),
+                group_size=128,
+                quant_dtype=current_platform.fp8_dtype(),
+                clamp_limit=float(limit),
+            )
+        # \-----------------------------------------------------------------------/
         else:
             self.activation(
                 activation, intermediate_cache2, intermediate_cache1.view(-1, N)
@@ -582,6 +620,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                     use_fp8_w8a8=self.quant_config.use_fp8_w8a8,
                     use_int8_w8a16=self.quant_config.use_int8_w8a16,
                     use_int4_w4a16=self.quant_config.use_int4_w4a16,
+                    use_mxfp4_w4a16=self.quant_config.use_mxfp4_w4a16,
                     use_int8_w8a8=self.quant_config.use_int8_w8a8,
                     use_int4_w4a8=self.quant_config.use_int4_w4a8,
                     block_shape=self.block_shape,
@@ -629,6 +668,7 @@ class TritonExperts(LoRAExpertsMixin, mk.FusedMoEExpertsModular):
                 use_int8_w8a16=self.quant_config.use_int8_w8a16,
                 use_int4_w4a8=self.quant_config.use_int4_w4a8,
                 use_int4_w4a16=self.quant_config.use_int4_w4a16,
+                use_mxfp4_w4a16=self.quant_config.use_mxfp4_w4a16,
                 per_channel_quant=self.per_act_token_quant,
                 block_shape=self.block_shape,
                 B_bias=self.w2_bias,
@@ -752,7 +792,7 @@ class TritonWNA16Experts(TritonExperts):
         apply_router_weight_on_input: bool,
     ):
         # Check constraints.
-        if self.quant_config.use_int4_w4a16:
+        if self.quant_config.use_int4_w4a16 or self.quant_config.use_mxfp4_w4a16:
             assert hidden_states.size(-1) // 2 == w1.size(2), (
                 f"Hidden size mismatch {hidden_states.size(-1) // 2} == {w1.size(2)}"
             )
@@ -784,6 +824,7 @@ class TritonWNA16Experts(TritonExperts):
         config_dtype = get_config_dtype_str(
             dtype=hidden_states.dtype,
             use_int4_w4a16=self.quant_config.use_int4_w4a16,
+            use_mxfp4_w4a16=self.quant_config.use_mxfp4_w4a16,
             use_int4_w4a8=self.quant_config.use_int4_w4a8,
             use_int8_w8a8=self.quant_config.use_int8_w8a8,
             use_int8_w8a16=self.quant_config.use_int8_w8a16,
