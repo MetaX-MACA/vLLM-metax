@@ -25,6 +25,7 @@ vLLM MetaX Plugin
 
 *Latest News* 🔥
 
+- [2026/11] Released vllm-metax **v0.29.0** 😎 — aligned with vLLM *v0.29.0*, updated!
 - [2026/10] Released vllm-metax **v0.28.0** 🚀 — aligned with vLLM *v0.28.0*, the holiday enjoyment has come to an end😭.
 - [2026/9] Released vllm-metax **v0.27.0** 🚀 — aligned with vLLM *v0.27.0*, happy National Day🎉!
 - [2026/9] Released vllm-metax **v0.26.0** 🚀 — aligned with vLLM *v0.26.0*, working hard to make it more💪.
@@ -64,7 +65,7 @@ These RFCs help ensure proper feature and functionality support when integrating
 - Hardware: MetaX C-series
 - OS: Linux
 - Software:
-    - Python >= 3.10, <= 3.12
+    - Python >= 3.12
     - vLLM (the same version as vllm-metax)
     - Docker support
 
@@ -85,31 +86,6 @@ vllm-metax has three kinds of branches.
   > For example, `v0.1x.0-dev` is the development branch for a newly released branch like `releases/v0.1x.0`.
 - **releases/vX.Y.Z**: release branches created from `v0.1x.0-dev`, indicating that the corresponding vllm-metax development branch has been fully tested and released.
   > For example, vllm-metax's `releases/v0.1x.0` corresponds to vLLM's `releases/v0.1x.0`. The same naming rule applies to tags.
-
-Below are the maintained branches:
-
-| Branch | Status | Note |
-| --- | --- | --- |
-| master | N/A | Tracks vLLM main; functionality is not guaranteed |
-| releases/v0.28.0 | Released | Corresponds to vLLM release v0.28.0 |
-| releases/v0.27.0 | Released | Corresponds to vLLM release v0.27.0 |
-| releases/v0.26.0 | Released | Corresponds to vLLM release v0.26.0 |
-| releases/v0.25.0 | Released | Corresponds to vLLM release v0.25.0 |
-| releases/v0.24.0 | Released | Corresponds to vLLM release v0.24.0 |
-| releases/v0.23.0 | Released | Corresponds to vLLM release v0.23.0 |
-| releases/v0.22.0 | Released | Corresponds to vLLM release v0.22.0 |
-| releases/v0.21.0 | Released | Corresponds to vLLM release v0.21.0 |
-| releases/v0.20.0 | Released | Corresponds to vLLM release v0.20.0 |
-| releases/v0.19.0 | Released | Corresponds to vLLM release v0.19.0 |
-| releases/v0.18.0 | Released | Corresponds to vLLM release v0.18.0 |
-| releases/v0.17.0 | Released | Corresponds to vLLM release v0.17.0 |
-| v0.16.0 | N/A | **Skipped** |
-| releases/v0.15.0 | Released | Corresponds to vLLM release v0.15.0 |
-| releases/v0.14.0 | Released | Corresponds to vLLM release v0.14.0 |
-| releases/v0.13.0 | Released | Corresponds to vLLM release v0.13.0 |
-| releases/v0.12.0 | Released | Corresponds to vLLM release v0.12.0 |
-| releases/v0.11.2 | Released | Corresponds to vLLM release v0.11.2 |
-| releases/v0.10.2 | Released | Corresponds to vLLM release v0.10.2 |
 
 For more details, please check the [Quickstart Guide](https://vllm-metax.readthedocs.io/en/latest/getting_started/quickstart.html).
 
