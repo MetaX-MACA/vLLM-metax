@@ -73,6 +73,12 @@ class CompressedTensorsW8A8Int8MoEMethod(vllm_ctm_w8a8_int8):
             activation_key=kInt8DynamicTokenSym,
         )
 
+    @property
+    def supports_eplb(self) -> bool:
+        # EPLB remaps expert IDs and rearranges expert weights; the local INT8
+        # kernels consume the same per-channel/per-token layout.
+        return True
+
     def process_weights_after_loading(self, layer: RoutedExperts) -> None:
         w13, w2 = convert_to_int8_moe_kernel_format(
             int8_backend=self.int8_backend,
