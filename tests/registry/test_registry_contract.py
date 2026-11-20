@@ -75,3 +75,33 @@ def test_registry_modules_import_without_precompiled_kernel_fallback():
         mxfp4,
     ]
     assert all(module.__file__ for module in modules)
+
+
+# The upstream FP8 quantization tests exercise the registered quantizer.
+# This configuration test needs no FP8 arithmetic.
+@pytest.mark.parametrize(
+    ("custom_ops", "enabled"),
+    [
+        (["all"], True),
+        (["none", "+quant_fp8"], True),
+        (["none"], False),
+        (["all", "-quant_fp8"], False),
+    ],
+)
+def test_registered_fp8_quantizer_respects_configuration(custom_ops, enabled):
+    from vllm.config import CompilationConfig, VllmConfig, set_current_vllm_config
+    from vllm.model_executor.layers.quantization.input_quant_fp8 import QuantFP8
+    from vllm.model_executor.layers.quantization.utils.quant_utils import GroupShape
+
+    from vllm_metax.registry.custom_ops.layers.quantization.input_quant_fp8 import (
+        QuantFP8 as MacaQuantFP8,
+    )
+
+    config = VllmConfig(compilation_config=CompilationConfig(custom_ops=custom_ops))
+    with set_current_vllm_config(config):
+        quantizer = QuantFP8(
+            False, GroupShape.PER_TOKEN, use_ue8m0=False, compile_native=False
+        )
+    assert type(quantizer) is MacaQuantFP8
+    expected = quantizer.forward_oot if enabled else quantizer.forward_native
+    assert quantizer._forward_method == expected

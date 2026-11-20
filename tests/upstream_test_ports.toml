@@ -1,0 +1,445 @@
+# One entry per reviewed upstream test file.
+version = "v0.33.0"
+revision = "4ba787ec9959e566d3b587a796dff07673324da5"
+
+[files."tests/basic_correctness/memory/cumem/test_cumem.py"]
+blob = "956373f4d37e64b35008994a524b50cd982dbf05"
+status = "partial"
+implementation = [
+  "vllm_metax/device_allocator/cumem.py",
+  "vllm_metax/device_allocator/sleep_mode_backend.py",
+]
+notes = "Ports tagged pool restoration and graph replay through MacaMemBackend. Review KV release and the remaining allocator lifecycle cases."
+
+[files."tests/basic_correctness/models/test_basic_correctness.py"]
+blob = "5c1ed00fbcd691bb8e02e69fd2de35806f42be7a"
+status = "partial"
+implementation = [
+  "vllm_metax/models/deepseek_v2.py",
+  "vllm_metax/v1/attention/backends/flash_attn.py",
+  "vllm_metax/v1/attention/backends/triton_attn.py",
+  "vllm_metax/v1/attention/backends/mla/flashmla.py",
+  "vllm_metax/v1/attention/backends/mla/triton_mla.py",
+]
+notes = "Ports generation comparison with local Qwen2 and DeepSeek V2 weights and explicit MetaX backend selection. Review distributed model cases and failure recovery."
+
+[files."tests/distributed/test_eplb_algo.py"]
+blob = "8cd5cf9e3c057d3074072d5b020071fd6b0e3dee"
+status = "partial"
+implementation = [
+  "vllm_metax/patch/enhancement/static_eplb/placement.py",
+]
+notes = "Ports expert placement invariants through the static MetaX import/rebalance path. Review across-rank load statistics and hierarchical rebalance."
+
+[files."tests/distributed/test_pynccl.py"]
+blob = "924dfb73aba0adbbebd67a47ad1b784ff3a65644"
+status = "partial"
+implementation = [
+  "vllm_metax/distributed/device_communicators/pynccl_wrapper.py",
+]
+notes = "Ports two-rank all-reduce, fixed and variable gather, variable reduce-scatter and broadcast through MCCL. Review fixed reduce-scatter, point-to-point and graph capture."
+
+[files."tests/kernels/attention/test_amx_mla.py"]
+blob = "f5fa2fad16c286930fb5c6b211e08c1038346a62"
+status = "not_applicable"
+notes = "The file exercises the CPU AMX tile ops and AMXMLAImpl. MacaPlatform selects GPU MLA backends and does not dispatch to the CPU AMX implementation."
+
+[files."tests/kernels/attention/test_cache.py"]
+blob = "4bc0ce1a67b7d1ce5c76b8c27a19d5fe04fd2c1a"
+status = "partial"
+implementation = [
+  "vllm_metax/_custom_ops.py",
+  "csrc/libtorch_stable/cache_kernels.cu",
+]
+notes = "Ports reshape-and-cache in packed K/V and FlashAttention layouts, CPU/device block swaps and batched copies, grouped MLA insertion, and BF16 gather with offsets and empty requests. Review unaligned FlashAttention rows and quantized or hardware-specific cache variants."
+
+[files."tests/kernels/attention/test_cutlass_mla_decode.py"]
+blob = "7a5011b5caecadfa6980006240bd61f8da77e78a"
+status = "not_applicable"
+notes = "The file requires compute capability 100 and sm100_cutlass_mla_decode. The source build leaves the CUTLASS MLA kernel disabled and MacaPlatform selects its own GPU MLA backends."
+
+[files."tests/kernels/attention/test_deepgemm_attention.py"]
+blob = "109cc83830b185788eeb4c6b68649e1b7eb608f2"
+status = "partial"
+implementation = [
+  "vllm_metax/v1/attention/ops/bf16_mqa_logits.py",
+  "vllm_metax/registry/custom_ops/layers/sparse_attn_indexer/bf16.py",
+]
+notes = "Ports flat and paged MQA scoring oracles to the MetaX BF16 indexer with request and per-token lengths. Review FP8/FP4 kernels and manager-block strides separately."
+
+[files."tests/kernels/attention/test_flash_attn.py"]
+blob = "ea1d6744c5903389a53ee5edb875aad47f049afa"
+status = "partial"
+implementation = [
+  "vllm_metax/v1/attention/backends/fa_utils.py",
+  "vllm_metax/third_party/fa_interface.py",
+]
+notes = "Ports variable-length paged attention to the MetaX FA2 wrapper and exercises KV append. Review the FA4 head-dimension-256 contract against supported MetaX FlashAttention paths."
+
+[files."tests/kernels/attention/test_flashmla.py"]
+blob = "3af59dd86f9a1a345b78774bc6f7242a524971b2"
+status = "partial"
+implementation = [
+  "vllm_metax/v1/attention/ops/flashmla.py",
+  "vllm_metax/v1/attention/backends/mla/flashmla.py",
+]
+notes = "Ports dense BF16 causal MLA decode, ragged page tables, scheduler metadata, output aliasing and LSE. Review FP16 and the larger shape matrix. Dense FP8 is not implemented in this MetaX wrapper."
+
+[files."tests/kernels/attention/test_flashmla_sparse.py"]
+blob = "8fcf3f6a587081528c52d24db1054bffb319575e"
+status = "partial"
+implementation = [
+  "vllm_metax/v1/attention/ops/flashmla.py",
+  "vllm_metax/v1/attention/backends/mla/flashmla_sparse.py",
+]
+notes = "Ports sparse prefill and verifies valid index masking. Review metadata, quantized sparse decode, and DeepSeek V4 planning cases against the local backend."
+
+[files."tests/kernels/attention/test_kimi_k3_mla_key_concat_kv_cache.py"]
+blob = "feaeb4144fd1d7485868973fe27be24eeccee731"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/fused_kimi_k3_mla_key_concat_kv_cache_kernel.cu",
+]
+notes = "Ports BF16 and FP16 native Kimi MLA prefill and decode concatenation, strided positional keys, KV-only concatenation and negative slots. The FP8 and DS-MLA packed cache formats need compatible hardware."
+
+[files."tests/kernels/attention/test_merge_attn_states.py"]
+blob = "1b89e4db66b38d8e79c0c7e35cb302b58b845a2e"
+status = "partial"
+implementation = [
+  "vllm_metax/v1/attention/ops/merge_attn_states.py",
+]
+notes = "Ports output/LSE merging with empty partitions and graph-padded rows. Review the upstream FP8 output matrix."
+
+[files."tests/kernels/attention/test_mla_cross_layer_kernel_equivalence.py"]
+blob = "ffdb76e176f8ae1a994843ac7cca17f286149107"
+status = "partial"
+implementation = [
+  "vllm_metax/_custom_ops.py",
+  "csrc/libtorch_stable/cache_kernels.cu",
+]
+notes = "Ports unified slot-view writes, FP16/BF16 indexer cache round trip, and byte-exact gather of packed values and scale records. Review cross-layer decode equivalence for dense and sparse attention."
+
+[files."tests/kernels/attention/test_rocm_aiter_mla_op_registration.py"]
+blob = "cb40c61c3b94cc181d02d45188cee125f2b89397"
+status = "not_applicable"
+notes = "The three cases check schema, fake tensors and mutation of CDNA AITER operators. The plugin does not register or call those operators."
+
+[files."tests/kernels/attention/test_triton_decode_attention.py"]
+blob = "4de0436e0e16428ebc9943bf2c0237870bdb41fc"
+status = "partial"
+implementation = [
+  "vllm_metax/v1/attention/ops/triton_decode_attention.py",
+]
+notes = "Ports decode attention across grouped heads, KV splits and unequal sequence lengths. Review cross-layer views, large offsets and FP8."
+
+[files."tests/kernels/attention/test_triton_unified_attention.py"]
+blob = "b50e97b52bc9e97996fbb4fb91447ec06ba4242e"
+status = "partial"
+implementation = [
+  "vllm_metax/v1/attention/ops/triton_unified_attention.py",
+]
+notes = "Ports paged and split-K comparison with a Torch reference. Review masked tile recovery, dedicated sliding-window cases and FP8."
+
+[files."tests/kernels/core/test_activation.py"]
+blob = "9303e23553af7c62347296c049b10a18ba4c4b48"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/activation_kernels.cu",
+  "vllm_metax/registry/custom_ops/activation.py",
+]
+notes = "Ports native SiLU, registered activation numerics, the SwiGLUStep clamp, and flat and batched masked SiLU. Review other masked activation kinds and the remaining dtype/layout cases."
+
+[files."tests/kernels/core/test_fused_qk_norm_rope.py"]
+blob = "b91db79c6cf8de10903ac200065e03bdb3532fcb"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/fused_qknorm_rope_kernel.cu",
+]
+notes = "Ports in-place FP16 Q/K normalization and rotary embedding, checking that V is preserved. The native BF16 branch returns early and still needs kernel support."
+
+[files."tests/kernels/core/test_fused_rms_norm_gated.py"]
+blob = "93248fd880777059f6d7c4a964c57247dea01fbe"
+status = "partial"
+implementation = [
+  "vllm_metax/registry/custom_ops/layernorm.py",
+]
+notes = "Ports registered gated RMSNorm with and without gating. Review import order and compiled-versus-eager behavior."
+
+[files."tests/kernels/core/test_layernorm.py"]
+blob = "a1ca0c09cf669dd0a3f6d3d7798b14fda2258c5d"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/layernorm_kernels.cu",
+  "vllm_metax/registry/custom_ops/layernorm.py",
+]
+notes = "Ports RMSNorm and in-place fused residual add. Review weightless, mixed-input Gemma and quantized variants."
+
+[files."tests/kernels/core/test_mrope.py"]
+blob = "e590d8264cb06ba749dc2e0bd2b9c5881a1f5c8d"
+status = "partial"
+implementation = [
+  "vllm_metax/registry/custom_ops/layers/rotary_embedding/rotary_embedding.py",
+]
+notes = "Ports registered MRoPE with NeoX and interleaved rotary sections, packed inputs, partial rotation and separate Q/K head counts. Review the 64-bit offset and compile cases."
+
+[files."tests/kernels/core/test_pos_encoding.py"]
+blob = "3a750b743503ad4986fd1aafacecbcae3806c1b4"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/pos_encoding_kernels.cu",
+  "vllm_metax/registry/custom_ops/layers/rotary_embedding/rotary_embedding.py",
+]
+notes = "Ports registered rotary embedding with offset, layout and optional key variants. Review rotary module cache behavior."
+
+[files."tests/kernels/core/test_rotary_embedding_mla_cache_fused.py"]
+blob = "3f192ba2e7f11fba7f006a6ab8850d054d41ecd5"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/cache_kernels_fused.cu",
+]
+notes = "Ports FP16 and BF16 in-place RoPE and MLA cache insertion, including GPT-J/NeoX layout, strided positional keys and negative slots. Review FP8 and the broader shape matrix."
+
+[files."tests/kernels/core/test_vocab_parallel_embedding.py"]
+blob = "b50b5e56887125f73dd83169c63d211807f01bda"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/vocab_parallel_embedding_kernels.cu",
+]
+notes = "Ports the per-rank and summed outputs against full table gather, with added vocab padding, both ID dtypes and four vector alignments. Review deferred reduction and the remaining matrix."
+
+[files."tests/kernels/mamba/test_mamba_ssm.py"]
+blob = "c24f4c0f8719a6849c3eefea05c82f6593406699"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/mamba/selective_scan_fwd.cu",
+]
+notes = "Ports fixed-length selective scan through the native dispatcher with grouped weights, optional gating, chunked state continuation and independent recurrence. Review varlen and selective-state-update cases separately."
+
+[files."tests/kernels/mhc/test_mhc_jit_warmup.py"]
+blob = "e8e9e2e837ef62bf081fbd64ac8afdc764eea287"
+status = "partial"
+implementation = [
+  "vllm_metax/model_executor/kernels/mhc/warmup.py",
+]
+notes = "Ports runtime-versus-warmup compile-key equivalence to the MetaX pre-norm kernel, including explicit split choices and auxiliary output. Review the remaining registered kernel launch and compilation cases."
+
+[files."tests/kernels/mhc/test_mhc_kernels.py"]
+blob = "469fca7b04d079de2784a5b1f65d22deac2b2474"
+status = "partial"
+implementation = [
+  "vllm_metax/model_executor/kernels/mhc/tilelang.py",
+  "vllm_metax/registry/custom_ops/layers/mhc.py",
+]
+notes = "Ports the MHC post matrix through the plugin-registered custom op with an independent Torch reference. Review delayed pre-norm, fused post/pre, DeepSeek V4.1 and graph capture cases."
+
+[files."tests/kernels/moe/test_fused_topk.py"]
+blob = "06a00fe06147bb13e446d419b828a3741c8ff396"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/moe/topk_softmax_kernels.cu",
+]
+notes = "Ports generic softmax and sigmoid routing with bias and expert padding. The specialized PDL launch fails in the current runtime. Nonfinite scores still need coverage."
+
+[files."tests/kernels/moe/test_grouped_topk.py"]
+blob = "2004feae65954bdc06a182dd36316118a9e5bede"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/moe/grouped_topk_kernels.cu",
+  "vllm_metax/patch/enhancement/performance/grouped_topk_router.py",
+]
+notes = "Ports single-group routing, bias, empty batches and graph padding through the local kernel and plugin router. Review capacity thresholds, stable ties and nonfinite scores."
+
+[files."tests/kernels/moe/test_moe.py"]
+blob = "d279c15c2c79efc5ee73a16803563c41d72464f0"
+status = "partial"
+implementation = [
+  "vllm_metax/model_executor/layers/fused_moe/fused_moe.py",
+  "csrc/libtorch_stable/moe/moe_align_sum_kernels.cu",
+]
+notes = "Ports dense Triton expert numerics and masked native reduction. Review quantized experts, large offsets and alternative local routing paths."
+
+[files."tests/kernels/moe/test_moe_align_block_size.py"]
+blob = "ca339eeed8bd5ae1ec2800501ebfd635e5503237"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/moe/moe_align_sum_kernels.cu",
+]
+notes = "Ports expert mapping, invalid route scatter, batched alignment and LoRA isolation including a disabled adapter. Review deterministic reruns and remaining routing shapes."
+
+[files."tests/kernels/moe/test_moe_permute_unpermute.py"]
+blob = "79bb626696c4210a7ae56fa87848a7b0f4419ddb"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/moe/moe_permute_unpermute_op.cu",
+]
+notes = "Ports permutation, offsets, inverse mapping, weighted unpermutation and scatter preparation with optional scratch and expert maps. Review graph replay and scratch growth and reuse."
+
+[files."tests/kernels/moe/test_topk_softplus_sqrt.py"]
+blob = "a9fb8041c7e940ab8a574244fa0460de851d33f2"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/moe/topk_softplus_sqrt_kernels.cu",
+]
+notes = "Ports biased, hash and mixed image-token routes with and without normalization using FP16, BF16 and FP32. Review the remaining expert-count matrix, ties and padding."
+
+[files."tests/kernels/quantization/test_awq_triton.py"]
+blob = "6572a7efd22ada0891b47950d876632f1a060fe0"
+status = "partial"
+implementation = [
+  "vllm_metax/_custom_ops.py",
+  "csrc/libtorch_stable/quantization/awq/gemm_kernels.cu",
+]
+notes = "Adapts the GEMM oracle to MetaX native repacked BF16 AWQ and adds FP16/BF16 native dequantization. Native FP16 GEMM produced nonfinite results and Triton lowering failed in the validation setup."
+
+[files."tests/kernels/quantization/test_cutlass_scaled_mm.py"]
+blob = "dcd89bda87494114332c414ea66343805a7e350f"
+status = "partial"
+implementation = [
+  "vllm_metax/registry/linear_kernels/int8.py",
+]
+notes = "Ports INT8 GEMM to registered MCTLASS with dynamic BF16 output and tests compatibility capability queries. Static scales, FP16 output and asymmetric without bias had failures. Review FP8 equivalents separately."
+
+[files."tests/kernels/quantization/test_gptq.py"]
+blob = "7795fcc95ff4498b6a323455efc153539cf326c2"
+status = "partial"
+implementation = [
+  "vllm_metax/_custom_ops.py",
+  "vllm_metax/registry/linear_kernels/mp.py",
+  "csrc/libtorch_stable/quantization/gptq/q_gemm.cu",
+]
+notes = "Ports dispatch and numerics for workspace-aware GEMM and shuffled weights. Review full opcheck coverage and other packed weight configurations."
+
+[files."tests/kernels/quantization/test_hadacore.py"]
+blob = "7a5c7fbd55f7273b384f539087ea33dad1ebd3bf"
+status = "partial"
+implementation = [
+  "vllm_metax/model_executor/layers/online_rotation.py",
+  "vllm_metax/model_executor/kernels/online_rotate/tilelang.py",
+]
+notes = "Adapts the upstream Hadamard and inverse comparison to the registered MetaX TileLang kernel, including sign application and the GEMM path. P below 16 has no autotune configuration and the small-width regression is an expected failure. Review the remaining widths and composite base orders."
+
+[files."tests/kernels/quantization/test_int8_quant.py"]
+blob = "cb2cd55facfd9a9f5da139bd13b8a4367ae2fb61"
+status = "ported"
+implementation = [
+  "csrc/libtorch_stable/quantization/w8a8/int8/scaled_quant.cu",
+]
+notes = "Ports static and dynamic symmetric/asymmetric quantization over the upstream matrix, saturation boundaries and operator checks. Adds MetaX FP16 and unaligned widths."
+
+[files."tests/kernels/quantization/test_per_token_group_quant.py"]
+blob = "a9ac45da035289b3876da17baae80ed28f97feaf"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/quantization/w8a8/int8/per_token_group_quant.cu",
+]
+notes = "Ports INT8 per-token groups with tail sizes and all-zero groups. Review register/shared-memory path equivalence and FP8 and packed scales."
+
+[files."tests/kernels/test_apply_repetition_penalties.py"]
+blob = "c1551e2e82e621f08edc39d3feba8c7a89fdaf7b"
+status = "ported"
+implementation = [
+  "csrc/libtorch_stable/sampler.cu",
+]
+notes = "Ports the upstream batch-size, vocabulary and dtype matrix, the empty batch and operator checks. Adds overlap and unchanged-logit assertions."
+
+[files."tests/kernels/test_compressor_kv_cache.py"]
+blob = "5a6ab4a3adf3f9417e5217f57b2ec9fee676dd4e"
+status = "partial"
+implementation = [
+  "vllm_metax/models/deepseek_v41/metax/ops/kv_cache_int8.py",
+]
+notes = "Ports RoPE insertion and cache round trip to the MetaX DeepSeek V4.1 INT8 path. Review PCP cache, compressor metadata and additional quantized layouts."
+
+[files."tests/kernels/test_concat_mla_q.py"]
+blob = "6d9a1021064ebfbd9b2920bb7390d1d8662633dc"
+status = "ported"
+implementation = [
+  "csrc/libtorch_stable/cache_kernels.cu",
+  "vllm_metax/v1/attention/backends/mla/flashmla_sparse.py",
+  "vllm_metax/model_executor/layers/attention/mla_attention.py",
+]
+notes = "Ports contiguous, transposed NoPE, split RoPE, padded heads, zero tokens and bit preservation for the MetaX native concat kernel. FP8 decode concat is out of scope for this baseline because the MetaX forward_oot raises NotImplementedError."
+
+[files."tests/kernels/test_fp32_router_gemm.py"]
+blob = "54331dc3d3dcc9b5cd17d32aac72e5694ab4b22d"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/fp32_router_gemm_entry.cu",
+  "vllm_metax/models/deepseek_v4/metax/gate_linear.py",
+]
+notes = "Ports supported MetaX shapes, token boundaries, rejected inputs, native ranking and large-batch FP32 weight retention. Review the full token matrix and additional layer dispatch branches."
+
+[files."tests/kernels/test_fused_deepseek_v4_qnorm_rope_kv_insert.py"]
+blob = "a14c889caae16e41d8e63574ef6841308b428735"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/fused_deepseek_v4_qnorm_rope_kv_insert_kernel.cu",
+]
+notes = "Ports the full-cache BF16 normalization and RoPE paths with token-count/head-count variants and padded slots. Review separate Q and KV modes and quantized cache outputs."
+
+[files."tests/kernels/test_fused_minimax_m3_qknorm_rope_kv_insert.py"]
+blob = "d6a96c6c99608706fc8a80c1ff76035c9d195ddb"
+status = "partial"
+implementation = [
+  "vllm_metax/models/minimax_m3/metax/attention_ops.py",
+]
+notes = "Ports the dense BF16 Q/K normalization and partial RoPE matrix through the MetaX ABI wrapper and checks V preservation. Review sparse index/cache paths and packed low-bit outputs."
+
+[files."tests/kernels/test_shuffle_rows.py"]
+blob = "4f32949eb7653251f8c1226dd28ab0d16d034088"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/moe/moe_permute_unpermute_op.cu",
+]
+notes = "Ports identity, permutation, duplication and invalid sentinel rows through the native kernel. Tests the vector-width rejection for unaligned features. Review the remaining permutation shape matrix."
+
+[files."tests/kernels/test_top_k_per_row.py"]
+blob = "3937f86d8df335d12e0056d903e96508861856f0"
+status = "partial"
+implementation = [
+  "csrc/libtorch_stable/sampler.cu",
+  "vllm_metax/model_executor/layers/indexer_topk.py",
+  "vllm_metax/registry/custom_ops/layers/sparse_attn_indexer/bf16.py",
+]
+notes = "Ports native prefill/decode, both length layouts, 300K vocabulary and MACA cooperative fallback with padded stride. Mixed-length persistent Top-K returns incorrect indices on C500 and has strict expected-failure regressions."
+
+[files."tests/models/qwen4_exp/test_ple.py"]
+blob = "b4382ebd15b236142e5942457967fb1d5d979efb"
+status = "partial"
+implementation = [
+  "vllm_metax/models/qwen4_exp/common/ops/ple.py",
+]
+notes = "Ports PLE hashing across request/document boundaries and gate numerics. Review sharded loading, quantized embeddings and parallel lookup."
+
+[files."tests/tokenizers_/test_detokenize.py"]
+blob = "37e7252d2defe4e402c640dd2ad4fe97feae644a"
+status = "partial"
+implementation = [
+  "vllm_metax/patch/bugfix/tokenizer.py",
+]
+notes = "Adapts the ByteLevel leading-space contract to a real tokenizer loaded with the MetaX serialization hook. Review incremental detokenization cases through that hook."
+
+[files."tests/v1/attention/test_vit_attn_wrappers.py"]
+blob = "5d6cb323bad0ae1003a9b9e3e6eae80c3d5e9c2a"
+status = "partial"
+implementation = [
+  "vllm_metax/v1/attention/ops/vit_attn_wrappers.py",
+]
+notes = "Ports fake tensor output layout to the registered MetaX FlashAttention wrapper and compares its output with SDPA. Review remaining applicable wrapper branches."
+
+[files."tests/v1/core/test_kv_cache_config_builder.py"]
+blob = "4f4c8d0262d62e01563922694824b98f6817e42e"
+status = "partial"
+implementation = [
+  "vllm_metax/platform.py",
+  "vllm_metax/v1/core/kv_cache_config_builder.py",
+]
+notes = "Ports platform-selected builder resolution and checks filtering of remote pipeline tensor views. Review remaining grouped-placement contracts."
+
+[files."tests/v1/spec_decode/test_rejection_sampler_utils.py"]
+blob = "98f026bf2bdf02592a06d7e190cdc2c14150a2ff"
+status = "partial"
+implementation = [
+  "vllm_metax/patch/bugfix/triton_support/rejection_sample.py",
+]
+notes = "Ports Triton rejection sampling through the installed patch, with short requests and rejected draft tokens. Review stochastic, watermark and bonus token paths."

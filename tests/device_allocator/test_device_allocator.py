@@ -30,6 +30,7 @@ def test_macamem_backend_registration_and_semantics():
 def test_plugin_allocator_offloads_and_restores_weight_tag():
     allocator = plugin_cumem.CuMemAllocator.get_instance()
     expected = torch.arange(1024, device="cuda", dtype=torch.float32)
+    actual = None
     try:
         with allocator.use_memory_pool(tag="weights"):
             actual = expected.clone()
@@ -38,4 +39,5 @@ def test_plugin_allocator_offloads_and_restores_weight_tag():
         torch.cuda.synchronize()
         torch.testing.assert_close(actual, expected)
     finally:
+        del actual
         allocator.close()

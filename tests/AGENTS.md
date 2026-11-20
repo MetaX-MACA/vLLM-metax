@@ -14,3 +14,8 @@
   services or unavailable vendor boundaries with a documented skip condition.
 - Test MACA-specific dispatch, schema, dtype, layout, stream, workspace and
   numerical contracts explicitly instead of inheriting CUDA assumptions.
+- Keep the upstream relative path when porting a test. Record the pinned Git
+  blob, MetaX implementation, status, and remaining cases in
+  [upstream_test_ports.toml](upstream_test_ports.toml).
+- Follow the [per-file port workflow](README.md) when reviewing upstream test
+  changes. Keep plugin-only tests in their own files.

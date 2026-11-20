@@ -1101,7 +1101,7 @@ mx_envs.maybe_override_vllm_env(
 
 mx_envs.maybe_override_vllm_env(
     "VLLM_TRITON_USE_TD",
-    "False",
+    False,
     "disable Triton tensor descriptor on Maca platform",
 )
 

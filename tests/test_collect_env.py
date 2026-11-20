@@ -1,15 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
-import os
+from importlib import metadata
 
 import vllm_metax.collect_env as collect_env
 
 
 def test_plugin_version_is_reported():
-    version = collect_env.get_vllm_metax_version()
-    assert version.startswith("0.33.0+g")
-    assert "maca" in version
-    assert "torch2.13.0" in version
+    assert collect_env.get_vllm_metax_version() == metadata.version("vllm-metax")
 
 
 def test_maca_sdk_version_reads_maca_version_file(monkeypatch):

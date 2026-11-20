@@ -39,7 +39,9 @@ def pytest_collection_modifyitems(config, items):
 
 
 def pytest_configure(config):
-    config.addinivalue_line("markers", "requires_maca: test requires a live MACA device")
+    config.addinivalue_line(
+        "markers", "requires_maca: test requires a live MACA device"
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -47,5 +49,5 @@ def _skip_without_maca(request):
     if request.node.get_closest_marker("requires_maca"):
         from vllm.platforms import current_platform
 
-        if not current_platform.is_maca():
+        if not current_platform.is_maca() or not torch.cuda.is_available():
             pytest.skip("requires a live MACA device")
