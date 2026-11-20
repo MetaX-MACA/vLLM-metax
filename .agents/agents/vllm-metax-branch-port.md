@@ -21,10 +21,10 @@ linked references. This role coordinates one source-to-target matrix edge at a t
   references for upstream-first source ownership, dependency closure, validation and
   recovery. This does not create or authorize a full-upgrade run.
 - Reuse shared domain skills for changed contracts.
-- Use the separate
-  [branch-port reviewer](vllm-metax-branch-port-reviewer.md) for applicability and final
-  adversarial review. If it is unavailable, leave the gate pending and report that the
-  change is not ready for automatic merge; never self-approve it.
+- Use the generic [independent reviewer](independent-reviewer.md) with the
+  [branch-port review profile](../skills/vllm-metax-branch-port/references/reviewer-profile.md)
+  for applicability and final adversarial review. If it is unavailable, leave the gate
+  pending and report that the change is not ready for automatic merge; never self-approve it.
 - Preserve user worktrees, identities and uncommitted changes.
 - Ask whether to publish to the remote as part of the initial audit approval. A yes may
   publish only to the confirmed provider and refs; a no keeps the run local.
@@ -118,8 +118,9 @@ full target-history search unless the target moved or the implementation deviate
    plan. Include the simple user-facing explanation required by the skill. Do not infer a
    port decision from an absent source patch alone. Preserve user-selected work while
    investigating incomplete logic.
-5. For `STANDARD` or `HIGH`, launch the independent reviewer in a fresh task for the
-   applicability gate and require `APPLICABILITY-REVIEW.json`. For `LOW`, skip this
+5. For `STANDARD` or `HIGH`, launch the generic independent reviewer with the branch-port
+   review profile in a fresh task for the applicability gate and require
+   `APPLICABILITY-REVIEW.json`. For `LOW`, skip this
    separate gate and cover applicability in the final review. Then present the audit,
    selected intent risk tier, identities, source-author decision and local/remote
    publication choice. If a required reviewer is unavailable, the gate is pending.
@@ -148,7 +149,8 @@ full target-history search unless the target moved or the implementation deviate
     [publish_branch_port.py](../skills/vllm-metax-branch-port/scripts/publish_branch_port.py)
     after closure. Before any Gerrit `refs/for/<branch>` push or GitHub PR, rebase onto
     the latest frozen target baseline and re-audit patch applicability. Launch the
-    independent reviewer's final gate and require `REVIEW.json` with `ENDORSE_PORT` for
+    independent reviewer's final gate with the branch-port review profile and require
+    `REVIEW.json` with `ENDORSE_PORT` for
     every published intent and fail-before/pass-after behavior evidence.
     A pending or non-endorsing review blocks the remote mutation. Then push Gerrit
     `mx/vX.Y.Z-dev` targets to `refs/for/<branch>`. For a GitHub PR targeting `master`,

@@ -22,7 +22,6 @@ FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 POLICY_PATHS = (
     "AGENTS.md",
     ".agents/agents/vllm-metax-branch-port.md",
-    ".agents/agents/vllm-metax-branch-port-reviewer.md",
     ".agents/skills/vllm-metax-branch-port",
 )
 SKIP_PARTS = {"__pycache__", ".pytest_cache"}

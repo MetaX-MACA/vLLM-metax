@@ -10,8 +10,8 @@ Start one fresh Codex task from the repository root:
 
 ```text
 Read .agents/agents/vllm-metax-branch-port.md and execute the daily port in daily mode
-using $METAX_BRANCH_PORT_HOME/state/config.json. Do not request approval again for facts already
-covered by that configuration. Do not merge or submit.
+using $METAX_BRANCH_PORT_HOME/state/config.json. Do not request approval again for facts
+already covered by that configuration. Do not merge or submit.
 ```
 
 The coordinator starts only the reviewer gates required by the recorded risk tier. `LOW`
@@ -263,7 +263,9 @@ Record `risk_tier` in `RUN.json`:
 
 Do not repeat the complete target search in the final gate unless the target moved, the
 implementation deviated from the approved intent, or a new source assumption was found.
-Each gate must use a fresh independent context; the implementer cannot self-approve.
+Each gate must use the generic independent reviewer with
+[reviewer-profile.md](reviewer-profile.md) in a fresh context; the implementer cannot
+self-approve.
 
 ## Artifacts
 

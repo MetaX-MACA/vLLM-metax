@@ -219,9 +219,10 @@ the confirmed plan in the audit approval.
    Include the confirmed step 2 redacted provider, logical remote, Gerrit review ref or
    GitHub PR plan, local-only master decision when applicable, final master version gate,
    and the required yes/no publication confirmation in the audit.
-9. For `STANDARD` or `HIGH` risk, launch the independent
-   [branch-port reviewer](../../agents/vllm-metax-branch-port-reviewer.md) with a fresh
-   context before implementation and require the applicability gate in
+9. For `STANDARD` or `HIGH` risk, launch the generic
+   [independent reviewer](../../agents/independent-reviewer.md) with the
+   [branch-port review profile](references/reviewer-profile.md) in a fresh context before
+   implementation and require the applicability gate in
    [adversarial-review.md](references/adversarial-review.md). The reviewer writes
    `APPLICABILITY-REVIEW.json`. For `LOW` risk, skip this separate gate and include
    applicability in the final review. Validate a two-gate applicability artifact:

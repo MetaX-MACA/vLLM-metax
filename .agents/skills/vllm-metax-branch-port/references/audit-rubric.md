@@ -126,10 +126,11 @@ on removed framework contracts.
 
 ## Independent adversarial review
 
-For every selected commit or child intent, run the role in
-[../../../agents/vllm-metax-branch-port-reviewer.md](../../../agents/vllm-metax-branch-port-reviewer.md)
-using [adversarial-review.md](adversarial-review.md) before the port approval and again
-before publication. The applicability artifact is `APPLICABILITY-REVIEW.json`; the
+For every selected commit or child intent, run the generic
+[independent reviewer](../../../agents/independent-reviewer.md) with the
+[branch-port review profile](reviewer-profile.md) using
+[adversarial-review.md](adversarial-review.md) before the port approval and again before
+publication. The applicability artifact is `APPLICABILITY-REVIEW.json`; the
 post-rebase artifact is `REVIEW.json`. Only `ENDORSE_PORT` permits the affected
 intent to be published. `ALREADY_COVERED`, `DO_NOT_PORT`, `CHANGES_REQUIRED` and a missing
 review are blockers, not implicit approvals.

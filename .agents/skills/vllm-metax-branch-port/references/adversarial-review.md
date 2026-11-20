@@ -1,8 +1,10 @@
 # Independent adversarial review
 
 Read this reference when reviewing branch-port applicability or a completed port for
-publication. The reviewer is independent from the agent that produced the audit or
-implementation. The implementing agent cannot satisfy this gate by reviewing its own work.
+publication. Run it as the [branch-port review profile](reviewer-profile.md) with the generic
+[independent reviewer](../../../agents/independent-reviewer.md). The reviewer is independent
+from the agent that produced the audit or implementation. The implementing agent cannot
+satisfy this gate by reviewing its own work.
 
 ## Purpose
 

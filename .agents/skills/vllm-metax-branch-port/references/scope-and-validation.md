@@ -94,9 +94,10 @@ contracts remain, ask the smallest concrete question while continuing independen
 
 ## Independent adversarial review
 
-Use [adversarial-review.md](adversarial-review.md) and the portable
-[branch-port reviewer](../../../agents/vllm-metax-branch-port-reviewer.md). The reviewer
-must be a fresh agent/task or human who did not implement the patch. The implementer can
+Use [adversarial-review.md](adversarial-review.md), the generic
+[independent reviewer](../../../agents/independent-reviewer.md), and the
+[branch-port review profile](reviewer-profile.md). The reviewer must be a fresh agent/task
+or human who did not implement the patch. The implementer can
 prepare evidence but cannot write the approval artifact.
 
 Use one fresh final review for `LOW` risk. Use `APPLICABILITY-REVIEW.json` before

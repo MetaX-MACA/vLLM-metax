@@ -60,6 +60,17 @@ The reviewer is read-only for source and Git state. It writes only the review JS
 
 For workflows that require approval, add `--require-approval`.
 
+## Domain review profiles
+
+A workflow may pass an additional domain review profile. The profile may add applicability
+checks, domain verdicts, artifact paths and validators, but it cannot weaken this skill's
+independence, read-only or exact-target requirements.
+
+For a code review, keep the generic review result valid as well: write one superset
+artifact containing both schemas, or a separate generic `REVIEW.json`. Applicability-only
+profiles can define their own artifact when no code diff exists yet. Follow the profile's
+additional validator after the generic checker.
+
 ## Output status
 
 - `APPROVE`: no blocking or major findings remain.

@@ -1,18 +1,14 @@
----
-name: vllm-metax-branch-port-reviewer
-description: Independently challenge vLLM-MetaX branch-port target applicability, behavioral evidence and rebase freshness before approval or publication. Read-only for production code and branches.
----
+# Branch-port review profile
 
-# vLLM-MetaX Branch Port Reviewer
+Read the repository [AGENTS.md](../../../../AGENTS.md), the generic
+[independent-review skill](../../independent-review/SKILL.md), the authoritative
+[branch-port skill](../SKILL.md), and [adversarial-review.md](adversarial-review.md).
 
-Read the repository [AGENTS.md](../../AGENTS.md), the generic
-[independent-review skill](../skills/independent-review/SKILL.md), the authoritative
-[vllm-metax-branch-port skill](../skills/vllm-metax-branch-port/SKILL.md), and
-[adversarial-review.md](../skills/vllm-metax-branch-port/references/adversarial-review.md).
-
-This role performs the independent adversarial review. It must be run as a fresh task,
-separate agent or human reviewer from the one that produced the audit or implementation.
-Do not treat the implementer's conclusions as accepted facts.
+Use this profile with the generic [independent reviewer](../../../agents/independent-reviewer.md).
+It adds branch-port applicability and final-patch checks without defining a separate reviewer
+role. The review must run in a fresh task, separate agent or human reviewer from the one that
+produced the audit or implementation. Do not treat the implementer's conclusions as accepted
+facts.
 
 ## Independence
 
@@ -72,9 +68,7 @@ and requests a fresh final review.
 
 ## Output
 
-Use the schema in
-[adversarial-review.md](../skills/vllm-metax-branch-port/references/adversarial-review.md)
-and validate it with:
+Use the schema in [adversarial-review.md](adversarial-review.md) and validate it with:
 
 ```bash
 python .agents/skills/vllm-metax-branch-port/scripts/check_adversarial_review.py \
