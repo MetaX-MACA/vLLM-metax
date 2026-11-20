@@ -4,7 +4,7 @@
   "target_ref": "master",
   "scope": {
     "mode": "all-source-only",
-    "intent_file": "/workspace/.metax-agent-state/<project>/branch-port/control/DAILY-SCOPE.json",
+    "intent_file": "/workspace/.metax-agent-state/<project>/branch-port/state/scope.json",
     "new_source_commits": "audit-and-continue",
     "unknown_source_author": "block",
     "source_author_policy": "current-branch-authors",

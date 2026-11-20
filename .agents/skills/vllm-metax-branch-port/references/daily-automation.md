@@ -70,35 +70,33 @@ reuses the configuration without asking again.
 
 ## External agent state layout
 
-All mutable branch-port agent state lives outside the repository. The default layout is:
+All mutable branch-port state lives outside the repository. The default layout is:
 
 ```text
-/workspace/.metax-agent-state/
+$METAX_AGENT_HOME/
 └── <project>/
     ├── branch-port/
-    │   ├── control/      # DAILY-CONFIG, DAILY-SCOPE, DAILY-STATE, MATRIX, leases
-    │   ├── runs/         # run artifacts and independent-review outputs
-    │   ├── audits/       # durable audit snapshots
-    │   ├── locks/        # cross-process locks
-    │   └── worktrees/    # run-scoped Git worktrees
-    └── <other-agent>/    # independent state for other agent families
+    │   ├── state/       # config, scope, matrix, daily state, leases and locks
+    │   ├── runs/        # one flat directory per daily run
+    │   ├── worktrees/   # run-scoped Git worktrees
+    │   └── archive/     # optional audited backups; historical runs are discarded
+    └── <other-agent>/   # independent state for other agent families
 ```
 
 Environment overrides:
 
-- `METAX_AGENT_STATE_ROOT` changes the shared agent-state root.
-- `METAX_AGENT_PROJECT` changes the project directory name.
-- `METAX_BRANCH_PORT_HOME` overrides the complete branch-port directory.
+- `METAX_AGENT_HOME` changes the shared agent-state root.
+- `METAX_BRANCH_PORT_HOME` is a legacy override for the complete branch-port directory.
 - `METAX_BRANCH_PORT_POLICY_ROOT` points to the checkout containing `.agents` when the working repository does not carry the policy tree.
 
-Do not create branch-port configuration, run artifacts, locks, or worktrees inside the source repository.
+Do not create branch-port configuration, run artifacts, locks, or worktrees inside the source repository. Historical runs are disposable; the durable control state is kept in `state/`.
 
 ## Pre-approved configuration
 
 Store the durable configuration outside tracked source, for example:
 
 ```text
-$METAX_BRANCH_PORT_HOME/control/DAILY-CONFIG.json
+$METAX_BRANCH_PORT_HOME/state/config.json
 ```
 
 Start from [DAILY-CONFIG.example.json](../assets/DAILY-CONFIG.example.json) and
@@ -162,7 +160,7 @@ python .agents/skills/vllm-metax-branch-port/scripts/daily_state.py \
 
 The helper hashes the source/target/master SHAs, configuration, intent file, policy,
 agent/skill tree and environment fingerprint, then compares
-`$METAX_BRANCH_PORT_HOME/control/DAILY-STATE.json`. If all inputs match a completed run and its
+`$METAX_BRANCH_PORT_HOME/state/daily-state.json`. If all inputs match a completed run and its
 applicability/final review artifacts still validate, return `NOOP`. Do not recreate a
 worktree merely because a new day started.
 
@@ -197,7 +195,7 @@ port-run/<run-id>
 ```
 
 The remote PR branch may remain stable and is updated later with `--force-with-lease`.
-The manager records a lease in `$METAX_BRANCH_PORT_HOME/control/WORKTREES.json` and the run's
+The manager records a lease in `$METAX_BRANCH_PORT_HOME/state/worktrees.json` and the run's
 `WORKTREE.json`.
 
 Heartbeat during long runs:

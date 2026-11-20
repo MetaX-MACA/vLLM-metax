@@ -10,7 +10,7 @@ import os
 import regex as re
 from pathlib import Path
 
-DEFAULT_AGENT_STATE_ROOT = Path("/workspace/.metax-agent-state")
+DEFAULT_AGENT_HOME = Path("/workspace/.metax-agent-state")
 SAFE_COMPONENT_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
@@ -24,7 +24,10 @@ def _safe_component(value: str) -> str:
 def agent_state_root(repo: Path) -> Path:
     """Return the repository-specific root shared by all agent families."""
     base = Path(
-        os.environ.get("METAX_AGENT_STATE_ROOT", str(DEFAULT_AGENT_STATE_ROOT))
+        os.environ.get(
+            "METAX_AGENT_HOME",
+            os.environ.get("METAX_AGENT_STATE_ROOT", str(DEFAULT_AGENT_HOME)),
+        )
     ).expanduser()
     project = os.environ.get("METAX_AGENT_PROJECT", repo.resolve().name)
     return (base / _safe_component(project)).resolve()
@@ -38,20 +41,30 @@ def branch_port_home(repo: Path) -> Path:
     return agent_state_root(repo) / "branch-port"
 
 
+def branch_port_state_dir(repo: Path) -> Path:
+    return branch_port_home(repo) / "state"
+
+
 def branch_port_control_dir(repo: Path) -> Path:
-    return branch_port_home(repo) / "control"
+    """Compatibility alias for the former control directory."""
+    return branch_port_state_dir(repo)
 
 
 def branch_port_runs_dir(repo: Path) -> Path:
     return branch_port_home(repo) / "runs"
 
 
+def branch_port_archive_dir(repo: Path) -> Path:
+    return branch_port_home(repo) / "archive"
+
+
 def branch_port_audits_dir(repo: Path) -> Path:
-    return branch_port_home(repo) / "audits"
+    """Compatibility alias for archived audits."""
+    return branch_port_archive_dir(repo) / "audits"
 
 
 def branch_port_locks_dir(repo: Path) -> Path:
-    return branch_port_home(repo) / "locks"
+    return branch_port_state_dir(repo) / "locks"
 
 
 def default_worktree_root(repo: Path) -> Path:
@@ -59,23 +72,23 @@ def default_worktree_root(repo: Path) -> Path:
 
 
 def config_path(repo: Path) -> Path:
-    return branch_port_control_dir(repo) / "DAILY-CONFIG.json"
+    return branch_port_state_dir(repo) / "config.json"
 
 
 def scope_path(repo: Path) -> Path:
-    return branch_port_control_dir(repo) / "DAILY-SCOPE.json"
+    return branch_port_state_dir(repo) / "scope.json"
 
 
 def state_path(repo: Path) -> Path:
-    return branch_port_control_dir(repo) / "DAILY-STATE.json"
+    return branch_port_state_dir(repo) / "daily-state.json"
 
 
 def matrix_path(repo: Path) -> Path:
-    return branch_port_control_dir(repo) / "MATRIX.json"
+    return branch_port_state_dir(repo) / "matrix.json"
 
 
 def registry_path(repo: Path) -> Path:
-    return branch_port_control_dir(repo) / "WORKTREES.json"
+    return branch_port_state_dir(repo) / "worktrees.json"
 
 
 def policy_root(repo: Path) -> Path:
