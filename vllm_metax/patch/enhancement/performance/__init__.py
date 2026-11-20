@@ -23,3 +23,6 @@ from vllm_metax import envs as mx_envs
 
 if mx_envs.VLLM_METAX_MOONCAKE_EARLY_READY:
     from . import mooncake_early_ready_loader  # noqa: F401
+
+if mx_envs.VLLM_METAX_SOURCE_PACKED_MOE:
+    from . import packed_moe_adapter  # noqa: F401

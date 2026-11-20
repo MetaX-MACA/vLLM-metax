@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     VLLM_METAX_DISABLE_ASYNC_OUTPUT: bool = True
     VLLM_METAX_ENABLE_MRV2_HWQ_BALANCING: bool = False
     VLLM_METAX_MASKED_INT8_MOE: bool = True
+    VLLM_METAX_SOURCE_PACKED_MOE: bool = False
     VLLM_METAX_NATIVE_MASKED_ACT: bool = False
     VLLM_METAX_MOONCAKE_EARLY_READY: bool = True
 
@@ -110,6 +111,12 @@ environment_variables: dict[str, Callable[[], Any]] = {
     "VLLM_METAX_MASKED_INT8_MOE": lambda: bool(
         int(os.environ.get("VLLM_METAX_MASKED_INT8_MOE", "1"))
     ),
+    # Opt in to source-ranked fused norm/quant/pack transport. The legacy
+    # W4A8 spelling remains an input alias.
+    "VLLM_METAX_SOURCE_PACKED_MOE": lambda: bool(
+        int(os.environ.get("VLLM_METAX_SOURCE_PACKED_MOE", "0"))
+    )
+    or bool(int(os.environ.get("VLLM_METAX_W4A8_SOURCE_PACKED_MOE", "0"))),
     # Use mcoplib's native fused activation/quant/pack kernel when available.
     "VLLM_METAX_NATIVE_MASKED_ACT": lambda: bool(
         int(os.environ.get("VLLM_METAX_NATIVE_MASKED_ACT", "0"))
