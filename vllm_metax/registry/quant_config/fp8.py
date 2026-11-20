@@ -73,6 +73,13 @@ class MacaFp8Config(Fp8Config):
                 match_mode=self.ignored_layers_match_mode,
             ):
                 return UnquantizedFusedMoEMethod(layer.moe_config)
+            from vllm_metax.registry.quant_config.minimax_m3_mxfp4 import (
+                MiniMaxM3Mxfp4MoEMethod,
+                uses_minimax_m3_mxfp4,
+            )
+
+            if uses_minimax_m3_mxfp4():
+                return MiniMaxM3Mxfp4MoEMethod(layer.moe_config)
             if self.store_dtype == "mxfp4":
                 from vllm.model_executor.layers.quantization.mxfp4 import (
                     Mxfp4MoEMethod,
