@@ -23,6 +23,9 @@ from vllm.model_executor.layers.quantization.utils.quant_utils import GroupShape
 
 from vllm.model_executor.utils import set_weight_attrs
 from vllm.model_executor.layers.fused_moe.activation import MoEActivation
+from vllm.model_executor.layers.fused_moe.modular_kernel import (
+    FusedMoEExpertsModular,
+)
 from vllm_metax.model_executor.layers.fused_moe.experts.triton_moe import TritonExperts
 from vllm_metax.model_executor.layers.fused_moe.oracle.int8 import make_int8_moe_kernel
 # -----------------------------------------------------------
@@ -78,7 +81,22 @@ class CompressedTensorsW4A8Int4MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
             raise ValueError("This method only supports 4-bit weights (num_bits=4).")
 
         self.static_input_scales = False  # always dynamic per token
-        self.experts_cls = TritonExperts
+        self.experts_cls: type[FusedMoEExpertsModular] = TritonExperts
+        if self.moe.moe_parallel_config.use_deepep_ll_kernels:
+            if self.group_size != -1:
+                raise NotImplementedError("DeepEP LL W4A8 requires per-channel weights")
+            from vllm import envs
+
+            if not envs.VLLM_USE_DEEP_GEMM or not envs.VLLM_MOE_USE_DEEP_GEMM:
+                raise ValueError(
+                    "W4A8 DeepEP LL requires VLLM_USE_DEEP_GEMM=1 and VLLM_MOE_USE_DEEP_GEMM=1"
+                )
+            from vllm_metax.model_executor.layers.fused_moe.experts.batched_w4a8_deep_gemm_moe import (
+                BatchedW4A8DeepGemmExperts,
+            )
+
+            self.experts_cls = BatchedW4A8DeepGemmExperts
+            self.moe.max_num_tokens = min(self.moe.max_num_tokens, 128)
 
     # ---- parameter creation ----
     def create_weights(
@@ -211,6 +229,44 @@ class CompressedTensorsW4A8Int4MoEMethod(vllm_ctm.CompressedTensorsMoEMethod):
 
         assert not self.is_monolithic
         assert self.moe_kernel is not None
+        from vllm_metax.model_executor.layers.fused_moe.deepep_chunking import (
+            apply_chunked_deepep,
+        )
+
+        if self.moe.moe_parallel_config.use_deepep_ll_kernels:
+            from vllm.forward_context import (
+                get_forward_context,
+                is_forward_context_available,
+            )
+
+            metadata = (
+                get_forward_context().dp_metadata
+                if is_forward_context_available()
+                else None
+            )
+            max_tokens = (
+                int(metadata.num_tokens_across_dp_cpu.max().item())
+                if metadata is not None
+                else x.shape[0]
+            )
+            return apply_chunked_deepep(
+                self.moe_kernel,
+                x,
+                topk_weights,
+                topk_ids,
+                max_tokens,
+                self.moe.max_num_tokens,
+                dict(
+                    w1=layer.w13_weight_packed,
+                    w2=layer.w2_weight_packed,
+                    activation=layer.activation,
+                    global_num_experts=layer.global_num_experts,
+                    expert_map=layer.expert_map,
+                    apply_router_weight_on_input=layer.apply_router_weight_on_input,
+                    shared_experts=shared_experts,
+                    shared_experts_input=shared_experts_input,
+                ),
+            )
         return self.moe_kernel.apply(
             x,
             w1=layer.w13_weight_packed,
