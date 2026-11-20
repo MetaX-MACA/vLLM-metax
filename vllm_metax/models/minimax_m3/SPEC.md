@@ -41,6 +41,10 @@ An SM100 capability alias never enables MSA on MACA.
   layer selection.
 - C500 uses BF16 and supported INT8 experts. CUDA-only NVFP4/MSA paths are not
   selected.
+- `expert_dtype: "fp4"` checkpoints select group-32 E2M1/E8M0 routed experts on
+  the local W4A16 path. Packed weights remain uint8, E8M0 scales preserve their
+  exponent bytes, and every local gate/up/down shard is validated before kernel
+  preparation. FP8 linears and shared experts remain on the FP8 path.
 
 ## 5. Attention and cache
 
@@ -80,3 +84,6 @@ An SM100 capability alias never enables MSA on MACA.
 - Add and bind a dummy MiniMax sample for final prefill/decode and batched
   smoke acceptance.
 - Validate FP8/NVFP4/MSA branches on supported hardware and components.
+- Native group-32 MXFP4 GEMM and complete-checkpoint inference remain pending on
+  compatible hardware; synthetic config/loading and TP/EP shard mapping are the
+  target-side acceptance checks.
