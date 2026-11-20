@@ -19,7 +19,7 @@ This release aligns vLLM-MetaX with upstream vLLM v0.29.0 and completes the MACA
 
 | Plugin | Release line | MACA series | PyTorch series | mcoplib | Image download page |
 | --- | --- | --- | --- | --- | --- |
-| v0.29.0 | `vLLM-metax-0.29.0_rel3.9.0` | 3.9.0.x | 2.10 | 0.4.14 | [vllm-metax:0.29.0](https://developer.metax-tech.com/softnova/docker?chip_name=%E6%9B%A6%E4%BA%91C500%E7%B3%BB%E5%88%97&package_kind=AI&dimension=docker&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85&ai_frame=vllm-metax&frame_version=0.29.0&arch=amd64&system=ubuntu) |
+| v0.29.0 | `vLLM-metax-0.29.0_rel3.9.0` | 3.9.0.x | 2.10 | 0.4.14 | [vllm-metax:0.29.0](https://developer.metax-tech.com/softnova/docker?chip_name=MXC500&package_kind=AI&dimension=docker&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85&ai_frame=vllm-metax&frame_version=0.29.0&system=ubuntu&arch=amd64) |
 
 The source branch pins the following release-line dependencies:
 
