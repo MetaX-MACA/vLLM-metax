@@ -27,6 +27,7 @@ def _mqa_logits_by_dtype(
     cu_seqlen_ks: torch.Tensor,
     cu_seqlen_ke: torch.Tensor,
     clean_logits: bool,
+    logits_dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
     if q.dtype in (torch.bfloat16, torch.float16):
         return bf16_mqa_logits(q, kv[0], weights, cu_seqlen_ks, cu_seqlen_ke)
@@ -58,6 +59,7 @@ def _paged_mqa_logits_by_dtype(
     schedule_metadata: torch.Tensor,
     max_model_len: int,
     clean_logits: bool,
+    logits_dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
     if q.dtype in (torch.bfloat16, torch.float16):
         return bf16_paged_mqa_logits(
