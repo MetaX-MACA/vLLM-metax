@@ -34,7 +34,11 @@ datamodel_code_generator>=0.64.0 # required for minicpm3 test
 nltk>=3.10.3 # pin transitive rouge-score/lm-eval dep for known GHSAs
 lm-eval[api]>=0.4.12 # required for model evaluation test
 mteb[bm25s]>=2, <3 # required for mteb test
-transformers==5.19.0
+transformers==5.22.2
+# Keep the public test lock aligned with the vLLM 0.34 MetaX Torch 2.13 baseline.
+torch==2.13.0
+torchvision==0.28.0
+torchaudio==2.11.0
 schemathesis>=4.0.0 # Required for openai schema test.
 # quantization
 bitsandbytes==0.49.2
