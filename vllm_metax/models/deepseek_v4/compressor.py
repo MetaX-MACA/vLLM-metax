@@ -30,6 +30,13 @@ from vllm_metax.models.deepseek_v4.metax.compressor_base import (
 )
 
 
+class DeepseekV4CompressorKVScoreLinear(MergedColumnParallelLinear):
+    """Fused wkv/wgate projection with FP32 compressor-state output."""
+
+    def forward(self, input_: torch.Tensor) -> torch.Tensor:
+        return torch.mm(input_, self.weight.T, out_dtype=torch.float32)
+
+
 class MacaDeepseekCompressor(nn.Module):
     """DeepSeek V4 KV/score compressor with MetaX cache formats and warmup."""
 
@@ -91,7 +98,14 @@ class MacaDeepseekCompressor(nn.Module):
             requires_grad=False,
         )
 
-        self.fused_wkv_wgate = MergedColumnParallelLinear(
+        # CPU packs the weight for its GEMM and frees the raw copy, so it keeps
+        # the quant-method forward and upcasts the BF16 output itself.
+        kv_score_linear = (
+            MergedColumnParallelLinear
+            if current_platform.is_cpu()
+            else DeepseekV4CompressorKVScoreLinear
+        )
+        self.fused_wkv_wgate = kv_score_linear(
             self.hidden_size,
             [self.coff * self.head_dim, self.coff * self.head_dim],
             bias=False,

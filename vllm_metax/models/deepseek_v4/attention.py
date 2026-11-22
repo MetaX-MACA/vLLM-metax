@@ -56,6 +56,7 @@ from vllm.model_executor.layers.quantization import QuantizationConfig
 from vllm.model_executor.model_loader.weight_utils import make_attention_sink
 from vllm.model_executor.models.utils import extract_layer_index
 from vllm.transformers_utils.deepseek_v4_utils import get_compress_ratios
+from vllm_metax.models.deepseek_v4.common.grouped_wo_a import DeepseekV4GroupedWoA
 from vllm_metax.models.deepseek_v4.common.rope import build_deepseek_v4_rope
 from vllm_metax.models.deepseek_v4.compressor import MacaDeepseekCompressor
 from vllm.platforms import current_platform
@@ -82,7 +83,7 @@ logger = init_logger(__name__)
 
 
 @triton.jit
-def _fill_short_context_topk_indices(
+def fill_short_context_topk_indices(
     output,
     positions,
     TOP_K: tl.constexpr,
@@ -268,9 +269,10 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
         )
 
         self.kv_norm = RMSNorm(self.head_dim, self.eps)
-        self.wo_a = ColumnParallelLinear(
+        self.wo_a = DeepseekV4GroupedWoA(
             self.n_heads * self.head_dim // self.n_groups,
             self.n_groups * self.o_lora_rank,
+            n_groups=self.n_groups,
             bias=False,
             # This is a ad-hoc for a shit internal model that quantized for wo_a but not for wo_b.
             quant_config=quant_config if mx_envs.VLLM_METAX_USE_FP8_WO_A else None,
@@ -320,13 +322,6 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
                 prefix=f"{prefix}.indexer",
                 aux_stream=indexer_aux_stream,
             )
-
-        self._prepare_and_attn_fn = self._prepare_and_attn
-        if not vllm_config.use_v2_model_runner:
-            # MRV1's piecewise capture only tolerates the wide eager region: with
-            # the narrow one the attention input preparation stays in the captured
-            # graph and MRV1 produces garbage (#51430).
-            self._prepare_and_attn_fn = self._prepare_and_attn_eager
 
         # Will be None on ROCm for now.
         self.aux_stream_list = aux_stream_list
@@ -496,7 +491,7 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
         )
         qr, qr_scale, kv = self._split_qkv_and_norm(qr_kv)
 
-        self._prepare_and_attn_fn(
+        self._prepare_and_attn(
             hidden_states,
             qr,
             kv,
@@ -530,36 +525,6 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
             self.eps,
         )
         return qr, None, kv
-
-    @eager_break_during_capture
-    def _prepare_and_attn_eager(
-        self,
-        hidden_states: torch.Tensor,
-        qr: torch.Tensor,
-        kv: torch.Tensor,
-        qr_scale: torch.Tensor | None,
-        kv_score: torch.Tensor,
-        indexer_kv_score: torch.Tensor,
-        indexer_weights: torch.Tensor,
-        positions: torch.Tensor,
-        o_padded: torch.Tensor,
-    ) -> None:
-        """Wide eager region: the whole of ``_prepare_and_attn`` runs eagerly.
-
-        The nested ``_sparse_indexer_and_attn`` break runs inline, since
-        ``add_eager`` clears ``_capturing`` before invoking this.
-        """
-        self._prepare_and_attn(
-            hidden_states,
-            qr,
-            kv,
-            qr_scale,
-            kv_score,
-            indexer_kv_score,
-            indexer_weights,
-            positions,
-            o_padded,
-        )
 
     def _prepare_and_attn(
         self,
@@ -687,11 +652,7 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
             compressor = self.compressor
 
             def compressor_kv_score() -> torch.Tensor:
-                return torch.mm(
-                    hidden_states,
-                    compressor.fused_wkv_wgate.weight.T,
-                    out_dtype=torch.float32,
-                )
+                return compressor.fused_wkv_wgate(hidden_states)
 
             aux_fns[0] = compressor_kv_score
 
@@ -704,11 +665,7 @@ class MacaDeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
                 return weights
 
             def indexer_compressor_kv_score() -> torch.Tensor:
-                return torch.mm(
-                    hidden_states,
-                    indexer.compressor.fused_wkv_wgate.weight.T,
-                    out_dtype=torch.float32,
-                )
+                return indexer.compressor.fused_wkv_wgate(hidden_states)
 
             aux_fns[1] = indexer_weights_proj
             aux_fns[2] = indexer_compressor_kv_score
@@ -1125,7 +1082,7 @@ class MacaDeepseekV4Indexer(nn.Module):
                     + indexer_metadata.num_prefill_tokens
                 )
                 if num_tokens > 0:
-                    _fill_short_context_topk_indices[(num_tokens,)](
+                    fill_short_context_topk_indices[(num_tokens,)](
                         self.topk_indices_buffer,
                         positions,
                         TOP_K=self.topk_tokens,

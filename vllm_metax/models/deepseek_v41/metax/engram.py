@@ -126,12 +126,24 @@ class MacaInt8DPSharedEngramStorage(DPSharedEngramStorage):
         self.group = group
         weight_bytes = num_rows * dim
         scale_bytes = num_rows * (dim // block_size) * 4
-        storage = self._allocate(weight_bytes + scale_bytes)
-        self.weight = storage[:weight_bytes].view(torch.int8).view(-1, dim)
-        self.weight_scale_inv = (
-            storage[weight_bytes:].view(torch.float32).view(-1, dim // block_size)
-        )
-        self._views: tuple[torch.Tensor, torch.Tensor] | None = None
+        num_bytes = weight_bytes + scale_bytes
+
+        def split_table(table: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+            weight = table[:weight_bytes].view(torch.int8).view(-1, dim)
+            scales = (
+                table[weight_bytes:].view(torch.float32).view(-1, dim // block_size)
+            )
+            return weight, scales
+
+        views = None
+        if current_platform.is_cuda():
+            from vllm_metax.models.deepseek_v41.metax.ops import engram_host_table
+
+            views = engram_host_table.share_host_table(num_bytes, group)
+        self.huge_pages = views is not None
+        host, gpu = views or self._allocate_shm(num_bytes)
+        self.weight, self.weight_scale_inv = split_table(host)
+        self._views: tuple[torch.Tensor, torch.Tensor] = split_table(gpu)
 
 
 class MacaInt8EngramEmbedding(ParallelEngramEmbedding):

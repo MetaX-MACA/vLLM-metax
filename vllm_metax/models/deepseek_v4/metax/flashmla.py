@@ -15,10 +15,7 @@ from vllm_metax.models.deepseek_v4.common.ops import (
     dequantize_and_gather_k_cache,
 )
 from vllm_metax.models.deepseek_v4.common.ops import gather_k_cache
-from vllm_metax.models.deepseek_v4.metax.ops.o_proj import (
-    compute_fp8_einsum_recipe,
-    deep_gemm_fp8_o_proj,
-)
+from vllm_metax.models.deepseek_v4.metax.ops.o_proj import compute_fp8_einsum_recipe
 from vllm_metax.models.deepseek_v4.metax.ops.o_proj_metax import (
     deep_gemm_bf16_o_proj,
 )
@@ -83,12 +80,10 @@ class MacaDeepseekV4FlashMLAAttention(MacaDeepseekV4Attention):
                 o_lora_rank=self.o_lora_rank,
             )
         else:
-            return deep_gemm_fp8_o_proj(
+            z = self.wo_a.grouped_forward(
                 o,
                 positions,
                 self.rotary_emb.cos_sin_cache,
-                self.wo_a,
-                self.wo_b,
                 n_groups=self.n_local_groups,
                 heads_per_group=self.n_local_heads // self.n_local_groups,
                 nope_dim=self.nope_head_dim,
@@ -97,6 +92,7 @@ class MacaDeepseekV4FlashMLAAttention(MacaDeepseekV4Attention):
                 einsum_recipe=self._einsum_recipe,
                 tma_aligned_scales=self._tma_aligned_scales,
             )
+            return self.wo_b(z.flatten(1))
 
     @classmethod
     def get_padded_num_q_heads(cls, num_heads: int) -> int:

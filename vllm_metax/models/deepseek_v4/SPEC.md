@@ -4,8 +4,8 @@
 
 - Registered architectures: `DeepseekV4ForCausalLM`,
   `DeepSeekV4MTPModel`, and `DSparkDraftModel`.
-- Target: vLLM `v0.33.0`,
-  `4ba787ec9959e566d3b587a796dff07673324da5`.
+- Target: vLLM `v0.34.0`,
+  `62d4bc3c7e33b1b6c906e233e6af2d3506c482ca`.
 - Prior base: vLLM `v0.32.0`,
   `5df63a7203cdb9328d824a27b682e77c7b9928be`.
 - Local entries: `__init__.py`, `metax/model.py`, `metax/mtp.py`,
