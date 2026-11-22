@@ -14,7 +14,11 @@ _ARGUMENTS = tuple(
     argument.name
     for argument in torch.ops._C.fused_minimax_m3_qknorm_rope_kv_insert.default._schema.arguments
 )
-_HAS_KV_SCALES = _ARGUMENTS[-2:] == ("kv_k_scale", "kv_v_scale")
+_HAS_WRITE_QKV = _ARGUMENTS[-1:] == ("write_qkv",)
+_HAS_KV_SCALES = (_ARGUMENTS[-3:-1] if _HAS_WRITE_QKV else _ARGUMENTS[-2:]) == (
+    "kv_k_scale",
+    "kv_v_scale",
+)
 _BASE_ARGUMENTS = (
     "qkv",
     "q_norm_weight",
@@ -40,7 +44,12 @@ _BASE_ARGUMENTS = (
     "q_fp8_out",
     "q_fp8_scale",
 )
-if _ARGUMENTS not in (_BASE_ARGUMENTS, _BASE_ARGUMENTS + ("kv_k_scale", "kv_v_scale")):
+_SUPPORTED_ARGUMENTS = (
+    _BASE_ARGUMENTS,
+    _BASE_ARGUMENTS + ("kv_k_scale", "kv_v_scale"),
+    _BASE_ARGUMENTS + ("kv_k_scale", "kv_v_scale", "write_qkv"),
+)
+if _ARGUMENTS not in _SUPPORTED_ARGUMENTS:
     raise RuntimeError(f"Unsupported MiniMax preprocessing ABI: {_ARGUMENTS}")
 
 
@@ -70,6 +79,7 @@ def fused_minimax_m3_qknorm_rope_kv_insert(
     q_fp8_scale: float = 1.0,
     kv_k_scale: torch.Tensor | None = None,
     kv_v_scale: torch.Tensor | None = None,
+    write_qkv: bool = True,
 ) -> None:
     """Fused MiniMax-M3 attention pre-processing (in-place).
 
@@ -106,6 +116,10 @@ def fused_minimax_m3_qknorm_rope_kv_insert(
     ``[index_q | index_k]`` tail, but the kernel only processes the main q/k/v
     branches and main KV cache. This is used by MiniMax-M3 index-topk reuse
     layers that consume top-k block ids selected by an earlier sparse layer.
+
+    ``write_qkv=False`` requires ``q_fp8_out`` without ``q_out``. It skips the
+    in-place q/k/index writes while still producing FP8 q, gathered index_q and
+    cache updates for callers that consume only those outputs.
     """
     args = (
         qkv,
@@ -132,10 +146,16 @@ def fused_minimax_m3_qknorm_rope_kv_insert(
         q_fp8_out,
         q_fp8_scale,
     )
-    # NOTE(metax): MCOPLIB 0.4.14 exposes the pre-NVFP4-KV 23-argument ABI;
-    # source kernels expose v0.32's 25 arguments. Inspect the loaded operator,
-    # not the package version or USE_PRECOMPILED_KERNEL preference.
-    if _HAS_KV_SCALES:
+    # Inspect the loaded operator rather than inferring its ABI from a package
+    # version. This keeps the model-local entry point usable with older mcoplib
+    # builds while source kernels expose the v0.34 write_qkv argument.
+    if _HAS_WRITE_QKV:
+        torch.ops._C.fused_minimax_m3_qknorm_rope_kv_insert(
+            *args, kv_k_scale, kv_v_scale, write_qkv
+        )
+    elif _HAS_KV_SCALES:
+        if not write_qkv:
+            raise ValueError("The loaded MiniMax kernel does not support write_qkv")
         torch.ops._C.fused_minimax_m3_qknorm_rope_kv_insert(
             *args, kv_k_scale, kv_v_scale
         )
@@ -148,4 +168,6 @@ def fused_minimax_m3_qknorm_rope_kv_insert(
             raise ValueError(
                 "The loaded MiniMax kernel does not support NVFP4 KV scales"
             )
+        if not write_qkv:
+            raise ValueError("The loaded MiniMax kernel does not support write_qkv")
         torch.ops._C.fused_minimax_m3_qknorm_rope_kv_insert(*args)

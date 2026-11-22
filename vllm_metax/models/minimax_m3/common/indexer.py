@@ -111,20 +111,30 @@ class MiniMaxM3IndexerCache(nn.Module, AttentionLayerBase):
         backend_cls: type[AttentionBackend] = MiniMaxM3IndexerBackend,
     ) -> None:
         super().__init__()
+        # Per-token storage width in elements of ``dtype``.
+        self.head_size = head_dim
         if indexer_kv_dtype in ("fp8", "fp8_e4m3"):
-            cache_dtype = torch.float8_e4m3fn
+            cache_dtype = query_dtype = current_platform.fp8_dtype()
         elif indexer_kv_dtype == "bf16":
-            cache_dtype = torch.bfloat16
+            cache_dtype = query_dtype = torch.bfloat16
+        elif indexer_kv_dtype == "nvfp4":
+            # Packed NVFP4 pages scored by the MSA Q8KV4 indexer with e4m3 Q.
+            cache_dtype, query_dtype = torch.uint8, torch.float8_e4m3fn
+            self.head_size = head_dim // 2 + head_dim // 16
         else:
             raise NotImplementedError(
                 f"indexer_kv_dtype={indexer_kv_dtype!r} is not supported by the "
-                "MiniMax M3 indexer cache (only 'bf16' or 'fp8'/'fp8_e4m3')."
+                "MiniMax M3 indexer cache (only 'bf16', 'fp8'/'fp8_e4m3' or "
+                "'nvfp4')."
             )
         self.kv_cache = torch.tensor([])
         self.head_dim = head_dim
         self.indexer_kv_dtype = indexer_kv_dtype
-        # Side-cache storage dtype: bf16, or e4m3 for the fp8 score path.
+        # Side-cache storage dtype: bf16, e4m3 for the fp8 score path, or uint8
+        # for packed NVFP4.
         self.dtype = cache_dtype
+        # Index-query dtype the fused qk-norm/rope kernel emits.
+        self.query_dtype = query_dtype
         self.prefix = prefix
         self.cache_config = cache_config
         # Impl-chosen backend -> each impl gets its own builder (get_attn_backend).
@@ -143,7 +153,7 @@ class MiniMaxM3IndexerCache(nn.Module, AttentionLayerBase):
         return MLAAttentionSpec(
             block_size=vllm_config.cache_config.block_size,
             num_kv_heads=1,
-            head_size=self.head_dim,
+            head_size=self.head_size,
             dtype=self.dtype,
             cache_role=SparseCacheRole.INDEXER,
         )
@@ -220,9 +230,8 @@ class MiniMaxM3IndexerMetadataBuilder(
         super().__init__(kv_cache_spec, layer_names, vllm_config, device)
         hf_config = vllm_config.model_config.hf_config
         text_config = getattr(hf_config, "text_config", hf_config)
-        sparse_cfg = text_config.sparse_attention_config
         # Index-query head count from model config (cache spec has 1 vec/token).
-        total_index_heads = sparse_cfg["sparse_num_index_heads"]
+        total_index_heads = text_config.index_n_heads
         tp_size = get_tensor_model_parallel_world_size()
         if total_index_heads >= tp_size:
             assert total_index_heads % tp_size == 0
@@ -387,6 +396,11 @@ class MiniMaxM3IndexerImpl(nn.Module):
             indexer_kv_dtype=indexer_kv_dtype,
             backend_cls=type(self).indexer_backend_cls,
         )
+
+    def reserve_workspace(self) -> None:
+        """Reserve the workspace-manager scratch ``forward`` needs; called from
+        the memory-profiling run, which skips ``forward``."""
+        return
 
     def forward(
         self,
@@ -607,6 +621,9 @@ class MiniMaxM3Indexer(nn.Module):
     @property
     def num_index_heads(self) -> int:
         return self.impl.num_index_heads
+
+    def reserve_workspace(self) -> None:
+        self.impl.reserve_workspace()
 
     def forward(
         self,
