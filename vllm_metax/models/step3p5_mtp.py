@@ -16,9 +16,6 @@ from vllm.model_executor.layers.vocab_parallel_embedding import (
     ParallelLMHead,
     VocabParallelEmbedding,
 )
-from vllm.model_executor.model_loader.mtp_validation import (
-    is_mtp_completeness_check_enabled,
-)
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
 from vllm.sequence import IntermediateTensors
 
@@ -304,26 +301,6 @@ class Step3p5MTP(nn.Module):
                     )
                     weight_loader(param, loaded_weight)
             loaded_params.add(name)
-        params_need_to_load = set(params_dict.keys())
-        # Some KV cache scales are optional: checkpoints may omit them and vLLM
-        # will fall back to default scales during initialization.
-        optional_params = {
-            name
-            for name, param in params_dict.items()
-            if name.endswith((".k_scale", ".v_scale", ".q_scale", ".prob_scale"))
-            and param.numel() == 1
-            and not param.requires_grad
-        }
-        # NOTE(MetaX): v0.30.0 Step3p5MTP.load_weights indexes the missing set
-        # when an optional cache scale was loaded. Check only truly missing
-        # weights; remove this when upstream applies the same set difference.
-        missing_params = params_need_to_load - optional_params - loaded_params
-        if missing_params and is_mtp_completeness_check_enabled():
-            raise RuntimeError(
-                "Some parameters like "
-                f"{sorted(missing_params)[0]} are not in the checkpoint and will falsely "
-                "use random initialization"
-            )
         return loaded_params
 
     def _rewrite_spec_layer_name(self, spec_layer: int | None, name: str) -> str:
