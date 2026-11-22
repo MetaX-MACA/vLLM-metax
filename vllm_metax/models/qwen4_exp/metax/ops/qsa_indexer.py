@@ -400,11 +400,9 @@ def _prefill_logits(
         num_queries, logits_width
     )
 
-    # tuned on GB300
-    if k_cache.dtype == torch.float8_e4m3fn:
-        TILE_R, STAGES, num_warps = 32, 2, 8
-    else:
-        TILE_R, STAGES, num_warps = 64, 2, 4
+    # NOTE(metax): GB300's 64-row tile needs 100 KiB shared memory; MACA's
+    # current limit is 64 KiB, so use a smaller, single-stage tile.
+    TILE_R, STAGES, num_warps = 16, 1, 4
     BLOCK_N = 64
     K_TILES = 16
     grid = (
@@ -486,6 +484,7 @@ def _topk(
         logits.shape[0] <= 64
         and logits.stride(0) % 4 == 0
         and current_platform.has_device_capability(90)
+        and not current_platform.is_device_capability_family(110)
         and not current_platform.is_device_capability_family(120)
     )
     topk_op = (

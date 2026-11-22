@@ -39,11 +39,14 @@ from vllm_metax.models.qwen4_exp.common.hyperconnection import (
     HyperConnectionConfig,
 )
 from vllm_metax.models.qwen4_exp.metax.ops.hc import (
+    MIN_FUSED_UP_M,
     grouped_gemma_rmsnorm,
     hc_combine,
     hc_combine_norm,
     hc_gate_mix,
     hc_silu,
+    hc_up_gate_mix,
+    hc_up_gate_mix_supported,
 )
 
 
@@ -133,6 +136,9 @@ class GatedResidual(nn.Module):
             prefix=maybe_prefix(prefix, "input_mix_weight_up"),
             return_bias=False,
         )
+        self._use_hc_up_gate_mix = not envs.VLLM_BATCH_INVARIANT and (
+            hc_up_gate_mix_supported(self.input_mix_weight_up.weight, self.hc_count)
+        )
 
     def _down_and_inject(
         self, xn: torch.Tensor
@@ -148,6 +154,17 @@ class GatedResidual(nn.Module):
         lora, injection, _ = down_and_injection.split(split_sizes, dim=-1)
         return hc_silu(lora, self.hc_count), injection
 
+    def _up_gate_mix(self, lowrank: torch.Tensor, xn: torch.Tensor) -> torch.Tensor:
+        """Up projection, sigmoid gate and gated mean over the HC streams."""
+        if (
+            self._use_hc_up_gate_mix
+            and xn.shape[0] >= MIN_FUSED_UP_M
+            and isinstance(self.input_mix_weight_up, ReplicatedLinear)
+        ):
+            return hc_up_gate_mix(lowrank, xn, self.input_mix_weight_up.weight)
+        gate = self.input_mix_weight_up(lowrank)
+        return hc_gate_mix(xn, gate, self.hc_count)
+
     def mix(
         self, hidden_states: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
@@ -159,8 +176,7 @@ class GatedResidual(nn.Module):
         )
 
         lora, injection = self._down_and_inject(xn)
-        gate = self.input_mix_weight_up(lora)  # [M, D]
-        block_input = hc_gate_mix(xn, gate, self.hc_count)
+        block_input = self._up_gate_mix(lora, xn)
 
         return hidden_states, block_input, injection
 
@@ -187,8 +203,7 @@ class GatedResidual(nn.Module):
         )
 
         lora, injection = self._down_and_inject(xn)
-        gate = self.input_mix_weight_up(lora)  # [M, D]
-        block_input = hc_gate_mix(xn, gate, self.hc_count)
+        block_input = self._up_gate_mix(lora, xn)
 
         return hidden_states, block_input, injection
 
