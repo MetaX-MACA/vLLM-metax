@@ -112,7 +112,7 @@ def select_wna16_moe_backend(
 
     activation_format = (
         mk.FusedMoEActivationFormat.BatchedExperts
-        if config.moe_parallel_config.use_batched_activation_format
+        if config.use_batched_activation_format
         else mk.FusedMoEActivationFormat.Standard
     )
 

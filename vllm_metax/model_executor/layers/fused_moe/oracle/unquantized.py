@@ -84,7 +84,7 @@ def select_unquantized_moe_backend(
     # if not ideal. Once we unify TP + DP/EP, we can select P/F first.
     activation_format = (
         mk.FusedMoEActivationFormat.BatchedExperts
-        if moe_config.moe_parallel_config.use_batched_activation_format
+        if moe_config.use_batched_activation_format
         or moe_config.moe_backend == "batched_triton"
         else mk.FusedMoEActivationFormat.Standard
     )

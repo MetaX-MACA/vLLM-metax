@@ -23,9 +23,6 @@ from vllm.model_executor.layers.linear import (
 from vllm.model_executor.layers.quantization.base_config import (
     QuantizeMethodBase,
 )
-from vllm.model_executor.layers.quantization.utils.marlin_utils import (
-    get_marlin_input_dtype,
-)
 from vllm.model_executor.layers.quantization.utils.quant_utils import (
     GroupShape,
     create_fp8_quant_key,
@@ -36,6 +33,7 @@ from vllm.model_executor.layers.quantization.utils.quant_utils import (
     kFp8StaticTensorSym,
 )
 from vllm.model_executor.utils import replace_parameter
+from vllm.platforms import current_platform
 
 from vllm.model_executor.layers.quantization import register_quantization_config
 from vllm.model_executor.layers.quantization.fp8 import (
@@ -62,9 +60,7 @@ class MacaFp8Config(Fp8Config):
                 match_mode=self.ignored_layers_match_mode,
             ):
                 return UnquantizedLinearMethod()
-            offline_method = vllm_Fp8LinearMethod(self)
-            offline_method.marlin_input_dtype = get_marlin_input_dtype(prefix)
-            return offline_method
+            return vllm_Fp8LinearMethod(self)
         elif isinstance(layer, RoutedExperts):
             if is_layer_skipped(
                 prefix=prefix,
@@ -86,6 +82,16 @@ class MacaFp8Config(Fp8Config):
                 )
 
                 return Mxfp4MoEMethod(layer.moe_config)
+            if (
+                envs.VLLM_FP8_MOE_REQUANT == "mxfp4"
+                and self.weight_block_size is not None
+                and current_platform.is_rocm()
+            ):
+                from vllm.model_executor.layers.quantization.online.fp8_requant import (  # noqa: E501
+                    Fp8BlockExpertsAsMxfp4FusedMoE,
+                )
+
+                return Fp8BlockExpertsAsMxfp4FusedMoE(self, layer)
             return Fp8MoEMethod(self, layer)
         elif isinstance(layer, Attention):
             return Fp8KVCacheMethod(self)
@@ -186,6 +192,7 @@ class Fp8MoEMethod(vllm_Fp8MoEMethod):
             experts_cls=self.experts_cls,
             routing_tables=layer._expert_routing_tables(),
         )
+        self.moe_kernel.fused_experts.keep_constants(layer)
 
 
 @register_weight_loader_v2_supported_method

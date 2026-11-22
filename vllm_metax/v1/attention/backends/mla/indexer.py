@@ -690,6 +690,9 @@ class DeepseekV32IndexerPrefillMetadata:
     max_prefill_seq_len: int = -1
     # Per-TP-rank contiguous row counts, or None for the replicated path.
     row_shard_sizes: list[int] | None = None
+    # Under ShardQ, the chunks cover the decode tokens and this TP rank's
+    # tokens, gathered compactly in the order their top-k is written.
+    shardq_gather_indices: torch.Tensor | None = None
 
 
 @dataclass

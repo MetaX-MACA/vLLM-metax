@@ -356,8 +356,20 @@ def mctlassEx_w8a8_scaled_mm_azp(
     assert mctlass_scaled_gemm is not None, "mctlass scale op is not imported correctly"
     _, K = a.shape
     M, N = out.shape
+    if scale_a.ndim == 1:
+        scale_a = scale_a.unsqueeze(1)
+    if scale_b.ndim == 1:
+        scale_b = scale_b.unsqueeze(1)
     mctlass_scaled_gemm(
-        [M, N, K], a, b, out, scale_a, scale_b.T, bias, azp_adj=azp_adj, azp=azp
+        [M, N, K],
+        a,
+        b.T.contiguous().T,
+        out,
+        scale_a,
+        scale_b.T,
+        bias,
+        azp_adj=azp_adj,
+        azp=azp,
     )
     return out
 
