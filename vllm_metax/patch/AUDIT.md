@@ -1,15 +1,15 @@
-# Runtime patch audit — vLLM 0.33.0
+# Runtime patch audit — vLLM 0.34.0
 
-Reviewed upstream target: **v0.33.0**
-(`4ba787ec9959e566d3b587a796dff07673324da5`); prior reviewed base was v0.32.0
-(`5df63a7203cdb9328d824a27b682e77c7b9928be`). Patch paths below are relative
+Reviewed upstream target: **v0.34.0**
+(`62d4bc3c7e33b1b6c906e233e6af2d3506c482ca`); prior reviewed base was v0.33.0
+(`4ba787ec9959e566d3b587a796dff07673324da5`). Patch paths below are relative
 to `vllm_metax/patch/`; upstream source paths are relative to `vllm/`.
 Transformers compatibility entries refer to the approved **5.19.0** environment.
 
 The active patch modules are listed by category below.
 Shared infrastructure and removed or migrated entries are tracked separately.
 Decisions describe the retained implementation or its migration/removal;
-**they do not declare all v0.33.0 runtime obligations complete**. Earlier 0.30.0
+**they do not declare all v0.34.0 runtime obligations complete**. Earlier 0.30.0
 checks and patch-header dates remain historical evidence, not current acceptance.
 Environment approval, source fingerprints and individual check results are maintained
 in the [v0.33.0 upgrade run](../../.metax-upgrade/v0.33.0-upgrade-r2/TODO.md).
@@ -28,6 +28,27 @@ Entries in the four active tables are imported through this chain.
 `enhancement/performance/gumbel_sample.py` installs its replacement only when the
 optional MCOPLIB sampler is available. Removed/migrated entries have a separate table;
 templates are not imported by the activation chain.
+
+## v0.34 removal-first re-review
+
+The final v0.34.0 review replayed the mapped patch set from the v0.33.0 MetaX
+baseline and checked every rejected hunk against the exact target. The three
+blocking startup changes are resolved as follows:
+
+- `bugfix/triton_support/rejection_sample.py` imports `compute_fly_entropy`
+  from the target worker spec-decode package; the old module path is gone.
+- `enhancement/static_eplb/static_eplb.py` binds only
+  `vllm.v1.worker.gpu.model_runner.GPUModelRunner`; the removed MRV1 runner is
+  neither imported nor patched.
+- `enhancement/performance/speculative_decode_perf.py` is removed together with
+  its aggregate import because its MRV1 target no longer exists.
+
+The remaining active entries were re-imported through
+`vllm_metax.register_out_of_tree()` in a fresh source-mode process. Their target
+modules and descriptors exist at the reviewed revision, and the patch installer
+applies each target once. This review establishes source activation and the
+stated removal conditions; it does not claim that environment-specific runtime
+branches, optional MCOPLIB paths or every model path were executed.
 
 ## Bugfix patches
 

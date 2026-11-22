@@ -21,8 +21,8 @@
 #       logits, request state, resample blocks and sampled output slots.
 #
 # Affected versions: Historical MACA reproductions on vLLM 0.29.0/0.30.0;
-#     source and launch contracts reviewed on v0.33.0
-#     (4ba787ec9959e566d3b587a796dff07673324da5).
+#     source and launch contracts reviewed on v0.34.0
+#     (62d4bc3c7e33b1b6c906e233e6af2d3506c482ca).
 #     This review does not establish native GPU numerical correctness.
 #
 # Remove at: MACA runs `_resample_kernel` reliably with
@@ -33,7 +33,7 @@
 
 import torch
 from vllm.triton_utils import tl, triton
-from vllm.v1.spec_decode.fly import compute_fly_entropy
+from vllm.v1.worker.gpu.spec_decode.fly import compute_fly_entropy
 from vllm.v1.worker.gpu.spec_decode.rejection_sampler_utils import (
     _compute_cumulative_log_p_kernel,
     _compute_local_logits_stats_kernel,
