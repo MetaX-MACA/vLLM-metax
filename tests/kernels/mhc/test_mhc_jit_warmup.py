@@ -3,6 +3,9 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 import pytest
 
+from vllm_metax.model_executor.kernels.mhc.tilelang_kernels import (
+    _MHC_POST_TILELANG_KERNEL,
+)
 from vllm_metax.model_executor.kernels.mhc.warmup import MHC_PRE_NORM_KERNEL
 
 
@@ -34,3 +37,13 @@ def test_tilelang_warmup_inputs_reproduce_compile_key(
     assert len(keys) == len(set(keys))
     assert {kernel.dispatch(n_splits=n, **fields) for n in extra_splits} <= set(keys)
     assert all(key == kernel.dispatch(n_splits=key.n_splits, **fields) for key in keys)
+
+
+def test_mhc_post_warmup_keys_match_dispatch():
+    kernel = _MHC_POST_TILELANG_KERNEL
+    fields = dict(hidden_size=2048, hc_mult=4)
+
+    assert kernel.get_warmup_keys(**fields) == [
+        kernel.dispatch(**fields, split_h=False),
+        kernel.dispatch(**fields, split_h=True),
+    ]

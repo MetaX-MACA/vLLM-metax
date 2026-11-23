@@ -1685,7 +1685,11 @@ class MhcPostTileLangKernel(VllmTileLangJitKernel["MhcPostTileLangKernel.Compile
         hc_mult: int,
         split_h: bool,
     ) -> CompileKey:
-        return self.CompileKey(hidden_size, hc_mult, split_h)
+        return self.CompileKey(
+            hidden_size=hidden_size,
+            hc_mult=hc_mult,
+            split_h=split_h,
+        )
 
     def get_warmup_keys(
         self,

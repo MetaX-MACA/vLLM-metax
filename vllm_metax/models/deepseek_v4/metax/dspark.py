@@ -47,7 +47,7 @@ from vllm.model_executor.models.qwen3_dspark import (
     DSparkConfidenceHead,
     DSparkMarkovHead,
 )
-from vllm.model_executor.models.utils import maybe_prefix
+from vllm.model_executor.models.utils import WeightsMapper, maybe_prefix
 from vllm.models.common.ops.sequence_parallel import (
     sp_all_gather,
     sp_padding_mask,
@@ -110,6 +110,22 @@ class DSparkDeepseekV4Model(nn.Module):
         self.use_sequence_parallel = _use_sequence_parallel(vllm_config)
 
         self.num_dspark_layers = getattr(config, "n_mtp_layers", None) or 3
+        quant_config = vllm_config.quant_config
+        if quant_config is not None:
+            # Draft layers use indices after the target layers at runtime.
+            quant_config.apply_vllm_mapper(
+                WeightsMapper(
+                    orig_to_new_prefix={
+                        "mtp.0.main_proj": maybe_prefix(prefix, "main_proj"),
+                        **{
+                            f"mtp.{i}.": maybe_prefix(
+                                prefix, f"layers.{self.num_hidden_layers + i}."
+                            )
+                            for i in range(self.num_dspark_layers)
+                        },
+                    }
+                )
+            )
 
         # Shared with the target (aliased by the speculator's loading utility).
         self.embed_tokens = VocabParallelEmbedding(
@@ -123,7 +139,7 @@ class DSparkDeepseekV4Model(nn.Module):
             config.hidden_size,
             bias=False,
             return_bias=False,
-            quant_config=vllm_config.quant_config
+            quant_config=quant_config
             if mx_envs.VLLM_METAX_USE_QUANT_MAIN_PROJ
             else None,
             prefix=maybe_prefix(prefix, "main_proj"),
@@ -152,7 +168,7 @@ class DSparkDeepseekV4Model(nn.Module):
             [config.head_dim] * self.num_dspark_layers,
             bias=False,
             return_bias=False,
-            quant_config=vllm_config.quant_config,
+            quant_config=quant_config,
             prefix=maybe_prefix(prefix, "context_wkv_proj"),
             disable_tp=True,
         )
