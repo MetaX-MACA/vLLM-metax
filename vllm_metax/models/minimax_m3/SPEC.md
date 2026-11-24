@@ -37,6 +37,9 @@ An SM100 capability alias never enables MSA on MACA.
 
 - Preserve checkpoint expert/linear maps, destination-dependent scales,
   hybrid load sessions, Gemma accumulation, and TP reductions.
+- Gemma RMSNorm uses FlashInfer for supported accelerator inputs when the
+  kernels are available. The PyTorch path preserves FP32 residual accumulation
+  and in-place updates for other inputs.
 - Preserve sigmoid routing, correction bias, shared experts, and dense/MoE
   layer selection.
 - C500 uses BF16 and supported INT8 experts. CUDA-only NVFP4/MSA paths are not

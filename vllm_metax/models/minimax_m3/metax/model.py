@@ -15,6 +15,7 @@ The MiniMax-M3-preview config selects a single set of branches:
 """
 
 from collections.abc import Iterable
+from functools import cache
 
 import torch
 from torch import nn
@@ -136,6 +137,16 @@ def _is_moe_layer(config: PreTrainedConfig, layer_id: int) -> bool:
     return moe_layer_freq[layer_id] != 0
 
 
+@cache
+def _flashinfer_gemma_norm():
+    try:
+        from flashinfer.norm import gemma_fused_add_rmsnorm, gemma_rmsnorm
+    except ImportError:
+        return None
+
+    return gemma_rmsnorm, gemma_fused_add_rmsnorm
+
+
 class MiniMAXGemmaRMSNorm(nn.Module):
     """Gemma-style RMS normalization with FP32 accumulation on MetaX.
 
@@ -157,6 +168,42 @@ class MiniMAXGemmaRMSNorm(nn.Module):
         x: torch.Tensor,
         residual: torch.Tensor | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        # The native vector kernel requires aligned, distinct buffers.
+        if (
+            not torch.compiler.is_compiling()
+            and x.is_cuda
+            and x.ndim == 2
+            and x.numel() > 0
+            and x.size(-1) == self.weight.numel()
+            and x.dtype in (torch.float16, torch.bfloat16)
+            and x.is_contiguous()
+            and x.data_ptr() % 16 == 0
+            and self.weight.dtype == x.dtype
+            and self.weight.device == x.device
+            and self.weight.is_contiguous()
+            and self.weight.data_ptr() % 16 == 0
+            and (
+                residual is None
+                or (
+                    residual.shape == x.shape
+                    and residual.dtype == x.dtype
+                    and residual.device == x.device
+                    and residual.is_contiguous()
+                    and residual.data_ptr() % 16 == 0
+                    and not torch._C._is_alias_of(x, residual)
+                    and not torch._C._is_alias_of(self.weight, residual)
+                    and not torch._C._is_alias_of(self.weight, x)
+                )
+            )
+        ):
+            kernels = _flashinfer_gemma_norm()
+            if kernels is not None:
+                gemma_rmsnorm, gemma_fused_add_rmsnorm = kernels
+                if residual is None:
+                    return gemma_rmsnorm(x, self.weight, self.variance_epsilon)
+                gemma_fused_add_rmsnorm(x, residual, self.weight, self.variance_epsilon)
+                return x, residual
+
         # NOTE(metax): Match the fused Gemma kernel's unrounded FP32 residual sum.
         value = x.float()
         if residual is not None:
