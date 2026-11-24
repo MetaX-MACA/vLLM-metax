@@ -717,7 +717,10 @@ class MacaPlatformBase(Platform):
         # use vllm_c kernels where available when no codegen
         cc = vllm_config.compilation_config
         using_inductor = cc.backend == "inductor" and cc.mode != CompilationMode.NONE  # noqa: F841
-        default = ["native"] if using_inductor else ["vllm_c", "native"]
+
+        # TODO(metax): need to check native accuracy problem
+        # default = ["native"] if using_inductor else ["vllm_c", "native"]
+        default = ["vllm_c", "native"]
 
         # Use oink if enabled for rms_norm
         # TODO(Laurawly/luka): remove this env var,
