@@ -416,6 +416,7 @@ def task_identity(state, task_id):
         "support_matrix": sorted(_rows(state, task_id), key=lambda row: row["id"]),
         "upstream_mapping": task.get("upstream_mapping"),
         "numerical_contract": task.get("numerical_contract"),
+        "api_contracts": task.get("local_checks", {}).get("api_contracts", []),
     }
 
 
@@ -474,12 +475,18 @@ def _numerical_errors(contract, report):
 def validate_report(state, task_id, kind, report):
     """Validate actual child observations, never a coordinator-supplied label."""
     rows = _rows(state, task_id)
+    task = state["tasks"][task_id]
+    contracts = task.get("local_checks", {}).get("api_contracts", [])
+    errors = (
+        _store().planning.api_contracts.report_issues(contracts, report)
+        if kind == "contract" and contracts
+        else []
+    )
     required = kind in REPORT_KINDS or bool(rows and kind == "contract")
     if not required:
-        return []
+        return errors
     if not isinstance(report, dict):
-        return ["Check must write a structured actual configuration report"]
-    errors = []
+        return errors + ["Check must write a structured actual configuration report"]
     if kind == "batched_test":
         batch = report.get("batched_test", {})
         mode = (

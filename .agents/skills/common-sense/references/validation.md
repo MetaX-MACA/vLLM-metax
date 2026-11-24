@@ -177,6 +177,9 @@ Before local checks, record `checks-put` with semantic change categories, reason
 cases. Contract tests are mandatory for API/dispatch/lifecycle changes. Layout,
 quantization, indexing, numerical and communication changes also require an independent
 component numerical reference, frozen numerical contract and actual installed components.
+Follow [replacement API contracts](api-contracts.md) for upstream-visible overrides,
+including retained patches and registrations. Verify the real activated entry point and
+run both valid and invalid upstream caller cases.
 No complete model is needed for these checks. Unavailable-chip numerical deferral needs
 matching explicit unverified coverage; it cannot exempt supported BF16/FP16/INT8 cases.
 

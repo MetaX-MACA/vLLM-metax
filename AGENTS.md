@@ -56,8 +56,7 @@ references; load only workflows relevant to the user's request.
 | Independent branch-port adversarial review | [independent-reviewer](.agents/agents/independent-reviewer.md) + [branch-port profile](.agents/skills/vllm-metax-branch-port/references/reviewer-profile.md) |
 | Upgrade environment preparation | [environment-check](.agents/skills/environment-check/SKILL.md) |
 | Shared upgrade rules and tooling | [common-sense](.agents/skills/common-sense/SKILL.md) |
-| New or standalone model adaptation | [model-adaptation](.agents/skills/model-adaptation/SKILL.md) |
-| Model compatibility | [model-upgrade](.agents/skills/model-upgrade/SKILL.md) |
+| New model adaptation and existing model compatibility | [model-adaptation](.agents/skills/model-adaptation/SKILL.md) |
 | Attention backends and cache contracts | [attention-upgrade](.agents/skills/attention-upgrade/SKILL.md) |
 | Native operators, csrc and build contracts | [csrc-upgrade](.agents/skills/csrc-upgrade/SKILL.md) |
 | Registry, quantization and CustomOps | [registry-upgrade](.agents/skills/registry-upgrade/SKILL.md) |

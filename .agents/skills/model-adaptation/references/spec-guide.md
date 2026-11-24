@@ -17,8 +17,10 @@ Use these sections, with concrete values or explicit unknown/unverified entries:
    implementations, the local `nvidia/ -> metax/` mapping, rewritten
    imports/lazy references/registry strings, removed vendor directories, public
    framework API boundaries, and direct/indirect/dynamic concrete-model import audit
-   evidence. State that unchanged non-vendor files remain part of the local mirror and
-   which shared upstream framework APIs are used from outside the model directory.
+   evidence. Record unchanged non-vendor files as part of the local mirror. List the
+   shared upstream modules and symbols reused from outside the model directory and why
+   their contracts work on MACA. Record the layout explicitly when upstream has no
+   `nvidia/` directory.
 4. **Weights and compute:** checkpoint/runtime/activation dtypes, quantization groups,
    scale formats and orientation, fused mappings, TP sharding, loading order, post-load
    transforms, MoE experts and actual component/kernel dispatch.
@@ -41,11 +43,57 @@ scale placement and index conversion. A shared dtype name or logical tensor shap
 not a physical-layout specification. Keep lengthy design explanations here; code retains
 upstream comments/spacing with concise MACA difference notes.
 
+## Upstream component reuse
+
+When a plugin-owned model reuses a component from another upstream model, add a section
+with this exact heading to the consuming model spec. Start the section with a fenced JSON
+list. Each declaration names a reviewed local entry, the local file holding a named
+`from ... import ...` statement, the fully qualified upstream symbol, the full reviewed
+vLLM commit and the use. Paths are relative to the MetaX source root. Add a declaration for
+each entry and importing file that reaches the symbol.
+
+For example, this template describes the QSA and ordinary full-attention uses in one local
+Qwen4 Exp entry. Replace the commit placeholder after upstream review.
+
+```json
+[
+  {
+    "entry": "vllm_metax/models/qwen4_exp/__init__.py",
+    "file": "vllm_metax/models/qwen4_exp/metax/qsa.py",
+    "symbol": "vllm.model_executor.models.qwen3_next.Qwen3NextAttention",
+    "upstream_revision": "<full reviewed vLLM commit>",
+    "use": "Inherit _project_qkv_gate for QSA without fused preparation"
+  },
+  {
+    "entry": "vllm_metax/models/qwen4_exp/__init__.py",
+    "file": "vllm_metax/models/qwen4_exp/metax/model.py",
+    "symbol": "vllm.model_executor.models.qwen3_next.Qwen3NextAttention",
+    "upstream_revision": "<full reviewed vLLM commit>",
+    "use": "Construct ordinary full attention when QSA is disabled"
+  }
+]
+```
+
+Below the list, explain why the symbol can be reused, which private dependencies and
+side effects were reviewed, and which checkpoint/configuration rows exercise each use.
+Keep the entry point, whole-model construction and same-family implementation local.
+Declarations apply to named symbol imports. Module imports, wildcard imports and dynamic
+lookups follow the standard audit rules.
+
+Declare `e2e` and `batched_test` for the review task. For each use, bind the consuming
+configuration to support-matrix rows that assert the component's worker origin, execution
+branch and actual MACA backend. For Qwen4 Exp, verify QSA with fused preparation disabled
+and ordinary full attention with QSA disabled. Record current evidence or mark the affected
+configuration unverified until its obligations can be met.
+
 ## Tool binding
 
 Include the spec in its source task's files. Before local source checks run, use
 `model-review --id TASK --entry vllm_metax/models/.../model.py --spec .../SPEC.md`.
-Repeat entries/specs for the models owned by the task. The tool runs the bundled static
-audit and stores source/spec hashes and an audit artifact. Changed specs/imported local
-helpers invalidate this review. Bind baseline `tools/models` samples to the corresponding
+Repeat entries for all registered variants and specs for each model owned by the task.
+The tool checks reuse declarations against the selected vLLM checkout and records matched
+symbol imports in the audit artifact. When calling `audit_imports.py` directly, supply
+`--spec LOCAL_SPEC.md` for each reviewed spec and `--upstream-source VLLM_CHECKOUT` for
+the selected commit. Changed specs or imported local helpers invalidate the review.
+Bind baseline `tools/models` samples to the corresponding
 reviewed spec and test rows; neither a missing spec nor an unbound model is complete.

@@ -55,6 +55,8 @@ directory; review them and explicitly assign transitive framework helpers to the
 consuming phase when needed. One shared file must keep one phase and owning skill
 across configuration tasks. A file with no task or disposition cannot pass a phase.
 New files are discovered on synchronization; deleted files remain as tombstones.
+The `models` phase defaults to `model-adaptation`. Previous `model-upgrade` task
+owners are normalized to `model-adaptation` when loading a run or assigning a task.
 
 Use `task-set --status implemented` after current static/review and required local
 checks and a checked source mapping. Use `phase-next --note TEXT` after all source
@@ -245,6 +247,10 @@ match an explicit unavailable-chip record covering this exact task/configuration
 Use `model-review --id TASK --entry LOCAL_MODEL.py --spec LOCAL_SPEC.md`, repeating
 entries/specs as needed. It runs the model-adaptation auditor and binds its source/spec
 hashes before static/review evidence. Specs must be owned files in the model directory.
+For [upstream component reuse](../../model-adaptation/references/spec-guide.md#upstream-component-reuse),
+the audit artifact records the exact declared imports and upstream commit. Declare
+`e2e` and `batched_test` for the review task and bind the consuming configurations to
+runtime dispatch evidence.
 
 `model-bind --file MODELS.json` accepts `{"models": [{"id": "tools/models/SAMPLE",
 "spec": "vllm_metax/models/FAMILY/SPEC.md", "matrix_rows": ["ROW"]}]}`. Each row

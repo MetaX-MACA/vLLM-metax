@@ -47,6 +47,11 @@ validation. Never trade required MACA correctness for a smaller patch count.
   added compatibility attribute, never a renamed target or typo.
 - Preserve upstream validation, model branches, cleanup, lazy initialization and Triton
   decorator order. Inspect parameter meanings, not just matching names.
+- Record a [replacement API contract](../common-sense/references/api-contracts.md) for
+  every patched callable still visible to upstream callers. Include the actual replaced
+  attribute, its original and effective bindings, and calls through bound descriptors,
+  aliases or captured references where reachable. For a removal, verify that callers
+  resolve to the intended target or supported replacement.
 - Read [review-patterns.md](references/review-patterns.md) for quantization arguments,
   tokenizer behavior, regional ordering, kernel and communication restrictions.
 

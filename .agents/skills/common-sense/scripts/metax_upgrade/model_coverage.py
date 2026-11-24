@@ -66,7 +66,10 @@ def review_model(run_dir, state, task_id, entries, specs):
             str(auditor),
             "--source",
             str(root),
+            "--upstream-source",
+            state["inputs"]["vllm_source"],
             *[arg for entry in entries for arg in ("--entry", entry)],
+            *[arg for spec in specs for arg in ("--spec", spec)],
         ],
         capture_output=True,
         text=True,
@@ -77,6 +80,12 @@ def review_model(run_dir, state, task_id, entries, specs):
             "Model import audit failed: " + (result.stdout or result.stderr)
         )
     audit = json.loads(result.stdout)
+    if audit["upstream_component_reuse"] and not {"e2e", "batched_test"} <= set(
+        task["requires"]
+    ):
+        raise ValueError(
+            "Models reusing upstream components need e2e and batched_test obligations"
+        )
     record = {
         "entries": entries,
         "specs": {path: store.file_hash(root / path) for path in specs},

@@ -64,12 +64,20 @@ not retain a removed or superseded public parameter merely to keep stale local c
 working, and do not create a MetaX-specific public compatibility layer when the
 installation boundary can be adapted inside the implementation.
 
-If the installed MetaX component cannot accept the target API, record the exact
-incompatibility, affected symbols/callers and why direct compatibility is impossible.
-Use the narrowest internal adapter, translation or explicit rejection; never silently
-drop an input or reinterpret a parameter with different output semantics. Add
-signature/schema/AST and actual-call forwarding checks for the migrated API. The
-adapter's reason and removal condition belong in the mapping or review record.
+Inventory every upstream API that the plugin replaces, including retained monkey patches,
+registered constructors, factories, dispatch entries and real/fake CustomOps. Use a
+symbol-level mapping to the exact target and bind the
+[replacement API contract](references/api-contracts.md) with `checks-put`. Source
+acceptance requires the observed activated binding and real caller checks, including
+unchanged replacements. Classify files containing only infrastructure explicitly.
+
+Keep the upstream-facing signature, defaults, schema, return/error behavior and state
+semantics exact. If a MetaX dependency needs a different interface, adapt at the narrowest
+internal boundary. For a necessary difference in a Python-facing interface, record the
+constraint and removal condition, and prove that all supported upstream call forms bind,
+forward and behave correctly. Preserve the registered CustomOp schema and fake signature.
+Route cases that still work through a compatible path. A remaining incompatibility blocks
+acceptance for the affected configuration.
 
 ## Complete inventory, dependencies and ownership
 

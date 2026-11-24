@@ -37,7 +37,7 @@ this planning step does not authorize early model construction or adaptation.
 | 2. `registry` | Upgrade all registrations, CustomOps, quantization configs and their local transitive kernels/experts. |
 | 3. `attention` | Upgrade attention, quantized KV/indexer cache contracts and split prefill/decode execution. |
 | 4. `framework` | Scan every remaining non-model/non-patch Python file, initializers and build/runtime dependencies, including a full csrc upgrade under either kernel provider. |
-| 5. `models` | Upgrade every local model and model dependency; maintain each model's spec and prohibit dependency on upstream concrete model implementations. |
+| 5. `models` | Upgrade every local model and model dependency. Use [model-adaptation](../model-adaptation/SKILL.md) for model ownership, specs and scoped upstream component reuse. |
 | 6. `patch` | Review every patch with removal as the objective; remove, replace via supported extension points, or minimize and justify. |
 | 7. `validation` | Only now construct/load models and run model smoke, generation, e2e and batched inference correctness. |
 

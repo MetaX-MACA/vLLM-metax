@@ -369,10 +369,17 @@ Use `checks-put --id TASK --file CHECKS.json` before local checks. The document 
 communication, or none), `reason` and required `cases`. The tool derives mandatory
 contract/numerical obligations. A justified `defer_numeric` (feature, chip, reason) must
 match an explicit unavailable-chip record covering this exact task/configuration.
+Use `api_contracts` and `no_api_replacements` for
+[replacement API coverage](api-contracts.md). A declared replacement adds a `contract`
+obligation even when the source disposition is retain or the change kinds include `none`.
+The check reports actual upstream and active bindings, surfaces and caller outcomes.
 
 Use `model-review --id TASK --entry LOCAL_MODEL.py --spec LOCAL_SPEC.md`, repeating
 entries/specs as needed. It runs the model-adaptation auditor and binds its source/spec
 hashes before static/review evidence. Specs must be owned files in the model directory.
+For [upstream component reuse](../../model-adaptation/references/spec-guide.md#upstream-component-reuse),
+declare `e2e` and `batched_test` for the review task. `model-review` reads the declarations
+from the supplied specs and checks the full commit against the selected vLLM checkout.
 
 `model-bind --file MODELS.json` accepts `{"models": [{"id": "tools/models/SAMPLE",
 "spec": "vllm_metax/models/FAMILY/SPEC.md", "matrix_rows": ["ROW"]}]}`. Each row

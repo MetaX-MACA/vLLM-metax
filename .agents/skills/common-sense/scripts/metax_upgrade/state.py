@@ -90,6 +90,9 @@ def load(run_dir):
         raise ValueError(
             "Unsupported state schema; preserve the run before migrating it"
         )
+    for task in state["tasks"].values():
+        if "owner" in task:
+            task["owner"] = workflow.normalize_owner(task["owner"])
     state["run_dir"] = str(Path(run_dir).resolve())
     return state
 

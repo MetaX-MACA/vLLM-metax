@@ -8,7 +8,8 @@ description: Review and adapt MetaX attention backends, MLA, sparse indexers, ca
 Fully read and apply [common-sense](../common-sense/SKILL.md) before this workflow.
 
 Cover the requested attention backends under `vllm_metax/v1/attention/`, common MLA
-layers, sparse indexer CustomOps, and their shared wrappers. Model-private implementations belong to model-upgrade.
+layers, sparse indexer CustomOps, and their shared wrappers. Model-private implementations
+belong to [model-adaptation](../model-adaptation/SKILL.md).
 
 ## Trace component contracts and dispatch
 

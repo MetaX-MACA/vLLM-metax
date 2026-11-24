@@ -1,4 +1,4 @@
-# Model Upgrade Review Cases
+# Model Adaptation Review Cases
 
 Use only the cases relevant to the requested model. These are historical failure
 patterns, not assertions about the currently installed components. Recheck target

@@ -2,6 +2,11 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 """Recorded dependency analysis and change-specific component obligations."""
 
+if __package__:
+    from . import api_contracts
+else:
+    import api_contracts
+
 NUMERICAL = {"layout", "quantization", "indexing", "numerics", "communication"}
 CHANGES = NUMERICAL | {"api", "dispatch", "lifecycle", "none"}
 
@@ -155,12 +160,13 @@ def put_checks(state, task_id, document):
         )
     if not isinstance(document.get("reason"), str) or not document["reason"].strip():
         raise ValueError("Local check selection needs a reviewed reason")
+    replacement_apis = api_contracts.definitions(task, document)
     required = {"static", "review"}
-    if set(changes) - {"none"}:
+    if set(changes) - {"none"} or replacement_apis:
         required.add("contract")
     if set(changes) & NUMERICAL:
         required.add("component_numeric")
-    if required - {"static", "review"} and not document.get("cases"):
+    if set(changes) - {"none"} and not document.get("cases"):
         raise ValueError("Semantic changes need discriminating component cases")
     defer = document.get("defer_numeric")
     if defer:
@@ -206,15 +212,15 @@ def deferred_kinds(state, task_id):
 
 
 def source_issues(state, task_id):
-    if (
-        state["inputs"]["mode"] != "full"
-        and state["tasks"][task_id].get("phase") != "models"
-    ):
-        return []
     task = state["tasks"][task_id]
+    issues = api_contracts.source_issues(task)
+    if state["inputs"]["mode"] != "full" and task.get("phase") != "models":
+        return issues
     if task["files"] and not task.get("local_checks"):
-        return ["Classify source changes and required component checks with checks-put"]
+        issues.append(
+            "Classify source changes and required component checks with checks-put"
+        )
     checks = task.get("local_checks", {})
     if checks and not set(checks["required"]) <= set(task["requires"]):
-        return ["Required component evidence is missing from task acceptance"]
-    return []
+        issues.append("Required component evidence is missing from task acceptance")
+    return issues

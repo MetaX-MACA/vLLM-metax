@@ -95,8 +95,8 @@ Use the independent branch-port matrix and run state for durable source mapping,
 ownership and acceptance. Do not create a full-upgrade coordinator run. Read the exact
 specialist skill for each changed contract:
 
-- `model-adaptation`: new model code or independent model implementation dependencies;
-- `model-upgrade`: existing model compatibility across revisions;
+- `model-adaptation`: new model code, model-private dependencies or existing model
+  compatibility across revisions;
 - `attention-upgrade`: attention backend, MLA, sparse indexer, cache shape and wrapper;
 - `registry-upgrade`: registration, quantization, CustomOps and kernel dispatch;
 - `csrc-upgrade`: native source, headers, bindings and build contracts;

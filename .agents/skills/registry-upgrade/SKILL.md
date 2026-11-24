@@ -54,6 +54,10 @@ plugin entry point -> package imports -> decorator/table mutation
   callers before adapting internal behavior. Do not preserve a stale public parameter as
   compatibility unless the installed MetaX component requires it; record that constraint,
   the narrow adapter boundary and its removal condition.
+- Bind each exposed registration and its effective callable to a
+  [replacement API contract](../common-sense/references/api-contracts.md). Test the
+  target registry lookup and call through its result. Cover constructor and inherited
+  state, real and fake CustomOp dispatch, and lookup or fallback for unaffected keys.
 - Distinguish shared and separately defined enums. Matching member names or values
   do not make members of different Enum classes interchangeable in backend dispatch.
 

@@ -322,7 +322,7 @@ starting the mutation phase.
    ownership, upstream-first structure, dependency closure, validation and recovery.
    Use common-sense rules without creating a full-upgrade run.
 7. Route adaptation to the owning specialist skill:
-   - model implementation: `model-adaptation` or `model-upgrade`;
+   - model implementation: `model-adaptation`;
    - attention/cache: `attention-upgrade`;
    - registry/quantization/CustomOps: `registry-upgrade`;
    - csrc/native/build: `csrc-upgrade`;

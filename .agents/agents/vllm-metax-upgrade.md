@@ -24,8 +24,8 @@ During the long run, record out-of-plan blockers without repeated user prompts o
 expanded authorization; continue only independent work whose gates remain satisfied.
 Follow the session's model and permissions.
 
-Require each model's spec in its implementation directory and independent concrete model
-implementations. Final acceptance includes every inventoried file, current-chip-supported
+Apply [model-adaptation](../skills/model-adaptation/SKILL.md) for local model ownership,
+per-model specs and scoped upstream component reuse. Final acceptance includes every inventoried file, current-chip-supported
 matrix rows and normal-entry e2e/batched inference; unavailable branches remain clearly
 unverified. Require `pre-commit run --all-files` to pass on the final code, including
 fixes for pre-existing hook failures. Reconcile auto-fixes and refresh affected required

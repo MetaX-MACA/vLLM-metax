@@ -11,7 +11,7 @@ import sys
 import tempfile
 import unittest
 
-from metax_upgrade import acceptance, lifecycle, state as store
+from metax_upgrade import acceptance, api_contracts, lifecycle, state as store
 
 
 class AcceptanceTests(unittest.TestCase):
@@ -425,6 +425,48 @@ class AcceptanceTests(unittest.TestCase):
                 "lack upstream mappings" in error
                 for error in acceptance.validate_task(self.state, "op")
             )
+        )
+
+    def test_api_adapter_requires_forwarding_and_preserves_custom_op_schema(self):
+        contract = {
+            "id": "op",
+            "local": "op.py",
+            "local_symbol": "op",
+            "binding": {"entry": "op", "callable": "fixture.op"},
+            "surface": "python",
+            "target": {"signature": "(value, /)"},
+            "mode": "adapter",
+            "reason": "Provider exposes a different Python signature",
+            "removal_condition": "Provider supports the target binding",
+            "cases": ["valid_call", "invalid_call"],
+        }
+        document = {"api_contracts": [contract]}
+        with self.assertRaisesRegex(ValueError, "adapter_forwarding"):
+            api_contracts.definitions(self.state["tasks"]["op"], document)
+        contract["cases"].append("adapter_forwarding")
+        result = {
+            "binding": contract["binding"],
+            "upstream": contract["target"],
+            "active": {"signature": "(*args, **kwargs)"},
+            "cases": dict.fromkeys(contract["cases"], True),
+        }
+        report = {"api_contracts": {"op": result}}
+        self.assertEqual(api_contracts.report_issues([contract], report), [])
+        result["cases"]["adapter_forwarding"] = False
+        self.assertIn("caller case", api_contracts.report_issues([contract], report)[0])
+        result["cases"]["adapter_forwarding"] = True
+        result["binding"] = {**contract["binding"], "callable": "fixture.other"}
+        self.assertIn(
+            "different callable", api_contracts.report_issues([contract], report)[0]
+        )
+        result["binding"] = contract["binding"]
+        target = {"schema": "op(Tensor value) -> Tensor", "fake_signature": "(value)"}
+        contract.update(surface="custom_op", target=target)
+        result.update(
+            upstream=target, active={**target, "fake_signature": "(value, bias)"}
+        )
+        self.assertIn(
+            "signature or schema", api_contracts.report_issues([contract], report)[0]
         )
 
     def test_mapping_accepts_explicit_platform_only_and_deleted_dispositions(self):

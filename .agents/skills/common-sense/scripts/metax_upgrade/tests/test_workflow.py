@@ -65,14 +65,16 @@ class WorkflowTests(unittest.TestCase):
             self.cli("task-add", *args)
             fixtures.synthetic_mapping(self.run, phase)
             policy = self.run / (phase + "-checks.json")
-            policy.write_text(
-                json.dumps(
-                    {
-                        "changes": ["none"],
-                        "reason": "Synthetic comment-only fixture; no tensor behavior",
-                    }
-                )
-            )
+            checks = {
+                "changes": ["none"],
+                "reason": "Synthetic comment-only fixture; no tensor behavior",
+            }
+            if phase in {"patch", "registry"}:
+                checks["no_api_replacements"] = {
+                    path: "Comment-only fixture has no exposed callable"
+                    for path in paths
+                }
+            policy.write_text(json.dumps(checks))
             self.cli("checks-put", "--id", phase, "--file", policy)
         current = store.load(self.run)
         plan = self.run / "analysis.json"
@@ -183,6 +185,104 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn(
             "vllm_metax/patch/fix.py", json.loads((self.run / "FILES.json").read_text())
         )
+
+    def test_retained_registry_binding_needs_current_api_and_call_evidence(self):
+        self.reach("registry")
+        local = self.files["registry"][0]
+        upstream = self.fixture.vllm / "sample.py"
+        source = "def encode(items, /, *, options=None):\n    return items, options\n"
+        upstream.write_text(source)
+        (self.metax / local).write_text(source + '\nregistry = {"example": encode}\n')
+        state = store.load(self.run)
+        mapping = state["tasks"]["registry"]["upstream_mapping"]
+        mapping["mappings"][0].update(
+            local_symbol="encode",
+            disposition="retain",
+            upstream={
+                "path": "sample.py",
+                "symbol": "encode",
+                "revision": "fixture",
+                "sha256": store.file_hash(upstream),
+            },
+        )
+        path = self.run / "registry-mapping.json"
+        path.write_text(json.dumps(mapping))
+        self.cli("mapping-put", "--id", "registry", "--file", path)
+        with self.assertRaisesRegex(
+            ValueError, "Mapped replacement needs an API contract"
+        ):
+            self.check("registry")
+
+        policy = self.run / "registry-checks.json"
+        policy.write_text(
+            json.dumps(
+                {
+                    "changes": ["none"],
+                    "reason": "Verify the retained registry override",
+                    "api_contracts": [
+                        {
+                            "id": "example",
+                            "local": local,
+                            "local_symbol": "encode",
+                            "binding": {
+                                "entry": "example",
+                                "callable": "fixture.registry.encode",
+                            },
+                            "mode": "exact",
+                            "surface": "python",
+                            "target": {"signature": "(items, /, *, options=None)"},
+                            "cases": ["valid_call", "invalid_call"],
+                        }
+                    ],
+                }
+            )
+        )
+        self.cli("checks-put", "--id", "registry", "--file", policy)
+        self.assertEqual(self.check("registry"), 0)
+        self.assertEqual(self.check("registry", "review"), 0)
+        self.assertNotEqual(self.check("registry", "contract"), 0)
+        with self.assertRaisesRegex(
+            ValueError, "Missing local source checks: contract"
+        ):
+            self.cli("task-set", "--id", "registry", "--status", "implemented")
+
+        probe = f"""
+import inspect
+import json
+import os
+from pathlib import Path
+import runpy
+
+target = runpy.run_path({str(upstream)!r})['encode']
+entry = 'example'
+active = runpy.run_path({local!r}, run_name='fixture.registry')['registry'][entry]
+valid = active('items', options='explicit') == target('items', options='explicit')
+def rejects_keyword(fn):
+    try:
+        fn(items='items')
+    except TypeError:
+        return True
+    return False
+result = {{
+    'binding': {{'entry': entry, 'callable': active.__module__ + '.' + active.__qualname__}},
+    'upstream': {{'signature': str(inspect.signature(target))}},
+    'active': {{'signature': str(inspect.signature(active))}},
+    'cases': {{'valid_call': valid, 'invalid_call': rejects_keyword(target) and rejects_keyword(active)}},
+}}
+Path(os.environ['METAX_UPGRADE_ORIGINS_FILE']).write_text(json.dumps({{'api_contracts': {{entry: result}}}}))
+"""
+        (self.metax / local).write_text(
+            source.replace("options=None", "options=False")
+            + '\nregistry = {"example": encode}\n'
+        )
+        self.assertNotEqual(self.check("registry", "contract", code=probe), 0)
+        evidence = store.load(self.run)["tasks"]["registry"]["evidence"][-1]
+        self.assertIn("active signature", evidence["origins"])
+        (self.metax / local).write_text(source + '\nregistry = {"example": encode}\n')
+        self.assertEqual(self.check("registry", "contract", code=probe), 0)
+        self.assertEqual(self.check("registry"), 0)
+        self.assertEqual(self.check("registry", "review"), 0)
+        self.cli("task-set", "--id", "registry", "--status", "implemented")
 
     def test_model_launchers_and_phase_relabeling_cannot_bypass_source_gates(self):
         with self.assertRaisesRegex(ValueError, "model launcher"):
@@ -380,6 +480,35 @@ class WorkflowTests(unittest.TestCase):
             (self.run / "baseline/metax-source.zip").read_bytes(), original_archive
         )
 
+    def test_previous_model_owner_is_normalized_when_resuming_a_run(self):
+        state = store.load(self.run)
+        self.assertEqual(state["tasks"]["models"]["owner"], "model-adaptation")
+        state["tasks"]["models"]["owner"] = "model-upgrade"
+        state["policy_identity"] = {"fingerprint": "previous-model-skill"}
+        store.write_json(self.run / "state.json", state)
+
+        self.cli("accept-policy-change", "--note", "Reviewed the merged model skill")
+        model_file = self.files["models"][0]
+        self.cli(
+            "task-add",
+            "--id",
+            "model-config",
+            "--title",
+            "Review another model configuration",
+            "--files",
+            model_file,
+            "--requires",
+            "static",
+            "--configuration",
+            "another configuration",
+            "--next-action",
+            "Review the shared model file",
+        )
+        saved = json.loads((self.run / "state.json").read_text())
+        self.assertEqual(saved["tasks"]["models"]["owner"], "model-adaptation")
+        self.assertEqual(saved["tasks"]["model-config"]["owner"], "model-adaptation")
+        self.assertEqual(saved["inventory"][model_file]["owners"], ["model-adaptation"])
+
     def test_mixed_legacy_task_can_be_replanned_without_losing_history(self):
         state = store.load(self.run)
         state["schema_version"] = 2
@@ -401,6 +530,7 @@ class WorkflowTests(unittest.TestCase):
             args.extend(["--files", path])
         self.cli("task-replan", *args)
         task = store.load(self.run)["tasks"]["models"]
+        self.assertEqual(task["owner"], "model-adaptation")
         self.assertFalse(task["needs_replan"])
         self.assertEqual(task["status"], "todo")
         self.assertIn(

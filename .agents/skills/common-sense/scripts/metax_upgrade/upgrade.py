@@ -217,7 +217,10 @@ def assert_ready(run_dir, state):
 
 
 def origins_valid(state, kind, path, task_id=None):
-    needs_report = kind in PRODUCTION_KINDS | {"component_numeric"}
+    task = state["tasks"][task_id] if task_id is not None else {}
+    needs_report = kind in PRODUCTION_KINDS | {"component_numeric"} or (
+        kind == "contract" and task.get("local_checks", {}).get("api_contracts")
+    )
     if not needs_report and not path.is_file():
         return True, None
     if not path.is_file():

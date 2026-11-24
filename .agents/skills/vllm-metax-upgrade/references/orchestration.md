@@ -23,6 +23,11 @@ wrappers, oracles, experts, modular MoE kernels, prepare/finalize and collective
 owning phase. Record explicit ownership for shared helpers rather than treating a
 registration decorator as complete adaptation of its execution path.
 
+Require [replacement API contracts](../../common-sense/references/api-contracts.md) for
+effective registry and patch bindings and any other upstream API overridden by the plugin.
+Close the phase only when target signatures or schemas and actual caller compatibility
+have current evidence at the normal activated entry points.
+
 Attention source review must cover quantized attention/indexer KV cache, scales,
 physical block layout and alignment, insertion/gather/read consumers and separate
 prefill/decode forwards, including mixed batches. Model-private attention stays with
@@ -55,10 +60,10 @@ file is source-ready before opening models; a skipped file is an incomplete fram
 
 ## Models, then removal-first patches
 
-[model-upgrade](../../model-upgrade/SKILL.md) owns every model, its local implementation
-dependencies and its model-directory spec. Models must not depend on upstream concrete model implementations, directly or via
-local helpers. Public framework APIs, including shared model utilities/interfaces, remain upstream.
-New framework dependencies discovered here need a tracked repair and consumer recheck.
+[model-adaptation](../../model-adaptation/SKILL.md) owns every model, its local
+implementation dependencies and its model-directory spec. Follow its model mirror and
+shared API boundaries. New framework dependencies discovered here need a tracked repair
+and consumer recheck.
 
 Only after all MetaX module source adaptation, perform the complete
 [patch-upgrade](../../patch-upgrade/SKILL.md) pass. Re-review early blocking repairs.

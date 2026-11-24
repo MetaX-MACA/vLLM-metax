@@ -192,10 +192,16 @@ class PolicyTests(unittest.TestCase):
         model = root / "vllm_metax/models/example.py"
         model.parent.mkdir(parents=True)
         model.write_text(
-            "from vllm.model_executor.models.interfaces import SupportsPP\nfrom vllm.model_executor.models.utils import AutoWeightsLoader\nfrom vllm_metax.helper import Layer\n"
+            "from vllm.model_executor.models.interfaces import SupportsPP\n"
+            "from vllm.model_executor.models.utils import AutoWeightsLoader\n"
+            "from vllm.models.common.ops.sequence_parallel import sp_shard\n"
+            "from vllm_metax.helper import Layer\n"
         )
         helper = root / "vllm_metax/helper.py"
-        helper.write_text("from vllm.models.deepseek_v4 import DeepseekV4ForCausalLM\n")
+        helper.write_text(
+            "from vllm.models.deepseek_v4 import DeepseekV4ForCausalLM\n"
+            "from vllm.models.example.common.layout import Shape\n"
+        )
         auditor = (
             Path(model_coverage.__file__).resolve().parents[3]
             / "model-adaptation/scripts/audit_imports.py"
@@ -212,12 +218,29 @@ class PolicyTests(unittest.TestCase):
         result = subprocess.run(command, capture_output=True, text=True)
         self.assertEqual(result.returncode, 1)
         self.assertEqual(
-            json.loads(result.stdout)["prohibited_imports"][0]["file"],
-            "vllm_metax/helper.py",
+            json.loads(result.stdout)["prohibited_imports"],
+            [
+                {
+                    "file": "vllm_metax/helper.py",
+                    "line": 1,
+                    "module": "vllm.models.deepseek_v4",
+                    "symbol": "DeepseekV4ForCausalLM",
+                },
+                {
+                    "file": "vllm_metax/helper.py",
+                    "line": 2,
+                    "module": "vllm.models.example.common.layout",
+                    "symbol": "Shape",
+                },
+            ],
         )
         helper.write_text("from vllm.config import VllmConfig\n")
         result = subprocess.run(command, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            "vllm.models.common.ops.sequence_parallel",
+            json.loads(result.stdout)["public_framework_boundaries"],
+        )
 
 
 class BaselineCoverageTests(unittest.TestCase):
@@ -253,6 +276,92 @@ class BaselineCoverageTests(unittest.TestCase):
             )
         )
         self.cli("analysis-put", "--file", plan)
+
+    def test_model_review_scopes_upstream_reuse_to_the_declared_symbol_and_entry(self):
+        self.fixture.reach("models")
+        upstream = self.fixture.fixture.vllm
+        subprocess.run(["git", "init", "-q", upstream], check=True)
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                upstream,
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.test",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "--no-gpg-sign",
+                "-m",
+                "Fixture",
+            ],
+            check=True,
+        )
+        revision = subprocess.check_output(
+            ["git", "-C", upstream, "rev-parse", "HEAD"], text=True
+        ).strip()
+        entry, spec = self.fixture.files["models"]
+        state = store.load(self.run)
+        other = "vllm_metax/models/another.py"
+        state["tasks"]["models"]["files"].append(other)
+        store.save(self.run, state)
+        root = self.fixture.metax
+        module = "vllm.model_executor.models.qwen3_next"
+        import_statement = f"from {module} import Qwen3NextAttention as Attention"
+        (root / entry).write_text(import_statement + "\n")
+        (root / other).write_text("# independent model entry\n")
+        plan_file = self.run / "analysis.json"
+        plan = json.loads(plan_file.read_text())
+        plan["files"].append(other)
+        plan_file.write_text(json.dumps(plan))
+        self.cli("analysis-put", "--file", plan_file)
+        declaration = {
+            "entry": entry,
+            "file": entry,
+            "symbol": module + ".Qwen3NextAttention",
+            "upstream_revision": revision,
+            "use": "Construct a compatible attention layer",
+        }
+
+        def write_spec(commit):
+            (root / spec).write_text(
+                "# Fixture\n\n## Upstream component reuse\n\n```json\n"
+                + json.dumps([{**declaration, "upstream_revision": commit}])
+                + "\n```\n"
+            )
+
+        write_spec(revision)
+        command = ("model-review", "--id", "models", "--entry", entry, "--spec", spec)
+        self.cli(*command, "--entry", other)
+        checked = store.load(self.run)["tasks"]["models"]["model_review"]["audit"]
+        self.assertEqual(
+            checked["upstream_component_reuse"],
+            [{**declaration, "spec": spec, "lines": [1]}],
+        )
+
+        (root / entry).write_text(import_statement + ", Qwen3NextForCausalLM\n")
+        with self.assertRaisesRegex(ValueError, '"symbol": "Qwen3NextForCausalLM"'):
+            self.cli(*command)
+        for broad_import in (f"import {module} as upstream", f"from {module} import *"):
+            with self.subTest(import_statement=broad_import):
+                (root / entry).write_text(import_statement + "\n" + broad_import + "\n")
+                with self.assertRaisesRegex(ValueError, '"line": 2'):
+                    self.cli(*command)
+        (root / entry).write_text(import_statement + "\n")
+        (root / other).write_text(
+            "from vllm_metax.models.example.model import Attention\n"
+        )
+        with self.assertRaisesRegex(
+            ValueError, '"entry": "vllm_metax/models/another.py"'
+        ):
+            self.cli(*command, "--entry", other)
+        write_spec("0" * len(revision))
+        with self.assertRaisesRegex(ValueError, "revision differs"):
+            self.cli(*command)
 
     def bind(self):
         state = store.load(self.run)

@@ -22,10 +22,14 @@ OWNERS = {
     "registry": "registry-upgrade",
     "attention": "attention-upgrade",
     "framework": "common-sense",
-    "models": "model-upgrade",
+    "models": "model-adaptation",
     "patch": "patch-upgrade",
     "validation": "vllm-metax-upgrade",
 }
+
+
+def normalize_owner(owner):
+    return OWNERS["models"] if owner == "model-upgrade" else owner
 
 
 def _store():
@@ -81,7 +85,7 @@ def register_task(state, task_id, phase=None, owner=None, exception_note=""):
                 phase
             ) > PHASES.index(natural):
                 raise ValueError(f"{path} must be adapted by the {natural} phase")
-    owner = (owner or OWNERS[phase]).strip()
+    owner = normalize_owner((owner or OWNERS[phase]).strip())
     if not owner:
         raise ValueError("A task needs an owning skill")
     for other_id, other in state["tasks"].items():
