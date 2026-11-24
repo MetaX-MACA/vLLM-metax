@@ -658,12 +658,14 @@ def tf32_hc_prenorm_gemm(
     _lazy_init()
     if _tf32_hc_prenorm_gemm_impl is None:
         return _missing()
+    backend = {"backend": "torch"} if _platform_supports_fp8() else {}
     return _tf32_hc_prenorm_gemm_impl(
         x,
         fn,
         out,
         sqrsum,
         num_split,
+        **backend,
     )
 
 
