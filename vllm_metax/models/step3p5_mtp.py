@@ -12,6 +12,7 @@ from vllm.logger import init_logger
 from vllm.model_executor.layers.layernorm import GemmaRMSNorm
 from vllm.model_executor.layers.logits_processor import LogitsProcessor
 from vllm.model_executor.layers.quantization import QuantizationConfig
+from vllm.model_executor.layers.quantization.kv_cache import BaseKVCacheMethod
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     ParallelLMHead,
     VocabParallelEmbedding,
@@ -32,6 +33,7 @@ from vllm.model_executor.models.utils import (
 # forwards the SwiGLU limit required by MACA MoE experts. Recheck this import
 # if the upstream decoder adopts the same execution contract.
 from vllm_metax.models.step3p5 import Step3p5DecoderLayer
+
 
 logger = init_logger(__name__)
 
@@ -304,9 +306,8 @@ class Step3p5MTP(nn.Module):
                     )
                     weight_loader(param, loaded_weight)
             loaded_params.add(name)
-        params_need_to_load = set(params_dict.keys())
-        # Some KV cache scales are optional: checkpoints may omit them and vLLM
-        # will fall back to default scales during initialization.
+        params_need_to_load = set(params_dict)
+
         optional_params = {
             name
             for name, param in params_dict.items()
@@ -314,15 +315,19 @@ class Step3p5MTP(nn.Module):
             and param.numel() == 1
             and not param.requires_grad
         }
-        # NOTE(MetaX): v0.30.0 Step3p5MTP.load_weights indexes the missing set
-        # when an optional cache scale was loaded. Check only truly missing
-        # weights; remove this when upstream applies the same set difference.
+
+        for name, module in self.named_modules():
+            quant_method = getattr(module, "quant_method", None)
+            if isinstance(quant_method, BaseKVCacheMethod):
+                for param_name, _ in module.named_parameters(recurse=False):
+                    full_name = f"{name}.{param_name}" if name else param_name
+                    optional_params.add(full_name)
+
         missing_params = params_need_to_load - optional_params - loaded_params
         if missing_params and is_mtp_completeness_check_enabled():
             raise RuntimeError(
-                "Some parameters like "
-                f"{sorted(missing_params)[0]} are not in the checkpoint and will falsely "
-                "use random initialization"
+                "Some parameters are not in the checkpoint and will falsely "
+                f"use random initialization: {sorted(missing_params)}"
             )
         return loaded_params
 
