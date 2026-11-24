@@ -1449,6 +1449,9 @@ def _try_load_fp8_attn_proj(
 
     layer_prefix = name.rsplit(suffix, 1)[0]
     target_w = f"{layer_prefix}.{target_base}.weight"
+    target_weight = params_dict.get(target_w)
+    if target_weight is not None and target_weight.dtype == torch.int8:
+        return False
     target_s = f"{layer_prefix}.{target_base}.weight_scale_inv"
     # If the model actually kept this projection in FP8, let the normal path
     # handle it (it has a weight_scale_inv param).

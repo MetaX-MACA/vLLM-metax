@@ -21,13 +21,19 @@ from vllm_metax.models.glm5next.metax.kpool_int8 import (
 
 
 def _mqa_logits_by_dtype(
-    q: torch.Tensor,
+    q: torch.Tensor | tuple[torch.Tensor, torch.Tensor | None],
     kv: tuple[torch.Tensor, torch.Tensor],
     weights: torch.Tensor,
     cu_seqlen_ks: torch.Tensor,
     cu_seqlen_ke: torch.Tensor,
     clean_logits: bool,
 ) -> torch.Tensor:
+    if isinstance(q, tuple):
+        q, q_scale = q
+        if q_scale is not None:
+            raise NotImplementedError(
+                "Scaled MXFP4 queries require FP8/FP4 logits dispatch"
+            )
     if q.dtype in (torch.bfloat16, torch.float16):
         return bf16_mqa_logits(q, kv[0], weights, cu_seqlen_ks, cu_seqlen_ke)
     if q.dtype == torch.int8:
