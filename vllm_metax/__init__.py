@@ -18,6 +18,7 @@ def _ensure_global_patch():
     if _GLOBAL_PATCH_APPLIED:
         return
 
+    import vllm_metax.patch.torch_fix  # noqa: F401
     import vllm_metax.patch.bugfix  # noqa: F401
     import vllm_metax.patch.enhancement  # noqa: F401
     import vllm_metax.patch.models  # noqa: F401
