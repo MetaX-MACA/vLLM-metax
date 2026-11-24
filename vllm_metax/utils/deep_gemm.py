@@ -16,6 +16,7 @@ from collections.abc import Callable
 import torch
 
 import vllm.envs as envs
+from vllm.platforms import current_platform
 from vllm.utils.import_utils import has_deep_gemm
 from vllm.utils.deep_gemm import (
     _import_deep_gemm,
@@ -62,6 +63,11 @@ class DeepGemmQuantScaleFMT(Enum):
         cached = getattr(cls, "_oracle_cache", None)
         assert cached is not None, "DeepGemmQuantScaleFMT oracle cache not initialized"
         return cached
+
+
+@functools.cache
+def _platform_supports_fp8() -> bool:
+    return current_platform.supports_fp8()
 
 
 @functools.cache
@@ -393,6 +399,7 @@ def int8_mqa_logits(
         cu_seqlen_ks,
         cu_seqlen_ke,
         clean_logits,
+        backend="triton" if _platform_supports_fp8() else "tilelang",
     )
 
 
