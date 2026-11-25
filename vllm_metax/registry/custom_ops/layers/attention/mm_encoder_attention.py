@@ -9,7 +9,7 @@ from vllm_metax.v1.attention.ops.vit_attn_wrappers import (
     vit_flash_attn_wrapper as mx_vit_fa_wrapper,
 )
 from vllm_metax.v1.attention.backends.fa_utils import get_flash_attn_version
-from vllm.model_executor.models.vision import get_vit_attn_backend
+from vllm_metax.models.vision import get_vit_attn_backend
 from vllm.model_executor.layers.attention.mm_encoder_attention import logger
 from vllm.v1.attention.backends.registry import AttentionBackendEnum
 

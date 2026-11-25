@@ -4,10 +4,10 @@
 
 - Registered architectures: `DeepseekV41ForCausalLM`,
   `DSparkDeepseekV4ForCausalLM`, and `DSparkV41DraftModel`.
-- Target: vLLM `v0.33.0`,
+- Target: vLLM `v0.34.0`,
+  `62d4bc3c7e33b1b6c906e233e6af2d3506c482ca`.
+- Prior base: vLLM `v0.33.0`,
   `4ba787ec9959e566d3b587a796dff07673324da5`.
-- Prior base: vLLM `v0.32.0`,
-  `5df63a7203cdb9328d824a27b682e77c7b9928be`.
 - The complete target `vllm/models/deepseek_v41/` tree is mirrored locally.
   The upstream AMD tree is removed and the complete `nvidia/` tree is renamed
   to local `metax/`.
@@ -35,8 +35,9 @@ capability-gated. They are not selected on MACA.
 - `models.deepseek_v41.quant_config` remains local for the MACA quant config.
 - Shared public APIs remain under `vllm.model_executor.models` and
   `vllm.models.common`.
-- The import audit reports zero prohibited concrete-model imports and zero
-  unresolved dynamic imports.
+- Encoder attention uses the local vision backend selector. The import
+  audit checks concrete-model dependencies; dynamic framework patch
+  imports remain subject to runtime dispatch verification.
 
 ## 4. Weights and compute
 

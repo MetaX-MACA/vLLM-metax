@@ -4,10 +4,10 @@
 
 - Registered architectures: `DeepseekV4ForCausalLM`,
   `DeepSeekV4MTPModel`, and `DSparkDraftModel`.
-- Target: vLLM `v0.33.0`,
+- Target: vLLM `v0.34.0`,
+  `62d4bc3c7e33b1b6c906e233e6af2d3506c482ca`.
+- Prior base: vLLM `v0.33.0`,
   `4ba787ec9959e566d3b587a796dff07673324da5`.
-- Prior base: vLLM `v0.32.0`,
-  `5df63a7203cdb9328d824a27b682e77c7b9928be`.
 - Local entries: `__init__.py`, `metax/model.py`, `metax/mtp.py`,
   `metax/dspark.py`, `metax/flashmla.py`, `metax/gate_linear.py`.
 - The complete target `vllm/models/deepseek_v4/` model tree is mirrored locally.
@@ -52,6 +52,9 @@ providing the exact target record and arithmetic.
   256 routed experts, six active experts, and one shared expert.
 - Checkpoints may contain BF16, FP8, or FP4 expert weights. C500 execution is
   BF16/INT8; checkpoint storage does not imply FP8 or FP4 compute support.
+- DSpark maps checkpoint `mtp.<i>` quantization prefixes to draft
+  layers at `num_hidden_layers + i` and maps `mtp.0.main_proj`
+  separately, before constructing quantized projections.
 - Preserve fused WQ-A/WKV projections, grouped `wo_a`, sharded `wo_b`, EPLB
   logical-to-physical maps, shared experts, indexed layer arrays, and TP/PP/
   EP/DCP collective ownership. Grouped inverse RoPE and output projection run
