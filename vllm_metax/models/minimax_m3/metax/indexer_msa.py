@@ -39,7 +39,9 @@ from vllm_metax.models.minimax_m3.common.indexer import (
 from vllm_metax.models.minimax_m3.common.ops.index_topk import (
     minimax_m3_index_decode_score,
 )
-from vllm_metax.models.minimax_m3.metax.ops import minimax_m3_index_decode_score_cutedsl
+from vllm_metax.models.minimax_m3.metax.ops.index_decode_score import (
+    minimax_m3_index_decode_score_cutedsl,
+)
 from vllm.v1.attention.backend import (
     AttentionBackend,
     AttentionCGSupport,

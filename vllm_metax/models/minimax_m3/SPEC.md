@@ -5,8 +5,9 @@
 - Registered architectures: `MiniMaxM3SparseForCausalLM`,
   `MiniMaxM3SparseForConditionalGeneration`, `MiniMaxM3MTP`,
   `DSparkMiniMaxDraftModel`.
-- Target vLLM `v0.33.0`,
-  `4ba787ec9959e566d3b587a796dff07673324da5`; prior vLLM `v0.32.0`.
+- Target vLLM `v0.34.0`,
+  `62d4bc3c7e33b1b6c906e233e6af2d3506c482ca`; prior vLLM `v0.33.0` (
+  `4ba787ec9959e566d3b587a796dff07673324da5`).
 - `README.md` is a design note; this file is the canonical model spec.
 
 ## 2. Difference matrix
@@ -37,9 +38,10 @@ An SM100 capability alias never enables MSA on MACA.
 
 - Preserve checkpoint expert/linear maps, destination-dependent scales,
   hybrid load sessions, Gemma accumulation, and TP reductions.
-- Gemma RMSNorm uses FlashInfer for supported accelerator inputs when the
-  kernels are available. The PyTorch path preserves FP32 residual accumulation
-  and in-place updates for other inputs.
+- Gemma RMSNorm uses FlashInfer for supported unquantized inputs. The local
+  Triton normalization handles BF16 rows and produces MXFP8 only for a
+  compatible consumer. Its import does not initialize the CuTe indexer.
+  The PyTorch fallback accumulates residuals in FP32.
 - Preserve sigmoid routing, correction bias, shared experts, and dense/MoE
   layer selection.
 - C500 uses BF16 and supported INT8 experts. CUDA-only NVFP4/MSA paths are not
@@ -65,6 +67,10 @@ An SM100 capability alias never enables MSA on MACA.
 - Top-k block IDs are physical block IDs in stored-block units. Prefill,
   decode, mixed batches and speculative decode preserve split-K and causal
   sentinel handling.
+
+- The fused cache-insert extension preserves in-place writes by default.
+  `write_qkv=False` requires an FP8 Q destination and skips packed QKV stores.
+  The wrapper checks the loaded operator schema before passing the flag.
 
 ## 6. Other execution contracts
 

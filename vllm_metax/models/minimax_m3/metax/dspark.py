@@ -23,13 +23,13 @@ from vllm.model_executor.layers.vocab_parallel_embedding import (
     ParallelLMHead,
 )
 from vllm.model_executor.layers.logits_processor import LogitsProcessor
-from vllm.model_executor.models.qwen3_dflash import (
+from vllm_metax.models.qwen3_dflash import (
     DFlashQwen3Attention,
     DFlashQwen3DecoderLayer,
     _get_dflash_fc_input_size,
     _resolve_layer_attention,
 )
-from vllm.model_executor.models.qwen3_dspark import (
+from vllm_metax.models.qwen3_dspark import (
     DSparkConfidenceHead,
     DSparkMarkovHead,
     Qwen3DSparkForCausalLM,

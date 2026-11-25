@@ -600,8 +600,8 @@ __global__ void fusedMiniMaxM3QNormRopeKVInsertKernel(
     int64_t const kv_s_block, int64_t const kv_s_head, int64_t const kv_s_token,
     int64_t const kv_s_dim,
     // NVFP4 main cache only: per-layer K/V dequantization (global) scales.
-    float const* __restrict__ kv_k_scale,
-    float const* __restrict__ kv_v_scale) {
+    float const* __restrict__ kv_k_scale, float const* __restrict__ kv_v_scale,
+    bool const write_qkv) {
 #if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ < 800) && !defined(USE_ROCM) && \
     !defined(USE_MACA)
   // _typeConvert<BFloat16> is unavailable on pre-Ampere; the M3 kernel only
@@ -694,7 +694,7 @@ __global__ void fusedMiniMaxM3QNormRopeKVInsertKernel(
     // folds the de-interleaving into the store the kernel already does, instead
     // of a separate q.contiguous() copy.  Everything else stays in place.
     // Given q_fp8_out but no q_out, q is emitted only in fp8 (null store_ptr).
-    scalar_t* store_ptr = row_ptr;
+    scalar_t* store_ptr = write_qkv ? row_ptr : nullptr;
     if (isQ && q_out != nullptr) {
       store_ptr = q_out + static_cast<int64_t>(tokenIdx) * nq * kHeadDim +
                   slot * kHeadDim;
@@ -824,7 +824,7 @@ void launchFusedMiniMaxM3(
     int64_t const kv_s_block, int64_t const kv_s_head, int64_t const kv_s_token,
     int64_t const kv_s_dim, bool const has_index, bool const insert_kv,
     bool const process_index, bool const fp8_idx, float const* kv_k_scale,
-    float const* kv_v_scale, cudaStream_t stream) {
+    float const* kv_v_scale, bool const write_qkv, cudaStream_t stream) {
   // Index outputs are scalar_t (bf16) or e4m3 bytes (uint8_t); reinterpret the
   // void* pointers per instantiation in the LAUNCH macro.
   // Slot count must match the kernel's compile-time gating.
@@ -868,7 +868,7 @@ void launchFusedMiniMaxM3(
         slot_mapping, index_slot_mapping, kv_cache,                         \
         reinterpret_cast<OUT_T*>(index_cache), eps, q_fp8_inv_scale,        \
         rotary_dim, num_tokens, nq, nkv, niq, block_size, kv_s_block,       \
-        kv_s_head, kv_s_token, kv_s_dim, kv_k_scale, kv_v_scale)
+        kv_s_head, kv_s_token, kv_s_dim, kv_k_scale, kv_v_scale, write_qkv)
 #else
   // ROCm: standard kernel launch syntax (no PDL/stream serialization).
   // clang-format off
@@ -881,7 +881,7 @@ void launchFusedMiniMaxM3(
         slot_mapping, index_slot_mapping, kv_cache,                         \
         reinterpret_cast<OUT_T*>(index_cache), eps, q_fp8_inv_scale,        \
         rotary_dim, num_tokens, nq, nkv, niq, block_size, kv_s_block,       \
-        kv_s_head, kv_s_token, kv_s_dim, kv_k_scale, kv_v_scale)
+        kv_s_head, kv_s_token, kv_s_dim, kv_k_scale, kv_v_scale, write_qkv)
   // clang-format on
 #endif
 
@@ -963,7 +963,7 @@ void launchFusedMiniMaxM3(
       static_cast<int>(rotary_dim), num_tokens, nq, nkv, niq,                  \
       static_cast<int>(block_size), kv_s_block, kv_s_head, kv_s_token,         \
       kv_s_dim, has_index, insert_kv, process_index, fp8_idx, kv_k_scale_ptr,  \
-      kv_v_scale_ptr, stream)
+      kv_v_scale_ptr, write_qkv, stream)
 #define CALL_FUSED_MINIMAX_M3(_RAW_T, CACHE_T, KV_DTYPE)                       \
   CALL_FUSED_MINIMAX_M3_IMPL(CACHE_T, KV_DTYPE, false)
 // clang-format on
@@ -994,7 +994,7 @@ void fused_minimax_m3_qknorm_rope_kv_insert(
         q_fp8_out,  // [N, nq*128] contiguous E4M3
     double q_fp8_scale,
     std::optional<torch::stable::Tensor> kv_k_scale,  // [] f32, NVFP4 only
-    std::optional<torch::stable::Tensor> kv_v_scale) {
+    std::optional<torch::stable::Tensor> kv_v_scale, bool write_qkv) {
   STD_TORCH_CHECK(qkv.is_cuda() && qkv.is_contiguous(),
                   "qkv must be contiguous CUDA");
   STD_TORCH_CHECK(
@@ -1164,6 +1164,9 @@ void fused_minimax_m3_qknorm_rope_kv_insert(
     STD_TORCH_CHECK(std::isfinite(q_fp8_scale) && q_fp8_scale > 0.0,
                     "q_fp8_scale must be finite and positive");
   }
+  STD_TORCH_CHECK(write_qkv || (!q_out.has_value() && q_fp8_out.has_value()),
+                  "write_qkv=False writes q only to q_fp8_out: pass q_fp8_out "
+                  "and no q_out");
   if (index_q_out.has_value()) {
     STD_TORCH_CHECK(process_index,
                     "index_q_out requires index branch processing");

@@ -252,7 +252,7 @@ class MiniMaxM3SparseMetadataBuilder(AttentionMetadataBuilder[MiniMaxM3SparseMet
     ) -> None:
         super().__init__(kv_cache_spec, layer_names, vllm_config, device)
         self._init_reorder_batch_threshold(1, supports_spec_as_decode=True)
-        # Stable context-length buffer for decode cudagraph replays.
+        # Stable context-length buffer for the prefill metadata.
         self.context_len_buffer = torch.empty(
             vllm_config.scheduler_config.max_num_batched_tokens,
             dtype=torch.int32,
@@ -294,14 +294,13 @@ class MiniMaxM3SparseMetadataBuilder(AttentionMetadataBuilder[MiniMaxM3SparseMet
         assert num_decodes + num_prefills == num_reqs
         assert num_decode_tokens + num_prefill_tokens == num_tokens
 
-        # Decode-first batch: context lengths into the stable cudagraph buffer.
-        context_lens = self.context_len_buffer[:num_reqs]
-        context_lens.copy_(
-            common_attn_metadata.compute_num_computed_tokens(), non_blocking=True
-        )
-
         prefill_metadata: MiniMaxM3SparsePrefillMetadata | None = None
         if num_prefills > 0:
+            # Only prefill reads the context lengths; decode-only steps skip it.
+            context_lens = self.context_len_buffer[:num_reqs]
+            context_lens.copy_(
+                common_attn_metadata.compute_num_computed_tokens(), non_blocking=True
+            )
             seq_lens_cpu = common_attn_metadata.seq_lens_cpu_upper_bound
             assert seq_lens_cpu is not None
             prefill_seq_lens_cpu = seq_lens_cpu[num_decodes:]
@@ -314,10 +313,7 @@ class MiniMaxM3SparseMetadataBuilder(AttentionMetadataBuilder[MiniMaxM3SparseMet
             prefill_cu_seqlens_k = torch.empty(
                 num_prefills + 1, dtype=torch.int32, device=seq_lens.device
             )
-            if current_platform.is_rocm():
-                prefill_cu_seqlens_k[:1].zero_()
-            else:
-                prefill_cu_seqlens_k[0] = 0
+            prefill_cu_seqlens_k[:1].zero_()
             torch.cumsum(prefill_kv_lens, dim=0, out=prefill_cu_seqlens_k[1:])
             prefill_cu_seqlens_q = (
                 query_start_loc[num_decodes:] - num_decode_tokens
@@ -427,10 +423,11 @@ class MiniMaxM3SparseImpl(AttentionImplBase[MiniMaxM3SparseMetadata]):
         query: torch.Tensor,
         kv_cache: torch.Tensor,
         output: torch.Tensor,
-        *,
-        query_fp8: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Attend the queries to the indexer-selected blocks. Per kernel.
+
+        ``query`` is E4M3 for impls with ``use_cutlass_decode``, else the model
+        dtype.
 
         The indexer has already written the top-k block ids into
         ``layer.topk_indices_buffer`` (decode at ``[:, :nd]``, prefill at
@@ -451,8 +448,6 @@ class MiniMaxM3SparseTritonImpl(MiniMaxM3SparseImpl):
         query: torch.Tensor,
         kv_cache: torch.Tensor,
         output: torch.Tensor,
-        *,
-        query_fp8: torch.Tensor | None = None,
     ) -> torch.Tensor:
         attn_metadata = get_forward_context().attn_metadata
         if not isinstance(attn_metadata, dict):
