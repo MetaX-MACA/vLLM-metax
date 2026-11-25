@@ -5,7 +5,7 @@
 # Note: Hook both runner load boundaries and shared EPLB async/step boundaries.
 #     StaticEplbRecorder owns operations; upstream owns loading and suppression.
 #
-# Affected versions: Reviewed vLLM v0.33.0 (4ba787ec9959).
+# Affected versions: Reviewed vLLM v0.34.0 (62d4bc3c7e).
 #
 # Remove at: Native EPLB provides static placement import/export lifecycle hooks.
 # -----------------------------------------------------------------------------
@@ -17,7 +17,6 @@ from typing import Any
 
 from vllm.distributed.eplb.eplb_state import EplbState
 from vllm.v1.worker.gpu.model_runner import GPUModelRunner as GPUModelRunnerV2
-from vllm.v1.worker.gpu_model_runner import GPUModelRunner
 from vllm_metax.patch.utils import patch
 
 from .recorder import StaticEplbRecorder
@@ -58,9 +57,6 @@ def _wrap_load_model(original: Callable[..., Any]) -> Callable[..., Any]:
     return load_model
 
 
-load_model = patch("vllm.v1.worker.gpu_model_runner", "GPUModelRunner.load_model")(
-    _wrap_load_model(GPUModelRunner.load_model)
-)
 load_model_v2 = patch("vllm.v1.worker.gpu.model_runner", "GPUModelRunner.load_model")(
     _wrap_load_model(GPUModelRunnerV2.load_model)
 )

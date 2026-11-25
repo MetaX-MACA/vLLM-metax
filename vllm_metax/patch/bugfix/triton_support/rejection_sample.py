@@ -21,8 +21,8 @@
 #       logits, request state, resample blocks and sampled output slots.
 #
 # Affected versions: Historical MACA reproductions on vLLM 0.29.0/0.30.0;
-#     source and launch contracts reviewed on v0.33.0
-#     (4ba787ec9959e566d3b587a796dff07673324da5).
+#     source and launch contracts reviewed on v0.34.0
+#     (62d4bc3c7e33b1b6c906e233e6af2d3506c482ca).
 #     This review does not establish native GPU numerical correctness.
 #
 # Remove at: MACA runs `_resample_kernel` reliably with
@@ -33,7 +33,8 @@
 
 import torch
 from vllm.triton_utils import tl, triton
-from vllm.v1.spec_decode.fly import compute_fly_entropy
+from vllm.v1.worker.gpu.spec_decode.draft_logits import DraftLogitsCache
+from vllm.v1.worker.gpu.spec_decode.fly import compute_fly_entropy
 from vllm.v1.worker.gpu.spec_decode.rejection_sampler_utils import (
     _compute_cumulative_log_p_kernel,
     _compute_local_logits_stats_kernel,
@@ -142,8 +143,7 @@ def _insert_resampled_kernel(
 def rejection_sample(
     # [num_logits, V]
     target_logits: torch.Tensor,
-    # [max_num_reqs, num_speculative_steps, V]
-    draft_logits: torch.Tensor | None,
+    draft_logits_cache: DraftLogitsCache | None,
     # [num_logits]
     draft_sampled: torch.Tensor,
     # [num_reqs + 1]
@@ -172,8 +172,14 @@ def rejection_sample(
     fly_window_size: int = 0,
     fly_entropy_threshold: float = 0.3,
     fly_entropy_top_k: int = 3,
+    skip_masked_vocab_blocks: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     assert target_logits.ndim == 2 and target_logits.stride(-1) == 1
+    draft_logits = None
+    draft_logits_row_mapping = None
+    if draft_logits_cache is not None:
+        draft_logits = draft_logits_cache.values
+        draft_logits_row_mapping = draft_logits_cache.row_mapping
     assert draft_logits is None or (
         draft_logits.ndim == 3 and draft_logits.stride(-1) == 1
     )
@@ -221,13 +227,12 @@ def rejection_sample(
         # In some cases (e.g. MiMo v2.5 Pro + DFlash) the target model's
         # vocab size is larger than the draft's due to padding.
         vocab_size = min(vocab_size, draft_logits.size(-1))
+
     fly_entropy = None
     if fly_window_size > 0:
         assert synthetic_conditional_rates is None and not use_block_verification
         fly_entropy = compute_fly_entropy(
-            target_logits[:, :vocab_size],
-            fly_entropy_top_k,
-            from_logits=True,
+            target_logits[:, :vocab_size], fly_entropy_top_k, from_logits=True
         )
 
     # Compute the per-vocab-block logits stats, such as target argmax
@@ -267,6 +272,7 @@ def rejection_sample(
         draft_logits,
         draft_logits_stride_0,
         draft_logits_stride_1,
+        draft_logits_row_mapping,
         expanded_idx_mapping,
         expanded_local_pos,
         temperature,
@@ -299,6 +305,7 @@ def rejection_sample(
             draft_logits,
             draft_logits_stride_0,
             draft_logits_stride_1,
+            draft_logits_row_mapping,
             draft_local_max,
             draft_local_max.stride(0),
             draft_local_sumexp,
@@ -333,6 +340,7 @@ def rejection_sample(
                 draft_logits,
                 draft_logits_stride_0,
                 draft_logits_stride_1,
+                draft_logits_row_mapping,
                 draft_local_max,
                 draft_local_max.stride(0),
                 draft_local_sumexp,
@@ -379,6 +387,7 @@ def rejection_sample(
         draft_logits,
         draft_logits_stride_0,
         draft_logits_stride_1,
+        draft_logits_row_mapping,
         draft_local_max,
         draft_local_max.stride(0),
         draft_local_sumexp,
@@ -404,11 +413,8 @@ def rejection_sample(
     )
 
     # Resample the rejected/bonus tokens.
-    # /-------------------- MetaX Modification --------------------\
-    # Upstream uses 1024, which intermittently triggers device-side
-    # memory violations on MACA; 512 is stable.
+    # NOTE(metax): A 1024-token block can trigger device memory violations.
     RESAMPLE_BLOCK_SIZE = 512
-    # \-------------------- MetaX Modification --------------------/
     resample_num_blocks = triton.cdiv(vocab_size, RESAMPLE_BLOCK_SIZE)
     padded_resample_num_blocks = triton.next_power_of_2(resample_num_blocks)
     resampled_local_argmax = target_logits.new_empty(
@@ -430,6 +436,7 @@ def rejection_sample(
         draft_logits,
         draft_logits_stride_0,
         draft_logits_stride_1,
+        draft_logits_row_mapping,
         draft_rejected_logsumexp,
         num_sampled,
         cu_num_logits,
@@ -453,10 +460,10 @@ def rejection_sample(
         CONTEXT_WIDTH=context_width,
         WATERMARK=watermark,
         DEDUPLICATE_CONTEXTS=watermarking_skip_mask is not None,
+        SKIP_MASKED_BLOCKS=skip_masked_vocab_blocks,
     )
 
     # Insert the resampled tokens into the output sampled.
-    # Use the MC3-15766 bounds kernel installed above.
     _insert_resampled_kernel[(num_reqs,)](
         sampled,
         sampled.stride(0),
@@ -470,5 +477,8 @@ def rejection_sample(
         expanded_idx_mapping,
         temperature,
         PADDED_RESAMPLE_NUM_BLOCKS=padded_resample_num_blocks,
+        # The kernel reads and updates num_sampled in place. Multiple warps can
+        # observe the increment before loading the original resampling index.
+        num_warps=1,
     )
     return sampled, num_sampled

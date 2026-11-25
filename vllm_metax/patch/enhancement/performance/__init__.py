@@ -2,7 +2,7 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 #
 # -----------------------------------------------------------------------------
-# Note: Load MetaX grouped-topk dispatch and speculative-decode batch ordering at plugin
+# Note: Load MetaX grouped-topk, sampling and pipeline performance patches at plugin
 #     initialization. This initializer applies the patches by importing the child
 #     modules.
 #
@@ -13,7 +13,6 @@
 # -----------------------------------------------------------------------------
 
 from . import grouped_topk_router  # noqa: F401
-from . import speculative_decode_perf  # noqa: F401
 from . import gumbel_sample  # noqa: F401
 from . import pp_batch_balance  # noqa: F401
 

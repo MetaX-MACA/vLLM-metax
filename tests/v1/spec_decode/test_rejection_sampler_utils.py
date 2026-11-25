@@ -5,6 +5,7 @@ import pytest
 import torch
 
 from vllm.v1.worker.gpu.spec_decode import rejection_sampler, rejection_sampler_utils
+from vllm.v1.worker.gpu.spec_decode.draft_logits import DraftLogitsCache
 
 from vllm_metax.patch.bugfix.triton_support.rejection_sample import rejection_sample
 
@@ -13,8 +14,9 @@ from vllm_metax.patch.bugfix.triton_support.rejection_sample import rejection_sa
 @pytest.mark.requires_maca
 @pytest.mark.parametrize("temperature", [0.0, 1.0], ids=["greedy", "point-mass"])
 @pytest.mark.parametrize("block_verification", [False, True])
+@pytest.mark.parametrize("skip_masked_vocab_blocks", [False, True])
 def test_patched_rejection_sampling_handles_short_and_rejected_requests(
-    device, temperature, block_verification
+    device, temperature, block_verification, skip_masked_vocab_blocks
 ):
     assert rejection_sampler_utils.rejection_sample is rejection_sample
     assert rejection_sampler.rejection_sample is rejection_sample
@@ -25,15 +27,20 @@ def test_patched_rejection_sampling_handles_short_and_rejected_requests(
     logits = torch.full((num_logits, vocab_size), -torch.inf, device=device)
     logits[torch.arange(num_logits, device=device), target_tokens] = 0
     state = torch.tensor([5, 1, 2], device=device, dtype=torch.int32)
-    draft_logits = None
+    draft_logits_cache = None
     if block_verification:
-        draft_logits = torch.full((6, 3, vocab_size), -torch.inf, device=device)
+        draft_logits_cache = DraftLogitsCache(
+            6, 3, vocab_size, dtype=logits.dtype, fill=-torch.inf, device=device
+        )
+        draft_logits_cache.row_mapping = torch.tensor(
+            [-1, 0, 2, -1, -1, 1], device=device, dtype=torch.int32
+        )
         draft_steps = torch.arange(3, device=device)
-        draft_logits[5, draft_steps, [19, 600, 1025]] = 0
-        draft_logits[1, draft_steps, [7, 70, 17]] = 0
+        draft_logits_cache.values[1, draft_steps, [19, 600, 1025]] = 0
+        draft_logits_cache.values[0, draft_steps, [7, 70, 17]] = 0
     sampled, counts = rejection_sampler.rejection_sample(
         target_logits=logits,
-        draft_logits=draft_logits,
+        draft_logits_cache=draft_logits_cache,
         draft_sampled=torch.tensor([0, 19, 600, 1025, 0, 7, 70, 0], device=device),
         cu_num_logits=torch.tensor([0, 4, 7, 8], device=device, dtype=torch.int32),
         pos=torch.arange(num_logits, device=device, dtype=torch.int32),
@@ -48,6 +55,7 @@ def test_patched_rejection_sampling_handles_short_and_rejected_requests(
         seed=torch.arange(6, device=device, dtype=torch.int64),
         num_speculative_steps=3,
         use_block_verification=block_verification,
+        skip_masked_vocab_blocks=skip_masked_vocab_blocks,
     )
     assert counts.tolist() == [4, 1, 1]
     assert sampled[0, :4].tolist() == target_tokens[:4]
