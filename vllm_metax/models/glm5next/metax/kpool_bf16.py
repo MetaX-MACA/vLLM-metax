@@ -311,6 +311,7 @@ def _kpool_decode_update_batched_bf16_kernel(
     NEXT_N,
     PAGE_SIZE: tl.constexpr,
     POOL_SIZE: tl.constexpr,
+    TAIL_RING_SIZE: tl.constexpr,
     HEAD_DIM: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
@@ -327,7 +328,8 @@ def _kpool_decode_update_batched_bf16_kernel(
 
         safe_position = tl.maximum(position, 0)
         pool_slot = safe_position % POOL_SIZE
-        tail_block = tl.maximum(tail_slot, 0) // POOL_SIZE
+        tail_ring_slot = safe_position % TAIL_RING_SIZE
+        tail_block = tl.maximum(tail_slot, 0) // TAIL_RING_SIZE
         tail_block_valid = (
             (tail_slot >= 0) & (tail_block >= 0) & (tail_block < num_tail_blocks)
         )
@@ -355,7 +357,7 @@ def _kpool_decode_update_batched_bf16_kernel(
             max_score = tl.full((BLOCK_D,), -float("inf"), tl.float32)
             for previous_slot in tl.static_range(0, POOL_SIZE):
                 is_current = previous_slot == pool_slot
-                physical_slot = (pool_logical_start + previous_slot) % POOL_SIZE
+                physical_slot = (pool_logical_start + previous_slot) % TAIL_RING_SIZE
                 tail_score_offsets = (
                     tail_block * tail_stride_0
                     + tail_stride_1
@@ -379,7 +381,7 @@ def _kpool_decode_update_batched_bf16_kernel(
             denom = tl.full((BLOCK_D,), 0.0, tl.float32)
             for previous_slot in tl.static_range(0, POOL_SIZE):
                 is_current = previous_slot == pool_slot
-                physical_slot = (pool_logical_start + previous_slot) % POOL_SIZE
+                physical_slot = (pool_logical_start + previous_slot) % TAIL_RING_SIZE
                 tail_score_offsets = (
                     tail_block * tail_stride_0
                     + tail_stride_1
@@ -432,7 +434,7 @@ def _kpool_decode_update_batched_bf16_kernel(
         stash_valid = (position >= 0) & tail_block_valid
         tail_key_offsets = (
             tail_block * tail_stride_0
-            + pool_slot * tail_stride_2
+            + tail_ring_slot * tail_stride_2
             + offs * tail_stride_3
         )
         tail_score_offsets = tail_key_offsets + tail_stride_1
@@ -482,14 +484,20 @@ def kpool_decode_update_and_maybe_write_cache_bf16(
     num_requests, next_n, _ = key.shape
     if num_requests == 0 or next_n == 0:
         return
-    if tail_kv_cache.ndim != 4 or tail_kv_cache.shape[1:] != (
-        2,
-        pool_size,
-        head_dim,
+    if (
+        tail_kv_cache.ndim != 4
+        or tail_kv_cache.shape[1] != 2
+        or tail_kv_cache.shape[3] != head_dim
     ):
         raise ValueError(
-            "Expected tail cache [num_blocks, 2, pool_size, head_dim], got "
+            "Expected tail cache [num_blocks, 2, ring_size, head_dim], got "
             f"{tail_kv_cache.shape}"
+        )
+    ring_size = tail_kv_cache.shape[2]
+    if ring_size < pool_size or ring_size % pool_size != 0:
+        raise ValueError(
+            f"Expected tail ring size to be a multiple of pool size {pool_size}, "
+            f"got {ring_size}"
         )
     expected_mapping_shape = (num_requests, next_n)
     for name, tensor in (
@@ -537,6 +545,7 @@ def kpool_decode_update_and_maybe_write_cache_bf16(
         next_n,
         PAGE_SIZE=kv_cache.shape[1],
         POOL_SIZE=pool_size,
+        TAIL_RING_SIZE=ring_size,
         HEAD_DIM=head_dim,
         BLOCK_D=triton.next_power_of_2(head_dim),
     )

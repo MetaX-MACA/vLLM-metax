@@ -27,6 +27,7 @@ def _mqa_logits_by_dtype(
     cu_seqlen_ks: torch.Tensor,
     cu_seqlen_ke: torch.Tensor,
     clean_logits: bool,
+    logits_dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
     if isinstance(q, tuple):
         q, q_scale = q
@@ -35,9 +36,9 @@ def _mqa_logits_by_dtype(
                 "Scaled MXFP4 queries require FP8/FP4 logits dispatch"
             )
     if q.dtype in (torch.bfloat16, torch.float16):
-        return bf16_mqa_logits(q, kv[0], weights, cu_seqlen_ks, cu_seqlen_ke)
-    if q.dtype == torch.int8:
-        return int8_mqa_logits(
+        logits = bf16_mqa_logits(q, kv[0], weights, cu_seqlen_ks, cu_seqlen_ke)
+    elif q.dtype == torch.int8:
+        logits = int8_mqa_logits(
             q,
             kv,
             weights,
@@ -45,14 +46,18 @@ def _mqa_logits_by_dtype(
             cu_seqlen_ke,
             clean_logits=clean_logits,
         )
-    return fp8_mqa_logits(
-        q,
-        kv,
-        weights,
-        cu_seqlen_ks,
-        cu_seqlen_ke,
-        clean_logits=clean_logits,
-    )
+    else:
+        logits = fp8_mqa_logits(
+            q,
+            kv,
+            weights,
+            cu_seqlen_ks,
+            cu_seqlen_ke,
+            clean_logits=clean_logits,
+        )
+    # The local top-k operators consume FP32, even for BF16 logits.
+
+    return logits.to(logits_dtype).float()
 
 
 def _paged_mqa_logits_by_dtype(
@@ -64,9 +69,10 @@ def _paged_mqa_logits_by_dtype(
     schedule_metadata: torch.Tensor,
     max_model_len: int,
     clean_logits: bool,
+    logits_dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
     if q.dtype in (torch.bfloat16, torch.float16):
-        return bf16_paged_mqa_logits(
+        logits = bf16_paged_mqa_logits(
             q,
             kv_cache,
             weights,
@@ -76,8 +82,8 @@ def _paged_mqa_logits_by_dtype(
             max_model_len,
             clean_logits=clean_logits,
         )
-    if q.dtype == torch.int8:
-        return int8_paged_mqa_logits(
+    elif q.dtype == torch.int8:
+        logits = int8_paged_mqa_logits(
             q,
             kv_cache,
             weights,
@@ -87,13 +93,15 @@ def _paged_mqa_logits_by_dtype(
             max_model_len,
             clean_logits=clean_logits,
         )
-    return fp8_paged_mqa_logits(
-        q,
-        kv_cache,
-        weights,
-        context_lens,
-        block_tables,
-        schedule_metadata,
-        max_model_len,
-        clean_logits=clean_logits,
-    )
+    else:
+        logits = fp8_paged_mqa_logits(
+            q,
+            kv_cache,
+            weights,
+            context_lens,
+            block_tables,
+            schedule_metadata,
+            max_model_len,
+            clean_logits=clean_logits,
+        )
+    return logits.to(logits_dtype).float()

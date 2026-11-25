@@ -4,8 +4,9 @@
 
 - Registered architectures: `Glm5NextForCausalLM`,
   `Glm5NextForConditionalGeneration`.
-- Target vLLM `v0.33.0`,
-  `4ba787ec9959e566d3b587a796dff07673324da5`; prior vLLM `v0.32.0`.
+- Target vLLM `v0.34.0`,
+  `62d4bc3c7e33b1b6c906e233e6af2d3506c482ca`; prior vLLM `v0.33.0` (
+  `4ba787ec9959e566d3b587a796dff07673324da5`).
 - Scope includes the text backbone, vision tower/processor, KDA hybrid
   attention, K-pool sparse indexer, MTP, and mHC.
 
@@ -40,6 +41,8 @@ The target top-k width contract remains `round_up(index_topk + index_kpool -
 - Runtime activation/weight quantization is compressed-tensors W8A8.
 - Preserve fused routing, shared experts, KDA convolution/state mappings,
   multimodal projection, checkpoint names, and post-load repacking.
+- The weight loader preserves checkpoint INT8 scales when an attention
+  projection stores INT8 weights.
 - C500 executes BF16/INT8. FP8/FP4 branches are source-reviewed but unverified.
 
 ## 5. Attention and indexer cache
@@ -50,9 +53,15 @@ The target top-k width contract remains `round_up(index_topk + index_kpool -
 - A pool is `index_kpool` consecutive token keys. The INT8 path applies
   Hadamard-128 rotation, materializes BF16, then uses symmetric INT8
   round-half-away-from-zero.
-- The incomplete tail is stored in a separate BF16 tail cache
-  `[pools, kpool, 128]`. Main KV pages follow the configured attention block
-  size and allocator-provided block stride.
+- Local top-k consumes FP32. When BF16 logits are requested, scores
+  are rounded to BF16 before conversion to the native top-k input. Scaled
+  MXFP4 indexer queries require a separate FP8/FP4 backend.
+- The incomplete tail is stored in a BF16 cache
+  `[num_blocks, 2, ring_size, 128]`, with keys and gate scores in separate
+  planes. The ring holds at least one pool plus the speculative tokens,
+  rounded up to a power-of-two number of pools. A token's tail slot is
+  `block * ring_size + pos % ring_size`. Pool completion still uses
+  `pos % index_kpool`. Main KV pages use the allocator's block stride.
 - For the GLM-5.3 sample the top-k buffer width is `round_up(2048 + 4 - 1,
   128) == 2176`; entries are `int32`. Decode retains `kpool-1` tail columns
   after the logical top-k history.
