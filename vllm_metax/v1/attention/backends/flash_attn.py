@@ -24,7 +24,7 @@ from vllm.v1.attention.backend import (
     MultipleOf,
 )
 from vllm_metax.third_party.fa_interface import (
-    FA2_SUPPORTED_HDIM,
+    is_fa2_head_size_supported,
     FA_KERNEL_BLOCK_SIZES,
     is_fa_kernel_block_size_supported,
 )
@@ -51,6 +51,9 @@ from vllm.v1.attention.ops.dcp import (
 # Note: use Maca's merge_attn_states to get cuda kernel invoked
 # --------------------------------------------------------------
 from vllm_metax.v1.attention.ops.merge_attn_states import merge_attn_states
+from vllm.v1.attention.ops.triton_reshape_and_cache_flash import (
+    triton_reshape_and_cache_flash,
+)
 from vllm.v1.worker.workspace import current_workspace_manager
 
 if is_flash_attn_varlen_func_available():
@@ -183,9 +186,9 @@ class MacaFlashAttentionBackend(AttentionBackend):
 
     @classmethod
     def supports_head_size(cls, head_size: int) -> bool:
-        return (is_fa_version_supported(2) and head_size in FA2_SUPPORTED_HDIM) or (
-            is_fa_version_supported(3) and head_size in FA3_SUPPORTED_HDIM_FP8
-        )
+        return (
+            is_fa_version_supported(2) and is_fa2_head_size_supported(head_size)
+        ) or (is_fa_version_supported(3) and head_size in FA3_SUPPORTED_HDIM_FP8)
 
     @classmethod
     def supports_kv_cache_dtype(cls, kv_cache_dtype: CacheDType | None) -> bool:
@@ -1119,7 +1122,6 @@ class FlashAttentionImpl(AttentionImpl):
             head_size_v=getattr(self, "head_size_v", None),
             has_sinks=sinks is not None,
             kv_cache_dtype=kv_cache_dtype,
-            is_paged=uses_kv_cache,
         )
         if self.vllm_flash_attn_version is None:
             if (
@@ -1635,7 +1637,13 @@ class FlashAttentionImpl(AttentionImpl):
         # and value[:num_actual_tokens] because the reshape_and_cache_flash
         # op uses the slot_mapping's shape to determine the number of
         # actual tokens.
-        reshape_and_cache_flash(
+        # NOTE(metax): The native writer needs a full warp for strided heads.
+        cache_writer = (
+            triton_reshape_and_cache_flash
+            if self.head_size < 32
+            else reshape_and_cache_flash
+        )
+        cache_writer(
             key,
             value,
             key_cache,

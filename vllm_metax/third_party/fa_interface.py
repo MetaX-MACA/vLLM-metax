@@ -31,12 +31,15 @@ FA4_UNAVAILABLE_REASON = "MetaX FlashAttention 4 is not implemented"
 FA4_AVAILABLE = False
 DEFAULT_FA_VERSION = 2
 
-FA2_SUPPORTED_HDIM = (32, 64, 96, 128, 160, 192, 256, 512)
 FA3_SUPPORTED_HDIM_FP8 = (64, 96, 128, 192, 256)
 FA3_SUPPORTED_HDIM_BF16 = (64, 128, 192, 256)
 
 
 FA_KERNEL_BLOCK_SIZES = (8, 16, 32, 64, 128, 256, 512, 1024)
+
+
+def is_fa2_head_size_supported(head_size: int) -> bool:
+    return (8 <= head_size <= 256 and head_size % 8 == 0) or head_size == 512
 
 
 def is_fa_kernel_block_size_supported(block_size: int) -> bool:
@@ -69,7 +72,6 @@ def is_fa_geometry_supported(
     *,
     is_fp8: bool = False,
     block_size: int | None = None,
-    is_paged: bool = True,
 ) -> bool:
     """Check the head dimensions and optional kernel-facing KV page size."""
     if block_size is not None and not is_fa_kernel_block_size_supported(block_size):
@@ -80,12 +82,9 @@ def is_fa_geometry_supported(
         head_size_v = head_size
 
     if fa_version == 2 and not is_fp8:
-        if is_paged or block_size is not None:
-            supported_head_size = head_size is None or head_size in FA2_SUPPORTED_HDIM
-        else:
-            supported_head_size = head_size is None or (
-                8 <= head_size <= 512 and head_size % 8 == 0
-            )
+        supported_head_size = head_size is None or is_fa2_head_size_supported(
+            head_size
+        )
     elif fa_version == 3:
         sizes = FA3_SUPPORTED_HDIM_FP8 if is_fp8 else FA3_SUPPORTED_HDIM_BF16
         supported_head_size = head_size is None or head_size in sizes

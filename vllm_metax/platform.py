@@ -577,7 +577,7 @@ class MacaPlatformBase(Platform):
         backend_class = AttentionBackendEnum.FLASH_ATTN.get_class()
         if (
             backend_class.supports_dtype(dtype)
-            and get_flash_attn_version(head_size=head_size, is_paged=False) is not None
+            and get_flash_attn_version(head_size=head_size) is not None
         ):
             return AttentionBackendEnum.FLASH_ATTN
         else:

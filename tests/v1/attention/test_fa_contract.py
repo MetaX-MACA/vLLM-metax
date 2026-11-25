@@ -8,7 +8,7 @@ pytest --confcutdir=tests/v1/attention tests/v1/attention/test_metax_fa_contract
 """
 
 from types import SimpleNamespace
-from unittest.mock import create_autospec
+from unittest.mock import Mock, create_autospec
 
 import pytest
 import torch
@@ -42,14 +42,14 @@ def available_packages(monkeypatch):
 @pytest.mark.parametrize(
     "version,fp8,sizes",
     [
-        (2, False, {32, 64, 96, 128, 160, 192, 256, 512}),
+        (2, False, {*range(8, 257, 8), 512}),
         (2, True, set()),
         (3, False, {64, 128, 192, 256}),
         (3, True, {64, 96, 128, 192, 256}),
     ],
 )
 def test_equal_dimensions(version, fp8, sizes):
-    for size in range(0, 545, 8):
+    for size in range(545):
         assert api.is_fa_geometry_supported(version, size, is_fp8=fp8) == (
             size in sizes
         )
@@ -115,6 +115,7 @@ def test_hybrid_kv_block_sizes(block, kernel_block):
         (32, "auto", 2),
         (96, "auto", 2),
         (160, "bfloat16", 2),
+        (264, "auto", None),
         (512, "auto", 2),
         (64, "auto", 2),
         (128, "bfloat16", 2),
@@ -125,8 +126,12 @@ def test_hybrid_kv_block_sizes(block, kernel_block):
         (160, "fp8", None),
         (32, "fp8", None),
         (512, "fp8", None),
-        (72, "auto", None),
-        (80, "auto", None),
+        (0, "auto", None),
+        (1, "auto", None),
+        (8, "auto", 2),
+        (72, "auto", 2),
+        (80, "auto", 2),
+        (513, "auto", None),
         (73, "auto", None),
         (128, "fp8_e5m2", None),
         (128, "fp8_per_token_head", None),
@@ -615,9 +620,9 @@ def test_layer_dispatch_preserves_variable_query_lengths(monkeypatch, diffkv, fp
         (96, "fp8", 16, None),
         (96, "auto", 24, None),
         (160, "fp8", 16, "No MetaX"),
-        (80, "auto", 16, "No MetaX"),
+        (80, "auto", 16, None),
         (73, "auto", 16, "No MetaX"),
-        (72, "auto", 528, "No MetaX"),
+        (72, "auto", 528, None),
         (128, "auto", 784, None),
     ],
 )
@@ -634,6 +639,31 @@ def test_backend_combination_matches_selector(size, kv, block, expected):
         DeviceCapability(8, 9),
     )
     assert reason is None if expected is None else expected in reason
+
+
+@pytest.mark.parametrize("head_size,use_triton", [(8, True), (24, True), (32, False), (72, False)])
+def test_fa_cache_writer_handles_sub_warp_head_sizes(monkeypatch, head_size, use_triton):
+    from vllm_metax.v1.attention.backends import flash_attn
+
+    native_writer = Mock()
+    triton_writer = Mock()
+    monkeypatch.setattr(flash_attn, "reshape_and_cache_flash", native_writer)
+    monkeypatch.setattr(flash_attn, "triton_reshape_and_cache_flash", triton_writer)
+
+    impl = SimpleNamespace(
+        attn_type=AttentionType.DECODER, head_size=head_size, kv_cache_dtype="auto"
+    )
+    scale = torch.ones(1)
+    layer = SimpleNamespace(_k_scale=scale, _v_scale=scale)
+    key = torch.empty(2, 1, head_size)
+    cache = torch.empty(1, 1, 16, 2 * head_size)
+    slots = torch.arange(2)
+    flash_attn.FlashAttentionImpl.do_kv_cache_update(
+        impl, layer, key, key, cache, slots
+    )
+
+    assert native_writer.call_count == int(not use_triton)
+    assert triton_writer.call_count == int(use_triton)
 
 
 def test_diffkv_never_rounds_unsupported_dimensions():
@@ -977,8 +1007,9 @@ def test_fa3_dcp_context_uses_cache_api(monkeypatch, with_context):
         ),
         ({}, False, 2, ["FA3 is unavailable", "test import failure"]),
         (dict(head_size=128), True, 3, []),
-        (dict(head_size=80), True, None, []),
+        (dict(head_size=80), True, 2, ["80/80"]),
         (dict(head_size=73), True, None, []),
+        (dict(head_size=513), True, None, []),
         (dict(kernel_block_size=24), True, None, []),
         (dict(kv_cache_dtype="fp8", has_sinks=True), True, None, []),
     ],

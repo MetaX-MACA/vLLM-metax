@@ -22,11 +22,12 @@ def test_flash_vit_fake_op_preserves_shape_and_contiguous_layout():
 
 
 @pytest.mark.parametrize("graph_padding", [False, True])
+@pytest.mark.parametrize("head_size", [64, 72])
 @torch.inference_mode()
-def test_flash_vit_registered_op_matches_sdpa(device, graph_padding):
+def test_flash_vit_registered_op_matches_sdpa(device, graph_padding, head_size):
     torch.manual_seed(0)
     q, k, v = [
-        torch.randn(2, 3, 8, 64, device=device, dtype=torch.bfloat16).transpose(1, 2)
+        torch.randn(2, 3, 8, head_size, device=device, dtype=torch.bfloat16).transpose(1, 2)
         for _ in range(3)
     ]
     lengths = [5, 7] if graph_padding else [8, 8]

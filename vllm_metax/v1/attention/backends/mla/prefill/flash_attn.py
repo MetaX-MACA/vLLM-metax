@@ -185,7 +185,7 @@ class FA4MLAPrefillKernel(VllmJitKernel["FA4MLAPrefillKernel.CompileKey"]):
 
         mla_dims = get_mla_dims(vllm_config.model_config)
         qk_head_dim = mla_dims.qk_nope_head_dim + mla_dims.qk_rope_head_dim
-        fa_version = get_flash_attn_version(head_size=qk_head_dim, is_paged=False)
+        fa_version = get_flash_attn_version(head_size=qk_head_dim)
         if fa_version != 4:
             return []
 
@@ -369,7 +369,7 @@ class MacaFlashAttnPrefillBackend(MLAPrefillBackend):
             v_head_dim if (qk_head_dim, v_head_dim) == (192, 128) else qk_head_dim
         )
         self.vllm_flash_attn_version = get_flash_attn_version(
-            head_size=qk_head_dim, head_size_v=effective_v_head_dim, is_paged=False
+            head_size=qk_head_dim, head_size_v=effective_v_head_dim
         )
         if self.vllm_flash_attn_version is None:
             raise RuntimeError(

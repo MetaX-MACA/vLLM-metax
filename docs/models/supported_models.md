@@ -97,8 +97,10 @@ use 528- or 784-token manager blocks with 16-token attention kernel blocks.
 
 | Kernel | Paged attention head sizes |
 | --- | --- |
-| FA2 | 32, 64, 96, 128, 160, 192, 256, 512 |
+| FA2 | Multiples of 8 from 8 to 256, and exact size 512 |
 | FA3 BF16 | 64, 128, 192, 256 |
 | FA3 FP8 | 64, 96, 128, 192, 256 |
 
+The FA2 range applies to equal QK/V head sizes in packed and paged attention.
+Paged FA2 uses the Triton KV cache writer for head sizes below 32.
 All three rows also support the QK/V pair 192/128.

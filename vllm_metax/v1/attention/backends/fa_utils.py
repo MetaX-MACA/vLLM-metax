@@ -36,7 +36,6 @@ def get_flash_attn_version(
     *,
     kv_cache_dtype: CacheDType | None = None,
     device_capability: DeviceCapability | None = None,
-    is_paged: bool = True,
 ) -> int | None:
     """Temporarily prefer FA2 and enable FA3 only on capability 8.9 devices."""
     if kv_cache_dtype not in (None, "auto", "float16", "bfloat16", "fp8", "fp8_e4m3"):
@@ -97,12 +96,7 @@ def get_flash_attn_version(
 
     if fa_version == 2:
         if not is_fa_version_supported(2) or not is_fa_geometry_supported(
-            2,
-            head_size,
-            head_size_v,
-            is_fp8=is_fp8,
-            block_size=kernel_block_size,
-            is_paged=is_paged,
+            2, head_size, head_size_v, is_fp8=is_fp8
         ):
             return None
         if reasons:
