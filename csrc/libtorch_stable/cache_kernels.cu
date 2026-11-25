@@ -906,7 +906,13 @@ void reshape_and_cache_flash(
   int kv_scale_stride = (k_scale.numel() > 1) ? 1 : 0;
 
   dim3 grid(num_tokens);
-  dim3 block(std::min(num_heads * head_size, 512));
+  int num_threads = std::min(num_heads * head_size, 512);
+  if (head_stride != head_size || kv_scale_stride != 0) {
+    // The per-head path assigns work to full warps.
+    constexpr int warp_size = 32;
+    num_threads = round_to_next_multiple_of(num_threads, warp_size);
+  }
+  dim3 block(num_threads);
 
   DISPATCH_BY_KV_CACHE_DTYPE(key.scalar_type(), kv_cache_dtype,
                              CALL_RESHAPE_AND_CACHE_FLASH);

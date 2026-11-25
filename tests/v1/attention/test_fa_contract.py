@@ -641,10 +641,14 @@ def test_backend_combination_matches_selector(size, kv, block, expected):
     assert reason is None if expected is None else expected in reason
 
 
-@pytest.mark.parametrize("head_size,use_triton", [(8, True), (24, True), (32, False), (72, False)])
-def test_fa_cache_writer_handles_sub_warp_head_sizes(monkeypatch, head_size, use_triton):
+@pytest.mark.parametrize("use_precompiled_kernel", [False, True])
+@pytest.mark.parametrize("head_size", [8, 16, 24, 32, 72])
+def test_fa_cache_writer_handles_sub_warp_head_sizes(
+    monkeypatch, head_size, use_precompiled_kernel
+):
     from vllm_metax.v1.attention.backends import flash_attn
 
+    monkeypatch.setenv("USE_PRECOMPILED_KERNEL", str(int(use_precompiled_kernel)))
     native_writer = Mock()
     triton_writer = Mock()
     monkeypatch.setattr(flash_attn, "reshape_and_cache_flash", native_writer)
@@ -662,6 +666,7 @@ def test_fa_cache_writer_handles_sub_warp_head_sizes(monkeypatch, head_size, use
         impl, layer, key, key, cache, slots
     )
 
+    use_triton = use_precompiled_kernel and head_size < 32
     assert native_writer.call_count == int(not use_triton)
     assert triton_writer.call_count == int(use_triton)
 
