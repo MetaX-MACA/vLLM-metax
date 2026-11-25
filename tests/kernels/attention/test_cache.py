@@ -4,6 +4,7 @@
 import pytest
 import torch
 
+from vllm_metax import envs
 from vllm_metax.platform import MacaPlatform
 
 pytestmark = pytest.mark.requires_maca
@@ -13,12 +14,15 @@ pytestmark = pytest.mark.requires_maca
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
 @pytest.mark.parametrize("layout", ["NHD", "HND"])
 @pytest.mark.parametrize("padded_rows", [False, True])
+@pytest.mark.parametrize("num_heads,head_size", [(3, 64), (1, 8), (1, 16), (1, 24), (2, 24)])
 def test_reshape_and_cache_flash_writes_only_selected_slots(
-    device, dtype, layout, padded_rows
+    device, dtype, layout, padded_rows, num_heads, head_size
 ):
+    if layout == "HND" and head_size < 32 and envs.USE_PRECOMPILED_KERNEL:
+        pytest.skip("This case requires the updated source kernel.")
     MacaPlatform.import_kernels()
     torch.manual_seed(0)
-    num_blocks, block_size, num_heads, head_size = 4, 16, 3, 64
+    num_blocks, block_size = 4, 16
     key = torch.randn(8, num_heads, head_size, device=device, dtype=dtype)
     value = torch.randn_like(key)
     if padded_rows:

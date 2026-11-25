@@ -1637,10 +1637,10 @@ class FlashAttentionImpl(AttentionImpl):
         # and value[:num_actual_tokens] because the reshape_and_cache_flash
         # op uses the slot_mapping's shape to determine the number of
         # actual tokens.
-        # NOTE(metax): The native writer needs a full warp for strided heads.
+        # NOTE(metax): mcoplib kernels can hang for sub-warp heads.
         cache_writer = (
             triton_reshape_and_cache_flash
-            if self.head_size < 32
+            if mx_envs.USE_PRECOMPILED_KERNEL and self.head_size < 32
             else reshape_and_cache_flash
         )
         cache_writer(
