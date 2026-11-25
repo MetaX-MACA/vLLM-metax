@@ -3,8 +3,9 @@
 ## 1. Identity and scope
 
 - Registered architectures: `Step3p5ForCausalLM`, `Step3p5MTP`.
-- Target vLLM `v0.33.0`,
-  `4ba787ec9959e566d3b587a796dff07673324da5`; prior vLLM `v0.32.0`.
+- Target vLLM `v0.34.0`,
+  `62d4bc3c7e33b1b6c906e233e6af2d3506c482ca`; prior vLLM `v0.33.0` (
+  `4ba787ec9959e566d3b587a796dff07673324da5`).
 - Complete model and MTP are local in `step3p5.py` and `step3p5_mtp.py`.
 
 ## 2. Difference matrix
@@ -40,7 +41,8 @@
 
 - Preserve dense/MoE layer selection, shared-expert accumulation, tensor and
   pipeline sharding, and exactly-once output reductions.
-- MTP preserves target draft-layer indexing and parent hidden-state source.
+- MTP preserves target draft-layer indexing and the parent hidden-state source.
+  The vLLM loader owns missing-parameter checks and exempts optional KV scales.
 
 ## 7. Chip scope and validation
 

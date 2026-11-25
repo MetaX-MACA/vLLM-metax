@@ -5,8 +5,9 @@
 - Registered architectures: `DeepseekV2ForCausalLM`,
   `DeepseekV3ForCausalLM`, `DeepseekV32ForCausalLM`,
   `GlmMoeDsaForCausalLM`.
-- Target vLLM `v0.33.0`,
-  `4ba787ec9959e566d3b587a796dff07673324da5`; prior vLLM `v0.32.0`.
+- Target vLLM `v0.34.0`,
+  `62d4bc3c7e33b1b6c906e233e6af2d3506c482ca`; prior vLLM `v0.33.0` (
+  `4ba787ec9959e566d3b587a796dff07673324da5`).
 - Implementation is the complete local `deepseek_v2.py`.
 
 ## 2. Difference matrix

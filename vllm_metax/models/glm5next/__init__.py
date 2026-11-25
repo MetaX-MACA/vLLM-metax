@@ -4,10 +4,10 @@ from vllm_metax.models.glm5next.common.model import (
     Glm5NextForCausalLM,
     Glm5NextForConditionalGeneration,
 )
-# from .mtp import Glm5NextMTP
+from vllm_metax.models.glm5next.common.mtp import Glm5NextMTP
 
 __all__ = [
-    "MacaGlm5NextForCausalLM",
-    "MacaGlm5NextForConditionalGeneration",
-    # "Glm5NextMTP",
+    "Glm5NextForCausalLM",
+    "Glm5NextForConditionalGeneration",
+    "Glm5NextMTP",
 ]

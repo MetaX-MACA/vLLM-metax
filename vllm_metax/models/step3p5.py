@@ -8,6 +8,7 @@ from collections.abc import Callable, Iterable
 from typing import Any
 
 import torch
+from transformers import PreTrainedConfig
 from torch import nn
 
 from vllm.compilation.decorators import support_torch_compile
@@ -63,14 +64,68 @@ from vllm.model_executor.models.utils import (
     make_layers,
     maybe_prefix,
 )
-from vllm.model_executor.models.step3p5 import (
-    _get_layer_type,
-    _get_num_attention_heads,
-    _get_rope_parameters,
-    _is_moe_layer,
-)
 
 logger = init_logger(__name__)
+
+
+def _get_layer_type(config: PreTrainedConfig, layer_idx: int) -> str:
+    # Upstream configs move the trailing MTP layers to `mtp_layer_types`
+    mtp_layer_types = getattr(config, "mtp_layer_types", None) or []
+    return [*config.layer_types, *mtp_layer_types][layer_idx]
+
+
+def _get_num_attention_heads(
+    config: PreTrainedConfig, layer_idx: int, layer_type: str
+) -> int:
+    if layer_type == "sliding_attention":
+        if num_heads := getattr(config, "num_sliding_attention_heads", None):
+            return num_heads
+        # Remote code configs
+        other_setting = getattr(config, "attention_other_setting", None) or {}
+        if other_setting.get("attention_type") == layer_type:
+            return other_setting["num_attention_heads"]
+    if getattr(config, "is_heterogeneous", False):
+        return config.per_layer_config[layer_idx].num_attention_heads
+    return config.num_attention_heads
+
+
+def _get_rope_parameters(
+    config: PreTrainedConfig, layer_idx: int, layer_type: str
+) -> dict[str, Any]:
+    rope_parameters = getattr(config, "rope_parameters", None) or {}
+    if isinstance(rope_parameters.get(layer_type), dict):
+        rope_parameters = dict(rope_parameters[layer_type])
+        rope_parameters.setdefault("partial_rotary_factor", 1.0)
+        return rope_parameters
+    # Remote code configs keep per-layer lists
+    rope_scaling = getattr(config, "rope_scaling", None)
+    yarn_only_types = getattr(config, "yarn_only_types", None)
+    if yarn_only_types and layer_type not in yarn_only_types:
+        rope_scaling = None
+    rope_parameters = dict(rope_scaling or {})
+    rope_parameters.setdefault("rope_type", "default")
+    rope_theta = config.rope_theta
+    if isinstance(rope_theta, list):
+        rope_theta = rope_theta[layer_idx]
+    rope_parameters["rope_theta"] = rope_theta
+    partial_rotary_factors = getattr(config, "partial_rotary_factors", None)
+    rope_parameters["partial_rotary_factor"] = (
+        partial_rotary_factors[layer_idx] if partial_rotary_factors else 1.0
+    )
+    return rope_parameters
+
+
+def _is_moe_layer(config: PreTrainedConfig, layer_idx: int) -> bool:
+    if (mlp_layer_types := getattr(config, "mlp_layer_types", None)) is not None:
+        mtp_mlp_layer_types = getattr(config, "mtp_mlp_layer_types", None) or []
+        mlp_layer_types = [*mlp_layer_types, *mtp_mlp_layer_types]
+        return layer_idx < len(mlp_layer_types) and (
+            mlp_layer_types[layer_idx] == "sparse"
+        )
+    # Remote code configs
+    if (moe_layers_enum := getattr(config, "moe_layers_enum", None)) is not None:
+        return layer_idx in {int(i) for i in moe_layers_enum.strip().split(",")}
+    return 0 < layer_idx < config.num_hidden_layers
 
 
 class Step3p5MLP(nn.Module):

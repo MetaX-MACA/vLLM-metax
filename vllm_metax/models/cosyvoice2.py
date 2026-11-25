@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-"""CosyVoice2 speech-token language model for vLLM 0.29.0."""
+"""CosyVoice2 speech-token language model."""
 
 from collections.abc import Iterable
 import torch
@@ -11,7 +11,7 @@ from vllm.distributed import get_pp_group
 from vllm.model_executor.layers.logits_processor import LogitsProcessor
 from vllm.model_executor.layers.vocab_parallel_embedding import ParallelLMHead
 from vllm.model_executor.models.interfaces import SupportsLoRA, SupportsPP
-from vllm.model_executor.models.qwen2 import Qwen2Model
+from vllm_metax.models.qwen2 import Qwen2Model
 from vllm.model_executor.models.utils import (
     AutoWeightsLoader,
     PPMissingLayer,
