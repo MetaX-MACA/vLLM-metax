@@ -28,7 +28,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Information Analysis",
 ]
-# NOTE(metax): vLLM 0.32 requires 3.11+; MACA wheels support through 3.12.
+# NOTE(metax): vLLM 0.34 requires 3.11+; MACA wheels support through 3.12.
 requires-python = ">=3.11,<3.13"
 dynamic = [ "version", "dependencies", "optional-dependencies"]
 
