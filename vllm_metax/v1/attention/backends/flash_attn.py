@@ -23,6 +23,11 @@ from vllm.v1.attention.backend import (
     AttentionType,
     MultipleOf,
 )
+from vllm_metax.third_party.fa_interface import (
+    FA2_SUPPORTED_HDIM,
+    FA_KERNEL_BLOCK_SIZES,
+    is_fa_kernel_block_size_supported,
+)
 from vllm_metax.v1.attention.backends.fa_utils import (
     flash_attn_supports_kv_cache_dtype,
     flash_attn_supports_quant_query_input,
@@ -30,7 +35,6 @@ from vllm_metax.v1.attention.backends.fa_utils import (
     is_fa_version_supported,
     is_flash_attn_varlen_func_available,
     uses_fa4_hd256_kernel,
-    FA2_SUPPORTED_HDIM,
     FA3_SUPPORTED_HDIM_FP8,
 )
 from vllm.v1.attention.backends.utils import (
@@ -94,7 +98,6 @@ from vllm.v1.worker.cp_utils import (
 from vllm_metax.v1.attention.backends.cp_utils import (
     run_split_fa2_dcp_context_attention,
 )
-from vllm_metax.utils.math_util import is_power_of_2
 
 # --------------------------------------------------------------
 # Note: used for prefill decode split with mtp on maca
@@ -125,14 +128,11 @@ class MacaFlashAttentionBackend(AttentionBackend):
     def get_supported_kernel_block_sizes(
         kv_cache_spec: KVCacheSpec | None = None,
     ) -> list[int | MultipleOf]:
-        # NOTE(metax): Exact sizes, not MultipleOf: e.g. 24 is unsupported.
-        if kv_cache_spec is not None and is_power_of_2(kv_cache_spec.block_size):
+        if kv_cache_spec is not None and is_fa_kernel_block_size_supported(
+            kv_cache_spec.block_size
+        ):
             return [kv_cache_spec.block_size]
-        return [8, 16, 32, 64, 128, 256, 512, 1024]
-
-    @classmethod
-    def supports_block_size(cls, block_size: int | None) -> bool:
-        return block_size is None or is_power_of_2(block_size)
+        return list(FA_KERNEL_BLOCK_SIZES)
 
     forward_includes_kv_cache_update: bool = False
 
@@ -239,13 +239,13 @@ class MacaFlashAttentionBackend(AttentionBackend):
             get_flash_attn_version(
                 kv_cache_dtype=kv_cache_dtype,
                 head_size=head_size,
+                head_size_v=cls.head_size_v,
                 has_sinks=has_sink,
-                kv_cache_block_size=block_size,
                 device_capability=device_capability,
             )
             is None
         ):
-            return "No MetaX FlashAttention version supports these dimensions, dtype, features and block size"
+            return "No MetaX FlashAttention version supports these dimensions, dtype, and features"
 
         return None
 
@@ -544,10 +544,11 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
         # NOTE(metax): still we don't support aot on FA3
         self.aot_schedule = False
 
-        get_flash_attn_version(
-            head_size=self.headdim,
-            kv_cache_block_size=self.block_size,
-        )
+        if not is_fa_kernel_block_size_supported(self.block_size):
+            raise ValueError(
+                f"Unsupported FlashAttention kernel block size {self.block_size}; "
+                f"expected a power of two of at least {FA_KERNEL_BLOCK_SIZES[0]}"
+            )
         self.fa4_hd256 = False
 
         # /------------------------  Metax Modification -------------------------\
@@ -1115,8 +1116,10 @@ class FlashAttentionImpl(AttentionImpl):
         self.vllm_flash_attn_version = get_flash_attn_version(
             requires_alibi=alibi_slopes is not None,
             head_size=head_size,
+            head_size_v=getattr(self, "head_size_v", None),
             has_sinks=sinks is not None,
             kv_cache_dtype=kv_cache_dtype,
+            is_paged=uses_kv_cache,
         )
         if self.vllm_flash_attn_version is None:
             if (

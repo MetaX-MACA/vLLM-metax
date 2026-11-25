@@ -36,6 +36,14 @@ FA3_SUPPORTED_HDIM_FP8 = (64, 96, 128, 192, 256)
 FA3_SUPPORTED_HDIM_BF16 = (64, 128, 192, 256)
 
 
+FA_KERNEL_BLOCK_SIZES = (8, 16, 32, 64, 128, 256, 512, 1024)
+
+
+def is_fa_kernel_block_size_supported(block_size: int) -> bool:
+    """Check the page size of a kernel-facing KV cache."""
+    return block_size >= FA_KERNEL_BLOCK_SIZES[0] and is_power_of_2(block_size)
+
+
 def is_fa_version_supported(fa_version: int | None) -> bool:
     if fa_version == 2:
         return FA2_AVAILABLE
@@ -61,22 +69,29 @@ def is_fa_geometry_supported(
     *,
     is_fp8: bool = False,
     block_size: int | None = None,
+    is_paged: bool = True,
 ) -> bool:
-    """Check exact kernel dimensions; callers must account for their own padding."""
-    if block_size is not None and not is_power_of_2(block_size):
-        return False
-    sizes: tuple[int, ...]
-    if fa_version == 2 and not is_fp8:
-        sizes = FA2_SUPPORTED_HDIM
-    elif fa_version == 3:
-        sizes = FA3_SUPPORTED_HDIM_FP8 if is_fp8 else FA3_SUPPORTED_HDIM_BF16
-    else:
+    """Check the head dimensions and optional kernel-facing KV page size."""
+    if block_size is not None and not is_fa_kernel_block_size_supported(block_size):
         return False
     if head_size is None:
-        return head_size_v is None or head_size_v in sizes
+        head_size = head_size_v
     if head_size_v is None:
         head_size_v = head_size
-    return (head_size == head_size_v and head_size in sizes) or (
+
+    if fa_version == 2 and not is_fp8:
+        if is_paged or block_size is not None:
+            supported_head_size = head_size is None or head_size in FA2_SUPPORTED_HDIM
+        else:
+            supported_head_size = head_size is None or (
+                8 <= head_size <= 512 and head_size % 8 == 0
+            )
+    elif fa_version == 3:
+        sizes = FA3_SUPPORTED_HDIM_FP8 if is_fp8 else FA3_SUPPORTED_HDIM_BF16
+        supported_head_size = head_size is None or head_size in sizes
+    else:
+        return False
+    return (head_size == head_size_v and supported_head_size) or (
         head_size,
         head_size_v,
     ) == (192, 128)

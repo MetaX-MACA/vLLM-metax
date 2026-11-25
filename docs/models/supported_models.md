@@ -87,3 +87,18 @@ See [this page](https://docs.vllm.ai/en/stable/features/multimodal_inputs.html) 
 | `Qwen3VLForConditionalGeneration` | Qwen3-VL | T + I<sup>E+</sup> + V<sup>E+</sup> | `Qwen/Qwen3-VL-4B-Instruct`, etc. | ✅︎ | ✅︎ |
 | `Qwen3VLMoeForConditionalGeneration` | Qwen3-VL-MOE | T + I<sup>E+</sup> + V<sup>E+</sup> | `Qwen/Qwen3-VL-30B-A3B-Instruct`, etc. | ✅︎ | ✅︎ |
 | `Qwen3OmniMoeThinkerForConditionalGeneration` | Qwen3-Omni | T + I<sup>E+</sup> + V<sup>E+</sup> + A<sup>+</sup> | `Qwen/Qwen3-Omni-30B-A3B-Instruct`, `Qwen/Qwen3-Omni-30B-A3B-Thinking` | ✅︎ | ✅︎ |
+
+## FlashAttention KV cache
+
+The worker selects a power-of-two FlashAttention kernel block size of at least
+8 tokens. The kernel block size must divide the KV cache manager block size.
+With a layer-compact layout such as `LBNHC`, a hybrid attention/GDN model can
+use 528- or 784-token manager blocks with 16-token attention kernel blocks.
+
+| Kernel | Paged attention head sizes |
+| --- | --- |
+| FA2 | 32, 64, 96, 128, 160, 192, 256, 512 |
+| FA3 BF16 | 64, 128, 192, 256 |
+| FA3 FP8 | 64, 96, 128, 192, 256 |
+
+All three rows also support the QK/V pair 192/128.

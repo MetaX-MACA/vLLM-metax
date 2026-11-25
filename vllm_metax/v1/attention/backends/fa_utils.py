@@ -13,17 +13,15 @@ from vllm.platforms.interface import DeviceCapability
 from vllm.v1.attention.backends.fa_utils import logger
 
 from vllm_metax.third_party.fa_interface import (
-    FA2_SUPPORTED_HDIM,  # noqa: F401
     FA3_SUPPORTED_HDIM_BF16,  # noqa: F401
     FA3_SUPPORTED_HDIM_FP8,  # noqa: F401
     fa_version_unsupported_reason,
     flash_attn_varlen_func,  # noqa: F401
     flash_attn_with_kvcache,  # noqa: F401
     is_fa_geometry_supported,
+    is_fa_kernel_block_size_supported,
     is_fa_version_supported,
 )
-
-from vllm_metax.utils.math_util import is_power_of_2
 
 reshape_and_cache_flash = ops.reshape_and_cache_flash
 compile_flash_attn_varlen_func_from_specs = None
@@ -34,10 +32,11 @@ def get_flash_attn_version(
     head_size: int | None = None,
     head_size_v: int | None = None,
     has_sinks: bool = False,
-    kv_cache_block_size: int | None = None,
+    kernel_block_size: int | None = None,
     *,
     kv_cache_dtype: CacheDType | None = None,
     device_capability: DeviceCapability | None = None,
+    is_paged: bool = True,
 ) -> int | None:
     """Temporarily prefer FA2 and enable FA3 only on capability 8.9 devices."""
     if kv_cache_dtype not in (None, "auto", "float16", "bfloat16", "fp8", "fp8_e4m3"):
@@ -52,7 +51,9 @@ def get_flash_attn_version(
     is_fp8 = kv_cache_dtype in ("fp8", "fp8_e4m3")
     if is_fp8 and capability != DeviceCapability(8, 9):
         return None
-    if kv_cache_block_size is not None and not is_power_of_2(kv_cache_block_size):
+    if kernel_block_size is not None and not is_fa_kernel_block_size_supported(
+        kernel_block_size
+    ):
         return None
 
     config = get_current_vllm_config_or_none()
@@ -96,7 +97,12 @@ def get_flash_attn_version(
 
     if fa_version == 2:
         if not is_fa_version_supported(2) or not is_fa_geometry_supported(
-            2, head_size, head_size_v, is_fp8=is_fp8
+            2,
+            head_size,
+            head_size_v,
+            is_fp8=is_fp8,
+            block_size=kernel_block_size,
+            is_paged=is_paged,
         ):
             return None
         if reasons:
@@ -114,7 +120,7 @@ def flash_attn_supports_kv_cache_dtype(
     head_size: int | None = None,
     head_size_v: int | None = None,
     has_sinks: bool = False,
-    kv_cache_block_size: int | None = None,
+    kernel_block_size: int | None = None,
 ) -> bool:
     return (
         get_flash_attn_version(
@@ -122,7 +128,7 @@ def flash_attn_supports_kv_cache_dtype(
             head_size=head_size,
             head_size_v=head_size_v,
             has_sinks=has_sinks,
-            kv_cache_block_size=kv_cache_block_size,
+            kernel_block_size=kernel_block_size,
             kv_cache_dtype=kv_cache_dtype,
         )
         is not None

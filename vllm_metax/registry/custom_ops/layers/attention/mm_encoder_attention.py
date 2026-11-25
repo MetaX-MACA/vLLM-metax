@@ -64,7 +64,7 @@ class MMEncoderAttention(vllm_MMEncoderAttention):
         # ----------------------------------------------------
         # NOTE(metax): Select FA2 or FA3 for noncausal encoder attention.
         self._fa_version = (
-            get_flash_attn_version(head_size=head_size)
+            get_flash_attn_version(head_size=head_size, is_paged=False)
             if self.is_flash_attn_backend
             else None
         )

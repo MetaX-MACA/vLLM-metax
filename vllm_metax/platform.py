@@ -572,9 +572,12 @@ class MacaPlatformBase(Platform):
 
         # TODO(Hank) Need to check which is better between
         # TORCH_SDPA and FLASH_ATTN on Maca platform
+        from vllm_metax.v1.attention.backends.fa_utils import get_flash_attn_version
+
         backend_class = AttentionBackendEnum.FLASH_ATTN.get_class()
-        if backend_class.supports_head_size(head_size) and backend_class.supports_dtype(
-            dtype
+        if (
+            backend_class.supports_dtype(dtype)
+            and get_flash_attn_version(head_size=head_size, is_paged=False) is not None
         ):
             return AttentionBackendEnum.FLASH_ATTN
         else:

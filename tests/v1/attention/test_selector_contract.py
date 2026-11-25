@@ -96,3 +96,6 @@ def test_selector_uses_maca_fa2_for_supported_fp16_head_sizes():
         assert fa_utils.get_flash_attn_version(head_size=128, kv_cache_dtype="auto") == 2
         assert fa_utils.get_flash_attn_version(head_size=96, kv_cache_dtype="auto") == 2
         assert fa_utils.get_flash_attn_version(head_size=80, kv_cache_dtype="auto") is None
+        assert fa_utils.get_flash_attn_version(head_size=72, is_paged=False) == 2
+        assert MacaPlatform.get_vit_attn_backend(72, torch.float16) == AttentionBackendEnum.FLASH_ATTN
+        assert fa_utils.get_flash_attn_version(head_size=73, kv_cache_dtype="auto") is None

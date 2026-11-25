@@ -69,27 +69,44 @@ def test_diff_dimensions(version, fp8, qk, v, expected):
     [
         (None, True),
         (0, False),
-        (-2, False),
-        (1, True),
-        (2, True),
+        (-16, False),
+        (1, False),
+        (2, False),
+        (4, False),
         (8, True),
         (16, True),
         (256, True),
         (512, True),
         (1024, True),
-        (3, False),
         (6, False),
         (24, False),
-        (384, False),
+        (528, False),
+        (784, False),
     ],
 )
-def test_block_sizes(block, expected):
-    assert Backend.supports_block_size(block) is expected
-    assert api.is_fa_geometry_supported(3, 128, block_size=block) is expected
+@pytest.mark.parametrize("version,fp8", [(2, False), (3, False), (3, True)])
+def test_kernel_block_sizes(block, expected, version, fp8):
+    assert api.is_fa_geometry_supported(
+        version, 128, is_fp8=fp8, block_size=block
+    ) is expected
     if block is not None and expected:
         assert Backend.get_supported_kernel_block_sizes(
             SimpleNamespace(block_size=block)
         ) == [block]
+
+
+@pytest.mark.parametrize(
+    "block,kernel_block", [(24, 8), (384, 128), (528, 16), (784, 16)]
+)
+def test_hybrid_kv_block_sizes(block, kernel_block):
+    from vllm.v1.worker.utils import select_common_block_size
+
+    assert Backend.supports_block_size(block)
+    assert utils.get_flash_attn_version(head_size=128, kernel_block_size=block) is None
+    specs = [SimpleNamespace(block_size=block)]
+    selected = select_common_block_size(block, [Backend], specs)
+    assert selected == kernel_block
+    assert utils.get_flash_attn_version(head_size=128, kernel_block_size=selected) == 2
 
 
 @pytest.mark.parametrize(
@@ -108,13 +125,17 @@ def test_block_sizes(block, expected):
         (160, "fp8", None),
         (32, "fp8", None),
         (512, "fp8", None),
+        (72, "auto", None),
         (80, "auto", None),
+        (73, "auto", None),
         (128, "fp8_e5m2", None),
         (128, "fp8_per_token_head", None),
         (128, "int8_per_token_head", None),
     ],
 )
 def test_selection_and_dtype_predicate(size, kv, expected):
+    if kv == "auto":
+        assert Backend.supports_head_size(size) is (expected is not None)
     assert utils.get_flash_attn_version(head_size=size, kv_cache_dtype=kv) == expected
     assert utils.flash_attn_supports_kv_cache_dtype(kv, head_size=size) is (
         expected is not None
@@ -592,9 +613,12 @@ def test_layer_dispatch_preserves_variable_query_lengths(monkeypatch, diffkv, fp
     [
         (96, "auto", 16, None),
         (96, "fp8", 16, None),
-        (96, "auto", 24, "No MetaX"),
+        (96, "auto", 24, None),
         (160, "fp8", 16, "No MetaX"),
         (80, "auto", 16, "No MetaX"),
+        (73, "auto", 16, "No MetaX"),
+        (72, "auto", 528, "No MetaX"),
+        (128, "auto", 784, None),
     ],
 )
 def test_backend_combination_matches_selector(size, kv, block, expected):
@@ -954,7 +978,8 @@ def test_fa3_dcp_context_uses_cache_api(monkeypatch, with_context):
         ({}, False, 2, ["FA3 is unavailable", "test import failure"]),
         (dict(head_size=128), True, 3, []),
         (dict(head_size=80), True, None, []),
-        (dict(kv_cache_block_size=24), True, None, []),
+        (dict(head_size=73), True, None, []),
+        (dict(kernel_block_size=24), True, None, []),
         (dict(kv_cache_dtype="fp8", has_sinks=True), True, None, []),
     ],
 )
