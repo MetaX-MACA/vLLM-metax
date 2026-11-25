@@ -22,7 +22,7 @@ from vllm.model_executor.layers.quantization.auto_awq import (
 from vllm.model_executor.layers.quantization.auto_awq import is_layer_skipped
 from vllm.model_executor.layers.quantization.base_config import QuantizeMethodBase
 from vllm.model_executor.layers.vocab_parallel_embedding import ParallelLMHead
-from vllm.model_executor.utils import replace_parameter
+from vllm.model_executor.utils import is_weights_pre_processed, replace_parameter
 from vllm.utils.torch_utils import direct_register_custom_op
 
 import vllm_metax._custom_ops as mx_ops
@@ -77,6 +77,13 @@ class AutoAWQLinearMethod(vllm_AutoAWQLinearMethod):
     """
 
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
+        if is_weights_pre_processed():
+            if not self.supports_pre_processed_weights:
+                raise RuntimeError(
+                    "Pre-processed AWQ/GPTQ weights require Marlin with "
+                    "FP16 or BF16 activations"
+                )
+            return
         replace_parameter(
             layer,
             "qweight",

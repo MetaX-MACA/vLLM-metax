@@ -187,3 +187,4 @@ class Mxfp4MoEMethod(_vllm_Mxfp4MoEMethod):
                 routing_tables=layer._expert_routing_tables(),
             )
             self.moe_kernel.fused_experts.process_weights_after_loading(layer)
+            self.moe_kernel.fused_experts.keep_constants(layer)

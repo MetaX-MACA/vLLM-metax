@@ -698,7 +698,7 @@ class MacaPlatformBase(Platform):
         return True
 
     @classmethod
-    def is_integrated_gpu(cls, device_id: int = 0) -> bool:
+    def is_integrated_gpu(cls, device_id: int | None = 0) -> bool:
         return bool(torch.cuda.get_device_properties(device_id).is_integrated)
 
     @classmethod
@@ -753,7 +753,20 @@ class MacaPlatformBase(Platform):
         known_variables = envs.environment_variables.keys() | set(
             mx_envs.environment_variables
         )
-        for name in os.environ:
+        for name, value in os.environ.items():
+            if name == "VLLM_USE_V2_MODEL_RUNNER":
+                if value != "1":
+                    raise ValueError(
+                        f"VLLM_USE_V2_MODEL_RUNNER={value} is no longer supported: "
+                        "Model Runner V1 has been removed. Unset this variable."
+                    )
+                logger.warning(
+                    "VLLM_USE_V2_MODEL_RUNNER=1 is redundant and can be unset: "
+                    "Model Runner V1 has been removed."
+                )
+                continue
+            if hint := envs.removed_environment_variables.get(name):
+                raise ValueError(f"{name} has been removed. {hint}")
             if name.startswith("VLLM_") and name not in known_variables:
                 if hard_fail:
                     raise ValueError(

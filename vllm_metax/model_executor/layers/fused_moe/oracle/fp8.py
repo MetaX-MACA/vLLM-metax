@@ -192,7 +192,7 @@ def select_fp8_moe_backend(
     # if not ideal. Once we unify TP + DP/EP, we can select P/F first.
     activation_format = (
         mk.FusedMoEActivationFormat.BatchedExperts
-        if config.moe_parallel_config.use_batched_activation_format
+        if config.use_batched_activation_format
         else mk.FusedMoEActivationFormat.Standard
     )
 

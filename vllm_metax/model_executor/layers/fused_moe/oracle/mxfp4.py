@@ -24,8 +24,6 @@ from vllm.model_executor.layers.fused_moe.config import (
 from vllm.model_executor.layers.fused_moe.oracle.mxfp4 import (
     Mxfp4MoeBackend,
     _backend_activation_key,
-    _make_log_backend,
-    _make_log_unsupported,
     _validate_mxfp4_experts_config,
 )
 
@@ -65,7 +63,7 @@ def select_deepseek_v4_mxfp4_moe_backend(
     """
     activation_format = (
         mk.FusedMoEActivationFormat.BatchedExperts
-        if config.moe_parallel_config.use_batched_activation_format
+        if config.use_batched_activation_format
         else mk.FusedMoEActivationFormat.Standard
     )
 
@@ -79,10 +77,14 @@ def select_deepseek_v4_mxfp4_moe_backend(
                 k_cls, config, kMxfp4Static, activation_key, activation_format
             )
             if supported:
-                logger.info_once(_make_log_backend(backend), scope="local")
+                logger.info_once("Using %s MXFP4 MoE backend.", backend.value)
                 return backend, k_cls
             else:
-                logger.debug_once(_make_log_unsupported(backend, reason), scope="local")
+                logger.debug_once(
+                    "MXFP4 MoE backend %s does not support the deployment configuration: %s",
+                    backend.value,
+                    reason,
+                )
 
     raise NotImplementedError(
         "No MXFP4 MoE backend supports the deployment configuration."
