@@ -46,23 +46,18 @@
 
 ## 启动
 
-在已安装对应 vLLM 和 vllm_metax 的环境中运行。根据空闲情况选择 GPU；示例使用 2、3。
+在已安装对应 vLLM 和 vllm_metax 的环境中，从仓库根目录运行。
+按空闲情况选择 GPU，示例使用 2、3。
 
 ```bash
-cd /root/dummy_home/workspace/vLLM-metax-0.27.0-mx
-MODEL="$PWD/temp/GLM-5_2-W8A8-dummy-3layers"
-
 # 单卡
-CUDA_VISIBLE_DEVICES=2 MACA_VISIBLE_DEVICES=2 vllm serve "$MODEL" \
-  --load-format dummy --tensor-parallel-size 1 \
-  --max-model-len 4096 --max-num-seqs 1 --max-num-batched-tokens 4096 \
-  --gpu-memory-utilization 0.8 --enforce-eager
+CUDA_VISIBLE_DEVICES=2 MACA_VISIBLE_DEVICES=2 \
+    bash tools/models/GLM-5_2-W8A8-dummy-3layers/run_serve.sh
 
 # 双卡，张量并行
-CUDA_VISIBLE_DEVICES=2,3 MACA_VISIBLE_DEVICES=2,3 vllm serve "$MODEL" \
-  --load-format dummy --tensor-parallel-size 2 \
-  --max-model-len 4096 --max-num-seqs 1 --max-num-batched-tokens 4096 \
-  --gpu-memory-utilization 0.8 --enforce-eager
+CUDA_VISIBLE_DEVICES=2,3 MACA_VISIBLE_DEVICES=2,3 \
+    bash tools/models/GLM-5_2-W8A8-dummy-3layers/run_serve.sh \
+    --tensor-parallel-size 2
 ```
 
 需要覆盖 MTP 路径时，在启动命令末尾添加：

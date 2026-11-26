@@ -76,16 +76,18 @@ Python `/opt/venv/bin/python`；Transformers 5.19.0；vLLM `0.32.0+empty`，
 
 ## 启动与分支验证
 
-先选择空闲 GPU。以下命令默认 TP1、4096 上下文、eager、DCP1；使用已写入配置的 INT8 W8A8 权重量化。
-`run_serve.sh` 允许用环境变量设置 GPU、TP、端口、indexer dtype、上下文和 batch token 预算：
+从仓库根目录运行，并设置空闲 GPU。默认使用 TP1、4096 上下文、eager、
+DCP1 和模型配置中的 INT8 W8A8 权重量化。启动脚本默认选择 INT8 indexer。
+端口、TP、上下文长度和 batch token 预算可在脚本路径后追加 vLLM 参数调整。
 
 ```bash
-GPU_IDS=0 TP=1 PORT=8043 INDEXER_DTYPE=int8 \
-  bash tools/models/GLM-5.3-Flash-dummy-3layers/run_serve.sh
+CUDA_VISIBLE_DEVICES=0 MACA_VISIBLE_DEVICES=0 \
+    bash tools/models/GLM-5.3-Flash-dummy-3layers-w8a8/run_serve.sh
 
-# 独立复测 BF16 indexer；先关闭前一个服务并检查 GPU 释放。
-GPU_IDS=0 TP=1 PORT=8043 INDEXER_DTYPE=bf16 \
-  bash tools/models/GLM-5.3-Flash-dummy-3layers/run_serve.sh
+# 独立复测 BF16 indexer，先停止上一个服务。
+CUDA_VISIBLE_DEVICES=0 MACA_VISIBLE_DEVICES=0 \
+    bash tools/models/GLM-5.3-Flash-dummy-3layers-w8a8/run_serve.sh \
+    --attention-config '{"indexer_kv_dtype":"bf16"}'
 ```
 
 服务启动后检查 `/health`，再测试 `/v1/completions`、`/v1/chat/completions`。

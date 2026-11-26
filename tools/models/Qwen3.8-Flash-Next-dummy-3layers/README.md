@@ -70,20 +70,22 @@ TP4/TP8 都满足保留维度的基本整除关系；QSA 的 KV heads 在 TP 大
 
 ## 启动和功能触发
 
-需要配套的 vLLM、vllm_metax 和 Transformers；当前 shell 的安装存在下述阻碍。
-在配套环境、所选 GPU 空闲后执行（替换 GPU_IDS）：
+在已安装配套 vLLM、vllm_metax 和 Transformers 的环境中，从仓库根目录执行。
+默认使用 TP4，需要选择四张空闲 GPU。
 
 ```bash
-MODEL_DIR=/home/m01016/dummy_home/vllm_workspace/vllm-metax/tools/batched_test/models/Qwen3.8-Flash-Next-dummy-3layers
-GPU_IDS=0,1,2,3 bash "$MODEL_DIR/run_serve.sh"
+CUDA_VISIBLE_DEVICES=0,1,2,3 MACA_VISIBLE_DEVICES=0,1,2,3 \
+    bash tools/models/Qwen3.8-Flash-Next-dummy-3layers/run_serve.sh
 
-# 单独验证 MTP：先停止前一个服务，再启动
-GPU_IDS=0,1,2,3 MTP=1 bash "$MODEL_DIR/run_serve.sh"
+# 单独验证 MTP，先停止上一个服务。
+CUDA_VISIBLE_DEVICES=0,1,2,3 MACA_VISIBLE_DEVICES=0,1,2,3 \
+    bash tools/models/Qwen3.8-Flash-Next-dummy-3layers/run_serve.sh \
+    --speculative-config '{"method":"mtp","num_speculative_tokens":1}'
 ```
 
-脚本使用 dummy、BF16、PP1、TP 等于所选卡数、context=4096、单请求、eager，关闭 prefix caching，
-保留视觉编码器。可通过 `PORT`、`MAX_MODEL_LEN`、`MAX_BATCHED_TOKENS`、
-`GPU_MEMORY_UTILIZATION` 调整预算；末尾参数透传给 `vllm serve`。
+启动脚本使用 dummy、BF16、PP1、4096 上下文、单请求和 eager，关闭 prefix caching，
+保留视觉编码器。可在脚本路径后追加 vLLM 参数调整端口、TP 和显存预算。
+更改 TP 时同步选择对应数量的卡。
 
 ```bash
 curl --fail-with-body --max-time 10 http://127.0.0.1:8000/health
@@ -99,7 +101,7 @@ curl --fail-with-body --max-time 120 http://127.0.0.1:8000/v1/completions \
 | QSA 长输入筛选及压缩 | 用实际 tokenizer 构造约 3000-token prompt，超过 budget=2048；compress_ratio=4，block top-k=512 | 结构保留，GPU 未验证 |
 | 图像 | chat 请求包含有效 image_url；例如 256×256 图像 | CPU 预处理检查，GPU 未验证 |
 | 视频 | 运行时支持的视频输入，例如至少 4 帧 256×256 视频，保留 temporal_patch_size=2 | CPU 预处理检查，GPU 未验证 |
-| MTP | `MTP=1`，多 token 请求并确认 speculative 日志/指标 | 配置保留，GPU 未验证 |
+| MTP | `--speculative-config`，多 token 请求并确认 speculative 日志/指标 | 配置保留，GPU 未验证 |
 
 普通服务不会执行 MTP。随机路由不保证每个专家都被访问；保留配置也不能证明所有内核分支已运行。
 TP/PP/EP、HC sequence parallel、图执行、prefix caching 等部署分支须在配套实现支持时另测；未为覆盖它们修改模型。
@@ -134,7 +136,7 @@ MetaX 分发元数据为 `0.30.0+gf2fcc5.d20260929.maca3.8.2.6.torch2.10.0`。
 ```bash
 PYTHONPATH=/home/m01016/dummy_home/vllm_workspace/vllm-metax \
   HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
-  python "$MODEL_DIR/validate_config.py"
+  python tools/models/Qwen3.8-Flash-Next-dummy-3layers/validate_config.py
 ```
 
 ## 文件与复现
@@ -148,5 +150,5 @@ PYTHONPATH=/home/m01016/dummy_home/vllm_workspace/vllm-metax \
 `reproduce_trim.py` 可向**新目录**重新生成相同的模型配置和资源，不会覆盖已有目录：
 
 ```bash
-python "$MODEL_DIR/reproduce_trim.py" --output /tmp/Qwen3.8-Flash-Next-dummy-recreated
+python tools/models/Qwen3.8-Flash-Next-dummy-3layers/reproduce_trim.py --output /tmp/Qwen3.8-Flash-Next-dummy-recreated
 ```

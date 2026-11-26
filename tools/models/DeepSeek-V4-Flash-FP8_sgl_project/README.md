@@ -53,18 +53,18 @@ use `/v1/completions` or explicitly supply a verified compatible chat template.
 
 ## Startup
 
-Select free GPUs and run from the repository root:
+Select free GPUs and run from the repository root.
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 TP=1 \
-  bash tools/batched_test/models/DeepSeek-V4-Flash-FP8_sgl_project/run_serve.sh
+CUDA_VISIBLE_DEVICES=0 MACA_VISIBLE_DEVICES=0 \
+    bash tools/models/DeepSeek-V4-Flash-FP8_sgl_project/run_serve.sh
 ```
 
-The script resolves its own model directory, enables offline dummy loading, and
-uses localhost:8000, context length 1024, one sequence, eager execution, and a 0.8
-GPU memory budget. Override `PORT`, `TP`, and `GPU_MEMORY_UTILIZATION` as needed.
-Ensure any inherited MACA visibility matches CUDA visibility. Additional arguments
-are forwarded to vLLM. TP=1 is an example, not a measured memory/support guarantee.
+The launcher uses offline dummy loading, localhost:8000, context length 1024,
+one sequence, eager execution, and a 0.8 GPU memory budget. Pass vLLM flags
+such as `--port`, `--tensor-parallel-size`, and `--gpu-memory-utilization`
+after the script path to change those settings. Select a GPU with FP8
+support. The TP1 example does not establish a memory guarantee.
 Stop the service and its workers after testing.
 
 ```bash
