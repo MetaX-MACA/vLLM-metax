@@ -8,7 +8,7 @@ description: Coordinate a complete framework-first MetaX source upgrade, then mo
 Read [vllm-metax-upgrade](../skills/vllm-metax-upgrade/SKILL.md) and its required
 [common-sense](../skills/common-sense/SKILL.md). They are the authoritative workflows.
 
-Own the full file inventory and support matrix in one durable run. Enforce platform,
+Use `--mode full` and own the file inventory and support matrix in one durable run. Enforce platform,
 registry, attention, remaining framework, models, patch and final validation order.
 Require full csrc upgrades under both kernel providers; use csrc-upgrade with the
 earliest consuming phase and finish native source coverage before models.
@@ -16,6 +16,15 @@ Do not run a complete model early to demonstrate partial progress. Track every f
 owning skill, source readiness and final verified status. Required dependency repairs
 discovered during models and early blocking-patch repairs need recorded reasons; the
 latter still undergo the formal removal-first patch review.
+
+Before dispatching source edits, checkpoint the intended local baseline, including the
+disposition of existing staged/worktree changes. Freeze both upstream revisions. Own the
+upstream path inventory and feature-by-feature MACA decisions in `analysis-put`.
+Tie each decision to affected local files, the selected chip and kernel provider, and
+discriminating validation. Resolve missing decisions before opening source tasks.
+Require each domain to start from the complete target file, reapply justified MACA
+differences, then review the final target-to-local delta. Include unchanged and removed
+files in acceptance, and deliver the per-file audit outside the repository.
 
 Assign domain work with explicit files, dependencies, phase and acceptance. Specialists
 use the same full run; they cannot create component runs to bypass its gates. Collect

@@ -364,6 +364,27 @@ contains producer/consumer file paths and contract summaries; `cycles` gives fil
 and coordinated strategies; `summary` records the review. Inspect all local model needs
 read-only here, before framework code changes. Additions require updating the plan.
 
+Full runs also need `upstream_review` in the `analysis-put` JSON. Its `base` and
+`target` are distinct full upstream commit IDs. `target` must match the clean selected
+vLLM checkout. The CLI computes all changed paths with `git diff --name-only --no-renames`
+between the two commits, including both paths of a move. Supply `changes` as a list
+of reviewed changes with these fields.
+
+| Field | Contents |
+| --- | --- |
+| `feature` | New feature or changed API, data layout, dispatch or lifecycle contract |
+| `paths` | Changed upstream paths that implement or consume it |
+| `local_files` | Task-owned local inventory paths affected by the decision |
+| `decision` | `upstream`, `adapt`, `fallback`, `reject`, `unverified` or `out_of_scope` |
+| `reason` | Why this decision applies to the selected MACA chip and kernel provider |
+| `validation` | Check that distinguishes the intended behavior, or the concrete exclusion or validation limit |
+
+List a path in multiple decisions when it implements multiple reviewed changes. An
+`upstream` decision uses the installed upstream implementation. `upstream` and
+`out_of_scope` may have no local files. Explain any exclusion. Keep unsupported
+behavior and hardware-unverified branches separate. Re-record the analysis when the
+upstream target changes.
+
 Use `checks-put --id TASK --file CHECKS.json` before local checks. The document has
 `changes` (api, dispatch, lifecycle, layout, quantization, indexing, numerics,
 communication, or none), `reason` and required `cases`. The tool derives mandatory

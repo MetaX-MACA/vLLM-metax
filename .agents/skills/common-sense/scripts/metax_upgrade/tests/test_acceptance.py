@@ -12,6 +12,7 @@ import tempfile
 import unittest
 
 from metax_upgrade import acceptance, api_contracts, lifecycle, state as store
+from metax_upgrade.tests.test_upgrade import synthetic_upstream_review
 
 
 class AcceptanceTests(unittest.TestCase):
@@ -175,7 +176,14 @@ class AcceptanceTests(unittest.TestCase):
         }
         return report
 
+    def record_upstream_review(self):
+        review = synthetic_upstream_review(self.state)
+        self.state["dependency_analysis"]["upstream_review"] = review
+        self.mapping["mappings"][0]["upstream"]["revision"] = review["target"]
+        acceptance.put_mapping(self.state, "op", self.mapping)
+
     def test_each_full_support_row_needs_its_own_e2e(self):
+        self.record_upstream_review()
         self.state["tasks"]["op"]["requires"] = ["e2e"]
         self.evidence()
         self.evidence(kind="batched_test")
@@ -226,6 +234,7 @@ class AcceptanceTests(unittest.TestCase):
         )
 
     def test_changed_validation_input_invalidates_matrix_evidence(self):
+        self.record_upstream_review()
         self.state["tasks"]["op"]["requires"] = ["e2e"]
         script = self.root / "check.py"
         script.write_text("# original validation\n")

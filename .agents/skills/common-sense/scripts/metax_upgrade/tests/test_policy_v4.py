@@ -156,6 +156,49 @@ class PolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "global dependency"):
             workflow.assert_task_start(state, "op")
 
+    def test_full_analysis_requires_upstream_path_coverage_and_current_target(self):
+        state = store.load(self.fixture.run)
+        state["inputs"]["mode"] = "full"
+        workflow.initialize(state)
+        plan = {
+            "files": list(state["inventory"]),
+            "models": [],
+            "summary": "Synthetic upstream test",
+            "edges": [],
+            "cycles": [],
+        }
+        with self.assertRaisesRegex(ValueError, "Record upstream_review"):
+            planning.put_analysis(state, plan)
+
+        review = fixtures.synthetic_upstream_review(state)
+        plan["upstream_review"] = {**review, "changes": []}
+        with self.assertRaisesRegex(
+            ValueError, "Undecided upstream paths: vllm/__init__"
+        ):
+            planning.put_analysis(state, plan)
+
+        plan["upstream_review"] = {
+            **review,
+            "changes": [
+                {
+                    **review["changes"][0],
+                    "decision": "adapt",
+                    "local_files": ["vllm_metax/__init__.py"],
+                }
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "task-owned local files"):
+            planning.put_analysis(state, plan)
+
+        plan["upstream_review"] = review
+        planning.put_analysis(state, plan)
+        self.assertEqual(planning.analysis_issues(state), [])
+        subprocess.run(
+            ["git", "-C", str(self.fixture.vllm), "checkout", "-q", review["base"]],
+            check=True,
+        )
+        self.assertIn("selected target revision", planning.analysis_issues(state)[0])
+
     def test_declared_dependency_cycles_need_a_coordinated_strategy(self):
         state = store.load(self.fixture.run)
         state["inputs"]["mode"] = "full"
@@ -165,6 +208,7 @@ class PolicyTests(unittest.TestCase):
             "files": list(state["inventory"]),
             "models": [],
             "summary": "Synthetic mutually dependent interfaces",
+            "upstream_review": fixtures.synthetic_upstream_review(state),
             "edges": [
                 {"producer": paths[0], "consumer": paths[1], "contract": "layout"},
                 {"producer": paths[1], "consumer": paths[0], "contract": "metadata"},
@@ -396,6 +440,7 @@ class BaselineCoverageTests(unittest.TestCase):
                     "edges": [],
                     "cycles": [],
                     "summary": "Synthetic independent model",
+                    "upstream_review": fixtures.synthetic_upstream_review(state),
                 }
             )
         )
@@ -441,6 +486,7 @@ class BaselineCoverageTests(unittest.TestCase):
         plan_file = self.run / "analysis.json"
         plan = json.loads(plan_file.read_text())
         plan["files"].append(other)
+        plan["upstream_review"] = fixtures.synthetic_upstream_review(state)
         plan_file.write_text(json.dumps(plan))
         self.cli("analysis-put", "--file", plan_file)
         declaration = {

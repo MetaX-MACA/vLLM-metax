@@ -6,6 +6,7 @@ import contextlib
 import io
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -66,6 +67,52 @@ def synthetic_mapping(run_dir, task_id):
     store.save(run_dir, state)
 
 
+def synthetic_upstream_review(state):
+    root = Path(state["inputs"]["vllm_source"])
+
+    def git(*args):
+        return subprocess.check_output(
+            ["git", "-C", str(root), *args], text=True
+        ).strip()
+
+    if not (root / ".git").exists():
+        git("init", "-q")
+        commit = (
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.test",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "--no-gpg-sign",
+        )
+        git(*commit, "-m", "Prior upstream")
+        git("add", "--all")
+        git(*commit, "-m", "Target upstream")
+    base = git("rev-list", "--max-parents=0", "HEAD")
+    target = git("rev-parse", "HEAD")
+    paths = git("diff", "--name-only", "--no-renames", base, target).splitlines()
+    return {
+        "base": base,
+        "target": target,
+        "changes": [
+            {
+                "feature": "Synthetic upstream snapshot",
+                "paths": paths,
+                "local_files": [],
+                "decision": "upstream",
+                "reason": "Fixture uses the upstream source directly",
+                "validation": "Synthetic import path",
+            }
+        ]
+        if paths
+        else [],
+    }
+
+
 def prepare_full_validation(cli, run):
     """Give synthetic acceptance scenarios real local checks and phase handoffs."""
     state = store.load(run)
@@ -99,6 +146,7 @@ def prepare_full_validation(cli, run):
                 "edges": [],
                 "cycles": [],
                 "summary": "Synthetic independent file ownership",
+                "upstream_review": synthetic_upstream_review(current),
             }
         )
     )

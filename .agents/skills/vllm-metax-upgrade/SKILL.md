@@ -29,6 +29,31 @@ Before entering platform, record `analysis-put` with the global dependency graph
 read-only contracts for every baseline model. Resolve cycles/ownership in the plan;
 this planning step does not authorize early model construction or adaptation.
 
+## Review the upstream range before edits
+
+Use `--mode full` for a whole-repository upgrade. A prior migration or existing upgrade
+branch is a candidate source. Review it against the selected upstream and complete the
+inventory before crediting any files.
+
+Pin the old vLLM commit, target vLLM commit and old MetaX commit. Capture the Git index
+and worktree edits before copying files. Identify which edits belong to the MACA delta
+and carry unrelated edits separately. Start from a clean target vLLM checkout.
+
+Enumerate the path set with `git diff --name-only --no-renames BASE TARGET`. Use a
+rename-aware diff and relevant commits to understand moves, newly added files and
+implementation changes. Trace each feature or changed contract from its configuration,
+registry and callers through cache, kernel and lifecycle boundaries. Record all upstream
+paths in `analysis-put` under `upstream_review`. Group related paths by feature and record
+affected local files, the MACA chip/provider decision, rationale and verification case.
+Give out-of-scope paths an explicit reason. A changed path with no decision blocks source
+work. See the [analysis format](../common-sense/references/tooling.md#contract-scoped-source-and-model-evidence).
+
+For each mapped module, copy the complete target implementation and reapply the necessary
+differences found by comparing old vLLM with old MetaX. Compare the final result back
+against target vLLM. Account for every retained difference, including public APIs and
+disabled branches. Keep the source plan and the final review report in the external run.
+Model specs document the reusable MACA porting recipe.
+
 ## Enforce the phase order
 
 | Phase | Required source work |

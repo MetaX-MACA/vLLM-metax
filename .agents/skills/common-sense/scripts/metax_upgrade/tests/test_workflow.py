@@ -20,6 +20,9 @@ class WorkflowTests(unittest.TestCase):
         self.run = self.fixture.run
         self.metax = self.fixture.metax
         self.fixture.approve()
+        (self.fixture.vllm / "sample.py").write_text(
+            "def encode(items, /, *, options=None):\n    return items, options\n"
+        )
         self.files = {
             "platform": ["vllm_metax/platform.py"],
             "registry": ["vllm_metax/registry/config.py"],
@@ -86,6 +89,7 @@ class WorkflowTests(unittest.TestCase):
                     "edges": [],
                     "cycles": [],
                     "summary": "Synthetic independent source files with no inter-module runtime contracts",
+                    "upstream_review": fixtures.synthetic_upstream_review(current),
                 }
             )
         )
@@ -190,8 +194,7 @@ class WorkflowTests(unittest.TestCase):
         self.reach("registry")
         local = self.files["registry"][0]
         upstream = self.fixture.vllm / "sample.py"
-        source = "def encode(items, /, *, options=None):\n    return items, options\n"
-        upstream.write_text(source)
+        source = upstream.read_text()
         (self.metax / local).write_text(source + '\nregistry = {"example": encode}\n')
         state = store.load(self.run)
         mapping = state["tasks"]["registry"]["upstream_mapping"]
@@ -201,7 +204,7 @@ class WorkflowTests(unittest.TestCase):
             upstream={
                 "path": "sample.py",
                 "symbol": "encode",
-                "revision": "fixture",
+                "revision": "HEAD",
                 "sha256": store.file_hash(upstream),
             },
         )

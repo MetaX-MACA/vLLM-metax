@@ -2,6 +2,10 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 """Recorded dependency analysis and change-specific component obligations."""
 
+from pathlib import Path
+import regex as re
+import subprocess
+
 if __package__:
     from . import api_contracts
 else:
@@ -9,6 +13,14 @@ else:
 
 NUMERICAL = {"layout", "quantization", "indexing", "numerics", "communication"}
 CHANGES = NUMERICAL | {"api", "dispatch", "lifecycle", "none"}
+UPSTREAM_DECISIONS = {
+    "upstream",
+    "adapt",
+    "fallback",
+    "reject",
+    "unverified",
+    "out_of_scope",
+}
 
 
 def _store():
@@ -17,6 +29,93 @@ def _store():
     else:
         import state
     return state
+
+
+def _upstream_git(state, *args):
+    root = Path(state["inputs"]["vllm_source"])
+    if not (root / ".git").exists():
+        raise ValueError(
+            "Full upgrade analysis needs the selected upstream Git checkout"
+        )
+    try:
+        return subprocess.run(
+            ["git", "-C", str(root), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        ).stdout
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ValueError(f"Cannot verify upstream review range: {exc}") from exc
+
+
+def _validate_upstream_review(state, review):
+    if not isinstance(review, dict):
+        raise ValueError("Record upstream_review before starting a full upgrade")
+    base, target = review.get("base"), review.get("target")
+    if (
+        any(
+            not isinstance(revision, str)
+            or re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", revision) is None
+            for revision in (base, target)
+        )
+        or base == target
+    ):
+        raise ValueError(
+            "Upstream review needs distinct full base and target commit IDs"
+        )
+    if _upstream_git(state, "rev-parse", "--verify", "HEAD^{commit}").strip() != target:
+        raise ValueError(
+            "Upstream review target must match the selected upstream checkout"
+        )
+    if (
+        _upstream_git(state, "rev-parse", "--verify", f"{base}^{{commit}}").strip()
+        != base
+    ):
+        raise ValueError("Upstream review base must be an upstream commit ID")
+    if _upstream_git(state, "status", "--porcelain", "--untracked-files=normal"):
+        raise ValueError("Review against a clean upstream checkout")
+    # Enumerate both sides of moves, so obsolete and target-only paths are visible.
+    changed = set(
+        _upstream_git(
+            state, "diff", "--name-only", "--no-renames", "-z", base, target, "--"
+        ).split("\0")
+    ) - {""}
+    rows = review.get("changes")
+    if not isinstance(rows, list):
+        raise ValueError("Upstream review needs a changes list")
+    inventory = state["inventory"]
+    covered = set()
+    for row in rows:
+        if (
+            not isinstance(row, dict)
+            or any(
+                not isinstance(row.get(field), str) or not row[field].strip()
+                for field in ("feature", "decision", "reason", "validation")
+            )
+            or row["decision"] not in UPSTREAM_DECISIONS
+        ):
+            raise ValueError(
+                "Each upstream change needs a feature, MACA decision, reason and validation"
+            )
+        paths, local = row.get("paths"), row.get("local_files")
+        if (
+            not isinstance(paths, list)
+            or not paths
+            or not all(isinstance(path, str) and path in changed for path in paths)
+            or not isinstance(local, list)
+            or not all(
+                isinstance(path, str) and inventory.get(path, {}).get("tasks")
+                for path in local
+            )
+            or (not local and row["decision"] not in {"upstream", "out_of_scope"})
+        ):
+            raise ValueError(
+                "Upstream decisions need changed upstream paths and task-owned local files"
+            )
+        covered.update(paths)
+    if missing := changed - covered:
+        raise ValueError("Undecided upstream paths: " + ", ".join(sorted(missing)))
 
 
 def put_analysis(state, document):
@@ -101,6 +200,8 @@ def put_analysis(state, document):
                     "Dependency cycle needs a coordinated strategy: "
                     + ", ".join(sorted(group))
                 )
+    if state["inputs"]["mode"] == "full":
+        _validate_upstream_review(state, document.get("upstream_review"))
     # Retain history; expected source port edits do not invalidate the planning record.
     state.setdefault("analysis_history", []).append(state.get("dependency_analysis"))
     state["dependency_analysis"] = {
@@ -122,6 +223,15 @@ def analysis_issues(state):
         return [
             "Complete global dependency/model-contract analysis with analysis-put before adaptation"
         ]
+    review = document.get("upstream_review")
+    if not review:
+        return ["Record upstream changes and MACA decisions with analysis-put"]
+    try:
+        target = _upstream_git(state, "rev-parse", "--verify", "HEAD^{commit}").strip()
+    except ValueError as exc:
+        return [str(exc)]
+    if target != review.get("target"):
+        return ["Recheck upstream changes for the selected target revision"]
     if document.get("environment") != state["environment"]["fingerprint"]:
         return [
             "Recheck dependency/model contracts for the changed confirmed environment"
