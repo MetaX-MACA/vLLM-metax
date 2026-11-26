@@ -86,6 +86,22 @@ branch and actual MACA backend. For Qwen4 Exp, verify QSA with fused preparation
 and ordinary full attention with QSA disabled. Record current evidence or mark the affected
 configuration unverified until its obligations can be met.
 
+## Framework dynamic import review
+
+When a model audit reports dynamic imports from shared plugin patch code, review the
+actual targets and their callers. Record reviewed sites under this heading in the model
+directory's `SPEC.md`. The fenced JSON object contains the local `entry`, the full
+`upstream_revision`, the `closure_sha256` and a `sites` list. Each site records its
+repository-relative `file`, one-based `line` and review `reason`.
+
+Generate the closure hash from the unreviewed audit for this exact entry. Hash the
+UTF-8 bytes of `json.dumps(report["files"], sort_keys=True)` with SHA-256. The
+audit binds the review to the complete hashed graph. It reports accepted sites
+separately and rejects changed graphs, missing sites and sites outside
+`vllm_metax/patch/`. Model dynamic imports and concrete-model import checks remain
+subject to the standard audit. Review the recorded targets again when the hash or
+upstream revision changes.
+
 ## Tool binding
 
 Include the spec in its source task's files. Before local source checks run, use

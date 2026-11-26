@@ -109,3 +109,43 @@ capability-gated. They are not selected on MACA.
   model-level V4.1 validation.
 - Validate INT8 compressed, SWA-only, ratio-1 and ratio-2 layers in final
   model runs when a sample is available.
+
+## Framework dynamic import review
+
+```json
+{
+  "entry": "vllm_metax/models/deepseek_v41/__init__.py",
+  "upstream_revision": "62d4bc3c7e33b1b6c906e233e6af2d3506c482ca",
+  "closure_sha256": "81c6337a7e4502b4ec1beee61e776e7ab3702d28d741cc3811f45a5128092eac",
+  "sites": [
+    {
+      "file": "vllm_metax/patch/enhancement/performance/mooncake_early_ready.py",
+      "line": 55,
+      "reason": "Probe the fixed Mooncake KV connector identified by _MOD."
+    },
+    {
+      "file": "vllm_metax/patch/enhancement/performance/packed_moe_adapter.py",
+      "line": 197,
+      "reason": "Apply optional initializer hooks from DECODER_LAYERS. The local DeepSeek decoder remains a local class."
+    },
+    {
+      "file": "vllm_metax/patch/utils.py",
+      "line": 255,
+      "reason": "Resolve decorator targets for the shared module attribute patch registry."
+    },
+    {
+      "file": "vllm_metax/patch/utils.py",
+      "line": 310,
+      "reason": "Resolve the package parent for a framework module redirection."
+    },
+    {
+      "file": "vllm_metax/patch/utils.py",
+      "line": 430,
+      "reason": "Resolve decorator targets for the shared class attribute patch registry."
+    }
+  ]
+}
+```
+
+The quantization registry and shared runtime utilities reach these patch sites.
+The registered target and draft still resolve to the local V4.1 implementation.

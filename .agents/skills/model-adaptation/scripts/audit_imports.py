@@ -276,23 +276,134 @@ def _declarations(root, entries, specs, upstream_source):
     return declarations
 
 
+def _framework_reviews(root, specs, upstream_source):
+    reviews = {}
+    revision = None
+    for spec in specs:
+        path = (root / spec).resolve()
+        text = path.read_text()
+        heading = r"^## Framework dynamic import review[ \t]*$"
+        if not re.search(heading, text, re.M):
+            continue
+        block = re.search(
+            heading + r"\n\s*```json[ \t]*\n(.*?)^```[ \t]*$",
+            text,
+            re.M | re.S,
+        )
+        if block is None or len(re.findall(heading, text, re.M)) != 1:
+            raise ValueError(f"Expected one framework dynamic import review in {spec}")
+        row = json.loads(block[1])
+        if (
+            not isinstance(row, dict)
+            or set(row) != {"entry", "upstream_revision", "closure_sha256", "sites"}
+            or not isinstance(row["entry"], str)
+            or not isinstance(row["closure_sha256"], str)
+            or not re.fullmatch(r"[0-9a-f]{64}", row["closure_sha256"])
+            or not isinstance(row["sites"], list)
+            or not row["sites"]
+        ):
+            raise ValueError(f"Invalid framework dynamic import review in {spec}")
+        if upstream_source is None:
+            raise ValueError(
+                "Framework dynamic review needs the selected vLLM checkout"
+            )
+        if revision is None:
+            revision = subprocess.check_output(
+                ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+                cwd=upstream_source,
+                text=True,
+            ).strip()
+        if row["upstream_revision"] != revision:
+            raise ValueError(
+                f"Framework dynamic review targets a different vLLM revision in {spec}"
+            )
+        entry = row["entry"]
+        entry_path = (root / entry).resolve()
+        if (
+            path.name != "SPEC.md"
+            or path.parent == root / "vllm_metax/models"
+            or not path.is_relative_to(root / "vllm_metax/models")
+            or not entry_path.is_relative_to(path.parent)
+            or entry_path.suffix != ".py"
+            or entry_path.relative_to(root).as_posix() != entry
+            or entry in reviews
+        ):
+            raise ValueError(
+                f"Framework dynamic review needs one local model entry in {spec}"
+            )
+        sites = {}
+        for site in row["sites"]:
+            if (
+                not isinstance(site, dict)
+                or set(site) != {"file", "line", "reason"}
+                or not isinstance(site["file"], str)
+                or type(site["line"]) is not int
+                or site["line"] < 1
+                or not isinstance(site["reason"], str)
+                or not site["reason"].strip()
+            ):
+                raise ValueError(f"Invalid reviewed framework import site in {spec}")
+            file = (root / site["file"]).resolve()
+            key = (site["file"], site["line"])
+            if (
+                not file.is_relative_to(root / "vllm_metax/patch")
+                or file.suffix != ".py"
+                or file.relative_to(root).as_posix() != site["file"]
+                or key in sites
+            ):
+                raise ValueError(
+                    f"Reviewed dynamic imports must name unique framework patch sites in {spec}"
+                )
+            sites[key] = site["reason"]
+        reviews[entry] = (row["closure_sha256"], sites, spec)
+    return reviews
+
+
+def _apply_framework_review(result, review):
+    digest, sites, spec = review
+    actual = hashlib.sha256(
+        json.dumps(result["files"], sort_keys=True).encode()
+    ).hexdigest()
+    if digest != actual:
+        raise ValueError(f"Framework dynamic import review is stale in {spec}")
+    pending = []
+    reviewed = []
+    for item in result["dynamic_imports"]:
+        key = (item["file"], item["line"])
+        if key in sites:
+            reviewed.append({**item, "reason": sites[key], "spec": spec})
+        else:
+            pending.append(item)
+    if set(sites) != {(item["file"], item["line"]) for item in reviewed}:
+        raise ValueError(
+            f"Framework dynamic import review contains unreachable sites in {spec}"
+        )
+    result["dynamic_imports"] = pending
+    result["reviewed_framework_dynamic_imports"] = reviewed
+
+
 def audit(root, entries, specs=(), upstream_source=None):
     root = Path(root).resolve()
     declarations = _declarations(root, entries, specs, upstream_source)
-    if not declarations:
+    reviews = _framework_reviews(root, specs, upstream_source)
+    if not declarations and not reviews:
         return _audit(root, entries, {})
     report = _audit(root, (), {})
     boundaries = set()
+    report["reviewed_framework_dynamic_imports"] = []
     for entry in dict.fromkeys(entries):
         result = _audit(root, (entry,), declarations.get(entry, {}))
+        if entry in reviews:
+            _apply_framework_review(result, reviews[entry])
         report["files"].update(result["files"])
         boundaries.update(result["public_framework_boundaries"])
         for key in (
             "prohibited_imports",
             "dynamic_imports",
             "upstream_component_reuse",
+            "reviewed_framework_dynamic_imports",
         ):
-            report[key].extend({"entry": entry, **item} for item in result[key])
+            report[key].extend({"entry": entry, **item} for item in result.get(key, []))
     report["public_framework_boundaries"] = sorted(boundaries)
     return report
 

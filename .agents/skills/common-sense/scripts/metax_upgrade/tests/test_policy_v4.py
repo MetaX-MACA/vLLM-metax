@@ -2,6 +2,7 @@
 # 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 """Scoped invalidation, mandatory local checks, model audits and baseline coverage."""
 
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -241,6 +242,124 @@ class PolicyTests(unittest.TestCase):
             "vllm.models.common.ops.sequence_parallel",
             json.loads(result.stdout)["public_framework_boundaries"],
         )
+
+    def test_framework_dynamic_review_is_bound_to_the_exact_model_closure(self):
+        root = self.fixture.metax
+        entry = "vllm_metax/models/example/__init__.py"
+        site = "vllm_metax/patch/example.py"
+        model = root / entry
+        model.parent.mkdir(parents=True)
+        model.write_text("from vllm_metax.patch.example import install\n")
+        patch = root / site
+        patch.parent.mkdir()
+        patch.write_text(
+            "from importlib import import_module\ndef install(target):\n    return import_module(target)\n"
+        )
+        auditor = (
+            Path(model_coverage.__file__).resolve().parents[3]
+            / "model-adaptation/scripts/audit_imports.py"
+        )
+        command = [
+            sys.executable,
+            "-B",
+            str(auditor),
+            "--source",
+            str(root),
+            "--entry",
+            entry,
+        ]
+        upstream = self.fixture.vllm
+        subprocess.run(["git", "init", "-q", upstream], check=True)
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                upstream,
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.test",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "--no-gpg-sign",
+                "-m",
+                "Fixture",
+            ],
+            check=True,
+        )
+        revision = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=upstream, text=True
+        ).strip()
+
+        def raw_audit():
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1)
+            return json.loads(result.stdout)
+
+        spec = model.with_name("SPEC.md")
+        reviewed_command = command + [
+            "--spec",
+            str(spec),
+            "--upstream-source",
+            str(upstream),
+        ]
+
+        def declare(sites, *, target=revision):
+            sources = raw_audit()["files"]
+            declaration = {
+                "entry": entry,
+                "upstream_revision": target,
+                "closure_sha256": hashlib.sha256(
+                    json.dumps(sources, sort_keys=True).encode()
+                ).hexdigest(),
+                "sites": sites,
+            }
+            spec.write_text(
+                "## Framework dynamic import review\n\n```json\n"
+                + json.dumps(declaration)
+                + "\n```\n"
+            )
+
+        site_review = {
+            "file": site,
+            "line": 3,
+            "reason": "Resolve a known framework hook.",
+        }
+        declare([site_review])
+        result = subprocess.run(reviewed_command, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        reviewed = json.loads(result.stdout)
+        self.assertEqual(reviewed["dynamic_imports"], [])
+        self.assertEqual(
+            reviewed["reviewed_framework_dynamic_imports"][0]["file"], site
+        )
+
+        model.write_text(
+            model.read_text() + "from vllm.models.example import ConcreteModel\n"
+        )
+        result = subprocess.run(reviewed_command, capture_output=True, text=True)
+        self.assertIn("review is stale", result.stderr)
+        declare([site_review])
+        result = subprocess.run(reviewed_command, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(
+            json.loads(result.stdout)["prohibited_imports"][0]["module"],
+            "vllm.models.example",
+        )
+
+        declare([site_review], target="0" * 40)
+        result = subprocess.run(reviewed_command, capture_output=True, text=True)
+        self.assertIn("different vLLM revision", result.stderr)
+
+        model.write_text(model.read_text() + "__import__(module_name)\n")
+        declare(
+            [site_review, {"file": entry, "line": 3, "reason": "Model-owned site."}]
+        )
+        result = subprocess.run(reviewed_command, capture_output=True, text=True)
+        self.assertIn("unique framework patch sites", result.stderr)
 
 
 class BaselineCoverageTests(unittest.TestCase):
