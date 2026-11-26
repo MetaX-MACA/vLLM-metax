@@ -30,10 +30,8 @@ logits rounding remain active.
   imports are rewritten to this local mirror.
 - `common/`, `common/ops/`, model entry/config code and the renamed `metax/`
   implementation are retained even where unchanged. Qwen3.5, Qwen3Next and
-  Qwen3-VL remain external reusable model components from upstream because they
-  are outside the Qwen4Exp model-owned directory.
-- Top-level Qwen4Exp model construction is local. Import audit reports zero
-  prohibited family imports and zero unresolved dynamic imports.
+  Qwen3-VL resolve through local model modules outside the Qwen4Exp directory.
+  Model construction, ordinary full attention and MTP use local entries.
 
 ## 4. Weights and compute
 
@@ -42,8 +40,8 @@ logits rounding remain active.
   index head dimension 128, 512 experts, ten active experts, and one MTP layer.
 - Preserve target PLE shard loading, FP8/NVFP4 table decoding, hyper-connection
   sharding, GDN state, QSA projections, and MTP mappings.
-- C500 executes BF16 activations and supported W8A8 linears. NVFP4/FP8
-  lookup branches remain source-adapted and unverified.
+- C500 uses BF16 activations and supported W8A8 linears. NVFP4/FP8
+  lookup requires the corresponding table backend.
 
 ## 5. Attention and cache
 
@@ -77,31 +75,30 @@ logits rounding remain active.
 - N-gram embedding preserves target hash arithmetic and int64 overflow
   semantics.
 
-## 7. Chip scope and validation
+## 7. MACA porting recipe
 
-- Bound sample: `Qwen3.8-Flash-Next-dummy-3layers`, TP4 dummy smoke.
-- Source acceptance covers import audit, registration, QSA cache geometry and
-  selector numerics, PLE gate numerics, and MTP dispatch.
-- Final acceptance requires normal-entry prefill, two-token decode,
-  concurrent batches, and `tools/batched_test --infer`.
-- FP8/FP4 PLE and cache branches remain unverified on C500.
+Mirror the target QSA attention, common indexer and cache types. Make the
+local `QSAIndexer` share target metadata with the Triton top-k fallback. Carry
+Q and compressed K in the same dtype, preserve the int32 index units and
+round the logits width to the target 64-column multiple. Use local
+`qwen3_next.Qwen3NextAttention` for ordinary full attention and the projection
+method QSA uses before cache preparation. Keep local Qwen3.5 and Qwen3-VL
+model components for GDN and multimodal dispatch.
 
-## 8. Open obligations
+Build PLE/n-gram tables using the target sharding, hash and padding contracts.
+Keep local lookup/normalization and use a stream only where the projection
+ordering permits it. Apply the target SP rule once before the hyper-connection
+reduction. Map the draft layer and output head to the corresponding local
+Qwen4Exp MTP, preserving state tensors when switching target worker APIs.
 
-- Final model e2e and batched evidence are recorded in validation.
-- Revisit NVFP4 and FP8 table/cache execution on supported hardware.
-
-## Native NIXL transfer contract on vLLM 0.33.0
+## Native NIXL transfer contract
 
 QSA advertises KV connector support only for the built-in `NixlConnector`.
 Configuration validation runs before checkpoint loading and requires GPU cache
 buffers, PP=1, hybrid cache management and DS convolution state layout. Sequential
 Qwen4Exp MTP is accepted only with the matching draft architecture; parallel drafts
 and custom connectors require a separate implementation. Both endpoints must have
-matching cache-owner and MTP configurations. The native handshake validates cache
-compatibility; this guard does not establish end-to-end transfer correctness.
+matching cache-owner and MTP configurations. The native handshake checks cache compatibility.
 
-QSA, GDN and replicated PLE state remain cache owners. Native 0.33.0 NIXL preserves
-recurrent/circular caches and excludes speculative scratch slots. Component guards
-and HTTP proxy contracts can be tested locally; real P/D transfer, recurrent-state
-numerics and MTP generation remain unverified until compatible endpoints are run.
+QSA, GDN and replicated PLE state remain cache owners. The native NIXL contract preserves
+recurrent/circular caches and excludes speculative scratch slots.

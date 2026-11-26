@@ -40,7 +40,7 @@ def synchronize(state):
             row["status"] = "pending"
 
 
-def review_model(run_dir, state, task_id, entries, specs):
+def review_model(run_dir, state, task_id, entries, specs, framework_reviews=()):
     store = _store()
     task = state["tasks"][task_id]
     root = Path(state["inputs"]["metax_source"])
@@ -70,6 +70,11 @@ def review_model(run_dir, state, task_id, entries, specs):
             state["inputs"]["vllm_source"],
             *[arg for entry in entries for arg in ("--entry", entry)],
             *[arg for spec in specs for arg in ("--spec", spec)],
+            *[
+                arg
+                for review in framework_reviews
+                for arg in ("--framework-review", str(review.resolve()))
+            ],
         ],
         capture_output=True,
         text=True,

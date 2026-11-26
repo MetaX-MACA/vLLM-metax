@@ -78,12 +78,13 @@ Before model adaptation, create or update the model's own spec in its implementa
 directory. Use `SPEC.md` for a dedicated model directory, or `<model>.SPEC.md` beside a
 flat model file; give separately maintained models their own spec. The run links the
 spec but is not its canonical location. Follow [spec-guide.md](references/spec-guide.md).
-Keep it current with the final implementation and verified/unverified scope.
+Keep it current with the final MACA implementation so the next adaptation can reproduce it.
+Keep run-specific audit data, status and validation artifacts outside the checkout.
 
 For every model record exact target/prior identities, the CUDA-to-MACA difference
 matrix, the complete local mirror contents and vendor mapping, local dependency
 ownership and exact shared upstream imports, weight mapping and post-load transforms,
-execution paths, capability limits and acceptance evidence.
+execution paths, capability limits and workarounds.
 
 For DSv4 and other private-attention/indexer models, explicitly specify both upstream
 and MetaX attention **and indexer** cache quantization, physical block byte layout,
@@ -124,8 +125,8 @@ review, while acceptance evidence comes from running the consuming model. Re-rev
 validate the uses when the upstream commit or component contract changes.
 
 Exercise loading in the declared format (real checkpoint loading for real weights), post-load parameter state,
-prefill/decode and supported modality, LoRA/MTP, graph and parallel branches. Link the
-normal-entry e2e and batched inference results to the model spec and configured matrix.
+prefill/decode and supported modality, LoRA/MTP, graph and parallel branches. Link the normal-entry e2e and batched inference results to the reviewed specs and
+configured matrix in the external run.
 Warnings, mocks or a successful local class import cannot satisfy model isolation.
 
 For a bug also present upstream, retain the smallest justified model-local workaround
@@ -137,3 +138,8 @@ Declare `dummy_smoke` or `accuracy` for each configured model row and apply the
 [shared acceptance and sample binding rules](../common-sense/SKILL.md#baseline-model-acceptance).
 In a full upgrade, bind every baseline sample with `model-bind`. For standalone work,
 validate the declared model and configuration scope.
+
+At completion, write a review report outside the repository. Diff the final tree
+against the pre-upgrade MetaX baseline. For every changed file record the reason,
+intended behavior, implementation and relevant evidence or coverage limits.
+Include additions, deletions, shared dependencies, build, tests and documentation.

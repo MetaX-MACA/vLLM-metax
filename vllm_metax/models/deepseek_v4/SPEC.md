@@ -25,9 +25,8 @@
 | Router GEMM | Target CUTLASS/CuteDSL tiers | FP32 `_C` router kernel plus `torch.mm` epilogue | `metax/gate_linear.py` |
 | MegaMoE | SM100 DeepGEMM | Ordinary MoE only; unsupported MegaMoE rejects | `metax/model.py` |
 
-The packed FP8/FP4 implementations remain source-adapted but are unverified on
-C500. Removal is conditional on a supported chip and installed component
-providing the exact target record and arithmetic.
+Enable the packed FP8/FP4 implementations only with a chip and kernel
+provider that support the exact cache record and arithmetic.
 
 ## 3. Local model dependencies
 
@@ -39,10 +38,8 @@ providing the exact target record and arithmetic.
   than imported from upstream.
 - Public framework APIs under `vllm.model_executor.models.{utils,interfaces,
   registry,config,adapters}` and `vllm.models.common` remain upstream.
-- `audit_imports.py` reaches all local helpers from `deepseek_v4/__init__.py`
-  and reports zero prohibited concrete-model imports and zero unresolved
-  dynamic imports. Same-family `vllm.models.deepseek_v4...` imports and the
-  removed AMD/XPU/CPU trees are prohibited.
+- Bind the registered entries in `deepseek_v4/__init__.py` to this local
+  family, including the vision implementation and each configured drafter.
 
 ## 4. Weights and compute
 
@@ -62,7 +59,23 @@ providing the exact target record and arithmetic.
 
 ## 5. Attention and indexer cache
 
-### Main/SWA BF16 cache
+### Upstream CUDA packed caches
+
+For `fp8_ds_mla`, upstream `attention.py` publishes a 584-byte state.
+`common/ops/cache_utils.py` stores all 576-byte data rows before the
+scale region in each page. Each data row has 448 E4M3 NoPE bytes and 64
+BF16 RoPE values (128 bytes). The scale region gives each row seven UE8M0
+scales covering 64 values each and a padding byte. The page stride may add
+padding to a multiple of 576. The reader computes the data and scale offsets
+from the physical page and stored-state ordinal.
+
+The upstream indexer stores 128 FP8 key values with one FP32 scale in a
+132-byte row, or 64 packed MXFP4 bytes with four UE8M0 scales in a 68-byte
+row. The indexer cache spec declares the compressed state ratio. Its CUDA
+backend and the main cache dtype determine page alignment. On MACA the
+132-byte row holds INT8 key values and an FP32 scale.
+
+### MACA main/SWA BF16 cache
 
 - Shape is `[num_blocks, block_size, 512]`, BF16, one KV head.
 - The last dimension is 448 NoPE plus 64 RoPE values; it is contiguous and
@@ -103,20 +116,23 @@ physical block and logical slot units. Top-k/gather workspace width is
   consume local tokens and return local outputs; callers perform any required
   final gather or reduction exactly once.
 
-## 7. Chip scope and validation
+## 7. MACA porting recipe
 
-- Current scope: MetaX C500, source kernel provider,
-  `USE_PRECOMPILED_KERNEL=0`, BF16/INT8.
-- Required sample: `DeepSeek-V4-Flash-0731-smq-w8a8`, TP1, dummy smoke.
-- `DeepSeek-V4-Flash-FP8_sgl_project` is an explicit unsupported C500
-  rejection row. FP8/FP4 compute and cache branches remain unverified.
-- Source acceptance covers import closure, registration, indexer/cache
-  geometry and numerics. Final acceptance additionally requires normal-entry
-  prefill, at least two decode tokens, concurrent requests, and
-  `tools/batched_test --infer`.
+Use the target attention wrapper to configure `DeepseekV4GroupedWoA`. Keep
+the group count per TP shard and call `grouped_forward` before flattening into
+`WoB`. The C500 path keeps the inverse RoPE output in BF16 and performs grouped
+projection without the FP8 einsum. Keep the FP8 route gated. In particular,
+LoRA requires the BF16 `WoA` input and therefore disallows fused RopeQuant.
 
-## 8. Open obligations
+Keep the compressor wkv/wgate linear merged and emit FP32 state via
+`DeepseekV4CompressorKVScoreLinear`. Feed explicit token positions and allocator
+block spans through the SWA and compressed cache paths. Short contexts must
+have valid top-k rows even when all keys fit. Match inverse RoPE head packing
+and output strides before replacing a backend.
 
-- Final model e2e and batched evidence are recorded only in validation.
-- Revisit FP8/FP4 cache and compute on hardware and components with explicit
-  support for the corresponding record and arithmetic.
+Use the local qwen3_dspark helpers. Compute draft logits with `skip_gather=True`
+for each TP rank and let the target `DraftLogitsCache` row mapping select the
+logit rows. Allocate the pre-`hc_head` residual buffer only for drafters that
+consume it. DSpark reads the auxiliary hidden states instead. A later decoder
+layer can reuse the residual storage after attention has consumed it. The
+first layer must treat the initial x alias as read-only.

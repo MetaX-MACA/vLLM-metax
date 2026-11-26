@@ -19,15 +19,13 @@
 ## 3. Local model dependencies
 
 - Uses local `step3p5.py`, `step3p5_mtp.py`, and public framework APIs.
-- No upstream concrete Step model is inherited or constructed; import audit
-  reports zero prohibited and zero unresolved dynamic imports.
 
 ## 4. Weights and compute
 
 - Preserve target router shape `(352,4096)`, shared-expert routing, SwiGLU
   clamp, sharding, and MTP mappings.
-- C500 support is BF16 with ordinary MoE. FP8/FP4 and unsupported MegaMoE
-  paths reject or remain unverified.
+- Use BF16 and ordinary MoE on C500. MegaMoE and packed FP8/FP4 paths
+  require their corresponding kernel and quantization backends.
 
 ## 5. Attention and cache
 
@@ -44,12 +42,12 @@
 - MTP preserves target draft-layer indexing and the parent hidden-state source.
   The vLLM loader owns missing-parameter checks and exempts optional KV scales.
 
-## 7. Chip scope and validation
+## 7. MACA porting recipe
 
-- No Step model sample exists under `tools/models/`.
-- Source acceptance covers import audit, registration, and router shape/numeric
-  compatibility.
-
-## 8. Open obligations
-
-- Add and bind a Step dummy sample before claiming model-level validation.
+Copy the target Step config resolvers into `step3p5.py` and import them from
+`step3p5_mtp.py`. Form the absolute layer list from `layer_types` and
+`mtp_layer_types`, and the expert list from `mlp_layer_types` and
+`mtp_mlp_layer_types`. Preserve the remote-code variants for sliding heads,
+layer-specific RoPE and `moe_layers_enum`. Use the target shared MTP loader
+completeness checks. Keep the local router and expert-output reduction at the
+same points in the target decoder flow.

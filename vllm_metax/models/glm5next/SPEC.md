@@ -30,8 +30,7 @@ The target top-k width contract remains `round_up(index_topk + index_kpool -
 - `common/` retains the full non-vendor model, attention, KDA, multimodal, MTP
   and sparse-indexer implementation. The NVIDIA-derived K-pool/KDA and model
   implementation is under local `metax/`.
-- No upstream concrete GLM or DeepSeek model is inherited or constructed.
-  Import audit reports zero prohibited and zero unresolved dynamic imports.
+- The model uses local GLM4.1V vision and local DeepSeek MoE/draft helpers.
 
 ## 4. Weights and compute
 
@@ -43,7 +42,8 @@ The target top-k width contract remains `round_up(index_topk + index_kpool -
   multimodal projection, checkpoint names, and post-load repacking.
 - The weight loader preserves checkpoint INT8 scales when an attention
   projection stores INT8 weights.
-- C500 executes BF16/INT8. FP8/FP4 branches are source-reviewed but unverified.
+- Use BF16/INT8 on C500. An FP8/FP4 branch requires a matching kernel
+  and support for its cache and activation formats.
 
 ## 5. Attention and indexer cache
 
@@ -77,17 +77,22 @@ The target top-k width contract remains `round_up(index_topk + index_kpool -
 - Sequence/context-parallel exchange reserves transient rows before top-k
   exchange and uses `cache_interleave_size / index_kpool` for pool units.
 
-## 7. Chip scope and validation
+## 7. MACA porting recipe
 
-- Bound sample: `GLM-5.3-Flash-dummy-3layers-w8a8`, TP1 dummy smoke.
-- Source acceptance covers import audit, registration, K-pool INT8/BF16
-  geometry and numerics, and top-k-buffer width.
-- Final acceptance requires normal-entry prefill, two-token decode,
-  concurrent batches, and `tools/batched_test --infer`.
-- FP8/FP4 cache and compute paths remain unverified on C500.
+Port the target KDA merged QKV convolution and parameter shard loader
+together. Keep the MACA Triton prefill path and its L2 normalization warmup.
+Use the local GLM 4.1V vision helpers and the local attention selector. For
+pre-sampled video, use the supplied frame indices for timestamps.
 
-## 8. Open obligations
+Allocate the tail ring from the pool size and speculative width. Pass the same
+ring size to the BF16 and INT8 writers. Use logical position modulo ring size
+for physical history lookup and modulo pool size for compression. In graph
+decode put padded tokens in a disposable request row. In ShardQ prefill gather
+Q, scales, weights and positions with the same token indices. Round BF16
+logits at the score stage, then convert to FP32 for MACA top-k.
 
-- Final model e2e and batched evidence are recorded in validation.
-- Revisit CUDA-only KDA/mHC and FP8/FP4 branches on explicitly supported
-  hardware.
+Reuse loaded INT8 weights and preserve their checkpoint scales. Build/refill
+the FP32 head-gate derived tensor after loading before the indexer consumes
+it. Keep MTP registration and expert-prefix selection aligned with the parent.
+Use the regular MACA W8A8 experts on C500. The upstream MegaMoE branch requires
+a compatible backend, EP, TP=1 and its own block-scale loader.

@@ -276,23 +276,16 @@ def _declarations(root, entries, specs, upstream_source):
     return declarations
 
 
-def _framework_reviews(root, specs, upstream_source):
+def _framework_reviews(root, entries, review_files, upstream_source):
     reviews = {}
     revision = None
-    for spec in specs:
-        path = (root / spec).resolve()
-        text = path.read_text()
-        heading = r"^## Framework dynamic import review[ \t]*$"
-        if not re.search(heading, text, re.M):
-            continue
-        block = re.search(
-            heading + r"\n\s*```json[ \t]*\n(.*?)^```[ \t]*$",
-            text,
-            re.M | re.S,
-        )
-        if block is None or len(re.findall(heading, text, re.M)) != 1:
-            raise ValueError(f"Expected one framework dynamic import review in {spec}")
-        row = json.loads(block[1])
+    for path in review_files:
+        path = Path(path).resolve()
+        if path.is_relative_to(root):
+            raise ValueError(
+                "Framework import review files must stay outside the source tree"
+            )
+        row = json.loads(path.read_text())
         if (
             not isinstance(row, dict)
             or set(row) != {"entry", "upstream_revision", "closure_sha256", "sites"}
@@ -302,7 +295,7 @@ def _framework_reviews(root, specs, upstream_source):
             or not isinstance(row["sites"], list)
             or not row["sites"]
         ):
-            raise ValueError(f"Invalid framework dynamic import review in {spec}")
+            raise ValueError(f"Invalid framework dynamic import review in {path}")
         if upstream_source is None:
             raise ValueError(
                 "Framework dynamic review needs the selected vLLM checkout"
@@ -315,21 +308,19 @@ def _framework_reviews(root, specs, upstream_source):
             ).strip()
         if row["upstream_revision"] != revision:
             raise ValueError(
-                f"Framework dynamic review targets a different vLLM revision in {spec}"
+                f"Framework dynamic review targets a different vLLM revision in {path}"
             )
         entry = row["entry"]
         entry_path = (root / entry).resolve()
         if (
-            path.name != "SPEC.md"
-            or path.parent == root / "vllm_metax/models"
-            or not path.is_relative_to(root / "vllm_metax/models")
-            or not entry_path.is_relative_to(path.parent)
+            entry not in entries
+            or not entry_path.is_relative_to(root / "vllm_metax/models")
             or entry_path.suffix != ".py"
             or entry_path.relative_to(root).as_posix() != entry
             or entry in reviews
         ):
             raise ValueError(
-                f"Framework dynamic review needs one local model entry in {spec}"
+                f"Framework dynamic review needs one audited model entry in {path}"
             )
         sites = {}
         for site in row["sites"]:
@@ -342,7 +333,7 @@ def _framework_reviews(root, specs, upstream_source):
                 or not isinstance(site["reason"], str)
                 or not site["reason"].strip()
             ):
-                raise ValueError(f"Invalid reviewed framework import site in {spec}")
+                raise ValueError(f"Invalid reviewed framework import site in {path}")
             file = (root / site["file"]).resolve()
             key = (site["file"], site["line"])
             if (
@@ -352,40 +343,40 @@ def _framework_reviews(root, specs, upstream_source):
                 or key in sites
             ):
                 raise ValueError(
-                    f"Reviewed dynamic imports must name unique framework patch sites in {spec}"
+                    f"Reviewed dynamic imports must name unique framework patch sites in {path}"
                 )
             sites[key] = site["reason"]
-        reviews[entry] = (row["closure_sha256"], sites, spec)
+        reviews[entry] = (row["closure_sha256"], sites, path.name)
     return reviews
 
 
 def _apply_framework_review(result, review):
-    digest, sites, spec = review
+    digest, sites, path = review
     actual = hashlib.sha256(
         json.dumps(result["files"], sort_keys=True).encode()
     ).hexdigest()
     if digest != actual:
-        raise ValueError(f"Framework dynamic import review is stale in {spec}")
+        raise ValueError(f"Framework dynamic import review is stale in {path}")
     pending = []
     reviewed = []
     for item in result["dynamic_imports"]:
         key = (item["file"], item["line"])
         if key in sites:
-            reviewed.append({**item, "reason": sites[key], "spec": spec})
+            reviewed.append({**item, "reason": sites[key], "review_file": path})
         else:
             pending.append(item)
     if set(sites) != {(item["file"], item["line"]) for item in reviewed}:
         raise ValueError(
-            f"Framework dynamic import review contains unreachable sites in {spec}"
+            f"Framework dynamic import review contains unreachable sites in {path}"
         )
     result["dynamic_imports"] = pending
     result["reviewed_framework_dynamic_imports"] = reviewed
 
 
-def audit(root, entries, specs=(), upstream_source=None):
+def audit(root, entries, specs=(), upstream_source=None, framework_reviews=()):
     root = Path(root).resolve()
     declarations = _declarations(root, entries, specs, upstream_source)
-    reviews = _framework_reviews(root, specs, upstream_source)
+    reviews = _framework_reviews(root, entries, framework_reviews, upstream_source)
     if not declarations and not reviews:
         return _audit(root, entries, {})
     report = _audit(root, (), {})
@@ -414,9 +405,16 @@ if __name__ == "__main__":
     parser.add_argument("--entry", action="append", required=True)
     parser.add_argument("--spec", action="append", default=[])
     parser.add_argument("--upstream-source", type=Path)
+    parser.add_argument("--framework-review", type=Path, action="append", default=[])
     args = parser.parse_args()
     try:
-        report = audit(args.source, args.entry, args.spec, args.upstream_source)
+        report = audit(
+            args.source,
+            args.entry,
+            args.spec,
+            args.upstream_source,
+            args.framework_review,
+        )
     except (ValueError, OSError, subprocess.CalledProcessError) as exc:
         parser.error(str(exc))
     print(json.dumps(report, indent=2))

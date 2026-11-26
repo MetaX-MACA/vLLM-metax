@@ -32,7 +32,6 @@ An SM100 capability alias never enables MSA on MACA.
   tower, multimodal preprocessing and encoder graph implementation. Local
   `metax/` contains the complete NVIDIA-derived model and backend paths.
 - No upstream concrete MiniMax or Qwen model is inherited or constructed.
-- Import audit reports zero prohibited and zero unresolved dynamic imports.
 
 ## 4. Weights and compute
 
@@ -80,19 +79,27 @@ An SM100 capability alias never enables MSA on MACA.
 - Dense MLP and shared-expert accumulation occur before the single required
   tensor-parallel reduction.
 
-## 7. Chip scope and validation
+## 7. MACA porting recipe
 
-- No MiniMax sample currently exists under `tools/models/`.
-- Source acceptance covers import audit, registration, index score/top-k,
-  sparse attention and cache geometry.
-- Model-level smoke remains unbound; FP8/NVFP4 and real checkpoint validation
-  remain unavailable on C500.
+Use the target MiniMax loader order and local sparse attention/indexer.
+Preserve input aliases and the FP32 residual sum in Gemma RMSNorm. Use the
+local Triton norm helper for eligible BF16 rows and select its MXFP8 output
+only when the following GEMM accepts that format. Keep CuTe, MSA, NVFP4
+indexer and grouped GEMMs behind their hardware checks and lazy imports.
 
-## 8. Open obligations
+Propagate `write_qkv` across the Python wrapper, stable Torch schema, C++
+interface and kernel launch. With the default flag, write the rotated
+packed QKV as before. When the caller passes False, require an FP8 Q
+destination, skip packed QKV stores and still write the cache. Discover
+optional support from the loaded operator schema so the wrapper can use the
+older native signature for its default route.
 
-- Add and bind a dummy MiniMax sample for final prefill/decode and batched
-  smoke acceptance.
-- Validate FP8/NVFP4/MSA branches on supported hardware and components.
-- Native group-32 MXFP4 GEMM and complete-checkpoint inference remain pending on
-  compatible hardware; synthetic config/loading and TP/EP shard mapping are the
-  target-side acceptance checks.
+Keep the target DSpark implementation in `common/dspark.py` and use
+`metax/dspark.py` for the registered draft. For context KV, retain the
+registered QKV quantization method. Apply the hidden norm, run each layer's
+QKV projection and slice K/V after its Q width. Stack the layer results,
+then apply each layer's Gemma K norm with `weight + 1`. The upstream
+precomputation assumes ordinary RMSNorm weights. Keep that difference when
+reapplying the cache fill and rollback positioning. Retain the local indexer format for the selected attention path.
+The CUDA MSA/NVFP4 variants have separate index packing and scratch layouts
+and must not reinterpret the C500 cache.

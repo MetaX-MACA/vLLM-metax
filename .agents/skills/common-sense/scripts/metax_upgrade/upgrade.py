@@ -556,6 +556,9 @@ def parser():
             command.add_argument("--id", required=True)
             command.add_argument("--entry", action="append", required=True)
             command.add_argument("--spec", action="append", required=True)
+            command.add_argument(
+                "--framework-review", type=Path, action="append", default=[]
+            )
         elif name == "model-skip":
             command.add_argument("--id", required=True)
             command.add_argument(
@@ -800,7 +803,12 @@ def main(argv=None):
                 assert_ready(args.run_dir, state)
                 workflow.assert_task_start(state, args.id)
                 store.model_coverage.review_model(
-                    args.run_dir, state, args.id, args.entry, args.spec
+                    args.run_dir,
+                    state,
+                    args.id,
+                    args.entry,
+                    args.spec,
+                    args.framework_review,
                 )
             elif args.action == "model-bind":
                 assert_ready(args.run_dir, state)

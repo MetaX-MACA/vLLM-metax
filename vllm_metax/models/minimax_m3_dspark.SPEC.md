@@ -4,7 +4,7 @@
 
 - Registered architecture: `DSparkMiniMaxDraftModel`.
 - Target vLLM `v0.34.0`,
-  `62d4bc3c7e33b1b6c906e233e6af2d3506c482ca`; prior vLLM `v0.32.0`.
+  `62d4bc3c7e33b1b6c906e233e6af2d3506c482ca`; prior vLLM `v0.33.0`.
 - `minimax_m3_dspark.py` is a compatibility registration surface for the
   complete local `minimax_m3` implementation.
 
@@ -18,8 +18,8 @@
 ## 3. Local model dependencies
 
 - Delegates only to the local `vllm_metax.models.minimax_m3` package.
-- It does not import or inherit an upstream concrete MiniMax model; import
-  audit reports zero prohibited and zero unresolved dynamic imports.
+- `metax/dspark.py` uses local MiniMax attention and derives its draft
+  lifecycle from the local Qwen3 DSpark and DFlash modules.
 
 ## 4. Weights and compute
 
@@ -41,13 +41,11 @@
 - Preserve parent/self-speculative draft sharing, context projection, logits
   ownership, and MTP iteration state.
 
-## 7. Chip scope and validation
+## 7. MACA porting recipe
 
-- No MiniMax sample is bound; model-level DSpark validation is pending.
-- Source acceptance covers import audit, registration, and local parent
-  dispatch.
-
-## 8. Open obligations
-
-- Validate DSpark with a bound MiniMax dummy sample after the parent source and
-  patch phases are complete.
+Resolve `DSparkMiniMaxDraftModel` to the local MiniMax M3 draft. Match the
+target weight aliases and context layout in `common/dspark.py`.
+Reapply the MACA projection and Gemma K norm in `metax/dspark.py`.
+Preserve the parent model's auxiliary hidden-state order and draft KV
+positions when rebuilding the local draft. The chosen attention and quantization contracts come from MiniMax
+M3, so apply that model's MACA backend gate to the draft as well.

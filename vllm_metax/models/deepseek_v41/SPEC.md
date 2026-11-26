@@ -35,9 +35,9 @@ capability-gated. They are not selected on MACA.
 - `models.deepseek_v41.quant_config` remains local for the MACA quant config.
 - Shared public APIs remain under `vllm.model_executor.models` and
   `vllm.models.common`.
-- Encoder attention uses the local vision backend selector. The import
-  audit checks concrete-model dependencies; dynamic framework patch
-  imports remain subject to runtime dispatch verification.
+- Replace upstream encoder attention selection with the local vision
+  selector in `vllm_metax.models.vision`. Pass the selected backend into the
+  model-local encoder graph setup so capture and replay agree on the backend.
 
 ## 4. Weights and compute
 
@@ -47,12 +47,28 @@ capability-gated. They are not selected on MACA.
 - `shard_fused_wqa_wkv` uses one token shard per TP rank followed by an
   all-gather from 2048 tokens. Cache-position propagation remains explicit
   across PCP ranks.
-- C500 execution is BF16/INT8. FP8/MXFP8/NVFP4 checkpoint and cache branches
-  remain source-adapted but unverified.
+- Use BF16/INT8 on C500. Each FP8/MXFP8/NVFP4 checkpoint or cache branch
+  requires a backend that supports its exact format.
 
 ## 5. Attention and indexer cache
 
-### INT8 DS-MLA compressed and SWA cache
+### Upstream CUDA packed caches
+
+In target `common/ops/cache_utils.py`, the model-specific widths select
+the cache record. V4.1 MXFP8 stores 512 E4M3 bytes followed by sixteen
+UE8M0 scales per row, one scale per 32 dimensions. The 528-byte rows
+include the rotated RoPE values. V4.1 NVFP4 stores 256 packed E2M1 bytes with
+the even value in the low nibble, followed by 32 E4M3 scales, one per 16
+dimensions. This 288-byte format serves compressed KV. In both formats
+each state's scales immediately follow its data, and the page uses the
+allocator stride. The target's V4 compatibility record uses separate data
+and scale regions as described in the [V4 recipe](../deepseek_v4/SPEC.md).
+
+Target `attention.py` derives indexer widths independently. FP8 uses 128
+E4M3 bytes plus one FP32 scale. MXFP4 uses 64 packed bytes plus four UE8M0
+scales. On MACA the indexer uses symmetric INT8 in the 132-byte layout.
+
+### MACA INT8 DS-MLA compressed and SWA cache
 
 - A paged state has 576 bytes: 512 INT8 value bytes and 64 bytes of scales.
 - Values occupy `[0, block_size * 512)`; scales occupy the following
@@ -92,60 +108,26 @@ capability-gated. They are not selected on MACA.
   Engram hashing and token-aware expert routing. The first stage remains the
   token-ID producer; sequence-parallel token sharding requires PP=1.
 - `supports_aux_hidden_states_over_pp=True` declares this intermediate-state
-  contract. Multi-rank model execution remains unverified without a checkpoint.
+  contract.
 
-## 7. Chip scope and validation
+## 7. MACA porting recipe
 
-- Current scope: MetaX C500 source mode, BF16/INT8.
-- No V4.1 sample exists under `tools/models/`; model-level e2e is not claimed.
-- Source acceptance requires import audit, registration, INT8 cache
-  insert/gather numerics, compressor/cache geometry, and replay metadata
-  contracts.
-- FP8/FP4 branches remain unverified on C500.
+Start from the target V4.1 model, draft, replay and specialized-decode
+entries as one unit. Select the INT8 KV dispatch in `attention.py` and let
+`compressor.py` write to the same cache object that the local attention wrapper
+reads. Pass logical cache positions and physical slot mappings separately
+through PCP, the indexer and graph metadata. Keep ratio-1 and ratio-2 cache
+source sharing and preserve SWA-only layers. Copy the target sparse metadata
+contracts before substituting the CUDA packed record with the INT8 layout above.
 
-## 8. Open obligations
+Propagate `input_ids` across PP stage boundaries before Engram hash and token-aware
+expert selection. Preserve the Engram fallback and host-table behavior behind
+the target placement guards. Build replay metadata from the same per-layer
+state as eager execution. Allocate replay graph scratch and specialized decode workspace only for
+the selected graph and vendor paths.
 
-- Add and bind a V4.1 dummy or real checkpoint sample before claiming
-  model-level V4.1 validation.
-- Validate INT8 compressed, SWA-only, ratio-1 and ratio-2 layers in final
-  model runs when a sample is available.
-
-## Framework dynamic import review
-
-```json
-{
-  "entry": "vllm_metax/models/deepseek_v41/__init__.py",
-  "upstream_revision": "62d4bc3c7e33b1b6c906e233e6af2d3506c482ca",
-  "closure_sha256": "81c6337a7e4502b4ec1beee61e776e7ab3702d28d741cc3811f45a5128092eac",
-  "sites": [
-    {
-      "file": "vllm_metax/patch/enhancement/performance/mooncake_early_ready.py",
-      "line": 55,
-      "reason": "Probe the fixed Mooncake KV connector identified by _MOD."
-    },
-    {
-      "file": "vllm_metax/patch/enhancement/performance/packed_moe_adapter.py",
-      "line": 197,
-      "reason": "Apply optional initializer hooks from DECODER_LAYERS. The local DeepSeek decoder remains a local class."
-    },
-    {
-      "file": "vllm_metax/patch/utils.py",
-      "line": 255,
-      "reason": "Resolve decorator targets for the shared module attribute patch registry."
-    },
-    {
-      "file": "vllm_metax/patch/utils.py",
-      "line": 310,
-      "reason": "Resolve the package parent for a framework module redirection."
-    },
-    {
-      "file": "vllm_metax/patch/utils.py",
-      "line": 430,
-      "reason": "Resolve decorator targets for the shared class attribute patch registry."
-    }
-  ]
-}
-```
-
-The quantization registry and shared runtime utilities reach these patch sites.
-The registered target and draft still resolve to the local V4.1 implementation.
+The target's CUDA specialized-decode code includes CuTe top-k, NVFP4/MXFP8
+kernels, distributed mHC boundaries and fused collectors. Keep imports lazy in
+the local mirror. The local INT8 cache, per-request metadata and MACA sparse
+attention remain the C500 execution path. Confirm the backend gate for each
+vendor kernel before using it on a different chip.

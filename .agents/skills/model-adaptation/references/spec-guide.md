@@ -5,7 +5,9 @@ model specs beside code and link them from the upgrade task. A dedicated directo
 `SPEC.md`; a flat model file uses `<model>.SPEC.md`. Identify each model and draft variant
 covered; independently maintained models need their own document.
 
-Use these sections, with concrete values or explicit unknown/unverified entries:
+Write the recipe that an engineer can apply to the next upstream revision.
+Name the target upstream files and symbols, then describe the local replacements in
+execution order. Include the reason, conditions and removal criteria for local workarounds.
 
 1. **Identity and scope:** registered architectures, checkpoint variant, target/prior
    upstream revision and files, MetaX implementation files, retained features.
@@ -16,8 +18,7 @@ Use these sections, with concrete values or explicit unknown/unverified entries:
    into `vllm_metax.models.<model>` after excluding non-NVIDIA vendor/platform
    implementations, the local `nvidia/ -> metax/` mapping, rewritten
    imports/lazy references/registry strings, removed vendor directories, public
-   framework API boundaries, and direct/indirect/dynamic concrete-model import audit
-   evidence. Record unchanged non-vendor files as part of the local mirror. List the
+   framework API boundaries. Record unchanged non-vendor files as part of the local mirror. List the
    shared upstream modules and symbols reused from outside the model directory and why
    their contracts work on MACA. Record the layout explicitly when upstream has no
    `nvidia/` directory.
@@ -31,11 +32,12 @@ Use these sections, with concrete values or explicit unknown/unverified entries:
    State prefill/decode/split/mixed-batch, compressed/SWA and MTP/DSpark differences.
 6. **Other execution contracts:** normalization, residuals, projections/inverse RoPE,
    routing/shared experts, TP/PP/SP/EP/DCP collectives, multimodal and adapter branches.
-7. **Chip scope and validation:** available-chip configurations, source/local acceptance,
-   final real-load/e2e/batched result paths, numerical cases and limits. Unavailable
-   FP8/FP4 branches remain explicitly unverified, with the condition to validate later.
-8. **Open obligations:** precise blocker, affected paths, owner and next action. Do not
-   replace an unknown byte layout or unsupported claim with a guessed upstream value.
+7. **Capability and reproduction:** hardware gates, fallback conditions, affected
+   configurations and the steps needed to reproduce the platform behavior. Record unknown
+   layout details explicitly and name the source to inspect.
+
+Put approval records, audit hashes and results, task state and validation logs in the
+external upgrade run. Publish the final file-by-file review outside the source tree.
 
 For DSv4 cache specs, include attention and indexer quantization independently,
 compressed/SWA cache partitioning, C4/C128 behavior where used, page padding/alignment,
@@ -83,24 +85,21 @@ lookups follow the standard audit rules.
 Declare `e2e` and `batched_test` for the review task. For each use, bind the consuming
 configuration to support-matrix rows that assert the component's worker origin, execution
 branch and actual MACA backend. For Qwen4 Exp, verify QSA with fused preparation disabled
-and ordinary full attention with QSA disabled. Record current evidence or mark the affected
-configuration unverified until its obligations can be met.
+and ordinary full attention with QSA disabled. Record the configuration evidence in the external run.
 
 ## Framework dynamic import review
 
-When a model audit reports dynamic imports from shared plugin patch code, review the
-actual targets and their callers. Record reviewed sites under this heading in the model
-directory's `SPEC.md`. The fenced JSON object contains the local `entry`, the full
-`upstream_revision`, the `closure_sha256` and a `sites` list. Each site records its
-repository-relative `file`, one-based `line` and review `reason`.
+Trace each dynamic target and caller. Save the reviewed framework sites as a JSON
+object under the external upgrade run. Include the local `entry`, the full
+`upstream_revision`, the `closure_sha256` and a `sites` list. Each site records
+its repository-relative `file`, one-based `line` and review `reason`.
 
-Generate the closure hash from the unreviewed audit for this exact entry. Hash the
-UTF-8 bytes of `json.dumps(report["files"], sort_keys=True)` with SHA-256. The
-audit binds the review to the complete hashed graph. It reports accepted sites
-separately and rejects changed graphs, missing sites and sites outside
-`vllm_metax/patch/`. Model dynamic imports and concrete-model import checks remain
-subject to the standard audit. Review the recorded targets again when the hash or
-upstream revision changes.
+Compute the closure hash from the audit for this exact entry before applying the
+review. Hash the UTF-8 bytes of `json.dumps(report["files"], sort_keys=True)`
+with SHA-256. Pass the record with the repeatable `--framework-review` flag on
+`model-review` or `audit_imports.py`. Changed graphs, missing sites and sites
+outside `vllm_metax/patch/` fail the audit. Review the targets again when the
+closure or upstream revision changes.
 
 ## Tool binding
 

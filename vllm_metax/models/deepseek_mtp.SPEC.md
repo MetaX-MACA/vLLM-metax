@@ -20,8 +20,6 @@
 ## 3. Local model dependencies
 
 - Uses local `deepseek_v2.py` and shared public framework model interfaces.
-- Import audit reports no prohibited concrete-model import or unresolved
-  dynamic import.
 
 ## 4. Weights and compute
 
@@ -44,17 +42,15 @@
 
 - Preserve MTP pipeline boundaries, shared head/norm ownership, and draft
   layer indexing.
-- Loading validation must distinguish missing required WK weights from
+- The loader distinguishes missing required WK weights from
   optional runtime cache scales.
 
-## 7. Chip scope and validation
+## 7. MACA porting recipe
 
-- Covered through parent DeepSeek family samples when speculative tokens are
-  enabled; no dedicated MTP checkpoint is bound.
-- Source acceptance covers import audit, WK pending-buffer load sequence, and
-  MTP top-k initialization.
-
-## 8. Open obligations
-
-- Final validation depends on a bound parent model with speculative decoding
-  enabled.
+Start with the target `deepseek_mtp.py` draft loader. Use local DeepSeek decoder
+layers and use the target `get_fused_shared_expert_layers` helper with the actual
+EPLB flag. Apply shared-expert fusion only to the designated draft layers.
+Keep the checkpoint-to-draft mapping indexed from `num_hidden_layers` and the
+local indexer WK fused projection handling. Return loaded parameter names to
+the target loader for completeness checking. Preserve the parent DSA cache
+geometry and hidden-state input when updating the draft entry.

@@ -17,17 +17,14 @@
 
 ## 3. Local model dependencies
 
-- The local Qwen2 layer implementation is owned by the legacy model-private
-  dependency task.
-- No upstream concrete Qwen model is inherited or constructed; import audit
-  reports zero prohibited and zero unresolved dynamic imports.
+- Construct the decoder from the local `qwen2.py` implementation and use
+  the shared framework interfaces for the LM head and pipeline boundary.
 
 ## 4. Weights and compute
 
 - Preserve target Qwen parameter names, speech projection/head ownership,
   dtype, and checkpoint mapping.
-- C500 compute is BF16. Adapter/modality branches without a sample remain
-  unverified.
+- The C500 speech-token decoder uses BF16 compute.
 
 ## 5. Attention and cache
 
@@ -43,12 +40,11 @@
   output-head ownership.
 - The model generates speech tokens and uses the local Qwen2 text decoder.
 
-## 7. Chip scope and validation
+## 7. MACA porting recipe
 
-- No CosyVoice sample exists under `tools/models/`.
-- Source acceptance covers import audit, registration, and model-free plugin
-  closure.
-
-## 8. Open obligations
-
-- Add a supported sample before claiming model-level speech generation.
+Use the target legacy CosyVoice2 model as the baseline and replace its concrete
+`Qwen2Model` import with the local `qwen2.py` mirror. Keep the shared loader,
+tensor-parallel LM head and logits processor imports from vLLM. Preserve the
+speech-token vocabulary and the decoder-to-head path. Adapt attention in the
+local Qwen2 implementation through MACA backends, without inserting a separate
+speech attention or cache operator.

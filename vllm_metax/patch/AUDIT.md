@@ -4,7 +4,7 @@ Reviewed upstream target: **v0.34.0**
 (`62d4bc3c7e33b1b6c906e233e6af2d3506c482ca`); prior reviewed base was v0.33.0
 (`4ba787ec9959e566d3b587a796dff07673324da5`). Patch paths below are relative
 to `vllm_metax/patch/`; upstream source paths are relative to `vllm/`.
-Transformers compatibility entries refer to the approved **5.19.0** environment.
+Versioned compatibility entries retain the Transformers version at which the patch was introduced.
 
 The active patch modules are listed by category below.
 Shared infrastructure and removed or migrated entries are tracked separately.
@@ -29,27 +29,6 @@ Entries in the four active tables are imported through this chain.
 optional MCOPLIB sampler is available. Removed/migrated entries have a separate table;
 templates are not imported by the activation chain.
 
-## v0.34 removal-first re-review
-
-The final v0.34.0 review replayed the mapped patch set from the v0.33.0 MetaX
-baseline and checked every rejected hunk against the exact target. The three
-blocking startup changes are resolved as follows:
-
-- `bugfix/triton_support/rejection_sample.py` imports `compute_fly_entropy`
-  from the target worker spec-decode package; the old module path is gone.
-- `enhancement/static_eplb/static_eplb.py` binds only
-  `vllm.v1.worker.gpu.model_runner.GPUModelRunner`; the removed MRV1 runner is
-  neither imported nor patched.
-- `enhancement/performance/speculative_decode_perf.py` is removed together with
-  its aggregate import because its MRV1 target no longer exists.
-
-The remaining active entries were re-imported through
-`vllm_metax.register_out_of_tree()` in a fresh source-mode process. Their target
-modules and descriptors exist at the reviewed revision, and the patch installer
-applies each target once. This review establishes source activation and the
-stated removal conditions; it does not claim that environment-specific runtime
-branches, optional MCOPLIB paths or every model path were executed.
-
 ## Bugfix patches
 
 | Module / target | Decision, repair reason and removal condition |
@@ -72,7 +51,7 @@ branches, optional MCOPLIB paths or every model path were executed.
 
 | Module / target | Decision, repair reason and removal condition |
 | --- | --- |
-| `enhancement/static_eplb/static_eplb.py`: both `GPUModelRunner.load_model` methods, `EplbState.start_async_loop`, `EplbState.step` | **Refactor; retain four opt-in lifecycle hooks.** v0.33 still has no static placement file import/export hook. `static_eplb/placement.py` owns file formats and pure validation; `StaticEplbRecorder` in `static_eplb/recorder.py` owns configuration, state attachment, all-model import, native weight transfers, load collection and export. The patch module only wraps both load boundaries and shared async/step methods. Use native transfer/policy/map-commit APIs, including the renamed `stream` parameter for mixed-layout transfers. Wrap both runner load methods, retaining arguments and signatures; intercept the shared state step so MRV2 controller suppression and ordinary runner guards remain upstream-owned. Forward the complete step interface to the recorder, which owns profile/dummy/serving dispatch and calls native `rearrange(is_profile=True)` for profile reservation without re-entering patched `step`. Discard profile/dummy load, advance synchronized dummy iterations, and suppress asynchronous rebalancing only in static mode. Preserve routing tensor storage through native map commits; validate all model maps before moving weights. Remove when native EPLB supplies equivalent static file I/O and synchronized export. The [hook analysis](enhancement/static_eplb/README.md) documents both native call chains, pre-attachment async suppression and why registration/forward/controller methods remain native. Source-kernel component evidence, scoped limitations and regression inputs live in the [static EPLB run](../../.metax-upgrade/static-eplb-v033/TODO.md); this entry makes no complete-model claim. |
+| `enhancement/static_eplb/static_eplb.py` | **Retain on MRV2.** Wrap `vllm.v1.worker.gpu.model_runner.GPUModelRunner.load_model` and the shared `EplbState.start_async_loop` and `step` methods. `placement.py` owns the file contract and `recorder.py` owns attachment, native transfers and export. Preserve the runner signature, native routing tensor storage, validation of all model maps before moving weights, and the profile/dummy/serving distinction. Remove when native EPLB supplies equivalent static file I/O and synchronized export. |
 | `enhancement/device_allocator.py`: submodule `vllm.device_allocator.cumem` | **Migrate activation.** Move the plugin-entry `sys.modules` redirect into an explicit `patch(..., replace_module=True)` installation. Update both the import cache and package attribute without executing the original CUDA allocator. Rebind preloaded same-name allocator class/function imports; renamed imports and existing allocations are outside the migration. Target `device_allocator/__init__.py:get_mem_allocator_instance` and GPU worker shutdown lazily import this submodule. Remove when native platform allocator dispatch covers both consumers. Fresh startup/import identity checks do not establish allocator sleep/wake numerical or lifecycle correctness. |
 | `enhancement/chores/bench_serve_args.py`: `add_cli_args` | **Retain policy.** Wrap target `benchmarks/serve.py` argument registration and default temperature to 0.0, preserving explicit values and the full argument set. Same-name loaded CLI aliases are handled by the installer. Remove when MetaX benchmark policy adopts the native default. This is a benchmark policy, not a correctness fix. |
 | `enhancement/chores/maca_visible_device.py`: `WorkerWrapperBase.update_environment_variables` | **Retain.** Copy the selected RPC environment dictionary and mirror CUDA visibility to MACA visibility only when supplied; explicit MACA values win. Target `v1/worker/worker_base.py` installs the supplied variables without this translation. Remove when native worker launch provides equivalent MetaX propagation. |
@@ -95,7 +74,6 @@ branches, optional MCOPLIB paths or every model path were executed.
 | `enhancement/performance/pp_batch_balance.py`: `Scheduler.schedule` | **Retain bounded synchronous PP balancing.** Exact v0.33 has no equivalent cap. Transform only the RUNNING/WAITING pre-allocation and post-scheduling sites, preserving admission/input budgets, KV-holding queues and upstream preemption. Enable for synchronous MRv2, FCFS, DP=1, PP>1 without speculation; unsupported modes delegate. No supported hook can skip only excess decode rows in both loops. Dynamic target includes in-flight requests; overdue requests bypass the soft cap after at most PP deferrals. Remove after equivalent native balancing passes arrivals/draining and concurrency 16/32/64 correctness/performance checks. |
 | `enhancement/performance/grouped_topk_router.py`: `GroupedTopKRouter._compute_routing` | **Update; retain MetaX dispatch.** Preserve target `model_executor/layers/fused_moe/router/grouped_topk_router.py` scoring/bias/scaling behavior around the MACA fused/SGL/fallback routes. SGL requires precompiled kernels: `USE_PRECOMPILED_KERNEL=0` with the SGL preference enabled uses native grouped-topk, since source mode does not load `mcoplib.sgl_kernel`. Apply target skip-padding semantics when enabled: padding rows receive zero weights and expert IDs -1. Remove when native router extension points support these MetaX kernels. Source-mode sigmoid routing, bias, scaling, patch binding and graph replay have scoped GPU component diagnostics in `../../.metax-upgrade/setup-preview/csrc-upgrade/`; formal whole-tree acceptance remains pending concurrent model edits. Precompiled SGL numerics and full MoE model execution remain separate obligations. |
 | `enhancement/performance/gumbel_sample.py`: `Sampler._sample_random` | **Update; conditional activation.** Forward v0.33's `has_topp_only_rows` argument to `apply_top_k_top_p`, preserving sequence-length and fused-sampler branches. MCOPLIB receives `all_greedy=True` only when all selected temperatures are zero. Only attempt the optional MCOPLIB import when `USE_PRECOMPILED_KERNEL=1`; source mode leaves the upstream sampler installed without loading MCOPLIB. If `mcoplib.triton_gumbel_sample` cannot be imported, leave the upstream sampler installed. Remove when native sampling supports the equivalent MetaX kernel. The approved source-mode component set lacks this optional MCOPLIB module; fallback execution is not optimized-sampler validation. |
-| `enhancement/performance/speculative_decode_perf.py`: `GPUModelRunner._may_reorder_batch` | **Retain.** Delegate ordinary paths; when speculative decode/backend grouping is enabled, preserve the four request regions and stably bucket completed-prefill decodes by query length. Example: `[D:3, D:1, D:2, D:1, S:2, L:8, P:4]` becomes `[D:1, D:1, D:2, D:3, S:2, L:8, P:4]`. Keep request state aligned through swaps. Remove when native batch ordering provides the needed decode buckets; preserve each non-decode region's order without claiming upstream's subset sorting is globally stable. |
 
 ## Model patches
 
@@ -119,6 +97,7 @@ monkey patches.
 
 | Module / target | Decision, repair reason and removal condition |
 | --- | --- |
+| `enhancement/performance/speculative_decode_perf.py` | **Remove.** Its `GPUModelRunner._may_reorder_batch` target belonged to MRV1. v0.34 removes that runner. The remaining MRV2 runner owns its batch ordering. |
 | `models/minimax_m3/index_topk.py` | **Migrate to `vllm_metax/models/minimax_m3/common/ops/index_topk.py`.** Keep one-stage launches and the 16-row minimum decode tile. Inherit the complete v0.32 masked-pointer, score-buffer and split-K ABI changes; no upstream module/kernel replacement remains. |
 | `models/minimax_m3/sparse_attn.py` | **Migrate to `vllm_metax/models/minimax_m3/common/ops/sparse_attn.py`.** Retain SUB_K=16 and minimum head tiles alongside target sentinel/causal/scale handling. Fix the all-empty merge locally; both the old patch and v0.32 produced NaNs for padded rows. |
 | `models/minimax_m3/load_weights.py` | **Migrate to native backbone/MTP loaders and `metax/weight_loading.py`.** Keep destination-dependent inverse scales and interleaved hybrid coverage. Retire patch decorators, captured-original metadata and activation imports; top-level native text/VL methods own their loading sessions. |
@@ -141,7 +120,7 @@ monkey patches.
 | `bugfix/__init__.py`, `bugfix/int8_w8a8/__init__.py`, `bugfix/triton_support/__init__.py` | Activate shared correctness fixes, including global PP communication, fused-scale loading and rejection-sampler patches. | Their child patches have all been removed or migrated. |
 | `models/__init__.py`, `models/deepseek_v4/__init__.py`, `models/joyai/__init__.py`, `models/kimi_k3/__init__.py`, `models/qwen/__init__.py`, `models/telechat3/__init__.py` | Activate model-owned patches, including the Kimi-K3 table guard. JoyAI uses the model key rather than the former `joyai_support` feature name. | Their child patches have all been removed or migrated. |
 | `enhancement/__init__.py`, `enhancement/chores/__init__.py`, `enhancement/distributed/__init__.py`, `enhancement/MRV2/__init__.py`, `enhancement/quant_kernels/__init__.py` | Activate the current enhancement modules. Quantized-kernel activation now contains only the FP8-block patch; Engram, MXFP8 and the historical MoE ABI bridge are not imported here. | Their child patches have all been removed or migrated. |
-| `enhancement/performance/__init__.py` | Import grouped routing, speculative batch ordering and conditional Gumbel sampling. | Their child patches have all been removed or migrated. |
+| `enhancement/performance/__init__.py` | Import grouped routing and conditional Gumbel sampling. | Their child patches have all been removed or migrated. |
 | `template/class_method.py`, `template/module_attr.py` | Inactive descriptor-preserving/class and module-attribute examples, including alias synchronization and Triton decorator order. | The runtime patch mechanism is no longer needed. |
 
 Generic alias synchronization uses the string prefix `vllm`, including

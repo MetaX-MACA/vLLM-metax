@@ -299,10 +299,10 @@ class PolicyTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             return json.loads(result.stdout)
 
-        spec = model.with_name("SPEC.md")
+        review_file = self.fixture.run / "framework-review.json"
         reviewed_command = command + [
-            "--spec",
-            str(spec),
+            "--framework-review",
+            str(review_file),
             "--upstream-source",
             str(upstream),
         ]
@@ -317,11 +317,7 @@ class PolicyTests(unittest.TestCase):
                 ).hexdigest(),
                 "sites": sites,
             }
-            spec.write_text(
-                "## Framework dynamic import review\n\n```json\n"
-                + json.dumps(declaration)
-                + "\n```\n"
-            )
+            review_file.write_text(json.dumps(declaration))
 
         site_review = {
             "file": site,
@@ -336,6 +332,15 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(
             reviewed["reviewed_framework_dynamic_imports"][0]["file"], site
         )
+
+        in_tree_review = model.with_name("framework-review.json")
+        in_tree_review.write_text(review_file.read_text())
+        result = subprocess.run(
+            reviewed_command + ["--framework-review", str(in_tree_review)],
+            capture_output=True,
+            text=True,
+        )
+        self.assertIn("outside the source tree", result.stderr)
 
         model.write_text(
             model.read_text() + "from vllm.models.example import ConcreteModel\n"

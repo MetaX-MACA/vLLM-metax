@@ -20,8 +20,8 @@ Architectures and their local owners:
 | Glm5NextForCausalLM / Glm5NextForConditionalGeneration / Glm5NextMTPModel | `vllm_metax.models.glm5next` |
 | MiniMaxM3SparseForCausalLM / MiniMaxM3SparseForConditionalGeneration / MiniMaxM3MTP / DSparkMiniMaxDraftModel | `vllm_metax.models.minimax_m3` |
 
-The v0.34 registry API and vLLM model construction contracts are preserved. MetaX
-adds only local architecture/provider mappings; the registry must not delegate a
-registered architecture to an upstream concrete model implementation. The complete
-local model mirrors are owned by their corresponding `model-*` tasks and must be
-reviewed before this registry is considered source-ready.
+The v0.34 registry continues to call `ModelRegistry.register_model`. Register each
+architecture string against the local class, including MTP and DSpark aliases.
+Keep draft registration in sync with the model selected by the target
+speculative config. The `GlmMoeDsaForCausalLM` mapping uses the local DeepSeek
+DSA implementation and shares its indexer and cache contracts.

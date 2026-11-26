@@ -23,10 +23,8 @@ No upstream concrete model inheritance or construction is permitted.
 
 ## 3. Local model dependencies
 
-- The local flat model imports public framework APIs and the local
-  `vllm_metax.model_executor.models` Qwen/DeepSeek helpers.
-- Import audit reports no prohibited concrete implementation or unresolved
-  dynamic import.
+- The flat model owns the DSA indexer and decoder classes. It uses the shared
+  vLLM layer, loader and interface APIs and the MetaX MLA/top-k layers.
 
 ## 4. Weights and compute
 
@@ -35,7 +33,8 @@ No upstream concrete model inheritance or construction is permitted.
   active experts, one shared expert, and `index_topk=2048`.
 - Preserve target MLA, sparse indexer, DSA top-k, MoE/shared-expert mappings,
   PP/EP/TP ownership, and checkpoint loading.
-- C500 uses BF16/INT8; FP8/FP4 branches remain unverified.
+- Use BF16/INT8 on C500. Packed low-precision paths require a backend that
+  supports the selected cache dtype and the model's weight format.
 
 ## 5. Attention and indexer cache
 
@@ -58,15 +57,12 @@ No upstream concrete model inheritance or construction is permitted.
 - MTP index sharing reuses the parent indexer only after the target iteration
   state is available; it must not read an unwritten buffer.
 
-## 7. Chip scope and validation
+## 7. MACA porting recipe
 
-- Bound sample: `GLM-5_2-W8A8-dummy-3layers`, TP1 dummy smoke.
-- Source acceptance covers import audit, registration, indexer/top-k geometry
-  and local dispatch.
-- Final acceptance requires normal-entry prefill, two-token decode,
-  concurrent batches, and `tools/batched_test --infer`.
-
-## 8. Open obligations
-
-- Final model evidence is recorded in validation.
-- Validate FP8/FP4 indexer/cache variants only on supported hardware.
+Port the target DeepSeek V2/V3/V3.2 loader and retain the local DSA/MLA
+implementation used by the `GlmMoeDsaForCausalLM` alias. Replace the single
+shared-expert flag with target `get_fused_shared_expert_layers` and account for
+the EPLB setting when building expert mappings. Keep layer-local routing and
+the local MLA and INT8 indexer selection. For W8A8, pass the
+model activation dtype to KV-B projection so the MACA linear method performs
+dynamic activation quantization.

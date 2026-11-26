@@ -377,6 +377,9 @@ The check reports actual upstream and active bindings, surfaces and caller outco
 Use `model-review --id TASK --entry LOCAL_MODEL.py --spec LOCAL_SPEC.md`, repeating
 entries/specs as needed. It runs the model-adaptation auditor and binds its source/spec
 hashes before static/review evidence. Specs must be owned files in the model directory.
+Pass each external framework import review with `--framework-review PATH`.
+Keep the review JSON in the run directory. The model audit retains the reviewed
+sites and uses the same source and upstream revision checks.
 For [upstream component reuse](../../model-adaptation/references/spec-guide.md#upstream-component-reuse),
 declare `e2e` and `batched_test` for the review task. `model-review` reads the declarations
 from the supplied specs and checks the full commit against the selected vLLM checkout.
